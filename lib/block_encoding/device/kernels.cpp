@@ -7,6 +7,7 @@
  ******************************************************************************/
 
 #include "cudaq/algorithms/block_encoding/kernels.h"
+#include "cudaq/algorithms/detail/qpu_dispatch.h"
 
 namespace cudaq_algorithms::block_encoding {
 
@@ -27,95 +28,8 @@ __qpu__ void prepare(cudaq::qview<> ancilla,
           x(ancilla[layer - 1 - bit]);
       }
 
-      if (layer == 1) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1]);
-      } else if (layer == 2) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2]);
-      } else if (layer == 3) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3]);
-      } else if (layer == 4) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4]);
-      } else if (layer == 5) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5]);
-      } else if (layer == 6) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6]);
-      } else if (layer == 7) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7]);
-      } else if (layer == 8) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8]);
-      } else if (layer == 9) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9]);
-      } else if (layer == 10) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10]);
-      } else if (layer == 11) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11]);
-      } else if (layer == 12) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12]);
-      } else if (layer == 13) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13]);
-      } else if (layer == 14) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14]);
-      } else if (layer == 15) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15]);
-      } else if (layer == 16) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16]);
-      } else if (layer == 17) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16], ancilla[17]);
-      } else if (layer == 18) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16], ancilla[17],
-                        ancilla[18]);
-      } else if (layer == 19) {
-        ry<cudaq::ctrl>(state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16], ancilla[17],
-                        ancilla[18], ancilla[19]);
-      }
+      CUDAQ_ALGORITHMS_APPLY_CONTROLLED_RY_BY_ARITY(
+          state_prep_angles[angle_idx], ancilla, layer);
       angle_idx++;
 
       for (int bit = 0; bit < static_cast<int>(layer); ++bit) {
@@ -143,95 +57,8 @@ __qpu__ void unprepare(cudaq::qview<> ancilla,
           x(ancilla[layer - 1 - bit]);
       }
 
-      if (layer == 1) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1]);
-      } else if (layer == 2) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2]);
-      } else if (layer == 3) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3]);
-      } else if (layer == 4) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4]);
-      } else if (layer == 5) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5]);
-      } else if (layer == 6) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6]);
-      } else if (layer == 7) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7]);
-      } else if (layer == 8) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8]);
-      } else if (layer == 9) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9]);
-      } else if (layer == 10) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10]);
-      } else if (layer == 11) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11]);
-      } else if (layer == 12) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12]);
-      } else if (layer == 13) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13]);
-      } else if (layer == 14) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14]);
-      } else if (layer == 15) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15]);
-      } else if (layer == 16) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16]);
-      } else if (layer == 17) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16], ancilla[17]);
-      } else if (layer == 18) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16], ancilla[17],
-                        ancilla[18]);
-      } else if (layer == 19) {
-        ry<cudaq::ctrl>(-state_prep_angles[angle_idx], ancilla[0], ancilla[1],
-                        ancilla[2], ancilla[3], ancilla[4], ancilla[5],
-                        ancilla[6], ancilla[7], ancilla[8], ancilla[9],
-                        ancilla[10], ancilla[11], ancilla[12], ancilla[13],
-                        ancilla[14], ancilla[15], ancilla[16], ancilla[17],
-                        ancilla[18], ancilla[19]);
-      }
+      CUDAQ_ALGORITHMS_APPLY_CONTROLLED_RY_BY_ARITY(
+          -state_prep_angles[angle_idx], ancilla, layer);
       angle_idx--;
 
       for (int bit = 0; bit < layer; ++bit) {
@@ -275,37 +102,8 @@ __qpu__ void select(cudaq::qview<> ancilla, cudaq::qview<> system,
         z<cudaq::ctrl>(ancilla, system[q_idx]);
     }
 
-    if (sign < 0) {
-      if (n_ancilla == 1) {
-        z(ancilla[0]);
-      } else if (n_ancilla == 2) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1]);
-      } else if (n_ancilla == 3) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2]);
-      } else if (n_ancilla == 4) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3]);
-      } else if (n_ancilla == 5) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                       ancilla[4]);
-      } else if (n_ancilla == 6) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                       ancilla[4], ancilla[5]);
-      } else if (n_ancilla == 7) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                       ancilla[4], ancilla[5], ancilla[6]);
-      } else if (n_ancilla == 8) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                       ancilla[4], ancilla[5], ancilla[6], ancilla[7]);
-      } else if (n_ancilla == 9) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                       ancilla[4], ancilla[5], ancilla[6], ancilla[7],
-                       ancilla[8]);
-      } else if (n_ancilla == 10) {
-        z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                       ancilla[4], ancilla[5], ancilla[6], ancilla[7],
-                       ancilla[8], ancilla[9]);
-      }
-    }
+    if (sign < 0)
+      CUDAQ_ALGORITHMS_APPLY_Z_BY_ARITY(ancilla, n_ancilla);
 
     int back_ptr = ptr_ctrl - 1;
     for (int b_rev = 0; b_rev < n_ancilla; ++b_rev) {
@@ -325,8 +123,7 @@ __qpu__ void apply(cudaq::qview<> ancilla, cudaq::qview<> system,
                    const std::vector<int> &term_signs) {
   cudaq_algorithms::block_encoding::prepare(ancilla, state_prep_angles);
   cudaq_algorithms::block_encoding::select(ancilla, system, term_controls,
-                                             term_ops, term_lengths,
-                                             term_signs);
+                                           term_ops, term_lengths, term_signs);
   cudaq_algorithms::block_encoding::unprepare(ancilla, state_prep_angles);
 }
 
@@ -339,34 +136,7 @@ __qpu__ void reflect_about_zero(cudaq::qview<> ancilla) {
     x(ancilla[i]);
 
   std::size_t num_ancilla = ancilla.size();
-  if (num_ancilla == 0) {
-    return;
-  } else if (num_ancilla == 1) {
-    z(ancilla[0]);
-  } else if (num_ancilla == 2) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1]);
-  } else if (num_ancilla == 3) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2]);
-  } else if (num_ancilla == 4) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3]);
-  } else if (num_ancilla == 5) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4]);
-  } else if (num_ancilla == 6) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5]);
-  } else if (num_ancilla == 7) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6]);
-  } else if (num_ancilla == 8) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6], ancilla[7]);
-  } else if (num_ancilla == 9) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6], ancilla[7], ancilla[8]);
-  } else if (num_ancilla == 10) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6], ancilla[7], ancilla[8], ancilla[9]);
-  }
+  CUDAQ_ALGORITHMS_APPLY_Z_BY_ARITY(ancilla, num_ancilla);
 
   for (std::size_t i = 0; i < ancilla.size(); ++i)
     x(ancilla[i]);
@@ -436,36 +206,7 @@ __qpu__ void apply_signal_phase(cudaq::qview<> signal, double phase) {
     x(signal[i]);
 
   std::size_t num_signal = signal.size();
-  if (num_signal == 0) {
-    return;
-  } else if (num_signal == 1) {
-    r1(phase, signal[0]);
-  } else if (num_signal == 2) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1]);
-  } else if (num_signal == 3) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2]);
-  } else if (num_signal == 4) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3]);
-  } else if (num_signal == 5) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4]);
-  } else if (num_signal == 6) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5]);
-  } else if (num_signal == 7) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6]);
-  } else if (num_signal == 8) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7]);
-  } else if (num_signal == 9) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7], signal[8]);
-  } else if (num_signal == 10) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7], signal[8],
-                    signal[9]);
-  }
+  CUDAQ_ALGORITHMS_APPLY_R1_BY_ARITY(phase, signal, num_signal);
 
   for (std::size_t i = 0; i < signal.size(); ++i)
     x(signal[i]);
@@ -510,8 +251,7 @@ __qpu__ void apply_qsp_sequence(cudaq::qview<> signal, cudaq::qview<> system,
   if (phases.empty())
     return;
 
-  cudaq_algorithms::qsvt_primitives::apply_qsp_signal_phase(signal,
-                                                             phases[0]);
+  cudaq_algorithms::qsvt_primitives::apply_qsp_signal_phase(signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (walk_directions[i - 1] == 1)
       qubitization::apply_adjoint_walk(signal, system, state_prep_angles,
@@ -521,7 +261,7 @@ __qpu__ void apply_qsp_sequence(cudaq::qview<> signal, cudaq::qview<> system,
       qubitization::apply_walk(signal, system, state_prep_angles, term_controls,
                                term_ops, term_lengths, term_signs);
     cudaq_algorithms::qsvt_primitives::apply_qsp_signal_phase(signal,
-                                                               phases[i]);
+                                                              phases[i]);
   }
 }
 

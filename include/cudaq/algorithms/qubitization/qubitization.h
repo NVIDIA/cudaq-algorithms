@@ -9,6 +9,7 @@
 
 #include "cudaq.h"
 #include "cudaq/algorithms/block_encoding/pauli_lcu.h"
+#include "cudaq/algorithms/detail/qpu_dispatch.h"
 #include <cstddef>
 
 namespace cudaq::algorithms {
@@ -37,34 +38,7 @@ __qpu__ inline void reflect_about_zero(cudaq::qview<> ancilla) {
     x(ancilla[i]);
 
   std::size_t num_ancilla = ancilla.size();
-  if (num_ancilla == 0) {
-    return;
-  } else if (num_ancilla == 1) {
-    z(ancilla[0]);
-  } else if (num_ancilla == 2) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1]);
-  } else if (num_ancilla == 3) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2]);
-  } else if (num_ancilla == 4) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3]);
-  } else if (num_ancilla == 5) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4]);
-  } else if (num_ancilla == 6) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5]);
-  } else if (num_ancilla == 7) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6]);
-  } else if (num_ancilla == 8) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6], ancilla[7]);
-  } else if (num_ancilla == 9) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6], ancilla[7], ancilla[8]);
-  } else if (num_ancilla == 10) {
-    z<cudaq::ctrl>(ancilla[0], ancilla[1], ancilla[2], ancilla[3], ancilla[4],
-                   ancilla[5], ancilla[6], ancilla[7], ancilla[8], ancilla[9]);
-  }
+  CUDAQ_ALGORITHMS_APPLY_Z_BY_ARITY(ancilla, num_ancilla);
 
   for (std::size_t i = 0; i < ancilla.size(); ++i)
     x(ancilla[i]);
@@ -78,36 +52,8 @@ __qpu__ inline void controlled_reflect_about_zero(cudaq::qubit &control,
     x(ancilla[i]);
 
   std::size_t num_ancilla = ancilla.size();
-  if (num_ancilla == 0) {
-    return;
-  } else if (num_ancilla == 1) {
-    z<cudaq::ctrl>(control, ancilla[0]);
-  } else if (num_ancilla == 2) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1]);
-  } else if (num_ancilla == 3) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2]);
-  } else if (num_ancilla == 4) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3]);
-  } else if (num_ancilla == 5) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                   ancilla[4]);
-  } else if (num_ancilla == 6) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                   ancilla[4], ancilla[5]);
-  } else if (num_ancilla == 7) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                   ancilla[4], ancilla[5], ancilla[6]);
-  } else if (num_ancilla == 8) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                   ancilla[4], ancilla[5], ancilla[6], ancilla[7]);
-  } else if (num_ancilla == 9) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                   ancilla[4], ancilla[5], ancilla[6], ancilla[7], ancilla[8]);
-  } else if (num_ancilla == 10) {
-    z<cudaq::ctrl>(control, ancilla[0], ancilla[1], ancilla[2], ancilla[3],
-                   ancilla[4], ancilla[5], ancilla[6], ancilla[7], ancilla[8],
-                   ancilla[9]);
-  }
+  if (num_ancilla > 0)
+    CUDAQ_ALGORITHMS_APPLY_CONTROLLED_Z_BY_ARITY(control, ancilla, num_ancilla);
 
   for (std::size_t i = 0; i < ancilla.size(); ++i)
     x(ancilla[i]);

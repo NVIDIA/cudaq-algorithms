@@ -16,17 +16,16 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "type_casters.h"
-#include "cudaq/python/PythonCppInterop.h"
-#include "cudaq/algorithms/block_encoding/pauli_lcu.h"
 #include "cudaq/algorithms/block_encoding/kernels.h"
+#include "cudaq/algorithms/block_encoding/pauli_lcu.h"
 #include "cudaq/algorithms/qsvt/qsvt.h"
+#include "cudaq/python/PythonCppInterop.h"
+#include "type_casters.h"
 
 namespace nb = nanobind;
 
 namespace {
-template <typename T>
-nb::object numpy_array(const std::vector<T> &values) {
+template <typename T> nb::object numpy_array(const std::vector<T> &values) {
   auto np = nb::module_::import_("numpy");
   return np.attr("array")(values);
 }
@@ -309,7 +308,6 @@ Args:
   mod.def("make_chebyshev_qsvt_sample_points",
           &make_chebyshev_qsvt_sample_points, nb::arg("min_x"),
           nb::arg("max_x"), nb::arg("num_points"));
-
 }
 
 } // namespace cudaq::algorithms

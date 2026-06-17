@@ -11,6 +11,40 @@
 
 #include "cudaq.h"
 #include "cudaq/algorithms/block_encoding/pauli_lcu.h"
+#include "cudaq/algorithms/detail/qpu_dispatch.h"
+
+namespace {
+
+cudaq::spin_op make_lcu_limit_test_hamiltonian(std::size_t num_terms,
+                                               std::size_t num_qubits) {
+  using namespace cudaq::spin;
+
+  cudaq::spin_op h;
+  for (std::size_t term_idx = 0; term_idx < num_terms; ++term_idx) {
+    std::size_t code = term_idx;
+    cudaq::spin_op term;
+
+    for (std::size_t q = 0; q < num_qubits; ++q) {
+      cudaq::spin_op pauli;
+      const auto digit = code % 3;
+      if (digit == 0)
+        pauli = x(q);
+      else if (digit == 1)
+        pauli = y(q);
+      else
+        pauli = z(q);
+
+      term = (q == 0) ? pauli : term * pauli;
+      code /= 3;
+    }
+
+    h += (1.0 + 1e-6 * static_cast<double>(term_idx)) * term;
+  }
+
+  return h;
+}
+
+} // namespace
 
 TEST(BlockEncodingTester, checkPauliLCU_H2) {
   using namespace cudaq::spin;
@@ -129,6 +163,22 @@ TEST(BlockEncodingTester, checkLCUDecompositionMetadata) {
   EXPECT_NEAR(metadata.normalization, 2.75, 1e-10);
   EXPECT_NEAR(metadata.constant_term, 2.0, 1e-10);
   EXPECT_NEAR(metadata.coefficient_threshold, lcu.coefficient_threshold, 1e-16);
+}
+
+TEST(BlockEncodingTester, checkLCUAncillaLimitValidation) {
+  using namespace cudaq::algorithms;
+
+  const auto max_terms = 1ULL
+                         << cudaq::algorithms::detail::max_lcu_ancilla_qubits;
+  auto boundary_hamiltonian = make_lcu_limit_test_hamiltonian(max_terms, 7);
+  auto boundary_lcu = decompose_lcu(boundary_hamiltonian, 7);
+  EXPECT_EQ(boundary_lcu.num_ancilla_qubits,
+            cudaq::algorithms::detail::max_lcu_ancilla_qubits);
+  EXPECT_NO_THROW(pauli_lcu encoding(boundary_lcu));
+
+  auto too_large_hamiltonian =
+      make_lcu_limit_test_hamiltonian(max_terms + 1, 7);
+  EXPECT_THROW(decompose_lcu(too_large_hamiltonian, 7), std::runtime_error);
 }
 
 TEST(BlockEncodingTester, checkLCUDecompositionThreshold) {

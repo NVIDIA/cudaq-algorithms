@@ -8,6 +8,7 @@
 
 #include "cudaq/algorithms/block_encoding/pauli_lcu.h"
 #include "cudaq/algorithms/block_encoding/kernels.h"
+#include "cudaq/algorithms/detail/qpu_dispatch.h"
 #include <cmath>
 #include <iostream>
 #include <numeric>
@@ -24,132 +25,28 @@ namespace cudaq::algorithms {
 __qpu__ void controlled_pauli_x(cudaq::qubit &control, cudaq::qview<> anc,
                                 cudaq::qubit &target) {
   int n_anc = anc.size();
-  if (n_anc == 0) {
-    x<cudaq::ctrl>(control, target);
-  } else if (n_anc == 1) {
-    x<cudaq::ctrl>(control, anc[0], target);
-  } else if (n_anc == 2) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], target);
-  } else if (n_anc == 3) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], target);
-  } else if (n_anc == 4) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], target);
-  } else if (n_anc == 5) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], target);
-  } else if (n_anc == 6) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   target);
-  } else if (n_anc == 7) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], target);
-  } else if (n_anc == 8) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], target);
-  } else if (n_anc == 9) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], target);
-  } else if (n_anc == 10) {
-    x<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], anc[9], target);
-  }
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_GATE_BY_ARITY(x, control, anc, target,
+                                                  n_anc);
 }
 
 __qpu__ void controlled_pauli_y(cudaq::qubit &control, cudaq::qview<> anc,
                                 cudaq::qubit &target) {
   int n_anc = anc.size();
-  if (n_anc == 0) {
-    y<cudaq::ctrl>(control, target);
-  } else if (n_anc == 1) {
-    y<cudaq::ctrl>(control, anc[0], target);
-  } else if (n_anc == 2) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], target);
-  } else if (n_anc == 3) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], target);
-  } else if (n_anc == 4) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], target);
-  } else if (n_anc == 5) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], target);
-  } else if (n_anc == 6) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   target);
-  } else if (n_anc == 7) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], target);
-  } else if (n_anc == 8) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], target);
-  } else if (n_anc == 9) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], target);
-  } else if (n_anc == 10) {
-    y<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], anc[9], target);
-  }
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_GATE_BY_ARITY(y, control, anc, target,
+                                                  n_anc);
 }
 
 __qpu__ void controlled_pauli_z(cudaq::qubit &control, cudaq::qview<> anc,
                                 cudaq::qubit &target) {
   int n_anc = anc.size();
-  if (n_anc == 0) {
-    z<cudaq::ctrl>(control, target);
-  } else if (n_anc == 1) {
-    z<cudaq::ctrl>(control, anc[0], target);
-  } else if (n_anc == 2) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], target);
-  } else if (n_anc == 3) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], target);
-  } else if (n_anc == 4) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], target);
-  } else if (n_anc == 5) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], target);
-  } else if (n_anc == 6) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   target);
-  } else if (n_anc == 7) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], target);
-  } else if (n_anc == 8) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], target);
-  } else if (n_anc == 9) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], target);
-  } else if (n_anc == 10) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], anc[9], target);
-  }
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_GATE_BY_ARITY(z, control, anc, target,
+                                                  n_anc);
 }
 
 __qpu__ void controlled_sign_correction(cudaq::qubit &control,
                                         cudaq::qview<> anc) {
   int n_anc = anc.size();
-  if (n_anc == 0) {
-    z(control);
-  } else if (n_anc == 1) {
-    z<cudaq::ctrl>(control, anc[0]);
-  } else if (n_anc == 2) {
-    z<cudaq::ctrl>(control, anc[0], anc[1]);
-  } else if (n_anc == 3) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2]);
-  } else if (n_anc == 4) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3]);
-  } else if (n_anc == 5) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4]);
-  } else if (n_anc == 6) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5]);
-  } else if (n_anc == 7) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6]);
-  } else if (n_anc == 8) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7]);
-  } else if (n_anc == 9) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8]);
-  } else if (n_anc == 10) {
-    z<cudaq::ctrl>(control, anc[0], anc[1], anc[2], anc[3], anc[4], anc[5],
-                   anc[6], anc[7], anc[8], anc[9]);
-  }
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_Z_BY_ARITY(control, anc, n_anc);
 }
 
 /// @brief Kernel for externally controlled SELECT operation.
@@ -310,6 +207,16 @@ lcu_decomposition decompose_lcu(const cudaq::spin_op &hamiltonian,
         "decompose_lcu: Hamiltonian has no retained terms");
 
   lcu.num_ancilla_qubits = ceil_log2(lcu.num_terms);
+  if (lcu.num_ancilla_qubits >
+      cudaq::algorithms::detail::max_lcu_ancilla_qubits)
+    throw std::runtime_error(
+        "decompose_lcu: PauliLCU currently supports at most " +
+        std::to_string(cudaq::algorithms::detail::max_lcu_ancilla_qubits) +
+        " ancilla qubits (" +
+        std::to_string(1ULL
+                       << cudaq::algorithms::detail::max_lcu_ancilla_qubits) +
+        " LCU terms)");
+
   lcu.padded_num_terms = 1ULL << lcu.num_ancilla_qubits;
 
   for (double abs_coeff : lcu.absolute_coefficients)
@@ -328,6 +235,14 @@ pauli_lcu_kernel_data make_pauli_lcu_kernel_data(const lcu_decomposition &lcu) {
       lcu.signs.size() != lcu.num_terms)
     throw std::runtime_error(
         "make_pauli_lcu_kernel_data: inconsistent LCU decomposition metadata");
+
+  if (lcu.num_ancilla_qubits >
+      cudaq::algorithms::detail::max_lcu_ancilla_qubits)
+    throw std::runtime_error(
+        "make_pauli_lcu_kernel_data: PauliLCU kernel data currently supports "
+        "at most " +
+        std::to_string(cudaq::algorithms::detail::max_lcu_ancilla_qubits) +
+        " ancilla qubits");
 
   pauli_lcu_kernel_data data;
   data.num_system_qubits = lcu.num_system_qubits;

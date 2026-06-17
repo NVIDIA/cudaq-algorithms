@@ -8,6 +8,7 @@
 #pragma once
 
 #include "cudaq.h"
+#include "cudaq/algorithms/detail/qpu_dispatch.h"
 #include "cudaq/algorithms/qubitization/qubitization.h"
 
 #include <complex>
@@ -75,36 +76,7 @@ __qpu__ inline void apply_qsvt_signal_phase(cudaq::qview<> signal,
     x(signal[i]);
 
   std::size_t num_signal = signal.size();
-  if (num_signal == 0) {
-    return;
-  } else if (num_signal == 1) {
-    r1(phase, signal[0]);
-  } else if (num_signal == 2) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1]);
-  } else if (num_signal == 3) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2]);
-  } else if (num_signal == 4) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3]);
-  } else if (num_signal == 5) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4]);
-  } else if (num_signal == 6) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5]);
-  } else if (num_signal == 7) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6]);
-  } else if (num_signal == 8) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7]);
-  } else if (num_signal == 9) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7], signal[8]);
-  } else if (num_signal == 10) {
-    r1<cudaq::ctrl>(phase, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7], signal[8],
-                    signal[9]);
-  }
+  CUDAQ_ALGORITHMS_APPLY_R1_BY_ARITY(phase, signal, num_signal);
 
   for (std::size_t i = 0; i < signal.size(); ++i)
     x(signal[i]);
@@ -144,36 +116,8 @@ __qpu__ inline void apply_controlled_qsvt_signal_phase(cudaq::qubit &control,
     x(signal[i]);
 
   std::size_t num_signal = signal.size();
-  if (num_signal == 0) {
-    return;
-  } else if (num_signal == 1) {
-    r1<cudaq::ctrl>(phase, control, signal[0]);
-  } else if (num_signal == 2) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1]);
-  } else if (num_signal == 3) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2]);
-  } else if (num_signal == 4) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3]);
-  } else if (num_signal == 5) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3],
-                    signal[4]);
-  } else if (num_signal == 6) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5]);
-  } else if (num_signal == 7) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6]);
-  } else if (num_signal == 8) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7]);
-  } else if (num_signal == 9) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7], signal[8]);
-  } else if (num_signal == 10) {
-    r1<cudaq::ctrl>(phase, control, signal[0], signal[1], signal[2], signal[3],
-                    signal[4], signal[5], signal[6], signal[7], signal[8],
-                    signal[9]);
-  }
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_R1_BY_ARITY(phase, control, signal,
+                                                num_signal);
 
   for (std::size_t i = 0; i < signal.size(); ++i)
     x(signal[i]);
