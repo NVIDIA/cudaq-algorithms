@@ -7,13 +7,134 @@
  ******************************************************************************/
 
 #include <cmath>
+#include <complex>
+#include <cstddef>
 #include <gtest/gtest.h>
+#include <random>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include "cudaq.h"
 #include "cudaq/algorithms/block_encoding/pauli_lcu.h"
 #include "cudaq/algorithms/detail/qpu_dispatch.h"
+#include "cudaq/algorithms/get_state.h"
 
 namespace {
+
+struct reference_pauli_term {
+  double coefficient;
+  std::vector<std::pair<std::size_t, char>> paulis;
+};
+
+cudaq::spin_op
+make_spin_term(const std::vector<std::pair<std::size_t, char>> &paulis) {
+  using namespace cudaq::spin;
+
+  if (paulis.empty())
+    throw std::runtime_error("Test Pauli term must not be empty.");
+
+  cudaq::spin_op term;
+  bool has_pauli = false;
+
+  for (const auto &[qubit, pauli] : paulis) {
+    cudaq::spin_op next;
+    switch (pauli) {
+    case 'X':
+      next = x(qubit);
+      break;
+    case 'Y':
+      next = y(qubit);
+      break;
+    case 'Z':
+      next = z(qubit);
+      break;
+    default:
+      throw std::runtime_error("Unsupported Pauli in test Hamiltonian.");
+    }
+
+    term = has_pauli ? term * next : next;
+    has_pauli = true;
+  }
+
+  return term;
+}
+
+cudaq::spin_op
+make_spin_hamiltonian(const std::vector<reference_pauli_term> &terms) {
+  cudaq::spin_op h;
+  for (const auto &term : terms)
+    h += term.coefficient * make_spin_term(term.paulis);
+  return h;
+}
+
+std::vector<std::complex<double>>
+make_normalized_random_ket(std::size_t num_qubits) {
+  std::mt19937_64 rng(1337);
+  std::normal_distribution<double> normal(0.0, 1.0);
+
+  std::vector<std::complex<double>> ket(1ULL << num_qubits);
+  double norm_squared = 0.0;
+  for (auto &amplitude : ket) {
+    amplitude = {normal(rng), normal(rng)};
+    norm_squared += std::norm(amplitude);
+  }
+
+  const auto inverse_norm = 1.0 / std::sqrt(norm_squared);
+  for (auto &amplitude : ket)
+    amplitude *= inverse_norm;
+
+  return ket;
+}
+
+std::vector<std::complex<double>>
+apply_pauli_sum_to_ket(const std::vector<reference_pauli_term> &terms,
+                       const std::vector<std::complex<double>> &ket) {
+  const std::complex<double> imaginary{0.0, 1.0};
+  std::vector<std::complex<double>> out(ket.size(), 0.0);
+
+  for (const auto &term : terms) {
+    for (std::size_t column = 0; column < ket.size(); ++column) {
+      auto row = column;
+      std::complex<double> phase = term.coefficient;
+
+      for (const auto &[qubit, pauli] : term.paulis) {
+        const auto bit = (column >> qubit) & 1ULL;
+        switch (pauli) {
+        case 'X':
+          row ^= 1ULL << qubit;
+          break;
+        case 'Y':
+          row ^= 1ULL << qubit;
+          phase *= bit == 0 ? imaginary : -imaginary;
+          break;
+        case 'Z':
+          phase *= bit == 0 ? 1.0 : -1.0;
+          break;
+        default:
+          throw std::runtime_error("Unsupported Pauli in dense reference.");
+        }
+      }
+
+      out[row] += phase * ket[column];
+    }
+  }
+
+  return out;
+}
+
+std::vector<reference_pauli_term> make_nontrivial_4q_hamiltonian_terms() {
+  return {{0.70, {{0, 'Z'}}},
+          {-0.43, {{1, 'Z'}}},
+          {0.31, {{2, 'Z'}}},
+          {-0.22, {{3, 'Z'}}},
+          {0.19, {{0, 'X'}, {1, 'X'}}},
+          {-0.17, {{1, 'Y'}, {2, 'Y'}}},
+          {0.13, {{1, 'Z'}, {2, 'Z'}, {3, 'X'}}},
+          {0.11, {{0, 'X'}, {1, 'Y'}, {2, 'Y'}, {3, 'X'}}},
+          {-0.09, {{0, 'Z'}, {2, 'X'}}},
+          {0.07, {{0, 'Y'}, {2, 'Z'}, {3, 'Y'}}}};
+}
 
 cudaq::spin_op make_lcu_limit_test_hamiltonian(std::size_t num_terms,
                                                std::size_t num_qubits) {
@@ -239,6 +360,60 @@ TEST(BlockEncodingTester, checkKernelExecution) {
   };
 
   EXPECT_NO_THROW(full_test());
+}
+
+TEST(BlockEncodingTester, checkBlockEncodingMatchesDenseHamiltonianAction) {
+  using namespace cudaq::algorithms;
+
+  constexpr std::size_t num_qubits = 4;
+  const auto reference_terms = make_nontrivial_4q_hamiltonian_terms();
+  auto h = make_spin_hamiltonian(reference_terms);
+  pauli_lcu encoding(h, num_qubits);
+
+  ASSERT_EQ(encoding.num_system(), num_qubits);
+  ASSERT_EQ(encoding.term_count(), reference_terms.size());
+  ASSERT_EQ(encoding.num_ancilla(), 4);
+
+  auto ket = make_normalized_random_ket(num_qubits);
+  cudaq::state input_state(ket);
+  const auto expected = apply_pauli_sum_to_ket(reference_terms, ket);
+
+  auto apply_block_encoding = [&encoding](cudaq::state state) __qpu__ {
+    cudaq::qvector<> system(state);
+    cudaq::qvector<> ancilla(encoding.num_ancilla());
+    encoding.apply(ancilla, system);
+  };
+
+  auto encoded_state = cudaq::get_state(apply_block_encoding, input_state);
+  const auto system_dimension = 1ULL << num_qubits;
+  const auto normalization = encoding.normalization();
+
+  auto reverse_bits = [](std::size_t value, std::size_t width) {
+    std::size_t reversed = 0;
+    for (std::size_t bit = 0; bit < width; ++bit)
+      if ((value >> bit) & 1ULL)
+        reversed |= 1ULL << (width - 1 - bit);
+    return reversed;
+  };
+
+  double l2_error = 0.0;
+  double expected_probability = 0.0;
+  double good_probability = 0.0;
+
+  for (std::size_t i = 0; i < system_dimension; ++i) {
+    // The initialized system register is returned in big-endian basis order,
+    // and the all-zero LCU ancilla subspace occupies the low ancilla bits.
+    const auto output_index = reverse_bits(i, num_qubits)
+                              << encoding.num_ancilla();
+    const auto expected_amplitude = expected[i] / normalization;
+    const auto actual_amplitude = encoded_state[output_index];
+    l2_error += std::norm(actual_amplitude - expected_amplitude);
+    expected_probability += std::norm(expected_amplitude);
+    good_probability += std::norm(actual_amplitude);
+  }
+
+  EXPECT_NEAR(std::sqrt(l2_error), 0.0, 1e-10);
+  EXPECT_NEAR(good_probability, expected_probability, 1e-10);
 }
 
 TEST(BlockEncodingTester, checkIdentityTerm) {
