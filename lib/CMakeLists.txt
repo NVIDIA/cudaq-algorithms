@@ -2,6 +2,9 @@ add_library(cudaq-algorithms SHARED
   fermion/jordan_wigner.cpp
   fermion/bravyi_kitaev.cpp
   stateprep/excitations.cpp
+  block_encoding/pauli_lcu.cpp
+  qubitization/qubitization.cpp
+  qsvt/qsvt.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
 )
 
@@ -35,6 +38,7 @@ else()
 endif()
 
 add_subdirectory(stateprep/device)
+add_subdirectory(block_encoding/device)
 
 install(TARGETS cudaq-algorithms
   EXPORT CUDA-QAlgorithmsTargets

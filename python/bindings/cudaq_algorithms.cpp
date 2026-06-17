@@ -24,6 +24,13 @@ NB_MODULE(_pycudaq_algorithms, mod) {
   }
 
   try {
+    cudaq::algorithms::bind_block_encoding(mod);
+  } catch (const std::exception &e) {
+    throw std::runtime_error(std::string("bind_block_encoding failed: ") +
+                             e.what());
+  }
+
+  try {
     std::stringstream ss;
     ss << "CUDA-Q Algorithms " << cudaq::algorithms::get_version() << " ("
        << cudaq::algorithms::get_full_repository_version() << ")";

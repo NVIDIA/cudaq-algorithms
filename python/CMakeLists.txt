@@ -28,6 +28,7 @@ nanobind_add_module(${MODULE_NAME}
   bindings/cudaq_algorithms.cpp
   bindings/py_fermion.cpp
   bindings/py_stateprep.cpp
+  bindings/py_block_encoding.cpp
 )
 
 target_include_directories(${MODULE_NAME} PRIVATE .)
