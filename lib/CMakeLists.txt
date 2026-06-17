@@ -5,6 +5,7 @@ add_library(cudaq-algorithms SHARED
   block_encoding/pauli_lcu.cpp
   qubitization/qubitization.cpp
   qsvt/qsvt.cpp
+  krylov/krylov.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
 )
 

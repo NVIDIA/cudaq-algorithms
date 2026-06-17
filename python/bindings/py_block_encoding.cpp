@@ -19,6 +19,7 @@
 #include "cudaq/algorithms/block_encoding/kernels.h"
 #include "cudaq/algorithms/block_encoding/pauli_lcu.h"
 #include "cudaq/algorithms/qsvt/qsvt.h"
+#include "cudaq/algorithms/qubitization/qubitization.h"
 #include "cudaq/python/PythonCppInterop.h"
 #include "type_casters.h"
 
@@ -219,6 +220,21 @@ Args:
       mod, "qubitization", "apply_walk",
       "Apply one PauliLCU qubitization walk step inside a CUDA-Q Python "
       "kernel.");
+
+  auto qubitization_obj = mod.attr("qubitization");
+  auto qubitization = nb::borrow<nb::module_>(qubitization_obj.ptr());
+  qubitization.def("build_ancilla_zero_projector",
+                   &build_ancilla_zero_projector, nb::arg("num_ancilla"),
+                   "Build the |0...0><0...0| ancilla projector observable.");
+  qubitization.def(
+      "build_qubitization_reflection_observable",
+      &build_qubitization_reflection_observable, nb::arg("num_ancilla"),
+      "Build the 2|0...0><0...0| - I qubitization reflection observable.");
+  qubitization.def(
+      "build_lcu_select_observable", &build_lcu_select_observable,
+      nb::arg("encoding"),
+      "Build the observable corresponding to a PauliLCU SELECT operator over "
+      "the combined ancilla-system register.");
 
   cudaq::python::addDeviceKernelInterop<cudaq::qview<>, double>(
       mod, "qsvt", "apply_signal_phase",
