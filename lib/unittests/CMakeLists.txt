@@ -38,8 +38,10 @@ function(cudaqa_add_unittest test_name)
       GTest::gtest_main
       cudaq-algorithms
       cudaq::cudaq
+      cudaq::cudaq-${CUDAQ_TARGET}-target
   )
   add_dependencies(CUDAQAlgorithmsUnitTests ${test_name})
+  target_link_options(${test_name} PRIVATE LINKER:--no-as-needed)
   gtest_discover_tests(${test_name})
 endfunction()
 
@@ -49,3 +51,4 @@ cudaqa_add_unittest(test_operator_pools)
 cudaqa_add_unittest(test_upccgsd_operator_pool)
 cudaqa_add_unittest(test_uccsd)
 cudaqa_add_unittest(test_bravyi_kitaev)
+cudaqa_add_unittest(test_trotter)

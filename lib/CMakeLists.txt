@@ -2,6 +2,7 @@ add_library(cudaq-algorithms SHARED
   fermion/jordan_wigner.cpp
   fermion/bravyi_kitaev.cpp
   stateprep/excitations.cpp
+  hamiltonian_simulation/trotter.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
 )
 
@@ -35,6 +36,7 @@ else()
 endif()
 
 add_subdirectory(stateprep/device)
+add_subdirectory(hamiltonian_simulation/device)
 
 install(TARGETS cudaq-algorithms
   EXPORT CUDA-QAlgorithmsTargets
