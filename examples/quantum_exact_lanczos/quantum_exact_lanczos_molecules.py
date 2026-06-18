@@ -20,6 +20,9 @@ is meant to show how application code can compose the library primitives:
 The overlap-matrix conditioning below is intentionally local to the example. It
 is a common numerical safeguard for small Krylov demonstrations, but it is not a
 supported public Quantum Exact Lanczos API.
+
+Reference: Kirby, Motta, and Mezzacapo, "Exact and efficient
+Lanczos method on a quantum computer," arXiv:2208.00567.
 """
 
 from __future__ import annotations
@@ -75,6 +78,7 @@ class ConditionedEigenproblemResult:
 
 
 def load_qubit_hamiltonian(path: Path) -> QubitHamiltonianData:
+    """Load a precomputed qubit Hamiltonian fixture into typed example data."""
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
@@ -115,6 +119,7 @@ def load_qubit_hamiltonian(path: Path) -> QubitHamiltonianData:
 
 
 def spin_word(word: str):
+    """Convert an I/X/Y/Z Pauli word into an unscaled spin operator."""
     operator = None
     for qubit, label in enumerate(word):
         if label == "I":
@@ -129,6 +134,7 @@ def spin_word(word: str):
 
 
 def spin_hamiltonian(terms: tuple[PauliTerm, ...]):
+    """Build the non-identity spin Hamiltonian used by PauliLCU."""
     hamiltonian = 0.0
     for term in terms:
         hamiltonian = hamiltonian + term.coefficient * spin_word(term.word)
@@ -165,6 +171,7 @@ def pauli_sum_matrix(terms: tuple[PauliTerm, ...],
 
 
 def exact_ground_energy(data: QubitHamiltonianData) -> float:
+    """Compute the small-system dense exact ground-state energy."""
     shifted = pauli_sum_matrix(data.terms, data.num_qubits)
     shifted = shifted + data.constant * np.eye(shifted.shape[0],
                                                dtype=np.complex128)
@@ -173,6 +180,7 @@ def exact_ground_energy(data: QubitHamiltonianData) -> float:
 
 def comparison_energy(data: QubitHamiltonianData,
                       exact_max_qubits: int) -> tuple[float | None, str]:
+    """Choose dense exact diagonalization or stored reference data."""
     if data.num_qubits <= exact_max_qubits:
         return exact_ground_energy(data), "dense exact diagonalization"
     if data.reference_energy is not None:
@@ -181,6 +189,7 @@ def comparison_energy(data: QubitHamiltonianData,
 
 
 def kernel_data(encoding: algorithms.PauliLCU):
+    """Extract simple arrays that can be captured by CUDA-Q kernels."""
     return (
         [float(value) for value in encoding.get_angles()],
         [int(value) for value in encoding.get_term_controls()],
@@ -191,6 +200,7 @@ def kernel_data(encoding: algorithms.PauliLCU):
 
 
 def observe_expectation(kernel, observable, shots_count: int) -> float:
+    """Evaluate an observable exactly or with finite shots."""
     if shots_count > 0:
         return float(
             cudaq.observe(shots_count, kernel, observable).expectation())
@@ -200,6 +210,11 @@ def observe_expectation(kernel, observable, shots_count: int) -> float:
 def measure_moment(encoding: algorithms.PauliLCU, occupied_qubits: tuple[int,
                                                                          ...],
                    moment_order: int, shots_count: int) -> float:
+    """Measure one Chebyshev moment using the QEL even/odd convention.
+
+    Even moments measure a reflected ancilla observable after unpreparing
+    PREPARE. Odd moments measure the LCU SELECT observable directly.
+    """
     num_ancilla = encoding.num_ancilla
     num_system = encoding.num_system
     power = moment_order // 2
@@ -218,9 +233,11 @@ def measure_moment(encoding: algorithms.PauliLCU, occupied_qubits: tuple[int,
 
         @cudaq.kernel
         def moment_kernel():
+            """Prepare H2 and apply the walk circuit for one moment."""
             ancilla = cudaq.qvector(num_ancilla)
             system = cudaq.qvector(num_system)
 
+            # Example-specific Hartree-Fock state preparation for H2.
             x(system[0])
             x(system[1])
 
@@ -236,9 +253,12 @@ def measure_moment(encoding: algorithms.PauliLCU, occupied_qubits: tuple[int,
 
         @cudaq.kernel
         def moment_kernel():
+            """Prepare the four-electron fixture and apply one moment circuit."""
             ancilla = cudaq.qvector(num_ancilla)
             system = cudaq.qvector(num_system)
 
+            # Example-specific Hartree-Fock state preparation for the
+            # included four-electron LiH, N2, and benzene active-space data.
             x(system[0])
             x(system[1])
             x(system[2])
@@ -262,6 +282,7 @@ def measure_moment(encoding: algorithms.PauliLCU, occupied_qubits: tuple[int,
 def collect_chebyshev_moments(encoding: algorithms.PauliLCU,
                               occupied_qubits: tuple[int, ...], dimension: int,
                               shots_count: int) -> np.ndarray:
+    """Collect the moments needed to build a Chebyshev Krylov basis."""
     num_moments = algorithms.krylov.required_chebyshev_moments(dimension)
     return np.asarray([
         measure_moment(encoding, occupied_qubits, order, shots_count)
@@ -273,6 +294,7 @@ def collect_chebyshev_moments(encoding: algorithms.PauliLCU,
 def solve_conditioned_generalized_eigenproblem(
         hamiltonian_matrix: np.ndarray, overlap_matrix: np.ndarray,
         overlap_cutoff: float) -> ConditionedEigenproblemResult:
+    """Filter near-null overlap directions and solve the projected problem."""
     overlap_eigenvalues, overlap_eigenvectors = np.linalg.eigh(overlap_matrix)
     keep = overlap_eigenvalues > overlap_cutoff
     if not np.any(keep):
@@ -297,6 +319,7 @@ def solve_conditioned_generalized_eigenproblem(
 def run_qel_workflow(data: QubitHamiltonianData, krylov_dimension: int,
                      overlap_cutoff: float, shots_count: int,
                      exact_max_qubits: int):
+    """Run the example QEL workflow and return intermediate results."""
     encoding = algorithms.PauliLCU(spin_hamiltonian(data.terms),
                                    data.num_qubits)
     moments = collect_chebyshev_moments(encoding, data.occupied_qubits,
@@ -327,6 +350,7 @@ def run_qel_workflow(data: QubitHamiltonianData, krylov_dimension: int,
 
 
 def main() -> int:
+    """Parse CLI options and run the selected precomputed-molecule example."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--molecule",
                         choices=sorted(DATA_FILES),

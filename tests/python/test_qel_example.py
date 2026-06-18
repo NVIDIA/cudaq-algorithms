@@ -16,15 +16,15 @@ import numpy as np
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-EXAMPLE_PATH = REPO_ROOT / "examples" / "quantum_exact_lanczos" / "qel_precomputed_molecules.py"
+EXAMPLE_PATH = REPO_ROOT / "examples" / "quantum_exact_lanczos" / "quantum_exact_lanczos_molecules.py"
 DATA_DIR = REPO_ROOT / "examples" / "quantum_exact_lanczos" / "data"
 H2_DATA_PATH = DATA_DIR / "h2_sto3g_jw.json"
 
 
 @pytest.fixture(scope="module")
 def qel_example_module():
-    spec = importlib.util.spec_from_file_location("qel_precomputed_molecules",
-                                                  EXAMPLE_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "quantum_exact_lanczos_molecules", EXAMPLE_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module

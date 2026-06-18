@@ -39,9 +39,14 @@ sample output distributions instead of returning statevectors.
 
 ## Quantum Exact Lanczos
 
-`quantum_exact_lanczos/qel_precomputed_molecules.py` demonstrates a QEL-style
-workflow using precomputed PySCF-derived Jordan-Wigner Hamiltonians for H2, LiH,
-N2, and benzene active-space examples. It composes:
+`quantum_exact_lanczos/quantum_exact_lanczos_h2.py` is the recommended starting point.
+It is a pedagogical H2 example that prints the intermediate moments, Krylov
+matrices, overlap filtering, and final energy reconstruction. The workflow is
+based on Kirby, Motta, and Mezzacapo, "Exact and efficient Lanczos method on a
+quantum computer" (arXiv:2208.00567).
+
+`quantum_exact_lanczos/quantum_exact_lanczos_molecules.py` is the follow-on runner for
+precomputed H2, LiH, N2, and benzene active-space fixtures. Both examples compose:
 
 1. `PauliLCU` block encoding,
 2. qubitization observables for Chebyshev moment collection,
@@ -49,6 +54,6 @@ N2, and benzene active-space examples. It composes:
 4. an example-local generalized eigenproblem solve with overlap filtering.
 
 The molecule Hamiltonians under `quantum_exact_lanczos/data/` are example data
-fixtures, not tests and not a supported molecule-construction API. The example
-keeps molecule construction and overlap conditioning outside the public library
+fixtures, not tests and not a supported molecule-construction API. The examples
+keep molecule construction and overlap conditioning outside the public library
 API.
