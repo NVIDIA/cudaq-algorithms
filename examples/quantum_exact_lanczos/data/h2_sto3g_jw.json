@@ -1,0 +1,68 @@
+{
+  "name": "H2 STO-3G",
+  "source": "Precomputed PySCF-derived qubit Hamiltonian from the legacy CUDA-QX Solvers QEL Python test",
+  "mapping": "Jordan-Wigner",
+  "num_qubits": 4,
+  "num_electrons": 2,
+  "occupied_qubits": [0, 1],
+  "constant": -0.09706627,
+  "fci_energy": -1.137284,
+  "terms": [
+    {
+      "coefficient": 0.17141283,
+      "pauli": "ZIII"
+    },
+    {
+      "coefficient": 0.17141283,
+      "pauli": "IZII"
+    },
+    {
+      "coefficient": -0.22343154,
+      "pauli": "IIZI"
+    },
+    {
+      "coefficient": -0.22343154,
+      "pauli": "IIIZ"
+    },
+    {
+      "coefficient": 0.16868898,
+      "pauli": "ZZII"
+    },
+    {
+      "coefficient": 0.12062523,
+      "pauli": "ZIZI"
+    },
+    {
+      "coefficient": 0.16592785,
+      "pauli": "IZZI"
+    },
+    {
+      "coefficient": 0.16592785,
+      "pauli": "ZIIZ"
+    },
+    {
+      "coefficient": 0.12062523,
+      "pauli": "IZIZ"
+    },
+    {
+      "coefficient": 0.17441288,
+      "pauli": "IIZZ"
+    },
+    {
+      "coefficient": -0.04530262,
+      "pauli": "XXYY"
+    },
+    {
+      "coefficient": 0.04530262,
+      "pauli": "XYYX"
+    },
+    {
+      "coefficient": 0.04530262,
+      "pauli": "YXXY"
+    },
+    {
+      "coefficient": -0.04530262,
+      "pauli": "YYXX"
+    }
+  ]
+}

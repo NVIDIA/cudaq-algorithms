@@ -36,3 +36,15 @@ simulation by composing:
 The example uses `cudaq.get_state()` because it is a simulation validation
 workflow. Hardware-oriented application code should measure observables or
 sample output distributions instead of returning statevectors.
+
+## Quantum Exact Lanczos
+
+`quantum_exact_lanczos/qel_precomputed_h2.py` demonstrates a QEL-style workflow
+using a precomputed PySCF-derived H2 Jordan-Wigner Hamiltonian. It composes:
+
+1. `PauliLCU` block encoding,
+2. qubitization observables for Chebyshev moment collection,
+3. `krylov.build_chebyshev_matrices()`, and
+4. an example-local generalized eigenproblem solve with overlap filtering.
+
+The example intentionally keeps molecule construction and overlap conditioning
