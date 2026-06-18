@@ -4,9 +4,11 @@
   "mapping": "Jordan-Wigner",
   "num_qubits": 4,
   "num_electrons": 2,
-  "occupied_qubits": [0, 1],
+  "occupied_qubits": [
+    0,
+    1
+  ],
   "constant": -0.09706627,
-  "fci_energy": -1.137284,
   "terms": [
     {
       "coefficient": 0.17141283,
@@ -64,5 +66,8 @@
       "coefficient": -0.04530262,
       "pauli": "YYXX"
     }
-  ]
+  ],
+  "reference_energy": -1.137284,
+  "reference_energy_kind": "FCI",
+  "recommended_krylov_dimension": 5
 }

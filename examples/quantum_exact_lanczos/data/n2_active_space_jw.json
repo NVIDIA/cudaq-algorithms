@@ -1,0 +1,339 @@
+{
+  "name": "N2 STO-3G active space",
+  "source": "Precomputed PySCF-derived N2 active-space Hamiltonian from the legacy CUDA-QX Solvers QEL data",
+  "mapping": "Jordan-Wigner",
+  "num_qubits": 8,
+  "num_electrons": 4,
+  "occupied_qubits": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "constant": -106.289,
+  "reference_energy": -107.54219837264435,
+  "reference_energy_kind": "CASCI",
+  "recommended_krylov_dimension": 8,
+  "terms": [
+    {
+      "coefficient": 0.166613,
+      "pauli": "ZIIIIIII"
+    },
+    {
+      "coefficient": 0.166613,
+      "pauli": "IZIIIIII"
+    },
+    {
+      "coefficient": 0.144267,
+      "pauli": "IIZIIIII"
+    },
+    {
+      "coefficient": 0.144267,
+      "pauli": "IIIZIIII"
+    },
+    {
+      "coefficient": -0.0314557,
+      "pauli": "IIIIZIII"
+    },
+    {
+      "coefficient": -0.000173122,
+      "pauli": "IIIIYZYI"
+    },
+    {
+      "coefficient": -0.000173122,
+      "pauli": "IIIIXZXI"
+    },
+    {
+      "coefficient": -0.0314557,
+      "pauli": "IIIIIZII"
+    },
+    {
+      "coefficient": -0.000173122,
+      "pauli": "IIIIIYZY"
+    },
+    {
+      "coefficient": -0.000173122,
+      "pauli": "IIIIIXZX"
+    },
+    {
+      "coefficient": -0.0512856,
+      "pauli": "IIIIIIZI"
+    },
+    {
+      "coefficient": -0.0512856,
+      "pauli": "IIIIIIIZ"
+    },
+    {
+      "coefficient": 0.122072,
+      "pauli": "ZIZIIIII"
+    },
+    {
+      "coefficient": 0.129981,
+      "pauli": "ZIIIZIII"
+    },
+    {
+      "coefficient": -0.000272552,
+      "pauli": "ZIIIYZYI"
+    },
+    {
+      "coefficient": -0.000272552,
+      "pauli": "ZIIIXZXI"
+    },
+    {
+      "coefficient": 0.0987618,
+      "pauli": "ZIIIIIZI"
+    },
+    {
+      "coefficient": 0.1462,
+      "pauli": "ZZIIIIII"
+    },
+    {
+      "coefficient": 0.00699489,
+      "pauli": "YXXYIIII"
+    },
+    {
+      "coefficient": -0.00699489,
+      "pauli": "YYXXIIII"
+    },
+    {
+      "coefficient": -0.00699489,
+      "pauli": "XXYYIIII"
+    },
+    {
+      "coefficient": 0.00699489,
+      "pauli": "XYYXIIII"
+    },
+    {
+      "coefficient": 0.00476135,
+      "pauli": "YXIIXYII"
+    },
+    {
+      "coefficient": -0.00476135,
+      "pauli": "YYIIXXII"
+    },
+    {
+      "coefficient": -0.00476135,
+      "pauli": "XXIIYYII"
+    },
+    {
+      "coefficient": 0.00476135,
+      "pauli": "XYIIYXII"
+    },
+    {
+      "coefficient": 0.000371982,
+      "pauli": "YXIIIXYI"
+    },
+    {
+      "coefficient": 0.000371982,
+      "pauli": "YYIIIYYI"
+    },
+    {
+      "coefficient": 0.000371982,
+      "pauli": "XXIIIXXI"
+    },
+    {
+      "coefficient": 0.000371982,
+      "pauli": "XYIIIYXI"
+    },
+    {
+      "coefficient": -0.000371982,
+      "pauli": "YXIIXZZY"
+    },
+    {
+      "coefficient": 0.000371982,
+      "pauli": "YYIIXZZX"
+    },
+    {
+      "coefficient": 0.000371982,
+      "pauli": "XXIIYZZY"
+    },
+    {
+      "coefficient": -0.000371982,
+      "pauli": "XYIIYZZX"
+    },
+    {
+      "coefficient": 0.0473692,
+      "pauli": "YXIIIIXY"
+    },
+    {
+      "coefficient": -0.0473692,
+      "pauli": "YYIIIIXX"
+    },
+    {
+      "coefficient": -0.0473692,
+      "pauli": "XXIIIIYY"
+    },
+    {
+      "coefficient": 0.0473692,
+      "pauli": "XYIIIIYX"
+    },
+    {
+      "coefficient": 0.129067,
+      "pauli": "ZIIZIIII"
+    },
+    {
+      "coefficient": 0.134742,
+      "pauli": "ZIIIIZII"
+    },
+    {
+      "coefficient": 9.943e-05,
+      "pauli": "ZIIIIYZY"
+    },
+    {
+      "coefficient": 9.943e-05,
+      "pauli": "ZIIIIXZX"
+    },
+    {
+      "coefficient": 0.146131,
+      "pauli": "ZIIIIIIZ"
+    },
+    {
+      "coefficient": 0.122072,
+      "pauli": "IZIZIIII"
+    },
+    {
+      "coefficient": 0.129981,
+      "pauli": "IZIIIZII"
+    },
+    {
+      "coefficient": -0.000272552,
+      "pauli": "IZIIIYZY"
+    },
+    {
+      "coefficient": -0.000272552,
+      "pauli": "IZIIIXZX"
+    },
+    {
+      "coefficient": 0.0987618,
+      "pauli": "IZIIIIIZ"
+    },
+    {
+      "coefficient": 0.129067,
+      "pauli": "IZZIIIII"
+    },
+    {
+      "coefficient": 0.134742,
+      "pauli": "IZIIZIII"
+    },
+    {
+      "coefficient": 9.943e-05,
+      "pauli": "IZIIYZYI"
+    },
+    {
+      "coefficient": 9.943e-05,
+      "pauli": "IZIIXZXI"
+    },
+    {
+      "coefficient": 0.146131,
+      "pauli": "IZIIIIZI"
+    },
+    {
+      "coefficient": 0.125177,
+      "pauli": "IIZIZIII"
+    },
+    {
+      "coefficient": 0.125177,
+      "pauli": "IIZIIIZI"
+    },
+    {
+      "coefficient": 0.145755,
+      "pauli": "IIZZIIII"
+    },
+    {
+      "coefficient": 0.00940045,
+      "pauli": "IIYXXYII"
+    },
+    {
+      "coefficient": -0.00940045,
+      "pauli": "IIYYXXII"
+    },
+    {
+      "coefficient": -0.00940045,
+      "pauli": "IIXXYYII"
+    },
+    {
+      "coefficient": 0.00940045,
+      "pauli": "IIXYYXII"
+    },
+    {
+      "coefficient": 0.00940045,
+      "pauli": "IIYXIIXY"
+    },
+    {
+      "coefficient": -0.00940045,
+      "pauli": "IIYYIIXX"
+    },
+    {
+      "coefficient": -0.00940045,
+      "pauli": "IIXXIIYY"
+    },
+    {
+      "coefficient": 0.00940045,
+      "pauli": "IIXYIIYX"
+    },
+    {
+      "coefficient": 0.134577,
+      "pauli": "IIZIIZII"
+    },
+    {
+      "coefficient": 0.134577,
+      "pauli": "IIZIIIIZ"
+    },
+    {
+      "coefficient": 0.125177,
+      "pauli": "IIIZIZII"
+    },
+    {
+      "coefficient": 0.125177,
+      "pauli": "IIIZIIIZ"
+    },
+    {
+      "coefficient": 0.134577,
+      "pauli": "IIIZZIII"
+    },
+    {
+      "coefficient": 0.134577,
+      "pauli": "IIIZIIZI"
+    },
+    {
+      "coefficient": 0.131781,
+      "pauli": "IIIIZIZI"
+    },
+    {
+      "coefficient": 0.150487,
+      "pauli": "IIIIZZII"
+    },
+    {
+      "coefficient": 0.00623542,
+      "pauli": "IIIIYXXY"
+    },
+    {
+      "coefficient": -0.00623542,
+      "pauli": "IIIIYYXX"
+    },
+    {
+      "coefficient": -0.00623542,
+      "pauli": "IIIIXXYY"
+    },
+    {
+      "coefficient": 0.00623542,
+      "pauli": "IIIIXYYX"
+    },
+    {
+      "coefficient": 0.138016,
+      "pauli": "IIIIZIIZ"
+    },
+    {
+      "coefficient": 0.131781,
+      "pauli": "IIIIIZIZ"
+    },
+    {
+      "coefficient": 0.138016,
+      "pauli": "IIIIIZZI"
+    },
+    {
+      "coefficient": 0.150487,
+      "pauli": "IIIIIIZZ"
+    }
+  ]
+}

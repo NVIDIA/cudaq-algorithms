@@ -8,9 +8,9 @@
 # ============================================================================ #
 """Quantum Exact Lanczos style workflow from a precomputed qubit Hamiltonian.
 
-This example starts from a small H2 Jordan-Wigner Hamiltonian that was generated
-outside this repository and stored as Pauli coefficients. The example is meant
-to show how application code can compose the library primitives:
+This example starts from precomputed Jordan-Wigner Hamiltonians that were
+generated outside this repository and stored as Pauli coefficients. The example
+is meant to show how application code can compose the library primitives:
 
 * PauliLCU builds a block encoding of the non-identity Pauli sum.
 * qubitization observables estimate Chebyshev moments of the normalized
@@ -36,6 +36,13 @@ import numpy as np
 
 DEFAULT_DATA_FILE = Path(
     __file__).resolve().parent / "data" / "h2_sto3g_jw.json"
+DATA_FILES = {
+    "h2": DEFAULT_DATA_FILE,
+    "lih": DEFAULT_DATA_FILE.parent / "lih_sto3g_jw.json",
+    "n2": DEFAULT_DATA_FILE.parent / "n2_active_space_jw.json",
+    "benzene": DEFAULT_DATA_FILE.parent / "benzene_active_space_jw.json",
+}
+DEFAULT_EXACT_MAX_QUBITS = 8
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,9 @@ class QubitHamiltonianData:
     num_electrons: int
     occupied_qubits: tuple[int, ...]
     constant: float
+    reference_energy: float | None
+    reference_energy_kind: str
+    recommended_krylov_dimension: int
     terms: tuple[PauliTerm, ...]
 
 
@@ -77,6 +87,16 @@ def load_qubit_hamiltonian(path: Path) -> QubitHamiltonianData:
         if len(term.word) != num_qubits:
             raise ValueError("All Pauli words must match num_qubits.")
 
+    reference_energy = payload.get("reference_energy")
+    reference_energy_kind = str(
+        payload.get("reference_energy_kind", "reference"))
+    if reference_energy is None and "fci_energy" in payload:
+        reference_energy = payload["fci_energy"]
+        reference_energy_kind = "FCI"
+    if reference_energy is None and "casci_energy" in payload:
+        reference_energy = payload["casci_energy"]
+        reference_energy_kind = "CASCI"
+
     return QubitHamiltonianData(
         name=str(payload["name"]),
         source=str(payload.get("source", "unknown")),
@@ -85,6 +105,11 @@ def load_qubit_hamiltonian(path: Path) -> QubitHamiltonianData:
         num_electrons=int(payload["num_electrons"]),
         occupied_qubits=tuple(int(q) for q in payload["occupied_qubits"]),
         constant=float(payload.get("constant", 0.0)),
+        reference_energy=(None if reference_energy is None else
+                          float(reference_energy)),
+        reference_energy_kind=reference_energy_kind,
+        recommended_krylov_dimension=int(
+            payload.get("recommended_krylov_dimension", 5)),
         terms=terms,
     )
 
@@ -146,6 +171,15 @@ def exact_ground_energy(data: QubitHamiltonianData) -> float:
     return float(np.linalg.eigvalsh(shifted).min())
 
 
+def comparison_energy(data: QubitHamiltonianData,
+                      exact_max_qubits: int) -> tuple[float | None, str]:
+    if data.num_qubits <= exact_max_qubits:
+        return exact_ground_energy(data), "dense exact diagonalization"
+    if data.reference_energy is not None:
+        return data.reference_energy, data.reference_energy_kind
+    return None, "none"
+
+
 def kernel_data(encoding: algorithms.PauliLCU):
     return (
         [float(value) for value in encoding.get_angles()],
@@ -180,26 +214,47 @@ def measure_moment(encoding: algorithms.PauliLCU, occupied_qubits: tuple[int,
         observable = algorithms.qubitization.build_lcu_select_observable(
             encoding)
 
-    if occupied_qubits != (0, 1):
-        raise ValueError("This example currently prepares the H2 Hartree-Fock "
-                         "determinant with occupied qubits (0, 1).")
+    if occupied_qubits == (0, 1):
 
-    @cudaq.kernel
-    def moment_kernel():
-        ancilla = cudaq.qvector(num_ancilla)
-        system = cudaq.qvector(num_system)
+        @cudaq.kernel
+        def moment_kernel():
+            ancilla = cudaq.qvector(num_ancilla)
+            system = cudaq.qvector(num_system)
 
-        # Example-local Hartree-Fock determinant for the precomputed H2 data.
-        x(system[0])
-        x(system[1])
+            x(system[0])
+            x(system[1])
 
-        algorithms.block_encoding.prepare(ancilla, angles)
-        for _ in range(power):
-            algorithms.qubitization.apply_walk(ancilla, system, angles,
-                                               term_controls, term_ops,
-                                               term_lengths, term_signs)
-        if is_even:
-            algorithms.block_encoding.unprepare(ancilla, angles)
+            algorithms.block_encoding.prepare(ancilla, angles)
+            for _ in range(power):
+                algorithms.qubitization.apply_walk(ancilla, system, angles,
+                                                   term_controls, term_ops,
+                                                   term_lengths, term_signs)
+            if is_even:
+                algorithms.block_encoding.unprepare(ancilla, angles)
+
+    elif occupied_qubits == (0, 1, 2, 3):
+
+        @cudaq.kernel
+        def moment_kernel():
+            ancilla = cudaq.qvector(num_ancilla)
+            system = cudaq.qvector(num_system)
+
+            x(system[0])
+            x(system[1])
+            x(system[2])
+            x(system[3])
+
+            algorithms.block_encoding.prepare(ancilla, angles)
+            for _ in range(power):
+                algorithms.qubitization.apply_walk(ancilla, system, angles,
+                                                   term_controls, term_ops,
+                                                   term_lengths, term_signs)
+            if is_even:
+                algorithms.block_encoding.unprepare(ancilla, angles)
+
+    else:
+        raise ValueError("This example currently prepares Hartree-Fock states "
+                         "with occupied qubits (0, 1) or (0, 1, 2, 3).")
 
     return observe_expectation(moment_kernel, observable, shots_count)
 
@@ -240,7 +295,8 @@ def solve_conditioned_generalized_eigenproblem(
 
 
 def run_qel_workflow(data: QubitHamiltonianData, krylov_dimension: int,
-                     overlap_cutoff: float, shots_count: int):
+                     overlap_cutoff: float, shots_count: int,
+                     exact_max_qubits: int):
     encoding = algorithms.PauliLCU(spin_hamiltonian(data.terms),
                                    data.num_qubits)
     moments = collect_chebyshev_moments(encoding, data.occupied_qubits,
@@ -254,7 +310,8 @@ def run_qel_workflow(data: QubitHamiltonianData, krylov_dimension: int,
         hamiltonian_matrix, overlap_matrix, overlap_cutoff)
     qel_energy = float(conditioned.eigenvalues.min() * encoding.normalization +
                        data.constant)
-    exact_energy = exact_ground_energy(data)
+    reference, reference_label = comparison_energy(data, exact_max_qubits)
+    energy_error = None if reference is None else abs(qel_energy - reference)
 
     return {
         "encoding": encoding,
@@ -263,34 +320,66 @@ def run_qel_workflow(data: QubitHamiltonianData, krylov_dimension: int,
         "overlap_matrix": overlap_matrix,
         "conditioned": conditioned,
         "qel_energy": qel_energy,
-        "exact_energy": exact_energy,
-        "energy_error": abs(qel_energy - exact_energy),
+        "comparison_energy": reference,
+        "comparison_label": reference_label,
+        "energy_error": energy_error,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=DEFAULT_DATA_FILE)
+    parser.add_argument("--molecule",
+                        choices=sorted(DATA_FILES),
+                        default="h2",
+                        help="Named precomputed molecule fixture to run.")
+    parser.add_argument(
+        "--data",
+        type=Path,
+        help="Path to a custom precomputed qubit Hamiltonian JSON file.")
     parser.add_argument("--target", default="qpp-cpu")
-    parser.add_argument("--krylov-dimension", type=int, default=4)
+    parser.add_argument("--krylov-dimension", type=int)
     parser.add_argument("--overlap-cutoff", type=float, default=1.0e-10)
     parser.add_argument("--shots", type=int, default=0)
     parser.add_argument("--tolerance", type=float, default=5.0e-2)
+    parser.add_argument(
+        "--exact-max-qubits",
+        type=int,
+        default=DEFAULT_EXACT_MAX_QUBITS,
+        help="Largest system size for dense exact diagonalization.")
+    parser.add_argument("--describe-only",
+                        action="store_true",
+                        help="Print fixture metadata without running QEL.")
     args = parser.parse_args()
 
+    data_path = args.data if args.data is not None else DATA_FILES[
+        args.molecule]
+    data = load_qubit_hamiltonian(data_path)
+    krylov_dimension = (args.krylov_dimension if args.krylov_dimension
+                        is not None else data.recommended_krylov_dimension)
+
+    print(f"Molecule: {data.name}")
+    print(f"Mapping: {data.mapping}")
+    print(f"Qubits: {data.num_qubits}")
+    print(f"Electrons: {data.num_electrons}")
+    print(f"Terms: {len(data.terms)} non-identity Pauli terms")
+    print(f"Constant term: {data.constant:.12f}")
+    print(f"Recommended Krylov dimension: {data.recommended_krylov_dimension}")
+    if data.reference_energy is not None:
+        print(f"Stored {data.reference_energy_kind} reference energy: "
+              f"{data.reference_energy:.12f}")
+
+    if args.describe_only:
+        return 0
+
     cudaq.set_target(args.target)
-    data = load_qubit_hamiltonian(args.data)
-    result = run_qel_workflow(data, args.krylov_dimension, args.overlap_cutoff,
-                              args.shots)
+    result = run_qel_workflow(data, krylov_dimension, args.overlap_cutoff,
+                              args.shots, args.exact_max_qubits)
 
     encoding = result["encoding"]
     conditioned = result["conditioned"]
 
-    print(f"Molecule: {data.name}")
-    print(f"Mapping: {data.mapping}")
-    print(f"Terms: {len(data.terms)} non-identity Pauli terms")
     print(f"LCU normalization alpha: {encoding.normalization:.12f}")
-    print(f"Krylov dimension: {args.krylov_dimension}")
+    print(f"Krylov dimension: {krylov_dimension}")
     print(f"Overlap kept rank: {conditioned.kept_rank}")
     print(f"Overlap condition estimate: {conditioned.condition_estimate:.6e}")
     print("Chebyshev moments:", np.array2string(result["moments"],
@@ -298,12 +387,18 @@ def main() -> int:
     print("Overlap eigenvalues:",
           np.array2string(conditioned.overlap_eigenvalues, precision=8))
     print(f"QEL energy: {result['qel_energy']:.12f}")
-    print(f"Exact energy: {result['exact_energy']:.12f}")
-    print(f"Absolute error: {result['energy_error']:.6e}")
 
-    if result["energy_error"] > args.tolerance:
-        raise RuntimeError("QEL energy differs from exact diagonalization by "
-                           f"more than {args.tolerance}.")
+    comparison = result["comparison_energy"]
+    if comparison is not None:
+        print(f"Comparison energy ({result['comparison_label']}): "
+              f"{comparison:.12f}")
+        print(f"Absolute error: {result['energy_error']:.6e}")
+        if result["energy_error"] > args.tolerance:
+            raise RuntimeError(
+                "QEL energy differs from the comparison reference by "
+                f"more than {args.tolerance}.")
+    else:
+        print("Comparison energy: unavailable")
 
     return 0
 
