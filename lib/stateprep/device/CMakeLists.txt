@@ -4,4 +4,5 @@ cudaqa_add_device_code(cudaq-algorithms
     uccgsd.cpp
     upccgsd.cpp
     ceo.cpp
+    givens.cpp
 )

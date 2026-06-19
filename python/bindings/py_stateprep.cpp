@@ -3,6 +3,7 @@
 
 #include "cudaq/algorithms/stateprep/ceo.h"
 #include "cudaq/algorithms/stateprep/excitations.h"
+#include "cudaq/algorithms/stateprep/givens.h"
 #include "cudaq/algorithms/stateprep/uccgsd.h"
 #include "cudaq/algorithms/stateprep/uccsd.h"
 #include "cudaq/algorithms/stateprep/upccgsd.h"
@@ -62,7 +63,50 @@ void bind_stateprep(nb::module_ &mod) {
       mod, "stateprep", "ceo",
       "Coupled Exchange Operator state-preparation circuit.");
 
+  add_device_kernel_interop<cudaq::qview<>, double, std::size_t, std::size_t>(
+      mod, "stateprep", "apply_givens_rotation",
+      "Adjacent real fermionic Givens rotation.");
+
+  add_device_kernel_interop<cudaq::qview<>, const std::vector<std::size_t> &,
+                            const std::vector<double> &, std::size_t>(
+      mod, "stateprep", "prepare_slater_determinant",
+      "Slater determinant state preparation from a flattened Givens schedule.");
+
   auto stateprep = nb::cast<nb::module_>(mod.attr("stateprep"));
+  nb::class_<cudaq::algorithms::stateprep::givens_rotation>(stateprep,
+                                                            "GivensRotation")
+      .def(nb::init<>())
+      .def_rw("first_orbital",
+              &cudaq::algorithms::stateprep::givens_rotation::first_orbital)
+      .def_rw("second_orbital",
+              &cudaq::algorithms::stateprep::givens_rotation::second_orbital)
+      .def_rw("theta", &cudaq::algorithms::stateprep::givens_rotation::theta);
+
+  nb::class_<cudaq::algorithms::stateprep::givens_rotation_schedule>(
+      stateprep, "GivensRotationSchedule")
+      .def(nb::init<>())
+      .def_rw(
+          "num_orbitals",
+          &cudaq::algorithms::stateprep::givens_rotation_schedule::num_orbitals)
+      .def_rw("num_electrons", &cudaq::algorithms::stateprep::
+                                   givens_rotation_schedule::num_electrons)
+      .def_rw(
+          "rotations",
+          &cudaq::algorithms::stateprep::givens_rotation_schedule::rotations)
+      .def_rw("final_phases", &cudaq::algorithms::stateprep::
+                                  givens_rotation_schedule::final_phases);
+
+  stateprep.def(
+      "make_givens_rotation_schedule",
+      &cudaq::algorithms::stateprep::make_givens_rotation_schedule,
+      nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
+  stateprep.def("get_givens_rotation_indices",
+                &cudaq::algorithms::stateprep::get_givens_rotation_indices,
+                nb::arg("schedule"));
+  stateprep.def("get_givens_rotation_angles",
+                &cudaq::algorithms::stateprep::get_givens_rotation_angles,
+                nb::arg("schedule"));
+
   stateprep.def("get_uccsd_excitations",
                 &cudaq::algorithms::stateprep::get_uccsd_excitations,
                 nb::arg("num_qubits"), nb::arg("num_electrons"),
