@@ -5,7 +5,7 @@ import cudaq_algorithms as algorithms
 
 
 def _reference_slater_state(occupied_orbitals):
-    occupied_orbitals = np.asarray(occupied_orbitals, dtype=float)
+    occupied_orbitals = np.asarray(occupied_orbitals, dtype=complex)
     num_orbitals, num_electrons = occupied_orbitals.shape
     state = np.zeros(2**num_orbitals, dtype=complex)
 
@@ -47,6 +47,28 @@ def _prepare_real_slater_state(occupied_orbitals):
             q, orbital_indices, rotation_angles, num_electrons)
 
     return np.asarray(cudaq.get_state(kernel, indices, angles))
+
+
+def _prepare_complex_slater_state(occupied_orbitals):
+    occupied_orbitals = np.asarray(occupied_orbitals, dtype=complex)
+    num_orbitals, num_electrons = occupied_orbitals.shape
+    schedule = algorithms.stateprep.make_givens_rotation_schedule(
+        occupied_orbitals)
+    indices = algorithms.stateprep.get_givens_rotation_indices(schedule)
+    angles = algorithms.stateprep.get_givens_rotation_angles(schedule)
+    phases = algorithms.stateprep.get_givens_rotation_phases(schedule)
+
+    @cudaq.kernel
+    def kernel(orbital_indices: list[int], rotation_angles: list[float],
+               rotation_phases: list[float], final_phases: list[float]):
+        q = cudaq.qvector(num_orbitals)
+        algorithms.stateprep.prepare_complex_slater_determinant(
+            q, orbital_indices, rotation_angles, rotation_phases,
+            final_phases, num_electrons)
+
+    return np.asarray(
+        cudaq.get_state(kernel, indices, angles, phases,
+                        schedule.final_phases))
 
 
 def test_givens_schedule_two_orbital_statevector():
@@ -113,6 +135,69 @@ def test_prepare_random_real_five_orbital_three_electron_statevector():
     occupied_orbitals, _ = np.linalg.qr(rng.normal(size=(5, 3)))
 
     state = _prepare_real_slater_state(occupied_orbitals)
+    expected = _reference_slater_state(occupied_orbitals)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_prepare_complex_one_electron_slater_determinant_statevector():
+    theta = 0.41
+    phase = 0.73
+    occupied_orbitals = np.array(
+        [[np.cos(theta)], [np.exp(1j * phase) * np.sin(theta)]])
+    schedule = algorithms.stateprep.make_givens_rotation_schedule(
+        occupied_orbitals)
+    indices = algorithms.stateprep.get_givens_rotation_indices(schedule)
+    angles = algorithms.stateprep.get_givens_rotation_angles(schedule)
+    phases = algorithms.stateprep.get_givens_rotation_phases(schedule)
+
+    assert np.isclose(schedule.rotations[0].theta, theta)
+    assert np.isclose(schedule.rotations[0].phase, phase)
+
+    @cudaq.kernel
+    def kernel(orbital_indices: list[int], rotation_angles: list[float],
+               rotation_phases: list[float], final_phases: list[float]):
+        q = cudaq.qvector(2)
+        algorithms.stateprep.prepare_complex_slater_determinant(
+            q, orbital_indices, rotation_angles, rotation_phases,
+            final_phases, 1)
+
+    state = np.asarray(
+        cudaq.get_state(kernel, indices, angles, phases,
+                        schedule.final_phases))
+    expected = _reference_slater_state(occupied_orbitals)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_prepare_complex_slater_determinant_relative_phase_and_sign():
+    theta = 0.52
+    phase = 0.73
+    occupied_orbitals = np.array(
+        [[np.cos(theta), 0.0], [0.0, 1.0],
+         [np.exp(1j * phase) * np.sin(theta), 0.0]])
+
+    state = _prepare_complex_slater_state(occupied_orbitals)
+    expected = _reference_slater_state(occupied_orbitals)
+    assert np.isclose(expected[0b011], np.cos(theta))
+    assert np.isclose(expected[0b110], -np.exp(1j * phase) * np.sin(theta))
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_prepare_random_complex_slater_determinant_statevector():
+    rng = np.random.default_rng(17)
+    raw = rng.normal(size=(4, 2)) + 1j * rng.normal(size=(4, 2))
+    occupied_orbitals, _ = np.linalg.qr(raw)
+
+    state = _prepare_complex_slater_state(occupied_orbitals)
+    expected = _reference_slater_state(occupied_orbitals)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_prepare_random_complex_five_orbital_three_electron_statevector():
+    rng = np.random.default_rng(23)
+    raw = rng.normal(size=(5, 3)) + 1j * rng.normal(size=(5, 3))
+    occupied_orbitals, _ = np.linalg.qr(raw)
+
+    state = _prepare_complex_slater_state(occupied_orbitals)
     expected = _reference_slater_state(occupied_orbitals)
     _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
 

@@ -8,6 +8,7 @@
 
 #include "cudaq/algorithms/stateprep/givens.h"
 
+#include <complex>
 #include <cmath>
 #include <gtest/gtest.h>
 
@@ -33,6 +34,25 @@ TEST(GivensStatePrep, BuildsTwoOrbitalSchedule) {
   ASSERT_EQ(indices, (std::vector<std::size_t>{0, 1}));
   ASSERT_EQ(angles.size(), 1);
   EXPECT_NEAR(angles[0], theta, 1.0e-12);
+}
+
+TEST(GivensStatePrep, BuildsComplexTwoOrbitalSchedule) {
+  const double theta = 0.37;
+  const double phase = std::acos(-1.0) / 2.0;
+  const std::complex<double> imaginary = {0.0, 1.0};
+  const std::vector<std::vector<std::complex<double>>> occupied_orbitals = {
+      {std::cos(theta)}, {imaginary * std::sin(theta)}};
+
+  auto schedule =
+      stateprep::make_givens_rotation_schedule(occupied_orbitals);
+
+  ASSERT_EQ(schedule.rotations.size(), 1);
+  EXPECT_EQ(schedule.rotations[0].first_orbital, 0);
+  EXPECT_EQ(schedule.rotations[0].second_orbital, 1);
+  EXPECT_NEAR(schedule.rotations[0].theta, theta, 1.0e-12);
+  EXPECT_NEAR(schedule.rotations[0].phase, phase, 1.0e-12);
+  ASSERT_EQ(schedule.final_phases.size(), 1);
+  EXPECT_NEAR(schedule.final_phases[0], 0.0, 1.0e-12);
 }
 
 TEST(GivensStatePrep, RejectsNonOrthonormalInputs) {

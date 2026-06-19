@@ -10,6 +10,7 @@
 #include "cudaq/python/PythonCppInterop.h"
 
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/complex.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
@@ -72,6 +73,19 @@ void bind_stateprep(nb::module_ &mod) {
       mod, "stateprep", "prepare_slater_determinant",
       "Slater determinant state preparation from a flattened Givens schedule.");
 
+  add_device_kernel_interop<cudaq::qview<>, double, double, std::size_t,
+                            std::size_t>(
+      mod, "stateprep", "apply_phase_givens_rotation",
+      "Adjacent phase-aware fermionic Givens rotation.");
+
+  add_device_kernel_interop<cudaq::qview<>, const std::vector<std::size_t> &,
+                            const std::vector<double> &,
+                            const std::vector<double> &,
+                            const std::vector<double> &, std::size_t>(
+      mod, "stateprep", "prepare_complex_slater_determinant",
+      "Complex Slater determinant state preparation from a flattened Givens "
+      "schedule.");
+
   auto stateprep = nb::cast<nb::module_>(mod.attr("stateprep"));
   nb::class_<cudaq::algorithms::stateprep::givens_rotation>(stateprep,
                                                             "GivensRotation")
@@ -80,7 +94,8 @@ void bind_stateprep(nb::module_ &mod) {
               &cudaq::algorithms::stateprep::givens_rotation::first_orbital)
       .def_rw("second_orbital",
               &cudaq::algorithms::stateprep::givens_rotation::second_orbital)
-      .def_rw("theta", &cudaq::algorithms::stateprep::givens_rotation::theta);
+      .def_rw("theta", &cudaq::algorithms::stateprep::givens_rotation::theta)
+      .def_rw("phase", &cudaq::algorithms::stateprep::givens_rotation::phase);
 
   nb::class_<cudaq::algorithms::stateprep::givens_rotation_schedule>(
       stateprep, "GivensRotationSchedule")
@@ -98,13 +113,30 @@ void bind_stateprep(nb::module_ &mod) {
 
   stateprep.def(
       "make_givens_rotation_schedule",
-      &cudaq::algorithms::stateprep::make_givens_rotation_schedule,
+      static_cast<cudaq::algorithms::stateprep::givens_rotation_schedule (*)(
+          const std::vector<std::vector<double>> &, double)>(
+          &cudaq::algorithms::stateprep::make_givens_rotation_schedule),
+      nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
+  stateprep.def(
+      "make_complex_givens_rotation_schedule",
+      static_cast<cudaq::algorithms::stateprep::givens_rotation_schedule (*)(
+          const std::vector<std::vector<std::complex<double>>> &, double)>(
+          &cudaq::algorithms::stateprep::make_givens_rotation_schedule),
+      nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
+  stateprep.def(
+      "make_givens_rotation_schedule",
+      static_cast<cudaq::algorithms::stateprep::givens_rotation_schedule (*)(
+          const std::vector<std::vector<std::complex<double>>> &, double)>(
+          &cudaq::algorithms::stateprep::make_givens_rotation_schedule),
       nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
   stateprep.def("get_givens_rotation_indices",
                 &cudaq::algorithms::stateprep::get_givens_rotation_indices,
                 nb::arg("schedule"));
   stateprep.def("get_givens_rotation_angles",
                 &cudaq::algorithms::stateprep::get_givens_rotation_angles,
+                nb::arg("schedule"));
+  stateprep.def("get_givens_rotation_phases",
+                &cudaq::algorithms::stateprep::get_givens_rotation_phases,
                 nb::arg("schedule"));
 
   stateprep.def("get_uccsd_excitations",
