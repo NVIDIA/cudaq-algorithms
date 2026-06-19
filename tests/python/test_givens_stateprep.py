@@ -32,6 +32,23 @@ def _assert_allclose_up_to_global_phase(actual, expected, atol=1.0e-10):
     np.testing.assert_allclose(actual, phase * expected, atol=atol)
 
 
+def _prepare_real_slater_state(occupied_orbitals):
+    occupied_orbitals = np.asarray(occupied_orbitals, dtype=float)
+    num_orbitals, num_electrons = occupied_orbitals.shape
+    schedule = algorithms.stateprep.make_givens_rotation_schedule(
+        occupied_orbitals)
+    indices = algorithms.stateprep.get_givens_rotation_indices(schedule)
+    angles = algorithms.stateprep.get_givens_rotation_angles(schedule)
+
+    @cudaq.kernel
+    def kernel(orbital_indices: list[int], rotation_angles: list[float]):
+        q = cudaq.qvector(num_orbitals)
+        algorithms.stateprep.prepare_slater_determinant(
+            q, orbital_indices, rotation_angles, num_electrons)
+
+    return np.asarray(cudaq.get_state(kernel, indices, angles))
+
+
 def test_givens_schedule_two_orbital_statevector():
     theta = 0.37
     occupied_orbitals = [[np.cos(theta)], [np.sin(theta)]]
@@ -75,6 +92,27 @@ def test_prepare_random_real_slater_determinant_statevector():
             q, orbital_indices, rotation_angles, 2)
 
     state = np.asarray(cudaq.get_state(kernel, indices, angles))
+    expected = _reference_slater_state(occupied_orbitals)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_prepare_real_slater_determinant_sign_convention():
+    theta = 0.52
+    occupied_orbitals = np.array([[np.cos(theta), 0.0], [0.0, 1.0],
+                                  [np.sin(theta), 0.0]])
+
+    state = _prepare_real_slater_state(occupied_orbitals)
+    expected = _reference_slater_state(occupied_orbitals)
+    assert np.isclose(expected[0b011], np.cos(theta))
+    assert np.isclose(expected[0b110], -np.sin(theta))
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_prepare_random_real_five_orbital_three_electron_statevector():
+    rng = np.random.default_rng(19)
+    occupied_orbitals, _ = np.linalg.qr(rng.normal(size=(5, 3)))
+
+    state = _prepare_real_slater_state(occupied_orbitals)
     expected = _reference_slater_state(occupied_orbitals)
     _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
 
