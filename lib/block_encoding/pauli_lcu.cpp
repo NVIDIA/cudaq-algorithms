@@ -167,7 +167,8 @@ std::vector<double> compute_prepare_angles(const std::vector<double> &probs) {
 
 lcu_decomposition decompose_lcu(const cudaq::spin_op &hamiltonian,
                                 std::size_t num_qubits,
-                                double coefficient_threshold) {
+                                double coefficient_threshold,
+                                bool include_identity) {
   if (coefficient_threshold < 0.0)
     throw std::runtime_error(
         "decompose_lcu: coefficient threshold must be non-negative");
@@ -175,6 +176,7 @@ lcu_decomposition decompose_lcu(const cudaq::spin_op &hamiltonian,
   lcu_decomposition lcu;
   lcu.num_system_qubits = num_qubits;
   lcu.coefficient_threshold = coefficient_threshold;
+  lcu.include_identity = include_identity;
 
   for (const auto &term : hamiltonian) {
     auto coeff = term.evaluate_coefficient();
@@ -191,20 +193,25 @@ lcu_decomposition decompose_lcu(const cudaq::spin_op &hamiltonian,
     double real_coeff = coeff.real();
     bool identity_term = is_identity_word(word);
 
+    if (identity_term)
+      lcu.constant_term += real_coeff;
+    if (identity_term && !include_identity)
+      continue;
+
     lcu.coefficients.push_back(real_coeff);
     lcu.absolute_coefficients.push_back(abs_coeff);
     lcu.signs.push_back((real_coeff < 0.0) ? -1 : 1);
     lcu.identity_terms.push_back(identity_term ? 1 : 0);
     lcu.pauli_words.push_back(word);
     lcu.normalization += abs_coeff;
-    if (identity_term)
-      lcu.constant_term += real_coeff;
   }
 
   lcu.num_terms = lcu.coefficients.size();
   if (lcu.num_terms == 0)
     throw std::runtime_error(
-        "decompose_lcu: Hamiltonian has no retained terms");
+        include_identity
+            ? "decompose_lcu: Hamiltonian has no retained terms"
+            : "decompose_lcu: Hamiltonian has no retained non-identity terms");
 
   lcu.num_ancilla_qubits = ceil_log2(lcu.num_terms);
   if (lcu.num_ancilla_qubits >
@@ -308,7 +315,12 @@ pauli_lcu::compute_angles(const std::vector<double> &probs) {
 // ============================================================================
 
 pauli_lcu::pauli_lcu(const cudaq::spin_op &hamiltonian, std::size_t num_qubits)
-    : pauli_lcu(decompose_lcu(hamiltonian, num_qubits)) {}
+    : pauli_lcu(hamiltonian, num_qubits, true) {}
+
+pauli_lcu::pauli_lcu(const cudaq::spin_op &hamiltonian, std::size_t num_qubits,
+                     bool include_identity)
+    : pauli_lcu(
+          decompose_lcu(hamiltonian, num_qubits, 1e-12, include_identity)) {}
 
 pauli_lcu::pauli_lcu(const lcu_decomposition &lcu)
     : kernel_data(make_pauli_lcu_kernel_data(lcu)), decomposition(lcu) {

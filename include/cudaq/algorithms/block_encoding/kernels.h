@@ -36,6 +36,16 @@ __qpu__ void select(cudaq::qview<> ancilla, cudaq::qview<> system,
 
 /// \pure_device_kernel
 ///
+/// @brief Apply a PauliLCU SELECT circuit controlled by an external qubit.
+__qpu__ void controlled_select(cudaq::qubit &control, cudaq::qview<> ancilla,
+                               cudaq::qview<> system,
+                               const std::vector<int> &term_controls,
+                               const std::vector<int> &term_ops,
+                               const std::vector<int> &term_lengths,
+                               const std::vector<int> &term_signs);
+
+/// \pure_device_kernel
+///
 /// @brief Apply a full PauliLCU block encoding from flattened kernel data.
 __qpu__ void apply(cudaq::qview<> ancilla, cudaq::qview<> system,
                    const std::vector<double> &state_prep_angles,
@@ -62,6 +72,19 @@ reflect_about_prepare(cudaq::qview<> ancilla,
 
 /// \pure_device_kernel
 ///
+/// @brief Reflect about the all-zero ancilla state controlled by a qubit.
+__qpu__ void controlled_reflect_about_zero(cudaq::qubit &control,
+                                           cudaq::qview<> ancilla);
+
+/// \pure_device_kernel
+///
+/// @brief Reflect about the PauliLCU PREPARE state controlled by a qubit.
+__qpu__ void
+controlled_reflect_about_prepare(cudaq::qubit &control, cudaq::qview<> ancilla,
+                                 const std::vector<double> &state_prep_angles);
+
+/// \pure_device_kernel
+///
 /// @brief Apply one PauliLCU qubitization walk step from flattened kernel data.
 __qpu__ void apply_walk(cudaq::qview<> ancilla, cudaq::qview<> system,
                         const std::vector<double> &state_prep_angles,
@@ -80,6 +103,24 @@ __qpu__ void apply_adjoint_walk(cudaq::qview<> ancilla, cudaq::qview<> system,
                                 const std::vector<int> &term_ops,
                                 const std::vector<int> &term_lengths,
                                 const std::vector<int> &term_signs);
+
+/// \pure_device_kernel
+///
+/// @brief Apply one externally controlled PauliLCU qubitization walk step.
+__qpu__ void controlled_apply_walk(
+    cudaq::qubit &control, cudaq::qview<> ancilla, cudaq::qview<> system,
+    const std::vector<double> &state_prep_angles,
+    const std::vector<int> &term_controls, const std::vector<int> &term_ops,
+    const std::vector<int> &term_lengths, const std::vector<int> &term_signs);
+
+/// \pure_device_kernel
+///
+/// @brief Apply one externally controlled adjoint qubitization walk step.
+__qpu__ void controlled_apply_adjoint_walk(
+    cudaq::qubit &control, cudaq::qview<> ancilla, cudaq::qview<> system,
+    const std::vector<double> &state_prep_angles,
+    const std::vector<int> &term_controls, const std::vector<int> &term_ops,
+    const std::vector<int> &term_lengths, const std::vector<int> &term_signs);
 
 /// \pure_device_kernel
 ///
@@ -169,6 +210,7 @@ __qpu__ void apply_phase_sequence(cudaq::qview<> signal, cudaq::qview<> system,
 
 namespace cudaq::algorithms::block_encoding {
 using ::cudaq_algorithms::block_encoding::apply;
+using ::cudaq_algorithms::block_encoding::controlled_select;
 using ::cudaq_algorithms::block_encoding::prepare;
 using ::cudaq_algorithms::block_encoding::select;
 using ::cudaq_algorithms::block_encoding::unprepare;
@@ -179,6 +221,10 @@ using ::cudaq_algorithms::qubitization::apply_adjoint_walk;
 using ::cudaq_algorithms::qubitization::apply_adjoint_walk_power;
 using ::cudaq_algorithms::qubitization::apply_walk;
 using ::cudaq_algorithms::qubitization::apply_walk_power;
+using ::cudaq_algorithms::qubitization::controlled_apply_adjoint_walk;
+using ::cudaq_algorithms::qubitization::controlled_apply_walk;
+using ::cudaq_algorithms::qubitization::controlled_reflect_about_prepare;
+using ::cudaq_algorithms::qubitization::controlled_reflect_about_zero;
 using ::cudaq_algorithms::qubitization::reflect_about_prepare;
 using ::cudaq_algorithms::qubitization::reflect_about_zero;
 } // namespace cudaq::algorithms::qubitization

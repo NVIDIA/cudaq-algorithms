@@ -164,10 +164,6 @@ def qsppack_hamiltonian_simulation_phases(
             float(cos_info["value"]), float(sin_info["value"]))
 
 
-def qsp_to_projector_phases(phases: list[float]) -> list[float]:
-    return [2.0 * phase for phase in phases]
-
-
 def good_subspace(full_state: cudaq.State, num_system: int,
                   num_signal: int) -> np.ndarray:
     state_vector = np.asarray(full_state, dtype=np.complex128)
@@ -229,19 +225,6 @@ def run_with_custom_qubitization_loop(
                          num_system, num_signal)
 
 
-def recover_time_evolved_state(cos_state: np.ndarray, sin_state: np.ndarray,
-                               cos_qsp_phases: list[float],
-                               sin_qsp_phases: list[float]) -> np.ndarray:
-    # QSPPACK phases and qsvt.apply_signal_phase() differ by a simple global
-    # phase convention. After correcting that convention, the real part of the
-    # cosine sequence and the imaginary part of the sine sequence encode the two
-    # parity components of exp(-i H t). The factor of two undoes the 0.5 target
-    # scaling used during phase generation.
-    cos_state = cos_state * np.exp(-1.0j * np.sum(cos_qsp_phases))
-    sin_state = sin_state * np.exp(-1.0j * np.sum(sin_qsp_phases))
-    return 2.0 * (cos_state.real + 1.0j * sin_state.imag)
-
-
 def comparison_metrics(reference: np.ndarray,
                        candidate: np.ndarray) -> tuple[float, float, float]:
     l2_error = np.linalg.norm(candidate - reference)
@@ -285,9 +268,9 @@ def main() -> int:
                                               args.show_qsppack_log))
 
     cos_sequence = algorithms.qsvt.phase_sequence(
-        qsp_to_projector_phases(cos_qsp_phases))
+        algorithms.qsvt.projector_phases_from_qsp(cos_qsp_phases))
     sin_sequence = algorithms.qsvt.phase_sequence(
-        qsp_to_projector_phases(sin_qsp_phases))
+        algorithms.qsvt.projector_phases_from_qsp(sin_qsp_phases))
 
     data = encoding.kernel_data()
     initial_state = cudaq.State.from_data(initial_ket)
@@ -298,9 +281,8 @@ def main() -> int:
     primitive_sin = run_with_qsvt_primitive(initial_state, num_qubits,
                                             encoding.num_ancilla, sin_sequence,
                                             data)
-    primitive_state = recover_time_evolved_state(primitive_cos, primitive_sin,
-                                                 cos_qsp_phases,
-                                                 sin_qsp_phases)
+    primitive_state = algorithms.qsvt.recover_real_time_evolution(
+        primitive_cos, primitive_sin, cos_qsp_phases, sin_qsp_phases)
 
     custom_cos = run_with_custom_qubitization_loop(initial_state, num_qubits,
                                                    encoding.num_ancilla,
@@ -308,8 +290,8 @@ def main() -> int:
     custom_sin = run_with_custom_qubitization_loop(initial_state, num_qubits,
                                                    encoding.num_ancilla,
                                                    sin_sequence, data)
-    custom_state = recover_time_evolved_state(custom_cos, custom_sin,
-                                              cos_qsp_phases, sin_qsp_phases)
+    custom_state = algorithms.qsvt.recover_real_time_evolution(
+        custom_cos, custom_sin, cos_qsp_phases, sin_qsp_phases)
 
     primitive_metrics = comparison_metrics(exact_state, primitive_state)
     custom_metrics = comparison_metrics(exact_state, custom_state)

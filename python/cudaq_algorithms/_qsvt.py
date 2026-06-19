@@ -158,6 +158,30 @@ def _pauli_lcu_sequence_kernel_args(phases,
             list(term_signs))
 
 
+def _projector_phases_from_qsp(phases):
+    """Convert QSPPACK/QSP phases to projector phases used by QSVT kernels."""
+
+    return [2.0 * float(phase) for phase in phases]
+
+
+def _recover_real_time_evolution(cos_state, sin_state, cos_qsp_phases,
+                                 sin_qsp_phases):
+    """Recover exp(-iHt)|psi> from cosine/sine QSPPACK QSVT components.
+
+    This helper is intended for simulation validation workflows that already
+    extracted the good-subspace statevectors. Hardware-oriented workflows
+    should estimate observables or probabilities instead of calling get_state().
+    """
+
+    import numpy as np
+
+    cos_state = np.asarray(cos_state, dtype=np.complex128)
+    sin_state = np.asarray(sin_state, dtype=np.complex128)
+    cos_state = cos_state * np.exp(-1.0j * np.sum(cos_qsp_phases))
+    sin_state = sin_state * np.exp(-1.0j * np.sum(sin_qsp_phases))
+    return 2.0 * (cos_state.real + 1.0j * sin_state.imag)
+
+
 _cpp_phases_to_poly = qsvt.phases_to_poly
 _cpp_estimate_poly_error = qsvt.estimate_poly_error
 
@@ -189,5 +213,7 @@ qsvt.phase_sequence = _phase_sequence
 qsvt.forward_walk_directions = _forward_walk_directions
 qsvt.alternating_walk_directions = _alternating_walk_directions
 qsvt.pauli_lcu_kernel_args = _pauli_lcu_sequence_kernel_args
+qsvt.projector_phases_from_qsp = _projector_phases_from_qsp
+qsvt.recover_real_time_evolution = _recover_real_time_evolution
 qsvt.phases_to_poly = _phases_to_poly
 qsvt.estimate_poly_error = _estimate_poly_error

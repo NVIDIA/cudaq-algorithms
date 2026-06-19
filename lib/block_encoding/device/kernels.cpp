@@ -71,6 +71,27 @@ __qpu__ void unprepare(cudaq::qview<> ancilla,
   ry(-state_prep_angles[0], ancilla[0]);
 }
 
+__qpu__ void controlled_pauli_x(cudaq::qubit &control, cudaq::qview<> ancilla,
+                                cudaq::qubit &target) {
+  int n_ancilla = ancilla.size();
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_GATE_BY_ARITY(x, control, ancilla, target,
+                                                  n_ancilla);
+}
+
+__qpu__ void controlled_pauli_y(cudaq::qubit &control, cudaq::qview<> ancilla,
+                                cudaq::qubit &target) {
+  int n_ancilla = ancilla.size();
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_GATE_BY_ARITY(y, control, ancilla, target,
+                                                  n_ancilla);
+}
+
+__qpu__ void controlled_pauli_z(cudaq::qubit &control, cudaq::qview<> ancilla,
+                                cudaq::qubit &target) {
+  int n_ancilla = ancilla.size();
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_GATE_BY_ARITY(z, control, ancilla, target,
+                                                  n_ancilla);
+}
+
 __qpu__ void select(cudaq::qview<> ancilla, cudaq::qview<> system,
                     const std::vector<int> &term_controls,
                     const std::vector<int> &term_ops,
@@ -115,6 +136,51 @@ __qpu__ void select(cudaq::qview<> ancilla, cudaq::qview<> system,
   }
 }
 
+__qpu__ void controlled_select(cudaq::qubit &control, cudaq::qview<> ancilla,
+                               cudaq::qview<> system,
+                               const std::vector<int> &term_controls,
+                               const std::vector<int> &term_ops,
+                               const std::vector<int> &term_lengths,
+                               const std::vector<int> &term_signs) {
+  int ptr_ctrl = 0;
+  int ptr_op = 0;
+  int n_ancilla = ancilla.size();
+
+  for (std::size_t i = 0; i < term_lengths.size(); ++i) {
+    int n_ops = term_lengths[i];
+    int sign = term_signs[i];
+
+    for (int b = 0; b < n_ancilla; ++b) {
+      int bit_val = term_controls[ptr_ctrl++];
+      if (bit_val == 0)
+        x(ancilla[b]);
+    }
+
+    for (int k = 0; k < n_ops; ++k) {
+      int code = term_ops[ptr_op++];
+      int q_idx = term_ops[ptr_op++];
+
+      if (code == 1)
+        controlled_pauli_x(control, ancilla, system[q_idx]);
+      else if (code == 2)
+        controlled_pauli_y(control, ancilla, system[q_idx]);
+      else if (code == 3)
+        controlled_pauli_z(control, ancilla, system[q_idx]);
+    }
+
+    if (sign < 0)
+      CUDAQ_ALGORITHMS_APPLY_CONTROLLED_Z_BY_ARITY(control, ancilla, n_ancilla);
+
+    int back_ptr = ptr_ctrl - 1;
+    for (int b_rev = 0; b_rev < n_ancilla; ++b_rev) {
+      int anc_idx = (n_ancilla - 1) - b_rev;
+      int bit_val = term_controls[back_ptr--];
+      if (bit_val == 0)
+        x(ancilla[anc_idx]);
+    }
+  }
+}
+
 __qpu__ void apply(cudaq::qview<> ancilla, cudaq::qview<> system,
                    const std::vector<double> &state_prep_angles,
                    const std::vector<int> &term_controls,
@@ -142,11 +208,32 @@ __qpu__ void reflect_about_zero(cudaq::qview<> ancilla) {
     x(ancilla[i]);
 }
 
+__qpu__ void controlled_reflect_about_zero(cudaq::qubit &control,
+                                           cudaq::qview<> ancilla) {
+  for (std::size_t i = 0; i < ancilla.size(); ++i)
+    x(ancilla[i]);
+
+  std::size_t num_ancilla = ancilla.size();
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_Z_BY_ARITY(control, ancilla, num_ancilla);
+
+  for (std::size_t i = 0; i < ancilla.size(); ++i)
+    x(ancilla[i]);
+}
+
 __qpu__ void
 reflect_about_prepare(cudaq::qview<> ancilla,
                       const std::vector<double> &state_prep_angles) {
   block_encoding::unprepare(ancilla, state_prep_angles);
   cudaq_algorithms::qubitization::reflect_about_zero(ancilla);
+  block_encoding::prepare(ancilla, state_prep_angles);
+}
+
+__qpu__ void
+controlled_reflect_about_prepare(cudaq::qubit &control, cudaq::qview<> ancilla,
+                                 const std::vector<double> &state_prep_angles) {
+  block_encoding::unprepare(ancilla, state_prep_angles);
+  cudaq_algorithms::qubitization::controlled_reflect_about_zero(control,
+                                                                ancilla);
   block_encoding::prepare(ancilla, state_prep_angles);
 }
 
@@ -170,6 +257,26 @@ __qpu__ void apply_adjoint_walk(cudaq::qview<> ancilla, cudaq::qview<> system,
   reflect_about_prepare(ancilla, state_prep_angles);
   block_encoding::select(ancilla, system, term_controls, term_ops, term_lengths,
                          term_signs);
+}
+
+__qpu__ void controlled_apply_walk(
+    cudaq::qubit &control, cudaq::qview<> ancilla, cudaq::qview<> system,
+    const std::vector<double> &state_prep_angles,
+    const std::vector<int> &term_controls, const std::vector<int> &term_ops,
+    const std::vector<int> &term_lengths, const std::vector<int> &term_signs) {
+  block_encoding::controlled_select(control, ancilla, system, term_controls,
+                                    term_ops, term_lengths, term_signs);
+  controlled_reflect_about_prepare(control, ancilla, state_prep_angles);
+}
+
+__qpu__ void controlled_apply_adjoint_walk(
+    cudaq::qubit &control, cudaq::qview<> ancilla, cudaq::qview<> system,
+    const std::vector<double> &state_prep_angles,
+    const std::vector<int> &term_controls, const std::vector<int> &term_ops,
+    const std::vector<int> &term_lengths, const std::vector<int> &term_signs) {
+  controlled_reflect_about_prepare(control, ancilla, state_prep_angles);
+  block_encoding::controlled_select(control, ancilla, system, term_controls,
+                                    term_ops, term_lengths, term_signs);
 }
 
 __qpu__ void apply_walk_power(cudaq::qview<> ancilla, cudaq::qview<> system,

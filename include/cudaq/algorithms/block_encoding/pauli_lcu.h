@@ -35,13 +35,14 @@ struct lcu_decomposition {
 
   /// @brief Sum of retained identity-only terms.
   ///
-  /// The current pauli_lcu implementation still includes identity terms in the
-  /// encoding so existing QEL behavior is unchanged. This field makes the
-  /// constant part explicit for future algorithms that want to account for it
-  /// outside the encoded operator.
+  /// By default pauli_lcu includes identity terms in the encoded operator so
+  /// existing behavior is unchanged. When include_identity is false, identity
+  /// terms are excluded from the encoded operator and are only reported here
+  /// for algorithms that account for scalar shifts outside the LCU.
   double constant_term = 0.0;
 
   double coefficient_threshold = 1e-12;
+  bool include_identity = true;
 };
 
 /// @brief Host-side metadata for a Pauli LCU block encoding.
@@ -56,6 +57,7 @@ struct pauli_lcu_metadata {
   double normalization = 0.0;
   double constant_term = 0.0;
   double coefficient_threshold = 0.0;
+  bool include_identity = true;
 };
 
 /// @brief Host-side layout consumed by the Pauli LCU PREPARE/SELECT kernels.
@@ -74,7 +76,8 @@ struct pauli_lcu_kernel_data {
 /// @brief Decompose a spin_op into host-side Pauli LCU data.
 lcu_decomposition decompose_lcu(const cudaq::spin_op &hamiltonian,
                                 std::size_t num_qubits,
-                                double coefficient_threshold = 1e-12);
+                                double coefficient_threshold = 1e-12,
+                                bool include_identity = true);
 
 /// @brief Build the flattened Pauli LCU kernel layout from a decomposition.
 pauli_lcu_kernel_data make_pauli_lcu_kernel_data(const lcu_decomposition &lcu);
@@ -119,6 +122,10 @@ public:
   /// @param hamiltonian The target Hamiltonian as a spin_op
   /// @param num_qubits Number of system qubits (must match Hamiltonian support)
   explicit pauli_lcu(const cudaq::spin_op &hamiltonian, std::size_t num_qubits);
+  /// @brief Construct a Pauli LCU block encoding from a spin operator.
+  /// @param include_identity Whether identity terms are retained in H / alpha.
+  explicit pauli_lcu(const cudaq::spin_op &hamiltonian, std::size_t num_qubits,
+                     bool include_identity);
 
   ///  Construct a Pauli LCU block encoding from host-side LCU data
   explicit pauli_lcu(const lcu_decomposition &lcu);
@@ -147,11 +154,15 @@ public:
             decomposition.padded_num_terms,
             alpha,
             decomposition.constant_term,
-            decomposition.coefficient_threshold};
+            decomposition.coefficient_threshold,
+            decomposition.include_identity};
   }
 
   ///  Get the constant identity component detected during decomposition
   double constant_term() const { return decomposition.constant_term; }
+
+  ///  Return whether identity terms are retained in the encoded operator
+  bool include_identity() const { return decomposition.include_identity; }
 
   ///  Get the number of retained LCU terms before padding
   std::size_t term_count() const { return decomposition.num_terms; }

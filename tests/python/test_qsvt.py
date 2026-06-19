@@ -171,7 +171,7 @@ def _run_explicit_qsvt_good_component(initial_state, num_system, num_ancilla,
 
 
 def _qsp_to_projector_phases(phases):
-    return [2.0 * float(phase) for phase in phases]
+    return algorithms.qsvt.projector_phases_from_qsp(phases)
 
 
 def _qsppack_hamiltonian_simulation_phases(tau, degree=16):
@@ -247,6 +247,8 @@ def test_pauli_lcu_metadata_binding():
     assert metadata.normalization == pytest.approx(2.75)
     assert metadata.constant_term == pytest.approx(2.0)
     assert metadata.coefficient_threshold == pytest.approx(1e-12)
+    assert metadata.include_identity is True
+    assert encoding.include_identity is True
 
     kernel_data = encoding.kernel_data()
     assert isinstance(kernel_data, algorithms.PauliLCUKernelData)
@@ -267,6 +269,60 @@ def test_pauli_lcu_metadata_binding():
     # Identity terms are retained in H / alpha and also reported separately so
     # future algorithms may choose to account for scalar shifts outside LCU.
     assert encoding.constant_term == pytest.approx(metadata.constant_term)
+
+
+def test_pauli_lcu_constant_term_policy_matches_numpy(qpp_cpu_target):
+    """Validate include_identity=True/False against dense block action."""
+
+    h = 1.25 + 0.5 * spin.z(0) - 0.25 * spin.x(0)
+    initial_ket = _random_normalized_ket(1, seed=111)
+    initial_state = cudaq.State.from_data(initial_ket)
+    matrix_full = np.array([[1.75, -0.25], [-0.25, 0.75]], dtype=np.complex128)
+    matrix_shifted = matrix_full - 1.25 * np.eye(2, dtype=np.complex128)
+
+    def run_good_component(encoding):
+        angles, term_controls, term_ops, term_lengths, term_signs = _kernel_data(
+            encoding)
+        num_ancilla = encoding.num_ancilla
+
+        @cudaq.kernel
+        def block_encode(state: cudaq.State):
+            system = cudaq.qvector(state)
+            ancilla = cudaq.qvector(num_ancilla)
+            algorithms.block_encoding.apply(ancilla, system, angles,
+                                            term_controls, term_ops,
+                                            term_lengths, term_signs)
+
+        full_state = cudaq.get_state(block_encode, initial_state)
+        return _zero_ancilla_component(full_state, 1, num_ancilla)
+
+    include_encoding = algorithms.PauliLCU(h,
+                                           num_qubits=1,
+                                           include_identity=True)
+    assert include_encoding.include_identity is True
+    assert include_encoding.term_count == 3
+    assert include_encoding.constant_term == pytest.approx(1.25)
+    assert include_encoding.normalization == pytest.approx(2.0)
+    _assert_good_component_matches(run_good_component(include_encoding),
+                                   (matrix_full @ initial_ket) /
+                                   include_encoding.normalization)
+
+    shifted_encoding = algorithms.PauliLCU(h,
+                                           num_qubits=1,
+                                           include_identity=False)
+    assert shifted_encoding.include_identity is False
+    assert shifted_encoding.term_count == 2
+    assert shifted_encoding.constant_term == pytest.approx(1.25)
+    assert shifted_encoding.normalization == pytest.approx(0.75)
+    assert shifted_encoding.metadata().include_identity is False
+    _assert_good_component_matches(run_good_component(shifted_encoding),
+                                   (matrix_shifted @ initial_ket) /
+                                   shifted_encoding.normalization)
+
+    with pytest.raises(RuntimeError, match="non-identity"):
+        algorithms.PauliLCU(1.25 + 0.0 * spin.z(0),
+                            num_qubits=1,
+                            include_identity=False)
 
 
 def test_pauli_lcu_block_encoding_device_interop():
@@ -491,9 +547,6 @@ def test_qsppack_generated_phases_validate_device_sequence_and_exact_response(
         initial_state, num_system, encoding.num_ancilla,
         sin_sequence.phase_data, sin_sequence.walk_direction_data, kernel_data)
 
-    quantum_cos_state *= np.exp(-1.0j * np.sum(cos_phases))
-    quantum_sin_state *= np.exp(-1.0j * np.sum(sin_phases))
-
     exact_state, eigenvalues, eigenvectors = _exact_time_evolved_state(
         hamiltonian_matrix, initial_ket, evolution_time)
     cos_poly = algorithms.qsvt.phases_to_poly(
@@ -513,8 +566,8 @@ def test_qsppack_generated_phases_validate_device_sequence_and_exact_response(
     # cosine target is in the real part and its sine target is in the imaginary
     # part. For this real Hamiltonian and real input state, those components can
     # be recovered from statevector simulation and combined into exp(-i H t)|psi>.
-    quantum_time_evolved_state = 2.0 * (quantum_cos_state.real +
-                                        1.0j * quantum_sin_state.imag)
+    quantum_time_evolved_state = algorithms.qsvt.recover_real_time_evolution(
+        quantum_cos_state, quantum_sin_state, cos_phases, sin_phases)
     qsp_l2_error = np.linalg.norm(quantum_time_evolved_state - exact_state)
     qsp_max_error = np.max(np.abs(quantum_time_evolved_state - exact_state))
     qsp_fidelity = abs(np.vdot(exact_state, quantum_time_evolved_state))**2
@@ -560,6 +613,19 @@ def test_qsvt_phase_sequence_helper():
     qsp_sequence = algorithms.qsvt.phase_sequence([0.1, -0.2],
                                                   convention="qsp")
     assert qsp_sequence.convention == algorithms.qsvt.PhaseConvention.qsp
+    assert algorithms.qsvt.projector_phases_from_qsp(
+        [0.1, -0.2]) == pytest.approx([0.2, -0.4])
+
+    cos_state = np.asarray([1.0 + 0.5j, -0.25j], dtype=np.complex128)
+    sin_state = np.asarray([0.25 - 0.5j, 0.75j], dtype=np.complex128)
+    cos_qsp = [0.1, -0.2]
+    sin_qsp = [0.3]
+    expected = 2.0 * (
+        (cos_state * np.exp(-1.0j * np.sum(cos_qsp))).real + 1.0j *
+        (sin_state * np.exp(-1.0j * np.sum(sin_qsp))).imag)
+    recovered = algorithms.qsvt.recover_real_time_evolution(
+        cos_state, sin_state, cos_qsp, sin_qsp)
+    assert np.allclose(recovered, expected)
 
     hamiltonian = 0.6 * spin.x(0) + 0.8 * spin.z(0)
     encoding = algorithms.PauliLCU(hamiltonian, num_qubits=1)

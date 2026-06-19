@@ -63,6 +63,7 @@ void bind_block_encoding(nb::module_ &mod) {
       .def_rw("constant_term", &pauli_lcu_metadata::constant_term)
       .def_rw("coefficient_threshold",
               &pauli_lcu_metadata::coefficient_threshold)
+      .def_rw("include_identity", &pauli_lcu_metadata::include_identity)
       .def("__repr__", [](const pauli_lcu_metadata &self) {
         std::ostringstream oss;
         oss << "PauliLCUMetadata(num_system_qubits=" << self.num_system_qubits
@@ -70,7 +71,8 @@ void bind_block_encoding(nb::module_ &mod) {
             << ", num_terms=" << self.num_terms
             << ", padded_num_terms=" << self.padded_num_terms
             << ", normalization=" << self.normalization
-            << ", constant_term=" << self.constant_term << ")";
+            << ", constant_term=" << self.constant_term
+            << ", include_identity=" << self.include_identity << ")";
         return oss.str();
       });
 
@@ -161,7 +163,9 @@ strings (e.g., molecular Hamiltonians from quantum chemistry). It uses:
 The encoding uses log₂(# terms) ancilla qubits and achieves α = ||H||₁.
 The good block of the unitary is H / α. Identity terms are included in the
 encoded operator; constant_term reports their retained coefficient sum for
-workflows that choose to handle scalar shifts outside the block encoding.
+workflows that choose to handle scalar shifts outside the block encoding. Set
+include_identity=False to exclude identity terms from the encoded operator while
+still reporting their coefficient sum through constant_term.
 
 Example:
     >>> from cudaq import spin
@@ -182,13 +186,15 @@ Example:
     >>>     anc = cudaq.qvector(encoding.num_ancilla)
     >>>     sys = cudaq.qvector(encoding.num_system)
     >>>     encoding.apply(anc, sys))")
-      .def(nb::init<const cudaq::spin_op &, std::size_t>(),
+      .def(nb::init<const cudaq::spin_op &, std::size_t, bool>(),
            nb::arg("hamiltonian"), nb::arg("num_qubits"),
+           nb::arg("include_identity") = true,
            R"(Initialize Pauli LCU block encoding.
 
 Args:
     hamiltonian: Target Hamiltonian as a SpinOperator
     num_qubits: Number of system qubits
+    include_identity: Whether identity terms are included in the encoded operator
 
 Raises:
     RuntimeError: If Hamiltonian contains complex coefficients
@@ -201,6 +207,9 @@ Raises:
                    "Normalization constant: α = ||H||₁ (1-norm)")
       .def_prop_ro("constant_term", &pauli_lcu::constant_term,
                    "Constant identity component retained in the encoding")
+      .def_prop_ro("include_identity", &pauli_lcu::include_identity,
+                   "Whether identity terms are retained in the encoded "
+                   "operator")
       .def_prop_ro("term_count", &pauli_lcu::term_count,
                    "Number of retained LCU terms before padding")
       .def_prop_ro("padded_term_count", &pauli_lcu::padded_term_count,
@@ -310,6 +319,27 @@ Args:
       mod, "qubitization", "apply_walk",
       "Apply one PauliLCU qubitization walk step inside a CUDA-Q Python "
       "kernel.");
+  cudaq::python::addDeviceKernelInterop<cudaq::qubit &, cudaq::qview<>,
+                                        const std::vector<double> &>(
+      mod, "qubitization", "controlled_reflect_about_prepare",
+      "Apply a controlled PauliLCU PREPARE-state reflection inside a CUDA-Q "
+      "Python kernel.");
+  cudaq::python::addDeviceKernelInterop<
+      cudaq::qubit &, cudaq::qview<>, cudaq::qview<>,
+      const std::vector<double> &, const std::vector<int> &,
+      const std::vector<int> &, const std::vector<int> &,
+      const std::vector<int> &>(
+      mod, "qubitization", "controlled_apply_walk",
+      "Apply one externally controlled PauliLCU qubitization walk step inside "
+      "a CUDA-Q Python kernel.");
+  cudaq::python::addDeviceKernelInterop<
+      cudaq::qubit &, cudaq::qview<>, cudaq::qview<>,
+      const std::vector<double> &, const std::vector<int> &,
+      const std::vector<int> &, const std::vector<int> &,
+      const std::vector<int> &>(
+      mod, "qubitization", "controlled_apply_adjoint_walk",
+      "Apply one externally controlled adjoint PauliLCU qubitization walk step "
+      "inside a CUDA-Q Python kernel.");
 
   auto qubitization_obj = mod.attr("qubitization");
   auto qubitization = nb::borrow<nb::module_>(qubitization_obj.ptr());
