@@ -40,6 +40,12 @@ nb::object numpy_matrix(const std::vector<double> &values, int dim) {
 namespace cudaq::algorithms {
 
 void bind_block_encoding(nb::module_ &mod) {
+  auto kernel_data_tuple = [](const pauli_lcu_kernel_data &self) {
+    return nb::make_tuple(
+        std::vector<double>(self.state_prep_angles),
+        std::vector<int>(self.term_controls), std::vector<int>(self.term_ops),
+        std::vector<int>(self.term_lengths), std::vector<int>(self.term_signs));
+  };
 
   // ============================================================================
   // PAULI LCU BLOCK ENCODING
@@ -68,6 +74,80 @@ void bind_block_encoding(nb::module_ &mod) {
         return oss.str();
       });
 
+  nb::class_<pauli_lcu_kernel_data>(
+      mod, "PauliLCUKernelData",
+      R"(Flattened Pauli LCU layout consumed by CUDA-Q kernels.
+
+This object packages the state-preparation angles and SELECT-table data that
+the Python device interop helpers need. The block encoding represents H / alpha,
+where alpha is the Pauli LCU normalization. Identity terms are retained in the
+encoded operator; PauliLCU.constant_term exposes their sum for algorithms that
+want to handle scalar shifts separately.)")
+      .def_prop_ro(
+          "angles",
+          [](const pauli_lcu_kernel_data &self) {
+            return std::vector<double>(self.state_prep_angles);
+          },
+          "State-preparation rotation angles.")
+      .def_prop_ro(
+          "state_prep_angles",
+          [](const pauli_lcu_kernel_data &self) {
+            return std::vector<double>(self.state_prep_angles);
+          },
+          "Alias for angles.")
+      .def_prop_ro(
+          "term_controls",
+          [](const pauli_lcu_kernel_data &self) {
+            return std::vector<int>(self.term_controls);
+          },
+          "Flattened ancilla control patterns for SELECT.")
+      .def_prop_ro(
+          "term_ops",
+          [](const pauli_lcu_kernel_data &self) {
+            return std::vector<int>(self.term_ops);
+          },
+          "Flattened Pauli operation codes for SELECT.")
+      .def_prop_ro(
+          "term_lengths",
+          [](const pauli_lcu_kernel_data &self) {
+            return std::vector<int>(self.term_lengths);
+          },
+          "Number of Pauli operations in each retained term.")
+      .def_prop_ro(
+          "term_signs",
+          [](const pauli_lcu_kernel_data &self) {
+            return std::vector<int>(self.term_signs);
+          },
+          "Sign of each retained LCU coefficient.")
+      .def_prop_ro("num_system_qubits",
+                   [](const pauli_lcu_kernel_data &self) {
+                     return self.num_system_qubits;
+                   })
+      .def_prop_ro(
+          "num_terms",
+          [](const pauli_lcu_kernel_data &self) { return self.num_terms; })
+      .def_prop_ro("padded_num_terms",
+                   [](const pauli_lcu_kernel_data &self) {
+                     return self.padded_num_terms;
+                   })
+      .def_prop_ro("num_ancilla_qubits",
+                   [](const pauli_lcu_kernel_data &self) {
+                     return self.num_ancilla_qubits;
+                   })
+      .def(
+          "as_tuple", kernel_data_tuple,
+          "Return (angles, term_controls, term_ops, term_lengths, term_signs).")
+      .def("unpack", kernel_data_tuple,
+           "Alias for as_tuple(), intended for kernel interop.")
+      .def("__repr__", [](const pauli_lcu_kernel_data &self) {
+        std::ostringstream oss;
+        oss << "PauliLCUKernelData(num_system_qubits=" << self.num_system_qubits
+            << ", num_ancilla_qubits=" << self.num_ancilla_qubits
+            << ", num_terms=" << self.num_terms
+            << ", padded_num_terms=" << self.padded_num_terms << ")";
+        return oss.str();
+      });
+
   nb::class_<pauli_lcu>(
       mod, "PauliLCU",
       R"(Block encoding using Pauli Linear Combination of Unitaries.
@@ -76,8 +156,12 @@ This implementation is optimized for Hamiltonians expressed as sums of Pauli
 strings (e.g., molecular Hamiltonians from quantum chemistry). It uses:
   - PREPARE: State preparation tree with controlled rotations
   - SELECT: Controlled Pauli operations indexed by ancilla state
+  - kernel_data(): Packaged flattened data for Python device interop helpers
 
 The encoding uses log₂(# terms) ancilla qubits and achieves α = ||H||₁.
+The good block of the unitary is H / α. Identity terms are included in the
+encoded operator; constant_term reports their retained coefficient sum for
+workflows that choose to handle scalar shifts outside the block encoding.
 
 Example:
     >>> from cudaq import spin
@@ -123,6 +207,12 @@ Raises:
                    "Number of LCU leaves after power-of-two padding")
       .def("metadata", &pauli_lcu::metadata,
            "Return scalar metadata for transform setup")
+      .def(
+          "kernel_data",
+          [](const pauli_lcu &self) {
+            return pauli_lcu_kernel_data(self.get_kernel_data());
+          },
+          "Return packaged flattened data consumed by Python CUDA-Q kernels.")
       .def("prepare", &pauli_lcu::prepare, nb::arg("ancilla"),
            R"(Apply the PREPARE operation to ancilla qubits.
           

@@ -22,6 +22,9 @@ from the simulated good-subspace statevectors.
 The call to cudaq.get_state() is used only because this is a simulation example;
 algorithm code intended for hardware should return observables or samples
 instead of statevectors.
+
+PauliLCU encodes H / alpha. Identity terms are retained in that encoded
+operator; encoding.constant_term reports their sum for scalar-shift bookkeeping.
 """
 
 from __future__ import annotations
@@ -165,16 +168,6 @@ def qsp_to_projector_phases(phases: list[float]) -> list[float]:
     return [2.0 * phase for phase in phases]
 
 
-def kernel_data(encoding: algorithms.PauliLCU):
-    return (
-        [float(value) for value in encoding.get_angles()],
-        [int(value) for value in encoding.get_term_controls()],
-        [int(value) for value in encoding.get_term_ops()],
-        [int(value) for value in encoding.get_term_lengths()],
-        [int(value) for value in encoding.get_term_signs()],
-    )
-
-
 def good_subspace(full_state: cudaq.State, num_system: int,
                   num_signal: int) -> np.ndarray:
     state_vector = np.asarray(full_state, dtype=np.complex128)
@@ -189,15 +182,12 @@ def good_subspace(full_state: cudaq.State, num_system: int,
     return state_vector[:system_dimension].copy()
 
 
-def run_with_qsvt_primitive(
-    initial_state: cudaq.State, num_system: int, num_signal: int,
-    sequence: algorithms.qsvt.PhaseSequence, data: tuple[list[float],
-                                                         list[int], list[int],
-                                                         list[int], list[int]]
-) -> np.ndarray:
-    angles, term_controls, term_ops, term_lengths, term_signs = data
-    phases = sequence.phase_data
-    walk_directions = sequence.walk_direction_data
+def run_with_qsvt_primitive(initial_state: cudaq.State, num_system: int,
+                            num_signal: int,
+                            sequence: algorithms.qsvt.PhaseSequence,
+                            data: algorithms.PauliLCUKernelData) -> np.ndarray:
+    phases, walk_directions, angles, term_controls, term_ops, term_lengths, \
+        term_signs = algorithms.qsvt.pauli_lcu_kernel_args(sequence, data)
 
     @cudaq.kernel
     def qsvt_kernel(state: cudaq.State):
@@ -213,13 +203,12 @@ def run_with_qsvt_primitive(
 
 
 def run_with_custom_qubitization_loop(
-    initial_state: cudaq.State, num_system: int, num_signal: int,
-    sequence: algorithms.qsvt.PhaseSequence, data: tuple[list[float],
-                                                         list[int], list[int],
-                                                         list[int], list[int]]
-) -> np.ndarray:
+        initial_state: cudaq.State, num_system: int, num_signal: int,
+        sequence: algorithms.qsvt.PhaseSequence,
+        data: algorithms.PauliLCUKernelData) -> np.ndarray:
     """Spell out the same walk convention used by qsvt.apply_phase_sequence()."""
 
+    data = data.unpack() if hasattr(data, "unpack") else data
     angles, term_controls, term_ops, term_lengths, term_signs = data
     phases = sequence.phase_data
 
@@ -300,7 +289,7 @@ def main() -> int:
     sin_sequence = algorithms.qsvt.phase_sequence(
         qsp_to_projector_phases(sin_qsp_phases))
 
-    data = kernel_data(encoding)
+    data = encoding.kernel_data()
     initial_state = cudaq.State.from_data(initial_ket)
 
     primitive_cos = run_with_qsvt_primitive(initial_state, num_qubits,

@@ -126,6 +126,38 @@ def _phase_sequence(phases, walk_directions=None, convention=None):
                           _phase_convention(convention))
 
 
+def _pauli_lcu_kernel_tuple(kernel_data):
+    """Return the flattened PauliLCU arrays needed by device interop helpers."""
+
+    if hasattr(kernel_data, "unpack"):
+        return tuple(kernel_data.unpack())
+    if hasattr(kernel_data, "as_tuple"):
+        return tuple(kernel_data.as_tuple())
+    if isinstance(kernel_data, dict):
+        return (kernel_data["angles"], kernel_data["term_controls"],
+                kernel_data["term_ops"], kernel_data["term_lengths"],
+                kernel_data["term_signs"])
+    if isinstance(kernel_data, (tuple, list)) and len(kernel_data) == 5:
+        return tuple(kernel_data)
+    return (kernel_data.angles, kernel_data.term_controls,
+            kernel_data.term_ops, kernel_data.term_lengths,
+            kernel_data.term_signs)
+
+
+def _pauli_lcu_sequence_kernel_args(phases,
+                                    kernel_data,
+                                    walk_directions=None,
+                                    convention=None):
+    """Pack QSVT phase data and PauliLCU layout for apply_phase_sequence()."""
+
+    sequence = _phase_sequence(phases, walk_directions, convention)
+    angles, term_controls, term_ops, term_lengths, term_signs = (
+        _pauli_lcu_kernel_tuple(kernel_data))
+    return (sequence.phase_data, sequence.walk_direction_data, list(angles),
+            list(term_controls), list(term_ops), list(term_lengths),
+            list(term_signs))
+
+
 _cpp_phases_to_poly = qsvt.phases_to_poly
 _cpp_estimate_poly_error = qsvt.estimate_poly_error
 
@@ -156,6 +188,6 @@ qsvt.PolyError = _PolyError
 qsvt.phase_sequence = _phase_sequence
 qsvt.forward_walk_directions = _forward_walk_directions
 qsvt.alternating_walk_directions = _alternating_walk_directions
+qsvt.pauli_lcu_kernel_args = _pauli_lcu_sequence_kernel_args
 qsvt.phases_to_poly = _phases_to_poly
 qsvt.estimate_poly_error = _estimate_poly_error
-

@@ -21,10 +21,10 @@ from cudaq import spin
 import cudaq_algorithms as algorithms
 
 _FOUR_QUBIT_TERMS = [
-    (0.31, ((0, "X"),)),
-    (-0.22, ((1, "Z"),)),
-    (0.17, ((2, "Y"),)),
-    (0.13, ((3, "X"),)),
+    (0.31, ((0, "X"), )),
+    (-0.22, ((1, "Z"), )),
+    (0.17, ((2, "Y"), )),
+    (0.13, ((3, "X"), )),
     (0.11, ((0, "Z"), (2, "Z"))),
     (-0.19, ((1, "X"), (3, "Y"))),
     (0.07, ((0, "Y"), (2, "X"), (3, "Z"))),
@@ -48,9 +48,7 @@ _QSVT_SIN_PHASES = [0.23, 0.54, -0.12, -0.54, -0.23]
 
 def _pauli_string_terms_to_indexed_terms(terms):
     return [(coefficient,
-             tuple((qubit, op)
-                   for qubit, op in enumerate(word)
-                   if op != "I"))
+             tuple((qubit, op) for qubit, op in enumerate(word) if op != "I"))
             for coefficient, word in terms]
 
 
@@ -118,20 +116,14 @@ def _random_normalized_ket(num_qubits, seed):
 
 
 def _kernel_data(encoding):
-    return (
-        [float(value) for value in encoding.get_angles()],
-        [int(value) for value in encoding.get_term_controls()],
-        [int(value) for value in encoding.get_term_ops()],
-        [int(value) for value in encoding.get_term_lengths()],
-        [int(value) for value in encoding.get_term_signs()],
-    )
+    return encoding.kernel_data().unpack()
 
 
 def _zero_ancilla_component(full_state, num_system, num_ancilla):
     state_vector = np.asarray(full_state, dtype=np.complex128)
     system_dimension = 1 << num_system
     expected_dimension = 1 << (num_system + num_ancilla)
-    assert state_vector.shape == (expected_dimension,)
+    assert state_vector.shape == (expected_dimension, )
     # The tests allocate the system state first and the LCU ancillas second.
     # CUDA-Q stores q[0] as the least-significant statevector bit, so the
     # all-zero ancilla subspace is the first contiguous system block.
@@ -140,16 +132,18 @@ def _zero_ancilla_component(full_state, num_system, num_ancilla):
 
 def _run_qsvt_good_component(initial_state, num_system, num_ancilla, phases,
                              walk_directions, kernel_data):
-    angles, term_controls, term_ops, term_lengths, term_signs = kernel_data
+    phase_data, direction_data, angles, term_controls, term_ops, term_lengths, \
+        term_signs = algorithms.qsvt.pauli_lcu_kernel_args(
+            phases, kernel_data, walk_directions)
 
     @cudaq.kernel
     def qsvt_kernel(state: cudaq.State):
         system = cudaq.qvector(state)
         signal = cudaq.qvector(num_ancilla)
-        algorithms.qsvt.apply_phase_sequence(signal, system, phases,
-                                          walk_directions, angles,
-                                          term_controls, term_ops, term_lengths,
-                                          term_signs)
+        algorithms.qsvt.apply_phase_sequence(signal, system, phase_data,
+                                             direction_data, angles,
+                                             term_controls, term_ops,
+                                             term_lengths, term_signs)
 
     full_state = cudaq.get_state(qsvt_kernel, initial_state)
     return _zero_ancilla_component(full_state, num_system, num_ancilla)
@@ -166,8 +160,9 @@ def _run_explicit_qsvt_good_component(initial_state, num_system, num_ancilla,
         signal = cudaq.qvector(num_ancilla)
         algorithms.qsvt.apply_signal_phase(signal, phases[0])
         for i in range(1, len(phases)):
-            algorithms.block_encoding.apply(signal, system, angles, term_controls,
-                                         term_ops, term_lengths, term_signs)
+            algorithms.block_encoding.apply(signal, system, angles,
+                                            term_controls, term_ops,
+                                            term_lengths, term_signs)
             algorithms.qubitization.reflect_about_zero(signal)
             algorithms.qsvt.apply_signal_phase(signal, phases[i])
 
@@ -184,13 +179,13 @@ def _qsppack_hamiltonian_simulation_phases(tau, degree=16):
     scipy_special = pytest.importorskip("scipy.special")
     jv = scipy_special.jv
 
-    cos_coefficients = np.array(
-        [0.5 * jv(0, tau)] +
-        [((-1)**k) * jv(2 * k, tau) for k in range(1, degree // 2 + 1)],
-        dtype=np.float64)
-    sin_coefficients = np.array(
-        [((-1)**k) * jv(2 * k + 1, tau) for k in range(degree // 2)],
-        dtype=np.float64)
+    cos_coefficients = np.array([0.5 * jv(0, tau)] +
+                                [((-1)**k) * jv(2 * k, tau)
+                                 for k in range(1, degree // 2 + 1)],
+                                dtype=np.float64)
+    sin_coefficients = np.array([((-1)**k) * jv(2 * k + 1, tau)
+                                 for k in range(degree // 2)],
+                                dtype=np.float64)
     common_options = {
         "criteria": 1e-12,
         "method": "Newton",
@@ -253,6 +248,26 @@ def test_pauli_lcu_metadata_binding():
     assert metadata.constant_term == pytest.approx(2.0)
     assert metadata.coefficient_threshold == pytest.approx(1e-12)
 
+    kernel_data = encoding.kernel_data()
+    assert isinstance(kernel_data, algorithms.PauliLCUKernelData)
+    assert kernel_data.num_system_qubits == metadata.num_system_qubits
+    assert kernel_data.num_ancilla_qubits == metadata.num_ancilla_qubits
+    assert kernel_data.num_terms == metadata.num_terms
+    assert kernel_data.padded_num_terms == metadata.padded_num_terms
+    assert kernel_data.angles == pytest.approx(list(encoding.get_angles()))
+    assert kernel_data.state_prep_angles == pytest.approx(
+        list(encoding.get_angles()))
+    assert kernel_data.term_controls == list(encoding.get_term_controls())
+    assert kernel_data.term_ops == list(encoding.get_term_ops())
+    assert kernel_data.term_lengths == list(encoding.get_term_lengths())
+    assert kernel_data.term_signs == list(encoding.get_term_signs())
+    assert kernel_data.as_tuple() == kernel_data.unpack()
+    assert len(kernel_data.unpack()) == 5
+
+    # Identity terms are retained in H / alpha and also reported separately so
+    # future algorithms may choose to account for scalar shifts outside LCU.
+    assert encoding.constant_term == pytest.approx(metadata.constant_term)
+
 
 def test_pauli_lcu_block_encoding_device_interop():
     """Smoke-test that public LCU and qubitization helpers compile in kernels."""
@@ -273,15 +288,16 @@ def test_pauli_lcu_block_encoding_device_interop():
         ancilla = cudaq.qvector(num_ancilla)
         system = cudaq.qvector(num_system)
         algorithms.block_encoding.prepare(ancilla, angles)
-        algorithms.block_encoding.select(ancilla, system, term_controls, term_ops,
-                                      term_lengths, term_signs)
+        algorithms.block_encoding.select(ancilla, system, term_controls,
+                                         term_ops, term_lengths, term_signs)
         algorithms.block_encoding.unprepare(ancilla, angles)
         algorithms.block_encoding.apply(ancilla, system, angles, term_controls,
-                                     term_ops, term_lengths, term_signs)
+                                        term_ops, term_lengths, term_signs)
         algorithms.qubitization.reflect_about_zero(ancilla)
         algorithms.qubitization.reflect_about_prepare(ancilla, angles)
-        algorithms.qubitization.apply_walk(ancilla, system, angles, term_controls,
-                                        term_ops, term_lengths, term_signs)
+        algorithms.qubitization.apply_walk(ancilla, system, angles,
+                                           term_controls, term_ops,
+                                           term_lengths, term_signs)
 
     counts = cudaq.sample(kernel, shots_count=16)
     assert len(counts) > 0
@@ -313,7 +329,7 @@ def test_pauli_lcu_block_encoding_matches_numpy_good_subspace(qpp_cpu_target):
         system = cudaq.qvector(state)
         ancilla = cudaq.qvector(num_ancilla)
         algorithms.block_encoding.apply(ancilla, system, angles, term_controls,
-                                     term_ops, term_lengths, term_signs)
+                                        term_ops, term_lengths, term_signs)
 
     full_state = cudaq.get_state(block_encode, initial_state)
     good_component = _zero_ancilla_component(full_state, num_system,
@@ -346,8 +362,9 @@ def test_pauli_lcu_qubitization_walk_matches_numpy_good_subspace(
         system = cudaq.qvector(state)
         ancilla = cudaq.qvector(num_ancilla)
         algorithms.block_encoding.prepare(ancilla, angles)
-        algorithms.qubitization.apply_walk(ancilla, system, angles, term_controls,
-                                        term_ops, term_lengths, term_signs)
+        algorithms.qubitization.apply_walk(ancilla, system, angles,
+                                           term_controls, term_ops,
+                                           term_lengths, term_signs)
 
         # Move the PREPARE signal state back to |0...0> so the statevector
         # test can postselect the good subspace and ignore the orthogonal junk
@@ -479,10 +496,10 @@ def test_qsppack_generated_phases_validate_device_sequence_and_exact_response(
 
     exact_state, eigenvalues, eigenvectors = _exact_time_evolved_state(
         hamiltonian_matrix, initial_ket, evolution_time)
-    cos_poly = algorithms.qsvt.phases_to_poly(cos_phases,
-                                           algorithms.QSVTPhaseConvention.qsp)
-    sin_poly = algorithms.qsvt.phases_to_poly(sin_phases,
-                                           algorithms.QSVTPhaseConvention.qsp)
+    cos_poly = algorithms.qsvt.phases_to_poly(
+        cos_phases, algorithms.QSVTPhaseConvention.qsp)
+    sin_poly = algorithms.qsvt.phases_to_poly(
+        sin_phases, algorithms.QSVTPhaseConvention.qsp)
     sample_errors = []
     for scaled_eigenvalue in eigenvalues / alpha:
         walk_eigenvalue = -scaled_eigenvalue
@@ -522,11 +539,11 @@ def test_qsvt_phase_sequence_helper():
     assert sequence.phase_data == pytest.approx([0.1, -0.2, 0.3])
     assert sequence.walk_direction_data == [algorithms.qsvt.FORWARD] * 2
     assert sequence.kernel_data()["phases"] == pytest.approx([0.1, -0.2, 0.3])
-    assert sequence.kernel_data()["walk_directions"] == [algorithms.qsvt.FORWARD
-                                                        ] * 2
+    assert sequence.kernel_data(
+    )["walk_directions"] == [algorithms.qsvt.FORWARD] * 2
 
-    custom = algorithms.qsvt.phase_sequence([0.1, -0.2, 0.3],
-                                         walk_directions=["forward", "adjoint"])
+    custom = algorithms.qsvt.phase_sequence(
+        [0.1, -0.2, 0.3], walk_directions=["forward", "adjoint"])
     assert custom.walk_direction_data == [
         algorithms.qsvt.FORWARD, algorithms.qsvt.ADJOINT
     ]
@@ -536,11 +553,34 @@ def test_qsvt_phase_sequence_helper():
         walk_directions=algorithms.qsvt.alternating_walk_directions(
             3, first="adjoint"))
     assert alternating.walk_direction_data == [
-        algorithms.qsvt.ADJOINT, algorithms.qsvt.FORWARD, algorithms.qsvt.ADJOINT
+        algorithms.qsvt.ADJOINT, algorithms.qsvt.FORWARD,
+        algorithms.qsvt.ADJOINT
     ]
 
-    qsp_sequence = algorithms.qsvt.phase_sequence([0.1, -0.2], convention="qsp")
+    qsp_sequence = algorithms.qsvt.phase_sequence([0.1, -0.2],
+                                                  convention="qsp")
     assert qsp_sequence.convention == algorithms.qsvt.PhaseConvention.qsp
+
+    hamiltonian = 0.6 * spin.x(0) + 0.8 * spin.z(0)
+    encoding = algorithms.PauliLCU(hamiltonian, num_qubits=1)
+    args = algorithms.qsvt.pauli_lcu_kernel_args(sequence,
+                                                 encoding.kernel_data())
+    assert len(args) == 7
+    assert args[0] == pytest.approx(sequence.phase_data)
+    assert args[1] == sequence.walk_direction_data
+    assert args[2] == pytest.approx(list(encoding.get_angles()))
+    assert args[3] == list(encoding.get_term_controls())
+    assert args[4] == list(encoding.get_term_ops())
+    assert args[5] == list(encoding.get_term_lengths())
+    assert args[6] == list(encoding.get_term_signs())
+
+    legacy_args = algorithms.qsvt.pauli_lcu_kernel_args(
+        sequence, _kernel_data(encoding))
+    assert legacy_args[0] == pytest.approx(args[0])
+    assert legacy_args[1] == args[1]
+    assert legacy_args[2] == pytest.approx(args[2])
+    assert legacy_args[3] == args[3]
+    assert legacy_args[4] == args[4]
 
 
 def test_qsvt_python_layer_hides_cpp_planning_objects():
@@ -579,20 +619,22 @@ def test_qsvt_response_evaluation_and_error_estimation():
     assert response.real == pytest.approx(0.5)
     assert response.imag == pytest.approx(0.0)
 
-    qsp_sequence = algorithms.qsvt.phase_sequence([0.1, -0.2], convention="qsp")
+    qsp_sequence = algorithms.qsvt.phase_sequence([0.1, -0.2],
+                                                  convention="qsp")
     qsp_poly = algorithms.qsvt.phases_to_poly(qsp_sequence)
     qsp_response = qsp_poly(0.5)
     assert isinstance(qsp_response, complex)
 
     sample_points = algorithms.make_uniform_qsvt_sample_points(-1.0, 1.0, 5)
     assert sample_points == pytest.approx([-1.0, -0.5, 0.0, 0.5, 1.0])
-    chebyshev_points = algorithms.make_chebyshev_qsvt_sample_points(-1.0, 1.0, 3)
+    chebyshev_points = algorithms.make_chebyshev_qsvt_sample_points(
+        -1.0, 1.0, 3)
     assert chebyshev_points == pytest.approx([-1.0, 0.0, 1.0])
 
     error = algorithms.qsvt.estimate_poly_error(poly,
-                                             lambda x: complex(x, 0.0),
-                                             domain=(-1.0, 1.0),
-                                             num_points=5)
+                                                lambda x: complex(x, 0.0),
+                                                domain=(-1.0, 1.0),
+                                                num_points=5)
     assert isinstance(error, algorithms.qsvt.PolyError)
     assert error.max_abs_error == pytest.approx(0.0, abs=1e-12)
     assert error.rms_error == pytest.approx(0.0, abs=1e-12)
@@ -607,7 +649,8 @@ def test_qsvt_validation_errors():
     with pytest.raises(ValueError):
         algorithms.qsvt.phase_sequence([0.1, 0.2], walk_directions=[0, 1])
     with pytest.raises(ValueError):
-        algorithms.qsvt.phase_sequence([0.1, 0.2], walk_directions=["sideways"])
+        algorithms.qsvt.phase_sequence([0.1, 0.2],
+                                       walk_directions=["sideways"])
     with pytest.raises(ValueError):
         algorithms.qsvt.phase_sequence([0.1, 0.2], convention="phaseish")
     with pytest.raises(ValueError):
