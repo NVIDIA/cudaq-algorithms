@@ -50,3 +50,8 @@ cudaqa_add_unittest(test_upccgsd_operator_pool)
 cudaqa_add_unittest(test_uccsd)
 cudaqa_add_unittest(test_bravyi_kitaev)
 cudaqa_add_unittest(test_givens_stateprep)
+target_link_options(test_givens_stateprep PRIVATE LINKER:--no-as-needed)
+target_link_libraries(test_givens_stateprep
+  PRIVATE
+    cudaq::cudaq-qpp-cpu-target
+)

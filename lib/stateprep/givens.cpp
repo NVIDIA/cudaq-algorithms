@@ -100,6 +100,46 @@ double argument_or_zero(const std::complex<double> &value, double tolerance) {
   return std::arg(value);
 }
 
+slater_determinant_plan
+make_plan_from_schedule(const givens_rotation_schedule &schedule,
+                        bool is_complex) {
+  slater_determinant_plan plan;
+  plan.num_orbitals = schedule.num_orbitals;
+  plan.num_electrons = schedule.num_electrons;
+  plan.is_complex = is_complex;
+  plan.orbital_indices = get_givens_rotation_indices(schedule);
+  plan.angles = get_givens_rotation_angles(schedule);
+  plan.phases = get_givens_rotation_phases(schedule);
+  plan.final_phases = schedule.final_phases;
+  validate_slater_determinant_plan(plan);
+  return plan;
+}
+
+void validate_plan_common(const slater_determinant_plan &plan) {
+  if (plan.num_orbitals == 0)
+    throw std::invalid_argument("num_orbitals must be greater than zero");
+  if (plan.num_electrons == 0)
+    throw std::invalid_argument("num_electrons must be greater than zero");
+  if (plan.num_electrons > plan.num_orbitals)
+    throw std::invalid_argument("num_electrons cannot exceed num_orbitals");
+  if (plan.orbital_indices.size() != 2 * plan.angles.size())
+    throw std::invalid_argument(
+        "orbital_indices must contain two entries for each angle");
+
+  for (std::size_t i = 0; i < plan.angles.size(); ++i) {
+    const auto first = plan.orbital_indices[2 * i];
+    const auto second = plan.orbital_indices[2 * i + 1];
+    if (first >= plan.num_orbitals || second >= plan.num_orbitals)
+      throw std::invalid_argument(
+          "Givens rotation orbital index is out of range");
+
+    const auto distance = first > second ? first - second : second - first;
+    if (distance != 1)
+      throw std::invalid_argument(
+          "Givens state-preparation kernels require adjacent rotations");
+  }
+}
+
 } // namespace
 
 givens_rotation_schedule make_givens_rotation_schedule(
@@ -185,8 +225,7 @@ givens_rotation_schedule make_givens_rotation_schedule(
       const double theta = std::atan2(sine, cosine);
       const double phase = argument_or_zero(lower, tolerance) -
                            argument_or_zero(upper, tolerance);
-      const auto lower_phase =
-          std::exp(std::complex<double>{0.0, -phase});
+      const auto lower_phase = std::exp(std::complex<double>{0.0, -phase});
 
       for (std::size_t k = 0; k < num_electrons; ++k) {
         const auto upper_value = work[upper_row][k];
@@ -242,6 +281,72 @@ get_givens_rotation_phases(const givens_rotation_schedule &schedule) {
   for (const auto &rotation : schedule.rotations)
     phases.push_back(rotation.phase);
   return phases;
+}
+
+slater_determinant_plan make_slater_determinant_plan(
+    const std::vector<std::vector<double>> &occupied_orbitals,
+    double tolerance) {
+  return make_plan_from_schedule(
+      make_givens_rotation_schedule(occupied_orbitals, tolerance), false);
+}
+
+slater_determinant_plan make_slater_determinant_plan(
+    const std::vector<std::vector<std::complex<double>>> &occupied_orbitals,
+    double tolerance) {
+  return make_plan_from_schedule(
+      make_givens_rotation_schedule(occupied_orbitals, tolerance), true);
+}
+
+void validate_slater_determinant_plan(const slater_determinant_plan &plan) {
+  validate_plan_common(plan);
+
+  if (plan.is_complex) {
+    if (plan.phases.size() != plan.angles.size())
+      throw std::invalid_argument(
+          "complex Slater determinant plans require one phase per angle");
+    if (plan.final_phases.size() != plan.num_electrons)
+      throw std::invalid_argument(
+          "complex Slater determinant plans require one final phase per "
+          "electron");
+    return;
+  }
+
+  if (!plan.phases.empty() && plan.phases.size() != plan.angles.size())
+    throw std::invalid_argument(
+        "real Slater determinant plan phases must be empty or match angles");
+  if (!plan.final_phases.empty() &&
+      plan.final_phases.size() != plan.num_electrons)
+    throw std::invalid_argument(
+        "real Slater determinant plan final phases must be empty or match "
+        "num_electrons");
+}
+
+givens_stateprep_resource_estimate
+estimate_givens_stateprep_resources(const givens_rotation_schedule &schedule,
+                                    bool is_complex) {
+  givens_stateprep_resource_estimate resources;
+  resources.num_givens_rotations = schedule.rotations.size();
+  resources.num_exp_pauli_calls = 2 * resources.num_givens_rotations;
+  resources.num_phase_rotations =
+      is_complex ? resources.num_givens_rotations + schedule.num_electrons : 0;
+  resources.two_qubit_gate_count_proxy = resources.num_exp_pauli_calls;
+  resources.depth_proxy =
+      resources.num_exp_pauli_calls + resources.num_phase_rotations;
+  return resources;
+}
+
+givens_stateprep_resource_estimate
+estimate_givens_stateprep_resources(const slater_determinant_plan &plan) {
+  validate_slater_determinant_plan(plan);
+  givens_stateprep_resource_estimate resources;
+  resources.num_givens_rotations = plan.angles.size();
+  resources.num_exp_pauli_calls = 2 * resources.num_givens_rotations;
+  resources.num_phase_rotations =
+      plan.is_complex ? resources.num_givens_rotations + plan.num_electrons : 0;
+  resources.two_qubit_gate_count_proxy = resources.num_exp_pauli_calls;
+  resources.depth_proxy =
+      resources.num_exp_pauli_calls + resources.num_phase_rotations;
+  return resources;
 }
 
 } // namespace cudaq_algorithms::stateprep

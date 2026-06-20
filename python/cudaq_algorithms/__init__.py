@@ -14,3 +14,5 @@ _stateprep_wrappers = _importlib.import_module(".stateprep", __name__)
 stateprep = _stateprep_extension
 stateprep.make_givens_rotation_schedule = (
     _stateprep_wrappers.make_givens_rotation_schedule)
+stateprep.make_slater_determinant_plan = (
+    _stateprep_wrappers.make_slater_determinant_plan)

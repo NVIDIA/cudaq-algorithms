@@ -29,11 +29,37 @@ struct givens_rotation_schedule {
   std::vector<double> final_phases;
 };
 
+struct slater_determinant_plan {
+  std::size_t num_orbitals = 0;
+  std::size_t num_electrons = 0;
+  bool is_complex = false;
+  std::vector<std::size_t> orbital_indices;
+  std::vector<double> angles;
+  std::vector<double> phases;
+  std::vector<double> final_phases;
+};
+
+struct givens_stateprep_resource_estimate {
+  std::size_t num_givens_rotations = 0;
+  std::size_t num_exp_pauli_calls = 0;
+  std::size_t num_phase_rotations = 0;
+  std::size_t two_qubit_gate_count_proxy = 0;
+  std::size_t depth_proxy = 0;
+};
+
 givens_rotation_schedule make_givens_rotation_schedule(
     const std::vector<std::vector<double>> &occupied_orbitals,
     double tolerance = 1.0e-12);
 
 givens_rotation_schedule make_givens_rotation_schedule(
+    const std::vector<std::vector<std::complex<double>>> &occupied_orbitals,
+    double tolerance = 1.0e-12);
+
+slater_determinant_plan make_slater_determinant_plan(
+    const std::vector<std::vector<double>> &occupied_orbitals,
+    double tolerance = 1.0e-12);
+
+slater_determinant_plan make_slater_determinant_plan(
     const std::vector<std::vector<std::complex<double>>> &occupied_orbitals,
     double tolerance = 1.0e-12);
 
@@ -45,6 +71,15 @@ get_givens_rotation_angles(const givens_rotation_schedule &schedule);
 
 std::vector<double>
 get_givens_rotation_phases(const givens_rotation_schedule &schedule);
+
+void validate_slater_determinant_plan(const slater_determinant_plan &plan);
+
+givens_stateprep_resource_estimate
+estimate_givens_stateprep_resources(const givens_rotation_schedule &schedule,
+                                    bool is_complex = false);
+
+givens_stateprep_resource_estimate
+estimate_givens_stateprep_resources(const slater_determinant_plan &plan);
 
 /// \pure_device_kernel
 ///
@@ -70,7 +105,8 @@ __qpu__ void prepare_slater_determinant(
 
 /// \pure_device_kernel
 ///
-/// @brief Prepare a complex Slater determinant from a flattened Givens schedule.
+/// @brief Prepare a complex Slater determinant from a flattened Givens
+/// schedule.
 __qpu__ void prepare_complex_slater_determinant(
     cudaq::qview<> qubits, const std::vector<std::size_t> &orbital_indices,
     const std::vector<double> &angles, const std::vector<double> &phases,
@@ -80,13 +116,18 @@ __qpu__ void prepare_complex_slater_determinant(
 
 namespace cudaq::algorithms::stateprep {
 using ::cudaq_algorithms::stateprep::apply_givens_rotation;
-using ::cudaq_algorithms::stateprep::givens_rotation;
-using ::cudaq_algorithms::stateprep::givens_rotation_schedule;
+using ::cudaq_algorithms::stateprep::apply_phase_givens_rotation;
+using ::cudaq_algorithms::stateprep::estimate_givens_stateprep_resources;
 using ::cudaq_algorithms::stateprep::get_givens_rotation_angles;
 using ::cudaq_algorithms::stateprep::get_givens_rotation_indices;
 using ::cudaq_algorithms::stateprep::get_givens_rotation_phases;
-using ::cudaq_algorithms::stateprep::apply_phase_givens_rotation;
+using ::cudaq_algorithms::stateprep::givens_rotation;
+using ::cudaq_algorithms::stateprep::givens_rotation_schedule;
+using ::cudaq_algorithms::stateprep::givens_stateprep_resource_estimate;
 using ::cudaq_algorithms::stateprep::make_givens_rotation_schedule;
+using ::cudaq_algorithms::stateprep::make_slater_determinant_plan;
 using ::cudaq_algorithms::stateprep::prepare_complex_slater_determinant;
 using ::cudaq_algorithms::stateprep::prepare_slater_determinant;
+using ::cudaq_algorithms::stateprep::slater_determinant_plan;
+using ::cudaq_algorithms::stateprep::validate_slater_determinant_plan;
 } // namespace cudaq::algorithms::stateprep

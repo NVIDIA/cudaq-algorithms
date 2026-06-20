@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import cudaq
 import cudaq_algorithms as algorithms
@@ -15,8 +16,8 @@ def _reference_slater_state(occupied_orbitals):
             if (basis_index >> orbital) & 1
         ]
         if len(occupied) == num_electrons:
-            state[basis_index] = np.linalg.det(
-                occupied_orbitals[np.ix_(occupied, range(num_electrons))])
+            state[basis_index] = np.linalg.det(occupied_orbitals[np.ix_(
+                occupied, range(num_electrons))])
 
     return state
 
@@ -63,8 +64,8 @@ def _prepare_complex_slater_state(occupied_orbitals):
                rotation_phases: list[float], final_phases: list[float]):
         q = cudaq.qvector(num_orbitals)
         algorithms.stateprep.prepare_complex_slater_determinant(
-            q, orbital_indices, rotation_angles, rotation_phases,
-            final_phases, num_electrons)
+            q, orbital_indices, rotation_angles, rotation_phases, final_phases,
+            num_electrons)
 
     return np.asarray(
         cudaq.get_state(kernel, indices, angles, phases,
@@ -142,8 +143,8 @@ def test_prepare_random_real_five_orbital_three_electron_statevector():
 def test_prepare_complex_one_electron_slater_determinant_statevector():
     theta = 0.41
     phase = 0.73
-    occupied_orbitals = np.array(
-        [[np.cos(theta)], [np.exp(1j * phase) * np.sin(theta)]])
+    occupied_orbitals = np.array([[np.cos(theta)],
+                                  [np.exp(1j * phase) * np.sin(theta)]])
     schedule = algorithms.stateprep.make_givens_rotation_schedule(
         occupied_orbitals)
     indices = algorithms.stateprep.get_givens_rotation_indices(schedule)
@@ -158,8 +159,8 @@ def test_prepare_complex_one_electron_slater_determinant_statevector():
                rotation_phases: list[float], final_phases: list[float]):
         q = cudaq.qvector(2)
         algorithms.stateprep.prepare_complex_slater_determinant(
-            q, orbital_indices, rotation_angles, rotation_phases,
-            final_phases, 1)
+            q, orbital_indices, rotation_angles, rotation_phases, final_phases,
+            1)
 
     state = np.asarray(
         cudaq.get_state(kernel, indices, angles, phases,
@@ -171,9 +172,8 @@ def test_prepare_complex_one_electron_slater_determinant_statevector():
 def test_prepare_complex_slater_determinant_relative_phase_and_sign():
     theta = 0.52
     phase = 0.73
-    occupied_orbitals = np.array(
-        [[np.cos(theta), 0.0], [0.0, 1.0],
-         [np.exp(1j * phase) * np.sin(theta), 0.0]])
+    occupied_orbitals = np.array([[np.cos(theta), 0.0], [0.0, 1.0],
+                                  [np.exp(1j * phase) * np.sin(theta), 0.0]])
 
     state = _prepare_complex_slater_state(occupied_orbitals)
     expected = _reference_slater_state(occupied_orbitals)
@@ -223,3 +223,90 @@ def test_prepare_slater_determinant_preserves_particle_number():
         if probability < 1.0e-12:
             continue
         assert basis_index.bit_count() == 2
+
+
+def test_slater_determinant_plan_real_statevector_and_resources():
+    rng = np.random.default_rng(29)
+    occupied_orbitals, _ = np.linalg.qr(rng.normal(size=(4, 2)))
+    plan = algorithms.stateprep.make_slater_determinant_plan(occupied_orbitals)
+
+    assert plan.num_orbitals == 4
+    assert plan.num_electrons == 2
+    assert not plan.is_complex
+    assert len(plan.orbital_indices) == 2 * len(plan.angles)
+    assert len(plan.phases) == len(plan.angles)
+    assert len(plan.final_phases) == plan.num_electrons
+
+    resources = algorithms.stateprep.estimate_givens_stateprep_resources(plan)
+    assert resources.num_givens_rotations == len(plan.angles)
+    assert resources.num_exp_pauli_calls == 2 * len(plan.angles)
+    assert resources.num_phase_rotations == 0
+    assert resources.two_qubit_gate_count_proxy == resources.num_exp_pauli_calls
+    assert resources.depth_proxy == resources.num_exp_pauli_calls
+
+    num_orbitals = plan.num_orbitals
+    num_electrons = plan.num_electrons
+
+    @cudaq.kernel
+    def kernel(orbital_indices: list[int], rotation_angles: list[float]):
+        q = cudaq.qvector(num_orbitals)
+        algorithms.stateprep.prepare_slater_determinant(
+            q, orbital_indices, rotation_angles, num_electrons)
+
+    state = np.asarray(
+        cudaq.get_state(kernel, plan.orbital_indices, plan.angles))
+    expected = _reference_slater_state(occupied_orbitals)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_slater_determinant_plan_complex_statevector_and_resources():
+    rng = np.random.default_rng(31)
+    raw = rng.normal(size=(5, 3)) + 1j * rng.normal(size=(5, 3))
+    occupied_orbitals, _ = np.linalg.qr(raw)
+    plan = algorithms.stateprep.make_slater_determinant_plan(occupied_orbitals)
+
+    assert plan.num_orbitals == 5
+    assert plan.num_electrons == 3
+    assert plan.is_complex
+    assert len(plan.orbital_indices) == 2 * len(plan.angles)
+    assert len(plan.phases) == len(plan.angles)
+    assert len(plan.final_phases) == plan.num_electrons
+
+    resources = algorithms.stateprep.estimate_givens_stateprep_resources(plan)
+    assert resources.num_givens_rotations == len(plan.angles)
+    assert resources.num_exp_pauli_calls == 2 * len(plan.angles)
+    assert resources.num_phase_rotations == len(
+        plan.angles) + plan.num_electrons
+    assert resources.two_qubit_gate_count_proxy == resources.num_exp_pauli_calls
+    assert resources.depth_proxy == (resources.num_exp_pauli_calls +
+                                     resources.num_phase_rotations)
+
+    num_orbitals = plan.num_orbitals
+    num_electrons = plan.num_electrons
+
+    @cudaq.kernel
+    def kernel(orbital_indices: list[int], rotation_angles: list[float],
+               rotation_phases: list[float], final_phases: list[float]):
+        q = cudaq.qvector(num_orbitals)
+        algorithms.stateprep.prepare_complex_slater_determinant(
+            q, orbital_indices, rotation_angles, rotation_phases, final_phases,
+            num_electrons)
+
+    state = np.asarray(
+        cudaq.get_state(kernel, plan.orbital_indices, plan.angles, plan.phases,
+                        plan.final_phases))
+    expected = _reference_slater_state(occupied_orbitals)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_validate_slater_determinant_plan_rejects_non_adjacent_rotation():
+    plan = algorithms.stateprep.SlaterDeterminantPlan()
+    plan.num_orbitals = 3
+    plan.num_electrons = 1
+    plan.orbital_indices = [0, 2]
+    plan.angles = [0.25]
+    plan.phases = [0.0]
+    plan.final_phases = [0.0]
+
+    with pytest.raises(ValueError, match="adjacent rotations"):
+        algorithms.stateprep.validate_slater_determinant_plan(plan)

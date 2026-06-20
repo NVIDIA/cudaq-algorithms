@@ -17,15 +17,13 @@ __qpu__ void apply_givens_rotation(cudaq::qview<> qubits, double theta,
     // CUDA-Q's built-in Givens convention maps |10> to
     // cos(theta)|10> - sin(theta)|01>. The state-preparation convention here
     // uses the opposite sign, so this inlines cudaq::givens_rotation(-theta).
-    exp_pauli(0.5 * theta, "YX", qubits[first_orbital],
-              qubits[second_orbital]);
+    exp_pauli(0.5 * theta, "YX", qubits[first_orbital], qubits[second_orbital]);
     exp_pauli(-0.5 * theta, "XY", qubits[first_orbital],
               qubits[second_orbital]);
   } else if (second_orbital + 1 == first_orbital) {
     exp_pauli(-0.5 * theta, "YX", qubits[second_orbital],
               qubits[first_orbital]);
-    exp_pauli(0.5 * theta, "XY", qubits[second_orbital],
-              qubits[first_orbital]);
+    exp_pauli(0.5 * theta, "XY", qubits[second_orbital], qubits[first_orbital]);
   }
 }
 

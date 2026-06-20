@@ -111,6 +111,48 @@ void bind_stateprep(nb::module_ &mod) {
       .def_rw("final_phases", &cudaq::algorithms::stateprep::
                                   givens_rotation_schedule::final_phases);
 
+  nb::class_<cudaq::algorithms::stateprep::slater_determinant_plan>(
+      stateprep, "SlaterDeterminantPlan")
+      .def(nb::init<>())
+      .def_rw(
+          "num_orbitals",
+          &cudaq::algorithms::stateprep::slater_determinant_plan::num_orbitals)
+      .def_rw(
+          "num_electrons",
+          &cudaq::algorithms::stateprep::slater_determinant_plan::num_electrons)
+      .def_rw(
+          "is_complex",
+          &cudaq::algorithms::stateprep::slater_determinant_plan::is_complex)
+      .def_rw("orbital_indices", &cudaq::algorithms::stateprep::
+                                     slater_determinant_plan::orbital_indices)
+      .def_rw("angles",
+              &cudaq::algorithms::stateprep::slater_determinant_plan::angles)
+      .def_rw("phases",
+              &cudaq::algorithms::stateprep::slater_determinant_plan::phases)
+      .def_rw(
+          "final_phases",
+          &cudaq::algorithms::stateprep::slater_determinant_plan::final_phases);
+
+  nb::class_<cudaq::algorithms::stateprep::givens_stateprep_resource_estimate>(
+      stateprep, "GivensStatePrepResources")
+      .def(nb::init<>())
+      .def_rw("num_givens_rotations",
+              &cudaq::algorithms::stateprep::
+                  givens_stateprep_resource_estimate::num_givens_rotations)
+      .def_rw("num_exp_pauli_calls",
+              &cudaq::algorithms::stateprep::
+                  givens_stateprep_resource_estimate::num_exp_pauli_calls)
+      .def_rw("num_phase_rotations",
+              &cudaq::algorithms::stateprep::
+                  givens_stateprep_resource_estimate::num_phase_rotations)
+      .def_rw(
+          "two_qubit_gate_count_proxy",
+          &cudaq::algorithms::stateprep::givens_stateprep_resource_estimate::
+              two_qubit_gate_count_proxy)
+      .def_rw("depth_proxy",
+              &cudaq::algorithms::stateprep::
+                  givens_stateprep_resource_estimate::depth_proxy);
+
   stateprep.def(
       "make_givens_rotation_schedule",
       static_cast<cudaq::algorithms::stateprep::givens_rotation_schedule (*)(
@@ -129,6 +171,36 @@ void bind_stateprep(nb::module_ &mod) {
           const std::vector<std::vector<std::complex<double>>> &, double)>(
           &cudaq::algorithms::stateprep::make_givens_rotation_schedule),
       nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
+  stateprep.def(
+      "make_slater_determinant_plan",
+      static_cast<cudaq::algorithms::stateprep::slater_determinant_plan (*)(
+          const std::vector<std::vector<double>> &, double)>(
+          &cudaq::algorithms::stateprep::make_slater_determinant_plan),
+      nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
+  stateprep.def(
+      "make_complex_slater_determinant_plan",
+      static_cast<cudaq::algorithms::stateprep::slater_determinant_plan (*)(
+          const std::vector<std::vector<std::complex<double>>> &, double)>(
+          &cudaq::algorithms::stateprep::make_slater_determinant_plan),
+      nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
+  stateprep.def("validate_slater_determinant_plan",
+                &cudaq::algorithms::stateprep::validate_slater_determinant_plan,
+                nb::arg("plan"));
+  stateprep.def(
+      "estimate_givens_stateprep_resources",
+      static_cast<
+          cudaq::algorithms::stateprep::givens_stateprep_resource_estimate (*)(
+              const cudaq::algorithms::stateprep::slater_determinant_plan &)>(
+          &cudaq::algorithms::stateprep::estimate_givens_stateprep_resources),
+      nb::arg("plan"));
+  stateprep.def(
+      "estimate_givens_rotation_schedule_resources",
+      static_cast<
+          cudaq::algorithms::stateprep::givens_stateprep_resource_estimate (*)(
+              const cudaq::algorithms::stateprep::givens_rotation_schedule &,
+              bool)>(
+          &cudaq::algorithms::stateprep::estimate_givens_stateprep_resources),
+      nb::arg("schedule"), nb::arg("is_complex") = false);
   stateprep.def("get_givens_rotation_indices",
                 &cudaq::algorithms::stateprep::get_givens_rotation_indices,
                 nb::arg("schedule"));
