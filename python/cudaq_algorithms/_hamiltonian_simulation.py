@@ -1,7 +1,41 @@
+from dataclasses import dataclass
+from enum import Enum
+
 from cudaq_algorithms._pycudaq_algorithms import hamiltonian_simulation as _cpp_hamiltonian_simulation
 
 apply_trotter = _cpp_hamiltonian_simulation.apply_trotter
 _cpp_make_trotter_terms = _cpp_hamiltonian_simulation._make_trotter_terms
+
+FIRST_ORDER_TROTTER = 1
+SECOND_ORDER_TROTTER = 2
+FOURTH_ORDER_TROTTER = 4
+
+
+class TrotterOrdering(Enum):
+    PRESERVE_INPUT = "preserve_input"
+    COEFFICIENT_MAGNITUDE_DESCENDING = "coefficient_magnitude_descending"
+
+
+@dataclass(frozen=True)
+class TrotterPlan:
+    coefficients: list[float]
+    words: list
+    identity_coefficient: float
+    num_qubits: int
+    time: float
+    steps: int
+    order: int
+    ordering: TrotterOrdering
+
+
+@dataclass(frozen=True)
+class TrotterResourceEstimate:
+    num_terms: int
+    steps: int
+    order: int
+    pauli_rotations: int
+    estimated_cx_count: int
+    identity_coefficient: float
 
 
 def _maybe_call(value):
@@ -17,11 +51,59 @@ def _is_python_spin_term(value):
         value, "get_pauli_word")
 
 
+def _validate_order(order):
+    if order not in (FIRST_ORDER_TROTTER, SECOND_ORDER_TROTTER,
+                     FOURTH_ORDER_TROTTER):
+        raise ValueError("order must be one of {1, 2, 4}")
+    return int(order)
+
+
+def _validate_steps(steps):
+    steps = int(steps)
+    if steps < 1:
+        raise ValueError("steps must be greater than zero")
+    return steps
+
+
+def _coerce_ordering(ordering):
+    if isinstance(ordering, TrotterOrdering):
+        return ordering
+    try:
+        return TrotterOrdering(str(ordering))
+    except ValueError as exc:
+        raise ValueError(f"unsupported Trotter ordering: {ordering}") from exc
+
+
+def _ordered_terms(coefficients, words, ordering):
+    coefficients = list(coefficients)
+    words = list(words)
+    if ordering == TrotterOrdering.PRESERVE_INPUT:
+        return coefficients, words
+    if ordering == TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING:
+        ordered = sorted(zip(coefficients, words),
+                         key=lambda item: abs(item[0]),
+                         reverse=True)
+        if not ordered:
+            return [], []
+        ordered_coefficients, ordered_words = zip(*ordered)
+        return list(ordered_coefficients), list(ordered_words)
+    raise ValueError(f"unsupported Trotter ordering: {ordering}")
+
+
+def _pauli_weight(word):
+    return sum(1 for op in str(word) if op != "I")
+
+
+def _rotations_per_step(order):
+    return {1: 1, 2: 2, 4: 6}[_validate_order(order)]
+
+
 def _term_coefficient(term, coefficient_tolerance):
     coefficient = term.evaluate_coefficient()
     if abs(coefficient.imag) > coefficient_tolerance:
         raise ValueError(
-            "trotter error - only real Hamiltonian coefficients are supported.")
+            "trotter error - only real Hamiltonian coefficients are supported."
+        )
     return float(coefficient.real)
 
 
@@ -73,6 +155,89 @@ def make_trotter_terms(hamiltonian, coefficient_tolerance=1e-12):
     return coefficients, words, identity_coefficient, num_qubits
 
 
-_cpp_hamiltonian_simulation.make_trotter_terms = make_trotter_terms
+def make_trotter_plan(hamiltonian,
+                      time,
+                      steps=1,
+                      order=SECOND_ORDER_TROTTER,
+                      ordering=TrotterOrdering.PRESERVE_INPUT,
+                      coefficient_tolerance=1e-12):
+    """Build a host-side plan for Suzuki-Trotter evolution.
 
-__all__ = ["apply_trotter", "make_trotter_terms"]
+    The returned plan is intentionally simple: it contains flattened data that
+    can be passed directly to ``apply_trotter``
+    from a CUDA-Q kernel.
+    """
+    steps = _validate_steps(steps)
+    order = _validate_order(order)
+    ordering = _coerce_ordering(ordering)
+    coefficients, words, identity, num_qubits = make_trotter_terms(
+        hamiltonian, coefficient_tolerance)
+    coefficients, words = _ordered_terms(coefficients, words, ordering)
+    return TrotterPlan(coefficients=coefficients,
+                       words=words,
+                       identity_coefficient=identity,
+                       num_qubits=num_qubits,
+                       time=float(time),
+                       steps=steps,
+                       order=order,
+                       ordering=ordering)
+
+
+def estimate_trotter_resources(plan_or_coefficients,
+                               words=None,
+                               steps=None,
+                               order=None,
+                               identity_coefficient=0.0):
+    """Return a lightweight resource estimate for a Trotter sequence.
+
+    The CNOT count is a decomposition proxy based on two CNOTs per additional
+    non-identity Pauli in each Pauli rotation.
+    """
+    if isinstance(plan_or_coefficients, TrotterPlan):
+        coefficients = plan_or_coefficients.coefficients
+        words = plan_or_coefficients.words
+        steps = plan_or_coefficients.steps
+        order = plan_or_coefficients.order
+        identity_coefficient = plan_or_coefficients.identity_coefficient
+    else:
+        coefficients = list(plan_or_coefficients)
+        words = list(words)
+        steps = _validate_steps(steps)
+        order = _validate_order(order)
+
+    if len(coefficients) != len(words):
+        raise ValueError("coefficients and words must have equal length")
+
+    rotations = len(words) * steps * _rotations_per_step(order)
+    cx_per_ordered_step = sum(
+        max(0, 2 * (_pauli_weight(word) - 1)) for word in words)
+    estimated_cx_count = cx_per_ordered_step * steps * _rotations_per_step(
+        order)
+    return TrotterResourceEstimate(
+        num_terms=len(words),
+        steps=steps,
+        order=order,
+        pauli_rotations=rotations,
+        estimated_cx_count=estimated_cx_count,
+        identity_coefficient=float(identity_coefficient))
+
+
+_cpp_hamiltonian_simulation.make_trotter_terms = make_trotter_terms
+_cpp_hamiltonian_simulation.make_trotter_plan = make_trotter_plan
+_cpp_hamiltonian_simulation.estimate_trotter_resources = estimate_trotter_resources
+_cpp_hamiltonian_simulation.TrotterOrdering = TrotterOrdering
+_cpp_hamiltonian_simulation.TrotterPlan = TrotterPlan
+_cpp_hamiltonian_simulation.TrotterResourceEstimate = TrotterResourceEstimate
+
+__all__ = [
+    "FIRST_ORDER_TROTTER",
+    "SECOND_ORDER_TROTTER",
+    "FOURTH_ORDER_TROTTER",
+    "TrotterOrdering",
+    "TrotterPlan",
+    "TrotterResourceEstimate",
+    "apply_trotter",
+    "make_trotter_terms",
+    "make_trotter_plan",
+    "estimate_trotter_resources",
+]

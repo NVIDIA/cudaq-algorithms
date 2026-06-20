@@ -116,8 +116,9 @@ def _exact_evolve(coefficients, words, identity, time, ket):
 def _two_qubit_product_state(rx_angle, ry_angle):
     q0 = np.array([np.cos(0.5 * rx_angle), -1.0j * np.sin(0.5 * rx_angle)],
                   dtype=np.complex128)
-    q1 = np.array(
-        [np.cos(0.5 * ry_angle), np.sin(0.5 * ry_angle)], dtype=np.complex128)
+    q1 = np.array([np.cos(0.5 * ry_angle),
+                   np.sin(0.5 * ry_angle)],
+                  dtype=np.complex128)
     return np.array(
         [q0[basis & 1] * q1[(basis >> 1) & 1] for basis in range(4)],
         dtype=np.complex128)
@@ -190,6 +191,46 @@ def test_product_formula_reference_improves_with_order():
     assert fourth_error < second_error
 
 
+def test_make_trotter_plan_orders_terms_and_estimates_resources():
+    hamiltonian = (0.1 * spin.x(0) + 0.7 * spin.z(1) +
+                   0.4 * spin.x(0) * spin.z(1) -
+                   0.2 * cudaq.SpinOperator.from_word("II"))
+
+    plan = algorithms.hamiltonian_simulation.make_trotter_plan(
+        hamiltonian,
+        time=0.6,
+        steps=3,
+        order=4,
+        ordering=algorithms.hamiltonian_simulation.TrotterOrdering.
+        COEFFICIENT_MAGNITUDE_DESCENDING)
+    assert plan.steps == 3
+    assert plan.order == 4
+    assert plan.identity_coefficient == pytest.approx(-0.2)
+    assert plan.coefficients == pytest.approx([0.7, 0.4, 0.1])
+    assert [str(word) for word in plan.words] == ["IZ", "XZ", "XI"]
+
+    resources = algorithms.hamiltonian_simulation.estimate_trotter_resources(
+        plan)
+    assert resources.num_terms == 3
+    assert resources.pauli_rotations == 3 * 3 * 6
+    assert resources.estimated_cx_count == 2 * 3 * 6
+
+
+def test_trotter_plan_rejects_invalid_options():
+    with pytest.raises(ValueError, match="steps"):
+        algorithms.hamiltonian_simulation.make_trotter_plan(spin.x(0),
+                                                            time=0.1,
+                                                            steps=0)
+    with pytest.raises(ValueError, match="order"):
+        algorithms.hamiltonian_simulation.make_trotter_plan(spin.x(0),
+                                                            time=0.1,
+                                                            order=3)
+    with pytest.raises(ValueError, match="unsupported"):
+        algorithms.hamiltonian_simulation.make_trotter_plan(spin.x(0),
+                                                            time=0.1,
+                                                            ordering="bogus")
+
+
 def test_apply_trotter_kernel_interop_with_flattened_terms():
     hamiltonian = spin.x(0)
     coefficients, words, identity, num_qubits = algorithms.hamiltonian_simulation.make_trotter_terms(
@@ -200,7 +241,8 @@ def test_apply_trotter_kernel_interop_with_flattened_terms():
     @cudaq.kernel
     def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], t: float):
         q = cudaq.qvector(1)
-        algorithms.hamiltonian_simulation.apply_trotter(coeffs, paulis, t, 1, 2, q)
+        algorithms.hamiltonian_simulation.apply_trotter(
+            coeffs, paulis, t, 1, 2, q)
 
     state = np.asarray(cudaq.get_state(evolve, coefficients, words, 0.25),
                        dtype=np.complex128)
@@ -222,8 +264,8 @@ def test_apply_trotter_kernel_matches_reference_for_orders():
     def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], t: float,
                steps: int, order: int):
         q = cudaq.qvector(2)
-        algorithms.hamiltonian_simulation.apply_trotter(coeffs, paulis, t, steps,
-                                                     order, q)
+        algorithms.hamiltonian_simulation.apply_trotter(
+            coeffs, paulis, t, steps, order, q)
 
     for order in (1, 2, 4):
         state = np.asarray(cudaq.get_state(evolve, coefficients, words, 0.8, 3,
@@ -236,8 +278,8 @@ def test_apply_trotter_kernel_matches_reference_for_orders():
 
 def test_apply_trotter_kernel_orders_track_exact_evolution():
     hamiltonian = (0.37 * spin.x(0) - 0.22 * spin.z(1) +
-                   0.19 * spin.x(0) * spin.x(1) + 0.41 * spin.y(0) * spin.y(1) +
-                   0.13 * spin.z(0) * spin.x(1))
+                   0.19 * spin.x(0) * spin.x(1) +
+                   0.41 * spin.y(0) * spin.y(1) + 0.13 * spin.z(0) * spin.x(1))
     coefficients, words, identity, num_qubits = algorithms.hamiltonian_simulation.make_trotter_terms(
         hamiltonian)
     assert identity == pytest.approx(0.0)
@@ -256,8 +298,8 @@ def test_apply_trotter_kernel_orders_track_exact_evolution():
         q = cudaq.qvector(2)
         rx(theta0, q[0])
         ry(theta1, q[1])
-        algorithms.hamiltonian_simulation.apply_trotter(coeffs, paulis, t, n_steps,
-                                                     order, q)
+        algorithms.hamiltonian_simulation.apply_trotter(
+            coeffs, paulis, t, n_steps, order, q)
 
     errors = {}
     for order in (1, 2, 4):
@@ -276,7 +318,8 @@ def test_apply_trotter_kernel_orders_track_exact_evolution():
 def test_apply_trotter_kernel_handles_four_qubit_hamiltonian_with_many_terms():
     hamiltonian = (0.11 * spin.x(0) - 0.17 * spin.y(1) + 0.23 * spin.z(2) -
                    0.29 * spin.x(3) + 0.31 * spin.x(0) * spin.x(1) +
-                   0.37 * spin.y(1) * spin.z(2) - 0.41 * spin.z(0) * spin.x(3) +
+                   0.37 * spin.y(1) * spin.z(2) -
+                   0.41 * spin.z(0) * spin.x(3) +
                    0.43 * spin.x(0) * spin.y(2) * spin.z(3) -
                    0.47 * spin.y(0) * spin.y(1) * spin.x(2) +
                    0.53 * spin.z(0) * spin.x(1) * spin.y(2) * spin.z(3))
@@ -294,12 +337,23 @@ def test_apply_trotter_kernel_handles_four_qubit_hamiltonian_with_many_terms():
     def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], t: float,
                steps: int, order: int):
         q = cudaq.qvector(4)
-        algorithms.hamiltonian_simulation.apply_trotter(coeffs, paulis, t, steps,
-                                                     order, q)
+        algorithms.hamiltonian_simulation.apply_trotter(
+            coeffs, paulis, t, steps, order, q)
 
-    state = np.asarray(cudaq.get_state(evolve, coefficients, words, 0.37, 2, 2),
+    state = np.asarray(cudaq.get_state(evolve, coefficients, words, 0.37, 2,
+                                       2),
                        dtype=np.complex128)
     expected = _simulate_trotter(coefficients, words, identity, num_qubits,
                                  0.37, 2, 2, ket)
 
     np.testing.assert_allclose(state, expected, atol=1e-6)
+
+
+def test_estimate_trotter_resources_accepts_flattened_terms():
+    coefficients, words, identity, _ = algorithms.hamiltonian_simulation.make_trotter_terms(
+        0.5 * spin.x(0) * spin.y(1) + 0.25 * spin.z(0))
+    resources = algorithms.hamiltonian_simulation.estimate_trotter_resources(
+        coefficients, words, steps=2, order=2, identity_coefficient=identity)
+    assert resources.num_terms == 2
+    assert resources.pauli_rotations == 8
+    assert resources.estimated_cx_count == 8

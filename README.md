@@ -6,8 +6,11 @@ focused on fault-tolerant quantum computing (FTQC) primitives.
 It imports selected reusable functionality from `cudaqx/libs/solvers`:
 
 - fermion-to-qubit transforms
+- Hamiltonian simulation primitives
 - state-preparation circuits
 - state-preparation excitation/operator-pool helpers
+
+See  for the Suzuki-Trotter API.
 
 NISQ-era application workflows such as VQE, ADAPT-VQE, QAOA, GQE, PySCF drivers,
 and optimizer loops are intentionally out of scope for this library and will not
