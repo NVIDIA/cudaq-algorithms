@@ -3,5 +3,7 @@ cudaqa_add_device_code(cudaq-algorithms
     uccsd.cpp
     uccgsd.cpp
     upccgsd.cpp
+    fixed_parameter_ucc.cpp
+    hartree_fock.cpp
     ceo.cpp
 )

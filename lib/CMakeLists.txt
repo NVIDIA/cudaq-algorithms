@@ -2,6 +2,8 @@ add_library(cudaq-algorithms SHARED
   fermion/jordan_wigner.cpp
   fermion/bravyi_kitaev.cpp
   stateprep/excitations.cpp
+  stateprep/fixed_parameter_ucc.cpp
+  stateprep/hartree_fock.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/version.cpp
 )
 
