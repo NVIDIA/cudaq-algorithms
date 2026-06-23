@@ -1,0 +1,170 @@
+name: Get CUDAQ build
+description: 'Either restore CUDAQ from cache or build it'
+
+inputs:
+  repo:
+    description: 'CUDAQ repository.'
+    required: true
+  ref:
+    description: 'The branch, tag or SHA to checkout.'
+    required: true
+  token:
+    description: 'CUDAQ repository access token.'
+    default: ''
+    required: false
+  cache-key-suffix:
+    description: 'Unique identifier to append to cache keys.'
+    default: ''
+    required: false
+  save-build:
+    description: 'Indicates whether to save the build'
+    default: 'false'
+    required: false
+  save-ccache:
+    description: 'Indicates whether to save the compilation cache'
+    default: 'false'
+    required: false
+  lookup-only:
+    description: 'Check if a cache entry exists without downloading the cache'
+    default: 'false'
+    required: false
+  platform:
+    description: 'Platform ({amd64,arm64}-cu{12,13})'
+    default: ''
+    required: true
+outputs:
+  found-cache:
+    description: 'A boolean value to indicate that a cache entry was found.'
+    value: ${{ steps.check-cache.outputs.valid }}
+
+runs:
+  using: "composite"
+  steps:
+    # ==========================================================================
+    # Try to restore from cache
+    # ==========================================================================
+
+    - name: Create CUDAQ build cache key
+      id: cudaq-build-key
+      env:
+        # This are a list of files that when changed should require a new cudaq build
+        to_hash: |
+          .github/actions/get-cudaq-build/**
+          .cudaq_version
+      run: |
+        hash=${{ hashFiles(format('{0}', env.to_hash)) }}
+        echo "main=cudaq-${{ inputs.platform }}-${{ inputs.ref }}-$hash" >> $GITHUB_OUTPUT
+        if [[ -n "${{ inputs.cache-key-suffix }}" ]]; then
+          echo "suffix=-${{ inputs.cache-key-suffix }}" >> $GITHUB_OUTPUT
+        fi
+      shell: bash --noprofile --norc -euo pipefail {0}
+
+    - name: Try to restoring CUDAQ from cache
+      id: restore-cudaq-build
+      uses: actions/cache/restore@v4
+      with:
+        fail-on-cache-miss: false
+        path: /cudaq-install
+        key: ${{ steps.cudaq-build-key.outputs.main }}${{ steps.cudaq-build-key.outputs.suffix }}
+        restore-keys: ${{ steps.cudaq-build-key.outputs.main }}
+        lookup-only: ${{ inputs.lookup-only }}
+
+    # The restore action could find a partial match using the `restore-keys`. In such cases
+    # it would still report `cache-hit` as false, but would load the cache from the partial
+    # one. Thus, we need to check whether the cache is valid by other means.
+    - name: Check if cache is valid
+      id: check-cache
+      run: |
+        if [[ "${{ steps.restore-cudaq-build.outputs.cache-matched-key }}" == "" ]]; then
+          echo "valid=false" >> $GITHUB_OUTPUT
+        else
+          echo "valid=true" >> $GITHUB_OUTPUT
+        fi
+      shell: bash --noprofile --norc -euo pipefail {0}
+
+    # ==========================================================================
+    # Get cuQuantum
+    # ==========================================================================
+
+    - name: Download assets
+      if: steps.check-cache.outputs.valid == 'false' && inputs.lookup-only == 'false'
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        CUQUANTUM_INSTALL_PREFIX: /cudaq-install
+      run: |
+        bash .github/workflows/scripts/install_git_cli.sh
+        mkdir -p ${CUQUANTUM_INSTALL_PREFIX}
+        python3 .github/actions/get-cudaq-build/get_assets.py
+      shell: bash --noprofile --norc -euo pipefail {0}
+
+    # ==========================================================================
+    # Build CUDAQ
+    # ==========================================================================
+
+    - name: Get CUDAQ code
+      if: steps.check-cache.outputs.valid == 'false' && inputs.lookup-only == 'false'
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repo }}
+        ref: ${{ inputs.ref }}
+        path: cudaq
+        set-safe-directory: true
+
+    - name: Try to restoring CUDAQ compilation cache
+      if: steps.check-cache.outputs.valid == 'false' && inputs.lookup-only == 'false'
+      id: restore-ccache
+      uses: actions/cache/restore@v4
+      with:
+        fail-on-cache-miss: false
+        path: /cudaq-ccache
+        key: ccache-cudaq-${{ inputs.platform }}
+
+    - name: Install CUDAQ build requirements
+      if: steps.check-cache.outputs.valid == 'false' && inputs.lookup-only == 'false'
+      run: |
+          bash .github/workflows/scripts/install_git_cli.sh
+          apt install -y --no-install-recommends ccache
+      shell: bash --noprofile --norc -euo pipefail {0}
+
+    - name: Build CUDAQ
+      if: steps.check-cache.outputs.valid == 'false' && inputs.lookup-only == 'false'
+      env:
+        CCACHE_DIR: /cudaq-ccache
+        cudaq-build-script: .github/actions/get-cudaq-build/build_cudaq.sh
+        CUQUANTUM_INSTALL_PREFIX: /cudaq-install
+        CUTENSOR_INSTALL_PREFIX: /cudaq-install
+        CUDAQ_INSTALL_PREFIX: /cudaq-install
+      run: bash ${{ env.cudaq-build-script }} Release ccache gcc-12 g++-12
+      shell: bash --noprofile --norc -euo pipefail {0}
+
+    # ==========================================================================
+    # Store CUDAQ compilation cache
+    # ==========================================================================
+ 
+    # We need to delete previous cache entry otherwise the new one won't be stored
+    - name: Delete previous compilation cache
+      if: steps.restore-ccache.outputs.cache-hit == 'true' && inputs.save-ccache == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh cache delete ccache-cudaq-${{ inputs.platform }} --repo ${{ github.repository }}
+      shell: bash --noprofile --norc -euo pipefail {0}
+
+    - name: Store compilation (CCache)
+      if: steps.check-cache.outputs.valid == 'false' && inputs.save-ccache == 'true' && inputs.lookup-only == 'false'
+      uses: actions/cache/save@v4
+      with:
+        path: /cudaq-ccache
+        key: ccache-cudaq-${{ inputs.platform }}
+
+
+    # ==========================================================================
+    # Store CUDAQ build cache
+    # ==========================================================================
+ 
+    - name: Store CUDAQ build in the cache
+      if: steps.check-cache.outputs.valid == 'false' && inputs.save-build == 'true' && inputs.lookup-only == 'false'
+      uses: actions/cache/save@v4
+      with:
+        path: /cudaq-install
+        key: ${{ steps.cudaq-build-key.outputs.main }}${{ steps.cudaq-build-key.outputs.suffix }}
