@@ -1,0 +1,11 @@
+#include "cudaq/algorithms/version.h"
+
+namespace cudaq::algorithms {
+
+const char *get_version() { return "@CUDAQ_ALGORITHMS_VERSION@"; }
+
+const char *get_full_repository_version() {
+  return "@CUDAQ_ALGORITHMS_COMMIT_SHA@";
+}
+
+} // namespace cudaq::algorithms

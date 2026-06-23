@@ -1,0 +1,8 @@
+build/
+_skbuild/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+compile_commands.json

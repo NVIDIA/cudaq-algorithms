@@ -1,0 +1,34 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "setuptools-scm", "nanobind>=2.12.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "cudaq-algorithms-cu12"
+dynamic = ["version"]
+description = "Reusable quantum algorithm primitives built on CUDA-Q"
+authors = [{name = "NVIDIA Corporation & Affiliates"}]
+maintainers = [{name = "NVIDIA Corporation & Affiliates"}]
+requires-python = ">=3.11"
+readme = "README.md"
+license = "Apache-2.0"
+dependencies = [
+  "cuda-quantum-cu12 == 0.14.*",
+  "numpy",
+]
+
+[tool.scikit-build]
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+build-dir = "_skbuild"
+build.verbose = true
+cmake.version = ">=3.28"
+cmake.build-type = "Release"
+install.components = []
+wheel.packages = []
+ninja.version = ">=1.10"
+
+[tool.scikit-build.cmake.define]
+CUDAQ_ALGORITHMS_BINDINGS_PYTHON = true
+CUDAQ_ALGORITHMS_INCLUDE_TESTS = false
+
+[tool.setuptools_scm]
+write_to = "_version.py"
