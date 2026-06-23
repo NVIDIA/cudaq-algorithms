@@ -19,6 +19,14 @@ option(CUDAQ_ALGORITHMS_INCLUDE_TESTS "Build tests." ON)
 
 cudaqa_import_cudaq_targets()
 
+if (SKBUILD)
+  # Keep wheel contents under the Python package directory, matching the
+  # CUDA-QX QEC/Solvers packaging layout.
+  set(CMAKE_INSTALL_BINDIR cudaq_algorithms/bin)
+  set(CMAKE_INSTALL_INCLUDEDIR cudaq_algorithms/include)
+  set(CMAKE_INSTALL_LIBDIR cudaq_algorithms/lib)
+endif()
+
 set(CUDAQ_ALGORITHMS_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CUDAQ_ALGORITHMS_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(CUDAQ_ALGORITHMS_CMAKE_INSTALL_DIR
@@ -67,5 +75,6 @@ install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/cmake/CUDA-QAlgorithmsConfig.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/cmake/CUDA-QAlgorithmsConfigVersion.cmake"
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules/CUDA-QAlgorithms.cmake"
+  COMPONENT algorithms-cmake
   DESTINATION ${CUDAQ_ALGORITHMS_CMAKE_INSTALL_DIR}
 )

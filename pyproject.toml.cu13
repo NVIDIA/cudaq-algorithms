@@ -22,7 +22,7 @@ build-dir = "_skbuild"
 build.verbose = true
 cmake.version = ">=3.28"
 cmake.build-type = "Release"
-install.components = []
+install.components = ["algorithms-python", "algorithms-lib"]
 wheel.packages = []
 ninja.version = ">=1.10"
 

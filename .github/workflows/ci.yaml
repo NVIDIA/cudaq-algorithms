@@ -54,9 +54,10 @@ jobs:
 
       - name: Check script syntax
         run: |
-          bash -n scripts/test_algorithms_build.sh \
-            scripts/run_clang_format.sh \
-            scripts/run_yapf_format.sh
+          while IFS= read -r script; do
+            echo "Checking $script"
+            bash -n "$script"
+          done < <(git ls-files "scripts/*.sh" "scripts/**/*.sh")
 
       - name: Run formatters
         run: |

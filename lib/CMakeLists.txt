@@ -38,16 +38,19 @@ add_subdirectory(stateprep/device)
 
 install(TARGETS cudaq-algorithms
   EXPORT CUDA-QAlgorithmsTargets
+  COMPONENT algorithms-lib
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(EXPORT CUDA-QAlgorithmsTargets
   FILE CUDA-QAlgorithmsTargets.cmake
   NAMESPACE cudaq::
+  COMPONENT algorithms-cmake
   DESTINATION ${CUDAQ_ALGORITHMS_CMAKE_INSTALL_DIR}
 )
 
 install(DIRECTORY ${CUDAQ_ALGORITHMS_INCLUDE_DIR}/cudaq
+  COMPONENT algorithms-headers
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h"
 )

@@ -61,5 +61,11 @@ add_custom_target(copy_cudaq_algorithms_python_files ALL
 
 add_dependencies(${MODULE_NAME} copy_cudaq_algorithms_python_files)
 
-install(DIRECTORY cudaq_algorithms DESTINATION .)
-install(TARGETS ${MODULE_NAME} DESTINATION cudaq_algorithms/)
+install(DIRECTORY cudaq_algorithms
+  COMPONENT algorithms-python
+  DESTINATION .)
+
+install(TARGETS ${MODULE_NAME}
+  COMPONENT algorithms-python
+  DESTINATION cudaq_algorithms/
+)
