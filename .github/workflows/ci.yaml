@@ -57,7 +57,11 @@ jobs:
           while IFS= read -r script; do
             echo "Checking $script"
             bash -n "$script"
-          done < <(git ls-files "scripts/*.sh" "scripts/**/*.sh")
+          done < <(git ls-files \
+            "scripts/*.sh" \
+            "scripts/**/*.sh" \
+            ".github/actions/**/*.sh" \
+            ".github/workflows/scripts/*.sh")
 
       - name: Run formatters
         run: |

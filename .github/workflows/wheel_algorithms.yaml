@@ -1,0 +1,289 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: Algorithms wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        type: choice
+        required: true
+        description: Build type.
+        default: Release
+        options:
+          - Release
+          - Debug
+      version:
+        type: string
+        description: Version number to create wheels with.
+        default: 0.14.99
+        required: false
+      cache_key_suffix:
+        type: string
+        description: Optional suffix to append to CUDA-Q wheel cache keys.
+        default: ''
+        required: false
+      cudaq_repo:
+        type: string
+        description: Optional CUDA-Q repository override.
+        default: ''
+        required: false
+      cudaq_ref:
+        type: string
+        description: Optional CUDA-Q ref override.
+        default: ''
+        required: false
+  workflow_call:
+    inputs:
+      build_type:
+        type: string
+        default: Release
+        required: false
+      version:
+        type: string
+        default: 0.14.99
+        required: false
+      cache_key_suffix:
+        type: string
+        default: ''
+        required: false
+      cudaq_repo:
+        type: string
+        default: ''
+        required: false
+      cudaq_ref:
+        type: string
+        default: ''
+        required: false
+    secrets:
+      CUDAQ_ACCESS_TOKEN:
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-cudaq-wheels:
+    name: Build CUDA-Q wheels
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ['amd64']
+        cuda_version: ['12.6']
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+
+      - name: Get required CUDAQ version
+        id: get-cudaq-version
+        uses: ./.github/actions/get-cudaq-version
+        with:
+          repo: ${{ inputs.cudaq_repo }}
+          ref: ${{ inputs.cudaq_ref }}
+
+      - name: Get CUDA-Q wheels
+        uses: ./.github/actions/get-cudaq-wheels
+        with:
+          cuda_version: ${{ matrix.cuda_version }}
+          repo: ${{ steps.get-cudaq-version.outputs.repo }}
+          ref: ${{ steps.get-cudaq-version.outputs.ref }}
+          token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+          cache-key-suffix: ${{ inputs.cache_key_suffix }}
+          save-build: true
+          platform: ${{ matrix.platform }}
+
+      - name: Upload CUDA-Q wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudaq-wheels-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          path: /cudaq-wheels
+          retention-days: 14
+          if-no-files-found: error
+
+  build-algorithms-wheels:
+    name: Build CUDA-Q Algorithms wheels
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12']
+        platform: ['amd64']
+        cuda_version: ['12.6']
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
+    container:
+      image: ghcr.io/nvidia/cuda-quantum-devdeps:manylinux-${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
+      options: --ulimit nofile=1048576:1048576
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+
+      - name: Get required CUDAQ version
+        id: get-cudaq-version
+        uses: ./.github/actions/get-cudaq-version
+        with:
+          repo: ${{ inputs.cudaq_repo }}
+          ref: ${{ inputs.cudaq_ref }}
+
+      - name: Get CUDAQ code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.get-cudaq-version.outputs.repo }}
+          ref: ${{ steps.get-cudaq-version.outputs.ref }}
+          path: cudaq
+          set-safe-directory: true
+
+      - name: Build CUDA-Q toolchain
+        run: |
+          bash .github/workflows/scripts/build_cudaq.sh \
+            --python-version ${{ matrix.python }} \
+            --cuda-version ${{ matrix.cuda_version }}
+
+      - name: Build CUDA-Q Algorithms wheels
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash scripts/ci/build_wheels.sh \
+            --cuda-version ${{ steps.config.outputs.cuda_major }} \
+            --cudaq-prefix /usr/local/cudaq \
+            --build-type ${{ inputs.build_type }} \
+            --python-version ${{ matrix.python }} \
+            --version ${{ inputs.version || '0.14.99' }} \
+            --devdeps
+
+      - name: Upload CUDA-Q Algorithms wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-py${{ matrix.python }}-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          path: /wheels/**
+          retention-days: 14
+          if-no-files-found: error
+
+  build-metapackages:
+    name: Build CUDA-Q Algorithms metapackages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install requirements
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install build
+
+      - name: Build CUDA-Q Algorithms metapackages
+        run: |
+          bash scripts/ci/build_metapackages.sh ${{ inputs.version || '0.14.99' }}
+          mkdir -p /metapackages
+          mv python/metapackages/dist/* /metapackages/
+
+      - name: Upload metapackages
+        uses: actions/upload-artifact@v4
+        with:
+          name: metapackages
+          path: /metapackages/**
+          retention-days: 14
+          if-no-files-found: error
+
+  test-wheels-cpu:
+    name: Test CUDA-Q Algorithms wheels (CPU)
+    needs: [build-cudaq-wheels, build-algorithms-wheels, build-metapackages]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu4', matrix.platform) || 'ubuntu-latest' }}
+    container: ubuntu:24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12']
+        platform: ['amd64']
+        cuda_version: ['12.6']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install system requirements
+        run: |
+          apt update
+          apt install -y --no-install-recommends ca-certificates libgfortran5 unzip
+          if [ "$(uname -m)" = "x86_64" ]; then
+            apt install -y --no-install-recommends libquadmath0
+          fi
+
+      - name: Download CUDA-Q wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: cudaq-wheels-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          path: /cudaq-wheels
+
+      - name: Download CUDA-Q Algorithms metapackages
+        uses: actions/download-artifact@v4
+        with:
+          name: metapackages
+          path: /metapackages
+
+      - name: Download CUDA-Q Algorithms wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels-py${{ matrix.python }}-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          path: /wheels
+
+      - name: Test wheels
+        run: |
+          ls -la /cudaq-wheels /metapackages /wheels
+          bash scripts/ci/test_wheels.sh \
+            ${{ matrix.python }} \
+            ${{ matrix.platform }} \
+            ${{ matrix.cuda_version }} \
+            0.14.99 \
+            ${{ inputs.version || '0.14.99' }}
