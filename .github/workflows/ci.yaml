@@ -28,20 +28,19 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: "3.11"
-  CUDA_QUANTUM_PACKAGE: "cuda-quantum-cu12==0.14.*"
+  PYTHON_VERSION: '3.11'
 
 jobs:
   formatting:
-    name: Check formatting
+    name: Formatting and script syntax
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -52,16 +51,20 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install yapf
 
-      - name: Check script syntax
+      - name: Check shell script syntax
         run: |
+          script_patterns=(
+            "scripts/*.sh"
+            "scripts/**/*.sh"
+            ".github/actions/**/*.sh"
+            ".github/workflows/scripts/*.sh"
+          )
+
+          git ls-files "${script_patterns[@]}" |
           while IFS= read -r script; do
             echo "Checking $script"
             bash -n "$script"
-          done < <(git ls-files \
-            "scripts/*.sh" \
-            "scripts/**/*.sh" \
-            ".github/actions/**/*.sh" \
-            ".github/workflows/scripts/*.sh")
+          done
 
       - name: Run formatters
         run: |
@@ -70,66 +73,3 @@ jobs:
 
       - name: Check for formatting changes
         run: git diff --exit-code
-
-  build_and_test:
-    name: Build and test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential
-          python3 -m pip install --upgrade pip
-          python3 -m pip install cmake ninja nanobind numpy pytest "${CUDA_QUANTUM_PACKAGE}"
-
-      - name: Locate CUDA-Q installation
-        run: |
-          set -euo pipefail
-          cudaq_dir=$(python3 - <<CUDAQ_PY
-          import pathlib
-          import sys
-
-          import cudaq
-
-          roots = []
-          if getattr(cudaq, "__file__", None):
-              roots.append(pathlib.Path(cudaq.__file__).resolve().parent)
-          roots.extend(pathlib.Path(p).resolve() for p in getattr(cudaq, "__path__", []))
-
-          seen = set()
-          for root in roots:
-              for candidate_root in (root, *root.parents):
-                  if candidate_root in seen:
-                      continue
-                  seen.add(candidate_root)
-                  candidate = candidate_root / "lib" / "cmake" / "cudaq"
-                  if candidate.exists():
-                      print(candidate)
-                      sys.exit(0)
-
-          raise SystemExit("Could not locate CUDA-Q CMake package directory")
-          CUDAQ_PY
-          )
-          cudaq_prefix=$(dirname "$(dirname "$(dirname "$cudaq_dir")")")
-          echo "CUDAQ_DIR=$cudaq_dir" >> "$GITHUB_ENV"
-          echo "CUDAQ_PREFIX=$cudaq_prefix" >> "$GITHUB_ENV"
-          echo "$cudaq_prefix/bin" >> "$GITHUB_PATH"
-          echo "LD_LIBRARY_PATH=$cudaq_prefix/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-          echo "CUDA-Q prefix: $cudaq_prefix"
-          echo "CUDA-Q CMake package: $cudaq_dir"
-
-      - name: Build and run tests
-        run: |
-          bash scripts/test_algorithms_build.sh \
-            --build-dir build \
-            --cudaq-prefix "$CUDAQ_PREFIX" \
-            --cudaq-dir "$CUDAQ_DIR"

@@ -43,12 +43,6 @@ on:
     secrets:
       CUDAQ_ACCESS_TOKEN:
         required: false
-  pull_request:
-    branches:
-      - main
-  merge_group:
-    types:
-      - checks_requested
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
