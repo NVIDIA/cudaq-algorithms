@@ -9,10 +9,14 @@
 #include "cudaq/algorithms/stateprep/excitations.h"
 #include "cudaq/algorithms/stateprep/upccgsd.h"
 
+#include <cctype>
 #include <cmath>
+#include <complex>
 #include <gtest/gtest.h>
 #include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace stateprep = cudaq::algorithms::stateprep;
 
@@ -42,6 +46,37 @@ bool has_expected_coefficients(const cudaq::spin_op &op) {
     if (std::abs(abs_real - 0.5) > 1e-12 && std::abs(abs_real - 0.125) > 1e-12)
       return false;
   }
+  return true;
+}
+
+/// Classify each operator as a single or double excitation by counting its
+/// single-qubit X/Y Pauli factors (singles act on two qubits, doubles on four).
+std::pair<std::size_t, std::size_t>
+count_singles_and_doubles(const std::vector<cudaq::spin_op> &ops) {
+  std::size_t singles = 0, doubles = 0;
+  for (const auto &op : ops) {
+    const std::string op_str = op.to_string();
+    std::size_t xy_count = 0;
+    for (std::size_t i = 0; i + 1 < op_str.length(); ++i)
+      if ((op_str[i] == 'X' || op_str[i] == 'Y') &&
+          std::isdigit(static_cast<unsigned char>(op_str[i + 1])))
+        ++xy_count;
+    if (xy_count <= 10)
+      ++singles;
+    else
+      ++doubles;
+  }
+  return {singles, doubles};
+}
+
+/// UpCCGSD pool operators are Hermitian generators:
+/// G(row,col) == conj(G(col,row)).
+bool is_hermitian_generator(const cudaq::spin_op &op) {
+  const auto g = op.to_matrix();
+  for (std::size_t row = 0; row < g.rows(); ++row)
+    for (std::size_t col = 0; col < g.cols(); ++col)
+      if (std::abs(std::conj(g(col, row)) - g(row, col)) > 1e-10)
+        return false;
   return true;
 }
 
@@ -102,4 +137,26 @@ TEST(UPCCGSDOperatorPool, ConsistentWithStateprepPauliLists) {
 TEST(UPCCGSDOperatorPool, MinimalSystem) {
   EXPECT_TRUE(stateprep::make_upccgsd_operator_pool(2).empty());
   EXPECT_EQ(stateprep::make_upccgsd_operator_pool(4).size(), 3);
+}
+
+TEST(UPCCGSDOperatorPool, CorrectSinglesAndDoublesCount) {
+  auto operators = stateprep::make_upccgsd_operator_pool(6);
+  auto [singles, doubles] = count_singles_and_doubles(operators);
+  EXPECT_EQ(singles, expected_upccgsd_singles(6));
+  EXPECT_EQ(doubles, expected_upccgsd_doubles(6));
+}
+
+TEST(UPCCGSDOperatorPool, DoublesOnlyGeneration) {
+  auto operators = stateprep::make_upccgsd_operator_pool(6, true);
+  EXPECT_EQ(operators.size(), expected_upccgsd_doubles(6));
+  auto [singles, doubles] = count_singles_and_doubles(operators);
+  EXPECT_EQ(singles, 0u);
+  EXPECT_EQ(doubles, expected_upccgsd_doubles(6));
+}
+
+TEST(UPCCGSDOperatorPool, OperatorsAreHermitianGenerators) {
+  auto operators = stateprep::make_upccgsd_operator_pool(4);
+  for (std::size_t i = 0; i < operators.size(); ++i)
+    EXPECT_TRUE(is_hermitian_generator(operators[i]))
+        << "Operator " << i << " (G) is not Hermitian";
 }

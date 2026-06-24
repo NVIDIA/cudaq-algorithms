@@ -144,4 +144,50 @@ TEST(BravyiKitaev, SeeleyRichardLoveCases) {
                         complex(0.0, 1.0) * y(0) * x(1) * x(3) * z(7) +
                         complex(-1.0, 0.0) * x(0) * x(1) * x(3) * z(7))
                            .canonicalize());
+
+  expect_spin_ops_near(
+      fermion::seeley_richard_love(0, 5, 4.0, 20),
+      (complex(-1.0, 0.0) * y(0) * x(1) * i(2) * y(3) * z(4) * x(5) +
+       complex(0.0, -1.0) * x(0) * x(1) * i(2) * y(3) * z(4) * x(5) +
+       complex(1.0, 0.0) * x(0) * x(1) * i(2) * y(3) * i(4) * y(5) +
+       complex(0.0, -1.0) * y(0) * x(1) * i(2) * y(3) * i(4) * y(5))
+          .canonicalize());
+
+  expect_spin_ops_near(fermion::seeley_richard_love(18, 19, 4.0, 20),
+                       (complex(1.0, 0.0) * x(18) * i(19) +
+                        complex(0.0, -1.0) * y(18) * i(19) +
+                        complex(0.0, 1.0) * z(17) * y(18) * z(19) +
+                        complex(-1.0, 0.0) * z(17) * x(18) * z(19))
+                           .canonicalize());
+
+  expect_spin_ops_near(
+      fermion::seeley_richard_love(11, 5, 4.0, 20),
+      (complex(0.0, 1.0) * z(3) * z(4) * x(5) * y(7) * z(9) * z(10) * x(11) +
+       complex(-1.0, 0.0) * z(3) * y(5) * y(7) * z(9) * z(10) * x(11) +
+       complex(1.0, 0.0) * z(3) * z(4) * x(5) * y(7) * y(11) +
+       complex(0.0, 1.0) * z(3) * y(5) * y(7) * y(11))
+          .canonicalize());
+
+  expect_spin_ops_near(
+      fermion::seeley_richard_love(7, 9, 4.0, 20),
+      (complex(0.0, -1.0) * z(3) * z(5) * z(6) * y(7) * z(8) * x(9) * x(11) +
+       complex(1.0, 0.0) * z(3) * z(5) * z(6) * y(7) * y(9) * x(11) +
+       complex(1.0, 0.0) * x(7) * z(8) * x(9) * x(11) +
+       complex(0.0, 1.0) * x(7) * y(9) * x(11))
+          .canonicalize());
+
+  expect_spin_ops_near(
+      fermion::seeley_richard_love(9, 15, 4.0, 20),
+      (complex(-1.0, 0.0) * y(9) * y(11) * z(13) * z(14) +
+       complex(0.0, -1.0) * z(8) * x(9) * y(11) * z(13) * z(14) +
+       complex(-1.0, 0.0) * z(7) * z(8) * x(9) * x(11) * z(15) +
+       complex(0.0, 1.0) * z(7) * y(9) * x(11) * z(15))
+          .canonicalize());
+
+  expect_spin_ops_near(fermion::seeley_richard_love(3, 7, 4.0, 20),
+                       (complex(0.0, -1.0) * z(1) * z(2) * y(3) * z(5) * z(6) +
+                        complex(1.0, 0.0) * x(3) * z(5) * z(6) +
+                        complex(-1.0, 0.0) * z(1) * z(2) * x(3) * z(7) +
+                        complex(0.0, 1.0) * y(3) * z(7))
+                           .canonicalize());
 }

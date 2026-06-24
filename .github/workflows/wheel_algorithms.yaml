@@ -76,6 +76,9 @@ jobs:
       fail-fast: false
       matrix:
         platform: ['amd64']
+        # cu13 packaging (pyproject.toml.cu13) is supported by the build
+        # scripts but not yet exercised in CI; deferred until a cu13 devdeps
+        # image is available. Add '13.x' here to enable.
         cuda_version: ['12.6']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
     permissions:

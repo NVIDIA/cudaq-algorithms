@@ -22,6 +22,19 @@ def test_uccsd_active_space_excitations():
     assert algorithms.stateprep.get_num_uccsd_parameters(8, 4, 0) == 26
 
 
+def test_uccsd_open_shell_excitation_counts():
+    # Open-shell system (3 electrons, doublet) exercises the spin>0 code path.
+    singles_alpha, singles_beta, doubles_mixed, doubles_alpha, doubles_beta = \
+        algorithms.stateprep.get_uccsd_excitations(6, 3, 1)
+
+    assert len(singles_alpha) == 2
+    assert len(singles_beta) == 2
+    assert len(doubles_mixed) == 4
+    assert doubles_alpha == []
+    assert doubles_beta == []
+    assert algorithms.stateprep.get_num_uccsd_parameters(6, 3, 1) == 8
+
+
 def test_generalized_stateprep_helper_shapes():
     words, coeffs = algorithms.stateprep.get_uccgsd_pauli_lists(4)
     assert len(words) == len(coeffs) == 9

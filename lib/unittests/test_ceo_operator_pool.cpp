@@ -10,9 +10,11 @@
 #include "cudaq/algorithms/stateprep/excitations.h"
 
 #include <cmath>
+#include <complex>
 #include <gtest/gtest.h>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace stateprep = cudaq::algorithms::stateprep;
 
@@ -32,6 +34,16 @@ bool has_expected_ceo_coefficients(const cudaq::spin_op &op) {
     if (std::abs(abs_real - 0.5) > 1e-12 && std::abs(abs_real - 0.25) > 1e-12)
       return false;
   }
+  return true;
+}
+
+/// CEO pool operators are Hermitian generators: G(row,col) == conj(G(col,row)).
+bool is_hermitian_generator(const cudaq::spin_op &op) {
+  const auto g = op.to_matrix();
+  for (std::size_t row = 0; row < g.rows(); ++row)
+    for (std::size_t col = 0; col < g.cols(); ++col)
+      if (std::abs(std::conj(g(col, row)) - g(row, col)) > 1e-10)
+        return false;
   return true;
 }
 
@@ -81,4 +93,11 @@ TEST(CEOOperatorPool, ConsistentWithStateprepPauliLists) {
     EXPECT_EQ(operators[i].num_terms(), pauli_lists[i].size());
     EXPECT_EQ(operators[i].num_terms(), coefficients[i].size());
   }
+}
+
+TEST(CEOOperatorPool, OperatorsAreHermitianGenerators) {
+  auto operators = stateprep::make_ceo_operator_pool(2);
+  for (std::size_t i = 0; i < operators.size(); ++i)
+    EXPECT_TRUE(is_hermitian_generator(operators[i]))
+        << "Operator " << i << " (G) is not Hermitian";
 }

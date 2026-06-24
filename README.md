@@ -1,16 +1,17 @@
 # CUDA-Q Algorithms
 
-CUDA-Q Algorithms is a primitive-first algorithms library built on CUDA-Q.
+CUDA-Q Algorithms is a primitive-first algorithms library built on CUDA-Q,
+focused on fault-tolerant quantum computing (FTQC) primitives.
 
-The initial transition imports selected reusable functionality from
-`cudaqx/libs/solvers`:
+It imports selected reusable functionality from `cudaqx/libs/solvers`:
 
 - fermion-to-qubit transforms
 - state-preparation circuits
 - state-preparation excitation/operator-pool helpers
 
-Application workflows such as VQE, ADAPT-VQE, QAOA, GQE, PySCF drivers, and
-optimizer loops are intentionally not part of the initial extraction.
+NISQ-era application workflows such as VQE, ADAPT-VQE, QAOA, GQE, PySCF drivers,
+and optimizer loops are intentionally out of scope for this library and will not
+be ported; they remain available in `cudaqx/libs/solvers`.
 
 ## Chemistry Inputs
 

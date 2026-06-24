@@ -11,6 +11,16 @@
 #include <tuple>
 #include <vector>
 
+// NOTE: Unlike the sibling stateprep kernels (ceo/uccgsd/upccgsd), the UCCSD
+// kernels are declared in the flat `cudaq_algorithms::stateprep` namespace and
+// then re-exported into `cudaq::algorithms::stateprep` via the `using`
+// declarations at the bottom of this header. This is a deliberate workaround:
+// declaring the `uccsd`/`single_excitation`/`double_excitation` `__qpu__`
+// kernels directly in the nested `cudaq::algorithms::stateprep` namespace
+// crashes the nvq++ quake bridge (QuakeBridgeVisitor::VisitCallExpr) when the
+// `uccsd` kernel calls its sibling excitation kernels. The flat namespace
+// avoids the faulty mangling path. Keep this structure until the nvq++ bug is
+// fixed; the public API remains `cudaq::algorithms::stateprep::*`.
 namespace cudaq_algorithms::stateprep {
 
 /// @brief Represents a list of excitations
