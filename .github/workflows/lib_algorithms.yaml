@@ -1,0 +1,126 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: Algorithms lib
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_key_suffix:
+        type: string
+        description: Optional suffix to append to CUDA-Q cache keys.
+        default: ''
+        required: false
+      cudaq_repo:
+        type: string
+        description: Optional CUDA-Q repository override.
+        default: ''
+        required: false
+      cudaq_ref:
+        type: string
+        description: Optional CUDA-Q ref override.
+        default: ''
+        required: false
+  workflow_call:
+    inputs:
+      cache_key_suffix:
+        type: string
+        default: ''
+        required: false
+      cudaq_repo:
+        type: string
+        default: ''
+        required: false
+      cudaq_ref:
+        type: string
+        default: ''
+        required: false
+    secrets:
+      CUDAQ_ACCESS_TOKEN:
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ['amd64']
+        # cu13 packaging (pyproject.toml.cu13) is supported by the build
+        # scripts but not yet exercised in CI; deferred until a cu13 devcontainer
+        # image is available. Add '13.x' here to enable.
+        cuda_version: ['12.6']
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
+    container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          cache_key_suffix="${{ inputs.cache_key_suffix }}"
+          if [[ -z "$cache_key_suffix" && "${{ github.event_name }}" == "pull_request" ]]; then
+            cache_key_suffix="pr${{ github.event.pull_request.number }}"
+          fi
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+          echo "cache_key_suffix=$cache_key_suffix" >> "$GITHUB_OUTPUT"
+
+      # ========================================================================
+      # CUDA Quantum build
+      # ========================================================================
+
+      - name: Get required CUDAQ version
+        id: get-cudaq-version
+        uses: ./.github/actions/get-cudaq-version
+        with:
+          repo: ${{ inputs.cudaq_repo }}
+          ref: ${{ inputs.cudaq_ref }}
+
+      - name: Get CUDAQ build
+        uses: ./.github/actions/get-cudaq-build
+        with:
+          repo: ${{ steps.get-cudaq-version.outputs.repo }}
+          ref: ${{ steps.get-cudaq-version.outputs.ref }}
+          token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+          cache-key-suffix: ${{ steps.config.outputs.cache_key_suffix }}
+          save-build: true
+          save-ccache: false
+          platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+
+      # ========================================================================
+      # Build CUDA-Q Algorithms
+      # ========================================================================
+
+      - name: Install build requirements
+        run: |
+          apt update
+          apt install -y --no-install-recommends build-essential
+          python3 -m pip install --upgrade pip
+          python3 -m pip install cmake ninja nanobind numpy pytest
+
+      - name: Build and run tests
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          export PATH=/cudaq-install/bin:$PATH
+          export LD_LIBRARY_PATH=/cudaq-install/lib:${LD_LIBRARY_PATH:-}
+          bash scripts/test_algorithms_build.sh \
+            --build-dir build \
+            --cudaq-prefix /cudaq-install \
+            --cudaq-dir /cudaq-install/lib/cmake/cudaq
