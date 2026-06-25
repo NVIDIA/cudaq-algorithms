@@ -10,9 +10,6 @@ name: CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
@@ -40,24 +37,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install formatting tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-format
+          sudo apt-get install -y --no-install-recommends clang-format-18
           python3 -m pip install --upgrade pip
-          python3 -m pip install yapf
+          python3 -m pip install yapf==0.43.0
 
       - name: Check shell script syntax
         run: |
           script_patterns=(
             "scripts/*.sh"
             "scripts/**/*.sh"
-            ".github/actions/**/*.sh"
-            ".github/workflows/scripts/*.sh"
           )
 
           git ls-files "${script_patterns[@]}" |
@@ -68,7 +63,7 @@ jobs:
 
       - name: Run formatters
         run: |
-          bash scripts/run_clang_format.sh
+          bash scripts/run_clang_format.sh -p clang-format-18
           bash scripts/run_yapf_format.sh
 
       - name: Check for formatting changes

@@ -1,22 +1,27 @@
 #!/bin/bash
 
 # ============================================================================ #
-# Copyright (c) 2022 - 2025 NVIDIA Corporation & Affiliates.                   #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
 # All rights reserved.                                                         #
 #                                                                              #
 # This source code and the accompanying materials are made available under     #
 # the terms of the Apache License 2.0 which accompanies this distribution.     #
 # ============================================================================ #
 
-# Usage:
-# bash scripts/run_yapf_format.sh
-#
-# This script will use the yapf executable in your PATH.
+set -euo pipefail
 
-cd $(git rev-parse --show-toplevel)
+if ! command -v yapf >/dev/null; then
+  echo "Error: yapf executable not found" >&2
+  exit 1
+fi
 
-# Run YAPF
-git ls-files -- '*.py' | xargs yapf -i
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
 
-# Take us back to where we were
-cd -
+mapfile -t files < <(git ls-files -- '*.py')
+if [[ ${#files[@]} -eq 0 ]]; then
+  echo "No Python files found for yapf."
+  exit 0
+fi
+
+yapf -i "${files[@]}"
