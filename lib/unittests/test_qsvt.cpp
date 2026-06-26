@@ -13,8 +13,17 @@
 #include <stdexcept>
 #include <vector>
 
+#include "cudaq/algorithms/get_state.h"
 #include "cudaq/algorithms/qsvt/qsvt.h"
 #include "cudaq/algorithms/qubitization/qubitization.h"
+
+namespace {
+
+void expect_basis_state(const cudaq::state &state, std::size_t index) {
+  EXPECT_NEAR(std::norm(state[index]), 1.0, 1e-10);
+}
+
+} // namespace
 
 TEST(QSVTTester, checkSignalPhaseKernelCompile) {
   using namespace cudaq::algorithms;
@@ -196,8 +205,7 @@ TEST(QSVTTester, checkQubitizationAndQSVTExecution) {
     encoding.prepare(signal);
     apply_qubitization_walk(signal, system, encoding);
   };
-  auto walk_counts = cudaq::sample(100, walk_once);
-  EXPECT_FLOAT_EQ(1.0, walk_counts.probability("1"));
+  expect_basis_state(cudaq::get_state(walk_once), 1);
 
   auto one_walk_plan = make_qsvt_plan({0.0, 0.0});
   auto one_walk_kernel_data = one_walk_plan.kernel_data();
@@ -211,8 +219,7 @@ TEST(QSVTTester, checkQubitizationAndQSVTExecution) {
     apply_qsvt_sequence(signal, system, encoding, one_walk_phases,
                         one_walk_directions);
   };
-  auto one_walk_counts = cudaq::sample(100, qsvt_one_walk);
-  EXPECT_FLOAT_EQ(1.0, one_walk_counts.probability("1"));
+  expect_basis_state(cudaq::get_state(qsvt_one_walk), 1);
 
   auto two_walk_plan =
       make_qsvt_plan({0.0, 0.0, 0.0}, make_alternating_qsvt_sequence_policy(2));
@@ -227,8 +234,7 @@ TEST(QSVTTester, checkQubitizationAndQSVTExecution) {
     apply_qsvt_sequence(signal, system, encoding, two_walk_phases,
                         two_walk_directions);
   };
-  auto two_walk_counts = cudaq::sample(100, qsvt_two_walks);
-  EXPECT_FLOAT_EQ(1.0, two_walk_counts.probability("0"));
+  expect_basis_state(cudaq::get_state(qsvt_two_walks), 0);
 }
 
 TEST(QSVTTester, checkControlledSequenceKernelCompile) {
@@ -362,8 +368,7 @@ TEST(QSVTTester, checkControlledQSVTExecution) {
     apply_controlled_qsvt_sequence(control, signal, system, encoding,
                                    phase_data, walk_direction_data);
   };
-  auto off_counts = cudaq::sample(100, control_off);
-  EXPECT_FLOAT_EQ(1.0, off_counts.probability("00"));
+  expect_basis_state(cudaq::get_state(control_off), 0);
 
   auto control_on = [&]() __qpu__ {
     cudaq::qubit control;
@@ -374,8 +379,11 @@ TEST(QSVTTester, checkControlledQSVTExecution) {
     apply_controlled_qsvt_sequence(control, signal, system, encoding,
                                    phase_data, walk_direction_data);
   };
-  auto on_counts = cudaq::sample(100, control_on);
-  EXPECT_FLOAT_EQ(1.0, on_counts.probability("11"));
+  const auto control_one_index =
+      1ULL << (encoding.num_system() + encoding.num_ancilla());
+  const auto system_one_index = 1ULL;
+  expect_basis_state(cudaq::get_state(control_on),
+                     control_one_index + system_one_index);
 }
 
 TEST(QSVTTester, checkSequencePolicyKernelCompile) {

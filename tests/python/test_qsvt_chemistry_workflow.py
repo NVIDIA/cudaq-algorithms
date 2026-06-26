@@ -48,8 +48,9 @@ def test_tensor_to_jordan_wigner_to_pauli_lcu_qsvt_path():
     encoding = algorithms.PauliLCU(spin_op,
                                    num_qubits=num_system,
                                    include_identity=False)
-    shifted_matrix = (matrix - encoding.constant_term *
-                      np.eye(1 << num_system, dtype=np.complex128))
+    shifted_matrix = (
+        matrix -
+        encoding.constant_term * np.eye(1 << num_system, dtype=np.complex128))
 
     phases, walk_directions, angles, term_controls, term_ops, term_lengths, \
         term_signs = algorithms.qsvt.pauli_lcu_kernel_args(

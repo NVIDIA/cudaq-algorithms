@@ -102,7 +102,8 @@ def basis_ket(num_qubits: int, occupied_qubits: tuple[int, ...]) -> np.ndarray:
 
 def observe_expectation(kernel, observable, shots_count: int) -> float:
     if shots_count > 0:
-        return float(cudaq.observe(shots_count, kernel, observable).expectation())
+        return float(
+            cudaq.observe(shots_count, kernel, observable).expectation())
     return float(cudaq.observe(kernel, observable).expectation())
 
 
@@ -138,10 +139,12 @@ def main() -> int:
                                              term_controls, term_ops,
                                              term_lengths, term_signs)
 
-    projector = algorithms.qubitization.build_ancilla_zero_projector(num_signal)
+    projector = algorithms.qubitization.build_ancilla_zero_projector(
+        num_signal)
     observed_probability = observe_expectation(qsvt_kernel, projector,
                                                args.shots)
-    expected_state = (hamiltonian_matrix @ initial_ket) / encoding.normalization
+    expected_state = (
+        hamiltonian_matrix @ initial_ket) / encoding.normalization
     expected_probability = float(np.vdot(expected_state, expected_state).real)
     absolute_error = abs(observed_probability - expected_probability)
 

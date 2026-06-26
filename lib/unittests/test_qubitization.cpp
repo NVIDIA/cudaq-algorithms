@@ -8,8 +8,19 @@
 
 #include <gtest/gtest.h>
 
+#include <complex>
+
 #include "cudaq.h"
+#include "cudaq/algorithms/get_state.h"
 #include "cudaq/algorithms/qubitization/qubitization.h"
+
+namespace {
+
+void expect_basis_state(const cudaq::state &state, std::size_t index) {
+  EXPECT_NEAR(std::norm(state[index]), 1.0, 1e-10);
+}
+
+} // namespace
 
 TEST(QubitizationTester, checkReflectionKernelsCompile) {
   using namespace cudaq::spin;
@@ -248,8 +259,7 @@ TEST(QubitizationTester, checkControlledWalkExecution) {
     encoding.prepare(anc);
     apply_controlled_qubitization_walk(control, anc, sys, encoding);
   };
-  auto off_counts = cudaq::sample(100, control_off);
-  EXPECT_FLOAT_EQ(1.0, off_counts.probability("00"));
+  expect_basis_state(cudaq::get_state(control_off), 0);
 
   auto control_on = [&]() __qpu__ {
     cudaq::qubit control;
@@ -259,8 +269,11 @@ TEST(QubitizationTester, checkControlledWalkExecution) {
     encoding.prepare(anc);
     apply_controlled_qubitization_walk(control, anc, sys, encoding);
   };
-  auto on_counts = cudaq::sample(100, control_on);
-  EXPECT_FLOAT_EQ(1.0, on_counts.probability("11"));
+  const auto control_one_index =
+      1ULL << (encoding.num_system() + encoding.num_ancilla());
+  const auto system_one_index = 1ULL;
+  expect_basis_state(cudaq::get_state(control_on),
+                     control_one_index + system_one_index);
 }
 
 TEST(QubitizationTester, checkControlledWalkPowerExecution) {
@@ -277,8 +290,7 @@ TEST(QubitizationTester, checkControlledWalkPowerExecution) {
     encoding.prepare(anc);
     apply_controlled_qubitization_walk_power(control, anc, sys, encoding, 1);
   };
-  auto off_power_one_counts = cudaq::sample(100, control_off_power_one);
-  EXPECT_FLOAT_EQ(1.0, off_power_one_counts.probability("00"));
+  expect_basis_state(cudaq::get_state(control_off_power_one), 0);
 
   auto control_on_power_one = [&]() __qpu__ {
     cudaq::qubit control;
@@ -288,8 +300,11 @@ TEST(QubitizationTester, checkControlledWalkPowerExecution) {
     encoding.prepare(anc);
     apply_controlled_qubitization_walk_power(control, anc, sys, encoding, 1);
   };
-  auto on_power_one_counts = cudaq::sample(100, control_on_power_one);
-  EXPECT_FLOAT_EQ(1.0, on_power_one_counts.probability("11"));
+  const auto control_one_index =
+      1ULL << (encoding.num_system() + encoding.num_ancilla());
+  const auto system_one_index = 1ULL;
+  expect_basis_state(cudaq::get_state(control_on_power_one),
+                     control_one_index + system_one_index);
 
   auto control_on_power_two = [&]() __qpu__ {
     cudaq::qubit control;
@@ -299,8 +314,7 @@ TEST(QubitizationTester, checkControlledWalkPowerExecution) {
     encoding.prepare(anc);
     apply_controlled_qubitization_walk_power(control, anc, sys, encoding, 2);
   };
-  auto on_power_two_counts = cudaq::sample(100, control_on_power_two);
-  EXPECT_FLOAT_EQ(1.0, on_power_two_counts.probability("10"));
+  expect_basis_state(cudaq::get_state(control_on_power_two), control_one_index);
 }
 
 TEST(QubitizationTester, checkObservableBuilders) {
