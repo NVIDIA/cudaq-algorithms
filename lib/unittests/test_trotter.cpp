@@ -54,14 +54,15 @@ std::size_t infer_num_qubits_from_state_size(std::size_t state_size) {
   return num_qubits;
 }
 
-void validate_trotter_inputs(const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
-                             std::size_t steps, int order,
-                             std::size_t state_size) {
+void validate_trotter_inputs(
+    const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
+    std::size_t steps, int order, std::size_t state_size) {
   if (steps == 0)
     throw std::invalid_argument("steps must be greater than zero.");
 
   if (order != cudaq::algorithms::hamiltonian_simulation::first_order_trotter &&
-      order != cudaq::algorithms::hamiltonian_simulation::second_order_trotter &&
+      order !=
+          cudaq::algorithms::hamiltonian_simulation::second_order_trotter &&
       order != cudaq::algorithms::hamiltonian_simulation::fourth_order_trotter)
     throw std::invalid_argument("order must be one of {1, 2, 4}.");
 
@@ -122,17 +123,19 @@ void apply_pauli_rotation(std::vector<std::complex<double>> &state,
   state = std::move(rotated);
 }
 
-void apply_first_order_step(std::vector<std::complex<double>> &state,
-                            const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
-                            double tau) {
+void apply_first_order_step(
+    std::vector<std::complex<double>> &state,
+    const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
+    double tau) {
   for (std::size_t i = 0; i < terms.words.size(); ++i)
     apply_pauli_rotation(state, terms.words[i], tau * terms.coefficients[i],
                          terms.num_qubits);
 }
 
-void apply_second_order_step(std::vector<std::complex<double>> &state,
-                             const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
-                             double tau) {
+void apply_second_order_step(
+    std::vector<std::complex<double>> &state,
+    const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
+    double tau) {
   for (std::size_t i = 0; i < terms.words.size(); ++i)
     apply_pauli_rotation(state, terms.words[i],
                          0.5 * tau * terms.coefficients[i], terms.num_qubits);
@@ -143,28 +146,36 @@ void apply_second_order_step(std::vector<std::complex<double>> &state,
                          terms.num_qubits);
 }
 
-void apply_ordered_step(std::vector<std::complex<double>> &state,
-                        const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms, double tau,
-                        int order) {
+void apply_ordered_step(
+    std::vector<std::complex<double>> &state,
+    const cudaq::algorithms::hamiltonian_simulation::trotter_terms &terms,
+    double tau, int order) {
   if (order == cudaq::algorithms::hamiltonian_simulation::first_order_trotter) {
     apply_first_order_step(state, terms, tau);
     return;
   }
 
-  if (order == cudaq::algorithms::hamiltonian_simulation::second_order_trotter) {
+  if (order ==
+      cudaq::algorithms::hamiltonian_simulation::second_order_trotter) {
     apply_second_order_step(state, terms, tau);
     return;
   }
 
-  apply_second_order_step(state, terms, cudaq::algorithms::hamiltonian_simulation::forest_ruth_w1 * tau);
-  apply_second_order_step(state, terms, cudaq::algorithms::hamiltonian_simulation::forest_ruth_w0 * tau);
-  apply_second_order_step(state, terms, cudaq::algorithms::hamiltonian_simulation::forest_ruth_w1 * tau);
+  apply_second_order_step(
+      state, terms,
+      cudaq::algorithms::hamiltonian_simulation::forest_ruth_w1 * tau);
+  apply_second_order_step(
+      state, terms,
+      cudaq::algorithms::hamiltonian_simulation::forest_ruth_w0 * tau);
+  apply_second_order_step(
+      state, terms,
+      cudaq::algorithms::hamiltonian_simulation::forest_ruth_w1 * tau);
 }
 
-std::vector<std::complex<double>>
-simulate_trotter_statevector(cudaq::algorithms::hamiltonian_simulation::trotter_terms terms, double time,
-                             std::size_t steps, int order,
-                             const std::vector<std::complex<double>> &ket) {
+std::vector<std::complex<double>> simulate_trotter_statevector(
+    cudaq::algorithms::hamiltonian_simulation::trotter_terms terms, double time,
+    std::size_t steps, int order,
+    const std::vector<std::complex<double>> &ket) {
   validate_trotter_inputs(terms, steps, order, ket.size());
 
   const auto state_num_qubits = infer_num_qubits_from_state_size(ket.size());
@@ -192,7 +203,8 @@ struct apply_trotter_test_kernel {
                   const std::vector<cudaq::pauli_word> &words, double time,
                   std::size_t steps, int order) __qpu__ {
     cudaq::qvector q(num_qubits);
-    cudaq::algorithms::hamiltonian_simulation::apply_trotter(coefficients, words, time, steps, order, q);
+    cudaq::algorithms::hamiltonian_simulation::apply_trotter(
+        coefficients, words, time, steps, order, q);
   }
 };
 } // namespace
@@ -201,7 +213,8 @@ TEST(TrotterTest, MakeTrotterTermsDropsIdentityTerms) {
   cudaq::spin_op hamiltonian =
       1.2 * x(0) + 0.4 * z(1) - 0.7 * cudaq::spin_op::from_word("II");
 
-  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(hamiltonian);
+  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+      hamiltonian);
   EXPECT_EQ(terms.coefficients.size(), 2);
   EXPECT_EQ(terms.words.size(), 2);
   EXPECT_NEAR(terms.identity_coefficient, -0.7, 1e-12);
@@ -209,16 +222,19 @@ TEST(TrotterTest, MakeTrotterTermsDropsIdentityTerms) {
 }
 
 TEST(TrotterTest, MakeTrotterTermsRejectsInvalidInputs) {
-  EXPECT_THROW(cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(z(0), -1.0),
-               std::invalid_argument);
+  EXPECT_THROW(
+      cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(z(0), -1.0),
+      std::invalid_argument);
 
   cudaq::spin_op complex_hamiltonian = std::complex<double>{0.0, 0.25} * x(0);
-  EXPECT_THROW(cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(complex_hamiltonian),
+  EXPECT_THROW(cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+                   complex_hamiltonian),
                std::invalid_argument);
 }
 
 TEST(TrotterTest, TestReferenceRejectsInvalidInputs) {
-  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(z(0));
+  auto terms =
+      cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(z(0));
   std::vector<std::complex<double>> ket{{1.0, 0.0}, {0.0, 0.0}};
 
   EXPECT_THROW(simulate_trotter_statevector(terms, 0.25, 0, 2, ket),
@@ -237,14 +253,15 @@ TEST(TrotterTest, TestReferenceRejectsInvalidInputs) {
 }
 
 TEST(TrotterTest, TestReferenceIncludesIdentityGlobalPhase) {
-  auto terms =
-      cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(2.0 * cudaq::spin_op::from_word("II"));
+  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+      2.0 * cudaq::spin_op::from_word("II"));
   std::vector<std::complex<double>> ket{
       {1.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
   const double time = 0.3;
 
   auto evolved = simulate_trotter_statevector(
-      terms, time, 1, cudaq::algorithms::hamiltonian_simulation::second_order_trotter, ket);
+      terms, time, 1,
+      cudaq::algorithms::hamiltonian_simulation::second_order_trotter, ket);
   const auto phase = std::exp(std::complex<double>{0.0, -2.0 * time});
 
   expect_close(evolved[0], phase);
@@ -258,16 +275,18 @@ TEST(TrotterTest, ApplyTrotterKernelMatchesStatevectorReferenceForOrders) {
                                0.4 * cudaq::spin_op::from_word("IZ") +
                                0.31 * cudaq::spin_op::from_word("XZ") +
                                0.23 * cudaq::spin_op::from_word("YY");
-  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(hamiltonian);
+  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+      hamiltonian);
 
   std::vector<std::complex<double>> ket{
       {1.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
 
   const double time = 0.8;
   const std::size_t steps = 3;
-  for (int order : {cudaq::algorithms::hamiltonian_simulation::first_order_trotter,
-                    cudaq::algorithms::hamiltonian_simulation::second_order_trotter,
-                    cudaq::algorithms::hamiltonian_simulation::fourth_order_trotter}) {
+  for (int order :
+       {cudaq::algorithms::hamiltonian_simulation::first_order_trotter,
+        cudaq::algorithms::hamiltonian_simulation::second_order_trotter,
+        cudaq::algorithms::hamiltonian_simulation::fourth_order_trotter}) {
     auto expected =
         simulate_trotter_statevector(terms, time, steps, order, ket);
     auto actual =
@@ -291,7 +310,8 @@ TEST(TrotterTest, ApplyTrotterHandlesFourQubitHamiltonianWithManyTerms) {
                                0.43 * cudaq::spin_op::from_word("XIYZ") -
                                0.47 * cudaq::spin_op::from_word("YYXI") +
                                0.53 * cudaq::spin_op::from_word("ZXYZ");
-  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(hamiltonian);
+  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+      hamiltonian);
 
   ASSERT_EQ(terms.num_qubits, 4);
   ASSERT_GT(terms.coefficients.size(), 8);
@@ -302,7 +322,8 @@ TEST(TrotterTest, ApplyTrotterHandlesFourQubitHamiltonianWithManyTerms) {
 
   const double time = 0.37;
   const std::size_t steps = 2;
-  const int order = cudaq::algorithms::hamiltonian_simulation::second_order_trotter;
+  const int order =
+      cudaq::algorithms::hamiltonian_simulation::second_order_trotter;
 
   auto expected = simulate_trotter_statevector(terms, time, steps, order, ket);
   auto actual =
@@ -315,14 +336,15 @@ TEST(TrotterTest, ApplyTrotterHandlesFourQubitHamiltonianWithManyTerms) {
 }
 
 TEST(TrotterTest, ApplyTrotterTreatsIdentityOnlyHamiltonianAsNoOp) {
-  auto terms =
-      cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(1.5 * cudaq::spin_op::from_word("II"));
+  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+      1.5 * cudaq::spin_op::from_word("II"));
   std::vector<std::complex<double>> ket{
       {1.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
 
-  auto actual = cudaq::get_state(apply_trotter_test_kernel{}, terms.num_qubits,
-                                 terms.coefficients, terms.words, 0.25, 4,
-                                 cudaq::algorithms::hamiltonian_simulation::second_order_trotter);
+  auto actual = cudaq::get_state(
+      apply_trotter_test_kernel{}, terms.num_qubits, terms.coefficients,
+      terms.words, 0.25, 4,
+      cudaq::algorithms::hamiltonian_simulation::second_order_trotter);
 
   for (std::size_t i = 0; i < ket.size(); ++i)
     expect_close(actual.amplitude(basis_bits(i, terms.num_qubits)), ket[i]);

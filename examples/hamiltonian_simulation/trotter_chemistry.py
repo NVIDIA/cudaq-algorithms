@@ -5,7 +5,6 @@
 # This source code and the accompanying materials are made available under     #
 # the terms of the Apache License 2.0 which accompanies this distribution.     #
 # ============================================================================ #
-
 """Suzuki-Trotter Hamiltonian simulation for a small chemistry-style Hamiltonian.
 
 The Hamiltonian is hard-coded as Pauli terms to keep this example focused on
@@ -71,19 +70,19 @@ def phase_align_error(actual, expected):
 def main():
     # A four-qubit molecular-style Pauli Hamiltonian. In a production chemistry
     # workflow, these terms would usually come from a fermion-to-qubit mapping.
-    hamiltonian = (
-        -0.81054798 * spin.i(0) + 0.17218393 * spin.z(0) -
-        0.22575349 * spin.z(1) + 0.17218393 * spin.z(2) -
-        0.22575349 * spin.z(3) + 0.12091263 * spin.z(0) * spin.z(1) +
-        0.16892754 * spin.z(0) * spin.z(2) +
-        0.16614543 * spin.z(0) * spin.z(3) +
-        0.04523280 * spin.y(0) * spin.y(1) * spin.y(2) * spin.y(3) +
-        0.04523280 * spin.x(0) * spin.x(1) * spin.y(2) * spin.y(3) +
-        0.04523280 * spin.y(0) * spin.y(1) * spin.x(2) * spin.x(3) +
-        0.04523280 * spin.x(0) * spin.x(1) * spin.x(2) * spin.x(3) +
-        0.16614543 * spin.z(1) * spin.z(2) +
-        0.17464343 * spin.z(1) * spin.z(3) +
-        0.12091263 * spin.z(2) * spin.z(3))
+    hamiltonian = (-0.81054798 * spin.i(0) + 0.17218393 * spin.z(0) -
+                   0.22575349 * spin.z(1) + 0.17218393 * spin.z(2) -
+                   0.22575349 * spin.z(3) +
+                   0.12091263 * spin.z(0) * spin.z(1) +
+                   0.16892754 * spin.z(0) * spin.z(2) +
+                   0.16614543 * spin.z(0) * spin.z(3) +
+                   0.04523280 * spin.y(0) * spin.y(1) * spin.y(2) * spin.y(3) +
+                   0.04523280 * spin.x(0) * spin.x(1) * spin.y(2) * spin.y(3) +
+                   0.04523280 * spin.y(0) * spin.y(1) * spin.x(2) * spin.x(3) +
+                   0.04523280 * spin.x(0) * spin.x(1) * spin.x(2) * spin.x(3) +
+                   0.16614543 * spin.z(1) * spin.z(2) +
+                   0.17464343 * spin.z(1) * spin.z(3) +
+                   0.12091263 * spin.z(2) * spin.z(3))
 
     time = 0.6
     steps = 4
@@ -93,7 +92,8 @@ def main():
         time=time,
         steps=steps,
         order=order,
-        ordering=hamiltonian_simulation.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING,
+        ordering=hamiltonian_simulation.TrotterOrdering.
+        COEFFICIENT_MAGNITUDE_DESCENDING,
     )
     resources = hamiltonian_simulation.estimate_trotter_resources(plan)
 
@@ -110,14 +110,12 @@ def main():
         hamiltonian_simulation.apply_trotter(coefficients, words, t, n_steps,
                                              formula_order, q)
 
-    ket0 = np.asarray(
-        cudaq.get_state(evolve, plan.coefficients, plan.words, 0.0, steps,
-                        order),
-        dtype=np.complex128)
-    trotter_state = np.asarray(
-        cudaq.get_state(evolve, plan.coefficients, plan.words, time, steps,
-                        order),
-        dtype=np.complex128)
+    ket0 = np.asarray(cudaq.get_state(evolve, plan.coefficients, plan.words,
+                                      0.0, steps, order),
+                      dtype=np.complex128)
+    trotter_state = np.asarray(cudaq.get_state(evolve, plan.coefficients,
+                                               plan.words, time, steps, order),
+                               dtype=np.complex128)
     exact_state = exact_evolve(plan.coefficients, plan.words,
                                plan.identity_coefficient, time, ket0)
 
@@ -129,7 +127,9 @@ def main():
     print(f"steps: {plan.steps}")
     print(f"pauli_rotations: {resources.pauli_rotations}")
     print(f"estimated_cx_count: {resources.estimated_cx_count}")
-    print(f"l2_error_vs_exact: {phase_align_error(trotter_state, exact_state):.6e}")
+    print(
+        f"l2_error_vs_exact: {phase_align_error(trotter_state, exact_state):.6e}"
+    )
     print("first four amplitudes:")
     for idx, amplitude in enumerate(trotter_state[:4]):
         print(f"  |{idx:04b}> {amplitude.real:+.8f}{amplitude.imag:+.8f}j")

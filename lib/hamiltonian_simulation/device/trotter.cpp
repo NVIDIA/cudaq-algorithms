@@ -44,8 +44,8 @@ __qpu__ void apply_trotter(const std::vector<double> &coefficients,
       }
       for (std::size_t i = words.size(); i > 0; --i) {
         // double forest_ruth_w0 = -1.7024143839193153;
-        exp_pauli(-0.5 * -1.7024143839193153 * dt * coefficients[i - 1],
-                  qubits, words[i - 1]);
+        exp_pauli(-0.5 * -1.7024143839193153 * dt * coefficients[i - 1], qubits,
+                  words[i - 1]);
       }
 
       for (std::size_t i = 0; i < words.size(); ++i) {

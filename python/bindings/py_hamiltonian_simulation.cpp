@@ -55,16 +55,15 @@ exp(-i c t) phase when it becomes a relative phase.)");
 
   hamiltonian_simulation.def(
       "_make_trotter_terms",
-      [](const cudaq::spin_op_term &hamiltonian,
-         double coefficient_tolerance) {
+      [](const cudaq::spin_op_term &hamiltonian, double coefficient_tolerance) {
         return terms_to_tuple(cudaq::spin_op(hamiltonian),
                               coefficient_tolerance);
       },
       nb::arg("hamiltonian"), nb::arg("coefficient_tolerance") = 1e-12);
 
-  add_device_kernel_interop<
-      const std::vector<double> &, const std::vector<cudaq::pauli_word> &,
-      double, std::size_t, int, cudaq::qview<>>(
+  add_device_kernel_interop<const std::vector<double> &,
+                            const std::vector<cudaq::pauli_word> &, double,
+                            std::size_t, int, cudaq::qview<>>(
       mod, "hamiltonian_simulation", "apply_trotter",
       R"(Apply Suzuki-Trotter evolution inside a CUDA-Q kernel.
 
