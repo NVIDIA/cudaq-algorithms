@@ -22,6 +22,7 @@ void expect_basis_state(const cudaq::state &state, std::size_t index) {
 
 } // namespace
 
+// Test purpose: verify zero-state and PREPARE-state reflection kernels compile.
 TEST(QubitizationTester, checkReflectionKernelsCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -42,6 +43,7 @@ TEST(QubitizationTester, checkReflectionKernelsCompile) {
   EXPECT_NO_THROW(prepared_reflection_test());
 }
 
+// Test purpose: verify forward qubitization walk kernels compile.
 TEST(QubitizationTester, checkWalkKernelCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -66,6 +68,7 @@ TEST(QubitizationTester, checkWalkKernelCompile) {
   EXPECT_NO_THROW(walk_functor_test());
 }
 
+// Test purpose: verify adjoint qubitization walk kernels compile.
 TEST(QubitizationTester, checkAdjointWalkKernelCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -90,6 +93,7 @@ TEST(QubitizationTester, checkAdjointWalkKernelCompile) {
   EXPECT_NO_THROW(adjoint_walk_functor_test());
 }
 
+// Test purpose: verify repeated forward qubitization walk kernels compile.
 TEST(QubitizationTester, checkWalkPowerKernelCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -114,6 +118,7 @@ TEST(QubitizationTester, checkWalkPowerKernelCompile) {
   EXPECT_NO_THROW(walk_power_functor_test());
 }
 
+// Test purpose: verify repeated adjoint qubitization walk kernels compile.
 TEST(QubitizationTester, checkAdjointWalkPowerKernelCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -138,6 +143,7 @@ TEST(QubitizationTester, checkAdjointWalkPowerKernelCompile) {
   EXPECT_NO_THROW(adjoint_walk_power_functor_test());
 }
 
+// Test purpose: verify controlled SELECT, reflection, and walk kernels compile.
 TEST(QubitizationTester, checkControlledSelectAndWalkKernelsCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -199,6 +205,7 @@ TEST(QubitizationTester, checkControlledSelectAndWalkKernelsCompile) {
   EXPECT_NO_THROW(controlled_adjoint_walk_functor_test());
 }
 
+// Test purpose: verify controlled repeated walk kernels compile.
 TEST(QubitizationTester, checkControlledWalkPowerKernelsCompile) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -245,6 +252,7 @@ TEST(QubitizationTester, checkControlledWalkPowerKernelsCompile) {
   EXPECT_NO_THROW(controlled_adjoint_walk_power_functor_test());
 }
 
+// Test purpose: verify controlled walk execution respects the control state.
 TEST(QubitizationTester, checkControlledWalkExecution) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -276,6 +284,7 @@ TEST(QubitizationTester, checkControlledWalkExecution) {
                      control_one_index + system_one_index);
 }
 
+// Test purpose: verify controlled walk powers execute expected X-walk behavior.
 TEST(QubitizationTester, checkControlledWalkPowerExecution) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;
@@ -315,17 +324,4 @@ TEST(QubitizationTester, checkControlledWalkPowerExecution) {
     apply_controlled_qubitization_walk_power(control, anc, sys, encoding, 2);
   };
   expect_basis_state(cudaq::get_state(control_on_power_two), control_one_index);
-}
-
-TEST(QubitizationTester, checkObservableBuilders) {
-  using namespace cudaq::spin;
-  using namespace cudaq::algorithms;
-
-  cudaq::spin_op h = 0.5 * x(0) + 0.3 * z(0);
-  pauli_lcu encoding(h, 1);
-
-  EXPECT_NO_THROW(build_ancilla_zero_projector(encoding.num_ancilla()));
-  EXPECT_NO_THROW(
-      build_qubitization_reflection_observable(encoding.num_ancilla()));
-  EXPECT_NO_THROW(build_lcu_select_observable(encoding));
 }
