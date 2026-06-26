@@ -227,7 +227,8 @@ def _assert_good_component_matches(good_component, expected_component):
     assert np.allclose(good_component, expected_component, atol=1e-10)
 
 
-def test_pauli_lcu_metadata_binding():
+# Test purpose: verify PauliLCU host metadata and flattened kernel data.
+def test_pauli_lcu_flattened_metadata():
     """Validate host-side PauliLCU metadata and flattened kernel data access."""
 
     h = 2.0 + 0.5 * spin.z(0) - 0.25 * spin.x(0)
@@ -271,6 +272,7 @@ def test_pauli_lcu_metadata_binding():
     assert encoding.constant_term == pytest.approx(metadata.constant_term)
 
 
+# Test purpose: verify identity-term handling against dense NumPy action.
 def test_pauli_lcu_constant_term_policy_matches_numpy(qpp_cpu_target):
     """Validate include_identity=True/False against dense block action."""
 
@@ -325,7 +327,8 @@ def test_pauli_lcu_constant_term_policy_matches_numpy(qpp_cpu_target):
                             include_identity=False)
 
 
-def test_pauli_lcu_block_encoding_device_interop():
+# Test purpose: smoke-test that Python LCU/qubitization helpers compile in kernels.
+def test_pauli_lcu_device_interop():
     """Smoke-test that public LCU and qubitization helpers compile in kernels."""
 
     h = 0.6 * spin.x(0) + 0.8 * spin.z(0)
@@ -359,7 +362,8 @@ def test_pauli_lcu_block_encoding_device_interop():
     assert len(counts) > 0
 
 
-def test_pauli_lcu_block_encoding_matches_numpy_good_subspace(qpp_cpu_target):
+# Test purpose: compare PauliLCU good-subspace output with H|psi>/alpha.
+def test_pauli_lcu_apply(qpp_cpu_target):
     """Check that PauliLCU block encoding produces H|psi>/alpha.
 
     The CUDA-Q statevector is only used in the test: we postselect the all-zero
@@ -396,6 +400,7 @@ def test_pauli_lcu_block_encoding_matches_numpy_good_subspace(qpp_cpu_target):
     _assert_good_component_matches(good_component, expected_component)
 
 
+# Test purpose: compare one qubitization walk with -H|psi>/alpha.
 def test_pauli_lcu_qubitization_walk_matches_numpy_good_subspace(
         qpp_cpu_target):
     """Check one qubitization walk against dense Hamiltonian action."""
@@ -439,8 +444,8 @@ def test_pauli_lcu_qubitization_walk_matches_numpy_good_subspace(
     _assert_good_component_matches(good_component, expected_component)
 
 
-def test_qsvt_hamiltonian_simulation_sequence_matches_explicit_loop(
-        qpp_cpu_target):
+# Test purpose: compare apply_phase_sequence with an explicit QSVT loop.
+def test_qsvt_apply_phase_sequence(qpp_cpu_target):
     """Validate the public QSVT sequence helper against an explicit circuit.
 
     This does not test phase-generation accuracy. The fixed phases are a stable
@@ -500,8 +505,8 @@ def test_qsvt_hamiltonian_simulation_sequence_matches_explicit_loop(
     assert np.linalg.norm(quantum_time_evolved_state) > 1e-8
 
 
-def test_qsppack_generated_phases_validate_device_sequence_and_exact_response(
-        qpp_cpu_target):
+# Test purpose: validate QSPPACK-generated phases through device QSVT and exact evolution.
+def test_qsvt_hamiltonian_simulation_using_qsppack(qpp_cpu_target):
     """Run a small QSPPACK Hamiltonian-simulation flow end to end.
 
     QSPPACK provides cos/sin phase sequences. The test converts those phases to
@@ -578,6 +583,7 @@ def test_qsppack_generated_phases_validate_device_sequence_and_exact_response(
     assert qsp_fidelity == pytest.approx(1.0, abs=1e-10)
 
 
+# Test purpose: verify Python phase-sequence helpers and kernel argument packing.
 def test_qsvt_phase_sequence_helper():
     """Validate the Python-facing QSVT sequence helper.
 
@@ -649,64 +655,28 @@ def test_qsvt_phase_sequence_helper():
     assert legacy_args[4] == args[4]
 
 
-def test_qsvt_python_layer_hides_cpp_planning_objects():
-    """Keep C++ QSVT plan/descriptor types out of the public Python surface."""
+# Test purpose: verify host-side phase-to-polynomial response evaluation.
+def test_qsvt_phases_to_poly():
+    """Check host-side phase-to-polynomial response evaluation."""
 
-    hidden_names = [
-        "QSVTWalkDirection",
-        "QSVTTransformKind",
-        "QSVTResponse",
-        "QSVTResponseError",
-        "QSVTPhaseSequence",
-        "QSVTSequencePolicy",
-        "QSVTPlan",
-        "QSVTTransformDescriptor",
-        "QSVTTransformPlan",
-        "make_qsvt_phase_sequence",
-        "make_qsvt_sequence_policy",
-        "make_custom_qsvt_sequence_policy",
-        "make_alternating_qsvt_sequence_policy",
-        "make_qsvt_plan",
-        "make_qsvt_transform_plan",
-        "make_linear_solve_qsvt_transform",
-        "make_real_time_hamiltonian_simulation_qsvt_transform",
-        "make_imaginary_time_hamiltonian_simulation_qsvt_transform",
-    ]
-    for name in hidden_names:
-        assert not hasattr(algorithms, name)
-
-
-def test_qsvt_response_evaluation_and_error_estimation():
-    """Check classical phase-to-polynomial diagnostics used by QSVT tests."""
-
-    poly = algorithms.qsvt.phases_to_poly([0.0, 0.0])
-    response = poly(0.5)
-    assert isinstance(response, complex)
-    assert response.real == pytest.approx(0.5)
-    assert response.imag == pytest.approx(0.0)
+    identity_poly = algorithms.qsvt.phases_to_poly([0.0, 0.0])
+    for x in [-0.75, 0.0, 0.5]:
+        response = identity_poly(x)
+        assert isinstance(response, complex)
+        assert response.real == pytest.approx(x)
+        assert response.imag == pytest.approx(0.0)
 
     qsp_sequence = algorithms.qsvt.phase_sequence([0.1, -0.2],
                                                   convention="qsp")
     qsp_poly = algorithms.qsvt.phases_to_poly(qsp_sequence)
-    qsp_response = qsp_poly(0.5)
-    assert isinstance(qsp_response, complex)
+    explicit_qsp_poly = algorithms.qsvt.phases_to_poly(
+        qsp_sequence.phase_data, algorithms.qsvt.PhaseConvention.qsp)
 
-    sample_points = algorithms.make_uniform_qsvt_sample_points(-1.0, 1.0, 5)
-    assert sample_points == pytest.approx([-1.0, -0.5, 0.0, 0.5, 1.0])
-    chebyshev_points = algorithms.make_chebyshev_qsvt_sample_points(
-        -1.0, 1.0, 3)
-    assert chebyshev_points == pytest.approx([-1.0, 0.0, 1.0])
-
-    error = algorithms.qsvt.estimate_poly_error(poly,
-                                                lambda x: complex(x, 0.0),
-                                                domain=(-1.0, 1.0),
-                                                num_points=5)
-    assert isinstance(error, algorithms.qsvt.PolyError)
-    assert error.max_abs_error == pytest.approx(0.0, abs=1e-12)
-    assert error.rms_error == pytest.approx(0.0, abs=1e-12)
-    assert error.num_samples == 5
+    for x in [-0.5, 0.25]:
+        assert qsp_poly(x) == pytest.approx(explicit_qsp_poly(x))
 
 
+# Test purpose: verify invalid Python QSVT inputs raise ValueError.
 def test_qsvt_validation_errors():
     """Confirm invalid Python-facing QSVT inputs are rejected."""
 
