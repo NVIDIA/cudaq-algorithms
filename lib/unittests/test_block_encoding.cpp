@@ -188,11 +188,11 @@ TEST(BlockEncodingTester, checkPauliLCU_H2) {
   // log2(6 terms) = 3 ancilla qubits needed
   EXPECT_EQ(encoding.num_ancilla(), 3);
 
-  // Check that normalization is approximately the 1-norm
-  // The actual terms included may vary based on how spin_op handles constants
-  // and identity terms. The normalization should be positive and reasonable.
-  EXPECT_GT(encoding.normalization(), 2.0);
-  EXPECT_LT(encoding.normalization(), 2.1);
+  // Normalization is the 1-norm (sum of |coefficient|) over all six terms,
+  // including the identity/constant term:
+  //   |−1.0523732| + |0.39793742| + |−0.39793742| + |−0.01128010|
+  //   + |0.01128010| + |0.18093120| = 2.05173944.
+  EXPECT_NEAR(encoding.normalization(), 2.05173944, 1e-7);
 
   // Check that angles are computed (2^3 - 1 = 7 angles for 3-qubit tree)
   EXPECT_EQ(encoding.get_angles().size(), 7);

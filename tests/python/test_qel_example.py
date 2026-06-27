@@ -89,3 +89,74 @@ def test_conditioned_generalized_eigenproblem_filters_small_overlap(
     assert result.condition_estimate == pytest.approx(1.0)
     assert result.eigenvalues == pytest.approx([0.25])
     assert result.overlap_eigenvalues == pytest.approx([1.0e-14, 1.0])
+
+
+@pytest.fixture
+def qpp_cpu_target():
+    import cudaq
+    cudaq.set_target("qpp-cpu")
+    yield
+    cudaq.reset_target()
+
+
+def _h2_exact_chebyshev_moments(qel, data, num_moments):
+    """Exact <HF| T_k(H/alpha) |HF> using CUDA-Q's own matrix/state ordering."""
+    import cudaq
+    import cudaq_algorithms as algorithms
+
+    spin_op = qel.spin_hamiltonian(data.terms)
+    alpha = float(algorithms.PauliLCU(spin_op, data.num_qubits).normalization)
+    scaled = np.array(spin_op.to_matrix(), dtype=np.complex128) / alpha
+
+    @cudaq.kernel
+    def hartree_fock():
+        system = cudaq.qvector(4)  # H2: occupied qubits (0, 1)
+        x(system[0])
+        x(system[1])
+
+    psi = np.array(cudaq.get_state(hartree_fock), dtype=np.complex128)
+
+    identity = np.eye(scaled.shape[0], dtype=np.complex128)
+    chebyshev = [identity, scaled.copy()]
+    while len(chebyshev) < num_moments:
+        chebyshev.append(2.0 * scaled @ chebyshev[-1] - chebyshev[-2])
+    return [
+        float(np.real(psi.conj() @ chebyshev[k] @ psi))
+        for k in range(num_moments)
+    ]
+
+
+# Test purpose: execute the QEL quantum workflow (previously untested) and check
+# the measured Chebyshev moments against exact dense values.
+def test_h2_measured_moments_match_exact_chebyshev(qel_example_module,
+                                                   qpp_cpu_target):
+    import cudaq_algorithms as algorithms
+
+    qel = qel_example_module
+    data = qel.load_qubit_hamiltonian(H2_DATA_PATH)
+    encoding = algorithms.PauliLCU(qel.spin_hamiltonian(data.terms),
+                                   data.num_qubits)
+    dimension = 3
+    num_moments = algorithms.krylov.required_chebyshev_moments(dimension)
+
+    measured = qel.collect_chebyshev_moments(encoding, data.occupied_qubits,
+                                             dimension, 0)
+    exact = _h2_exact_chebyshev_moments(qel, data, num_moments)
+
+    assert np.allclose(measured, exact, atol=1e-6)
+
+
+# Test purpose: run the full QEL workflow end to end and check it reproduces FCI.
+def test_h2_qel_workflow_energy_matches_fci(qel_example_module,
+                                            qpp_cpu_target):
+    qel = qel_example_module
+    data = qel.load_qubit_hamiltonian(H2_DATA_PATH)
+
+    result = qel.run_qel_workflow(data,
+                                  krylov_dimension=3,
+                                  overlap_cutoff=1.0e-6,
+                                  shots_count=0,
+                                  exact_max_qubits=data.num_qubits)
+
+    assert result["qel_energy"] == pytest.approx(qel.exact_ground_energy(data),
+                                                 abs=1.0e-6)

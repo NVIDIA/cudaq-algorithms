@@ -18,6 +18,13 @@ cudaq::spin_op build_ancilla_zero_projector(std::size_t num_ancilla) {
   return projector;
 }
 
+// Returns the Hermitian *measurement observable* 2|0..0><0..0| - I used to read
+// out even Chebyshev moments in the QEL workflow. This is intentionally
+// distinct from the `reflect_about_zero` *circuit* primitive (which realizes
+// the unitary I - 2|0..0><0..0|, the negation of this operator); the two play
+// different roles and need not share a sign. The expectation of this observable
+// after a PREPARE / k-walk / UNPREPARE circuit yields T_{2k}(H/alpha) --
+// verified numerically against exact Chebyshev moments and FCI on H2.
 cudaq::spin_op
 build_qubitization_reflection_observable(std::size_t num_ancilla) {
   auto projector = build_ancilla_zero_projector(num_ancilla);

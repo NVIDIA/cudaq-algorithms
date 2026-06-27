@@ -505,6 +505,63 @@ def test_qsvt_apply_phase_sequence(qpp_cpu_target):
     assert np.linalg.norm(quantum_time_evolved_state) > 1e-8
 
 
+# Test purpose: lock in the device QSVT response convention WITHOUT QSPPACK.
+def test_qsvt_response_matches_host_polynomial_at_negated_eigenvalue(
+        qpp_cpu_target):
+    """Phase-sensitive end-to-end check that does not require QSPPACK.
+
+    The device QSVT good-subspace block is the matrix polynomial p(M) where
+    p(x) = phases_to_poly(phases)(-x), because the zero-state reflection makes
+    the walk block -H/alpha. This pins that documented convention with a fixed
+    odd-degree phase sequence (odd parity makes the sign observable), so a future
+    sign regression in walk_response_matrix / reflect_about_zero is caught even
+    when QSPPACK is unavailable.
+    """
+
+    num_system = 1
+    # Two-term Hamiltonian -> 1 ancilla; eigenvalues of M = H/alpha are +/-x0.
+    terms = [(0.6, ((0, "Z"), )), (0.8, ((0, "X"), ))]
+    hamiltonian = _hamiltonian_from_indexed_terms(
+        _pauli_string_terms_to_indexed_terms([(0.6, "Z"), (0.8, "X")]))
+    hamiltonian_matrix = _pauli_sum_matrix(terms, num_system)
+
+    encoding = algorithms.PauliLCU(hamiltonian, num_qubits=num_system)
+    alpha = float(encoding.normalization)
+    assert encoding.num_ancilla == 1
+    scaled_matrix = hamiltonian_matrix / alpha
+    eigenvalues, eigenvectors = np.linalg.eigh(scaled_matrix)
+
+    kernel_data = _kernel_data(encoding)
+    phases = [0.3, -0.4]  # degree-1 (odd) -> f(-x) != f(x)
+    sequence = algorithms.qsvt.phase_sequence(phases)
+    poly = algorithms.qsvt.phases_to_poly(phases)
+
+    # Device good block, column by column.
+    columns = []
+    for basis in range(1 << num_system):
+        ket = np.zeros(1 << num_system, dtype=np.complex128)
+        ket[basis] = 1.0
+        columns.append(
+            _run_qsvt_good_component(cudaq.State.from_data(ket), num_system,
+                                     encoding.num_ancilla, sequence.phase_data,
+                                     sequence.walk_direction_data,
+                                     kernel_data))
+    device_block = np.column_stack(columns)
+
+    # Host prediction: response evaluated at the NEGATED eigenvalue.
+    response = np.array([complex(poly(float(-lam))) for lam in eigenvalues])
+    host_block = eigenvectors @ np.diag(response) @ eigenvectors.conj().T
+
+    # The +x prediction must NOT match (guards against a silent convention flip).
+    response_plus = np.array(
+        [complex(poly(float(lam))) for lam in eigenvalues])
+    host_block_plus = (
+        eigenvectors @ np.diag(response_plus) @ eigenvectors.conj().T)
+
+    assert np.allclose(device_block, host_block, atol=1e-9)
+    assert not np.allclose(device_block, host_block_plus, atol=1e-6)
+
+
 # Test purpose: validate QSPPACK-generated phases through device QSVT and exact evolution.
 def test_qsvt_hamiltonian_simulation_using_qsppack(qpp_cpu_target):
     """Run a small QSPPACK Hamiltonian-simulation flow end to end.

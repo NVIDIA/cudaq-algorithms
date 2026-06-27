@@ -37,15 +37,19 @@ void bind_krylov(nb::module_ &mod) {
   nb::class_<cudaq::algorithms::krylov::chebyshev_krylov_matrices>(
       krylov, "ChebyshevKrylovMatrices",
       R"(Dense Chebyshev Krylov Hamiltonian and overlap matrices.)")
-      .def_rw("hamiltonian_data",
+      // Read-only: these are populated together by build_chebyshev_matrices.
+      // Exposing them writable would let callers desync `dimension` from the
+      // data length (and break the reshape in hamiltonian_matrix()/
+      // overlap_matrix()).
+      .def_ro("hamiltonian_data",
               &cudaq::algorithms::krylov::chebyshev_krylov_matrices::
                   hamiltonian_matrix,
               "Flattened row-major Hamiltonian matrix data.")
-      .def_rw(
+      .def_ro(
           "overlap_data",
           &cudaq::algorithms::krylov::chebyshev_krylov_matrices::overlap_matrix,
           "Flattened row-major overlap matrix data.")
-      .def_rw("dimension",
+      .def_ro("dimension",
               &cudaq::algorithms::krylov::chebyshev_krylov_matrices::dimension,
               "Krylov matrix dimension.")
       .def(

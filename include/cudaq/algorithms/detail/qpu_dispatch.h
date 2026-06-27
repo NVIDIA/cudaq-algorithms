@@ -20,6 +20,19 @@ inline constexpr std::size_t max_qpu_dispatch_qubits = max_lcu_ancilla_qubits;
 // CUDA-Q currently needs explicit controlled-gate arities for these QPU helper
 // kernels. Keep the arity ladder in one place so all block-encoding,
 // qubitization, and QSVT kernels share the same limit.
+//
+// CONTRACT: COUNT must be in [0, max_qpu_dispatch_qubits]. These ladders are
+// `if/else if` chains with NO terminal `else`, so a COUNT outside the handled
+// range silently expands to a no-op (no gate, no error) -- because device
+// (`__qpu__`) code cannot throw. Callers are responsible for keeping COUNT in
+// range. In practice every register routed through these macros is an LCU
+// ancilla / QSVT signal register whose size is `decompose_lcu`-validated
+// against `max_lcu_ancilla_qubits` (see pauli_lcu.cpp), so the cap is enforced
+// on the host before any kernel runs. A COUNT of 0 (single-term LCU, zero
+// ancilla) is intentionally a no-op for the uncontrolled ladders: the dropped
+// sign there is only an unobservable global phase. If you add a new caller
+// whose register is NOT the validated LCU ancilla, validate its size on the
+// host first.
 // clang-format off
 #define CUDAQ_ALGORITHMS_QARGS_1(QREG) QREG[0]
 #define CUDAQ_ALGORITHMS_QARGS_2(QREG) CUDAQ_ALGORITHMS_QARGS_1(QREG), QREG[1]
@@ -162,6 +175,11 @@ inline constexpr std::size_t max_qpu_dispatch_qubits = max_lcu_ancilla_qubits;
     } \
   }
 
+// NOTE: unlike the COUNT-indexed ladders above (COUNT == total qubits), LAYER
+// here is the control-layer index and uses LAYER+1 qubits: LAYER == N expands to
+// QARGS_{N+1} (controls QREG[0..N-1] onto target QREG[N]). That is why QARGS_11
+// exists. In prepare/unprepare, layer ranges 1..ancilla.size()-1, so with the
+// max_qpu_dispatch_qubits cap the largest reachable LAYER is 9 (-> QARGS_10).
 #define CUDAQ_ALGORITHMS_APPLY_CONTROLLED_RY_BY_ARITY(ANGLE, QREG, LAYER) \
   { \
     if ((LAYER) == 1) { \

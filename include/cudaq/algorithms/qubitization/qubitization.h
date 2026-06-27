@@ -31,7 +31,11 @@ namespace cudaq::algorithms {
 /// requires the PREPARE state as the starting point.
 
 /// @brief Reflect about the all-zero state on an ancilla register.
-/// @details Applies X on all ancillas, a multi-controlled Z, then X again.
+/// @details Applies X on all ancillas, a multi-controlled Z, then X again. As a
+/// unitary this realizes `I - 2|0..0><0..0|` (it phases the all-zero state by
+/// -1). Note this is the negation of the measurement operator returned by
+/// build_qubitization_reflection_observable (`2|0..0><0..0| - I`); the two are
+/// distinct roles (circuit primitive vs. observable) and need not share a sign.
 /// This stays inline because it is used inside generated CUDA-Q kernels.
 __qpu__ inline void reflect_about_zero(cudaq::qview<> ancilla) {
   for (std::size_t i = 0; i < ancilla.size(); ++i)

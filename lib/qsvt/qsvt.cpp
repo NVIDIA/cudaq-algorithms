@@ -44,6 +44,17 @@ qsvt_response_matrix phase_response_matrix(double phase,
   return {positive_phase, 0.0, 0.0, 1.0};
 }
 
+// Two-dimensional invariant-subspace block of the *ideal* qubitization walk as
+// a function of the block-encoded singular value x.
+//
+// CONVENTION NOTE: the device walk in this library composes the zero-state
+// reflection `reflect_about_zero` (which realizes `I - 2|0><0|`, see
+// qubitization.h) with the block encoding, so the device walk's good-subspace
+// block is evaluated at `-x` (i.e. -H/alpha) relative to this matrix. Callers
+// predicting the *device* response from a phase list via evaluate_qsvt_response
+// / phases_to_poly must therefore evaluate at -singular_value. See the QSPPACK
+// end-to-end test, which negates the eigenvalue accordingly. This was verified
+// numerically (device good-block == response evaluated at -x).
 qsvt_response_matrix walk_response_matrix(double x) {
   const double y = std::sqrt(std::max(0.0, 1.0 - x * x));
   const complex off_diagonal(0.0, y);

@@ -50,6 +50,11 @@ __qpu__ void controlled_sign_correction(cudaq::qubit &control,
 }
 
 /// @brief Kernel for externally controlled SELECT operation.
+/// @note This intentionally mirrors block_encoding::controlled_select (in
+/// device/kernels.cpp); the logic is kept duplicated rather than shared because
+/// nvq++ cross-translation-unit device-kernel calls are fragile. If you change
+/// the SELECT logic here, make the matching change in controlled_select (and
+/// vice versa).
 struct controlled_pauli_select_kernel {
   void operator()(cudaq::qubit &control, cudaq::qview<> anc, cudaq::qview<> sys,
                   const std::vector<int> &ctrls, const std::vector<int> &ops,
@@ -146,7 +151,12 @@ std::vector<double> compute_prepare_angles(const std::vector<double> &probs) {
       for (int k = 0; k < 2 * step; ++k)
         total_p += probs[start_idx + k];
 
-      if (total_p < 1e-12) {
+      // Guard against a zero-probability subtree, which occurs for the padded
+      // leaves when num_terms is not a power of two (their probability is
+      // exactly 0). This is a numerical zero-check, intentionally independent
+      // of the user-facing `coefficient_threshold` used to drop small terms.
+      constexpr double kZeroProbabilityTolerance = 1e-12;
+      if (total_p < kZeroProbabilityTolerance) {
         angles.push_back(0.0);
       } else {
         // Sum of right branch

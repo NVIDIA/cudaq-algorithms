@@ -446,6 +446,10 @@ struct qsp_sequence {
 /// @brief Plain QPU-facing data extracted from a host-side QSVT plan.
 /// @details This is a convenience view for host code. Kernels should still take
 /// the individual phase and walk-direction vectors as separate arguments.
+/// @warning This holds references into the originating plan's vectors and does
+/// not own them. It is only valid while that plan is alive; do not retain a
+/// qsvt_kernel_data obtained from a temporary plan (e.g.
+/// `make_plan(...).kernel_data()`), as the references would dangle.
 struct qsvt_kernel_data {
   const std::vector<double> &phases;
   const std::vector<int> &walk_directions;
@@ -623,6 +627,13 @@ void validate_qsvt_transform_descriptor(
 /// @p x in [-1, 1]. The qsvt convention uses projector phases
 /// diag(exp(i phi), 1), matching apply_qsvt_signal_phase. The qsp convention
 /// uses Z-rotation phases diag(exp(i phi), exp(-i phi)).
+///
+/// CONVENTION: @p x is the singular value in the *ideal* walk model
+/// (see walk_response_matrix). The device walk realizes the response at
+/// `-H/alpha`, so to predict this library's device circuit from a phase list,
+/// pass @p x = -singular_value. The qsp/qsvt device kernels differ from these
+/// host matrices only by an overall global phase across a full sequence, which
+/// is unobservable (and corrected in recover_real_time_evolution).
 qsvt_response evaluate_qsvt_response(
     const std::vector<double> &phases, double x,
     qsvt_phase_convention convention = qsvt_phase_convention::qsvt);

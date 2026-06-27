@@ -414,6 +414,9 @@ Args:
 
         auto sample_points =
             make_uniform_qsvt_sample_points(min_x, max_x, num_points);
+        if (sample_points.empty())
+          throw std::invalid_argument(
+              "num_points must yield at least one sample point");
         qsvt_response_error error;
         error.num_samples = sample_points.size();
 
