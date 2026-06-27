@@ -57,7 +57,9 @@ trotter_terms make_trotter_terms(const cudaq::spin_op &hamiltonian,
 /// exp(-i H' t), not the full exp(-i H t). The omitted exp(-i c t) phase is
 /// harmless for ordinary expectation values of a single unconditioned evolved
 /// state, but must be tracked or reintroduced by controlled/interference-based
-/// algorithms.
+/// algorithms. Invalid runtime inputs are treated as no-ops: zero Trotter
+/// steps, mismatched coefficient/Pauli-word lengths, or an unsupported order
+/// leave the register unchanged.
 __qpu__ void apply_trotter(const std::vector<double> &coefficients,
                            const std::vector<cudaq::pauli_word> &words,
                            double time, std::size_t steps, int order,

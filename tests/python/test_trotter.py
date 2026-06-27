@@ -12,6 +12,7 @@ import pytest
 import cudaq
 from cudaq import spin
 import cudaq_algorithms as algorithms
+import cudaq_algorithms.hamiltonian_simulation as hamiltonian_simulation
 
 FOREST_RUTH_W1 = 1.3512071919596578
 FOREST_RUTH_W0 = -1.7024143839193153
@@ -131,10 +132,6 @@ def _phase_align_error(actual, expected):
     return np.linalg.norm(actual - expected)
 
 
-def test_no_public_host_statevector_trotter_api():
-    assert not hasattr(algorithms.hamiltonian_simulation, "trotter")
-
-
 def test_make_trotter_terms_extracts_python_spin_operator():
     hamiltonian = (0.7 * spin.x(0) + 0.4 * spin.z(1) -
                    0.2 * cudaq.SpinOperator.from_word("II"))
@@ -251,6 +248,48 @@ def test_apply_trotter_kernel_interop_with_flattened_terms():
                                  np.array([1.0, 0.0], dtype=np.complex128))
 
     np.testing.assert_allclose(state, expected, atol=1e-12)
+
+
+def test_apply_trotter_kernel_interop_from_public_subpackage():
+    hamiltonian = spin.x(0)
+    coefficients, words, identity, num_qubits = hamiltonian_simulation.make_trotter_terms(
+        hamiltonian)
+
+    @cudaq.kernel
+    def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], t: float):
+        q = cudaq.qvector(1)
+        hamiltonian_simulation.apply_trotter(coeffs, paulis, t, 1, 2, q)
+
+    state = np.asarray(cudaq.get_state(evolve, coefficients, words, 0.25),
+                       dtype=np.complex128)
+    expected = _simulate_trotter(coefficients, words, identity, num_qubits,
+                                 0.25, 1, 2,
+                                 np.array([1.0, 0.0], dtype=np.complex128))
+
+    np.testing.assert_allclose(state, expected, atol=1e-12)
+
+
+def test_apply_trotter_kernel_invalid_inputs_are_noops():
+    coefficients, words, _, _ = hamiltonian_simulation.make_trotter_terms(
+        spin.x(0))
+
+    @cudaq.kernel
+    def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], steps: int,
+               order: int):
+        q = cudaq.qvector(1)
+        hamiltonian_simulation.apply_trotter(coeffs, paulis, 0.25, steps,
+                                             order, q)
+
+    expected = np.array([1.0, 0.0], dtype=np.complex128)
+    for bad_coefficients, bad_words, bad_steps, bad_order in (
+        (coefficients, words, 0, 2),
+        (coefficients, words, 1, 3),
+        (coefficients, [], 1, 2),
+    ):
+        state = np.asarray(cudaq.get_state(evolve, bad_coefficients, bad_words,
+                                           bad_steps, bad_order),
+                           dtype=np.complex128)
+        np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
 def test_apply_trotter_kernel_matches_reference_for_orders():

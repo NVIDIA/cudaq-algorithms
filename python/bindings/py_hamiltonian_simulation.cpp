@@ -24,9 +24,15 @@ void add_device_kernel_interop(nb::module_ &mod, const std::string &mod_name,
                         : mod.def_submodule(mod_name.c_str());
 
   sub.def(kernel_name.c_str(), [](const nb::args &) {}, docstring.c_str());
-  cudaq::python::registerDeviceKernel(
-      nb::cast<std::string>(sub.attr("__name__")), kernel_name,
-      cudaq::python::getMangledArgsString<Signature...>());
+  const auto mangled_args = cudaq::python::getMangledArgsString<Signature...>();
+  const auto private_module_name = nb::cast<std::string>(sub.attr("__name__"));
+  cudaq::python::registerDeviceKernel(private_module_name, kernel_name,
+                                      mangled_args);
+
+  const auto public_module_name = std::string("cudaq_algorithms.") + mod_name;
+  if (public_module_name != private_module_name)
+    cudaq::python::registerDeviceKernel(public_module_name, kernel_name,
+                                        mangled_args);
 }
 
 nb::tuple terms_to_tuple(const cudaq::spin_op &hamiltonian,

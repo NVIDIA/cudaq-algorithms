@@ -72,6 +72,13 @@ The planning helper currently supports:
 
 More advanced commuting-group planning is intentionally left for future work.
 
+## Invalid Kernel Arguments
+
+`apply_trotter()` is a QPU-facing primitive. Invalid runtime inputs are treated
+as no-ops: `steps == 0`, mismatched coefficient/Pauli-word lengths, or an order
+other than `1`, `2`, or `4` leaves the register unchanged. Prefer constructing
+inputs with `make_trotter_plan()`, which validates these options on the host.
+
 ## Simulation Validation
 
 Examples and tests may use `cudaq.get_state()` to compare against exact
