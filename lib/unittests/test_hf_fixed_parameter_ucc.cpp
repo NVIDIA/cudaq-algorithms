@@ -23,6 +23,18 @@ TEST(HartreeFockStatePrep, BuildsCanonicalOccupation) {
   EXPECT_EQ(resources.num_x_gates, 4);
 }
 
+TEST(HartreeFockStatePrep, BuildsOpenShellOccupation) {
+  // spin == 0 (closed shell) stays contiguous.
+  EXPECT_EQ(stateprep::make_hartree_fock_occupation(8, 4, 0),
+            (std::vector<std::size_t>{0, 1, 2, 3}));
+  // spin > 0 uses the interleaved alpha/beta convention: {0, 1, 2, 4}.
+  EXPECT_EQ(stateprep::make_hartree_fock_occupation(8, 4, 2),
+            (std::vector<std::size_t>{0, 1, 2, 4}));
+  // Odd num_qubits is invalid for spin > 0.
+  EXPECT_THROW(stateprep::make_hartree_fock_occupation(5, 3, 1),
+               std::invalid_argument);
+}
+
 TEST(HartreeFockStatePrep, ValidatesExplicitOccupation) {
   EXPECT_NO_THROW(
       stateprep::validate_hartree_fock_occupation(5, {0, 2, 4}));

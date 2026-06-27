@@ -67,6 +67,10 @@ fixed_parameter_ucc_resource_estimate estimate_fixed_parameter_ucc_resources(
 /// @details This primitive intentionally has no optimizer or variational loop.
 /// It applies one supplied parameter per excitation group, where each group is
 /// represented by Pauli words and real coefficients generated on the host.
+/// @note UCC amplitudes are defined relative to a reference determinant, so the
+/// qubits must already hold a Hartree-Fock state (prepare it with hartree_fock /
+/// hartree_fock_occupation first). Applied to |0...0> this yields a physically
+/// meaningless state.
 __qpu__ void fixed_parameter_ucc(
     cudaq::qview<> qubits, const std::vector<double> &parameters,
     const std::vector<std::vector<cudaq::pauli_word>> &pauli_words,

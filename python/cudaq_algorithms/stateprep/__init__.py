@@ -63,7 +63,30 @@ def make_fixed_parameter_ucc_plan(pauli_words,
 make_fixed_parameter_uccsd_plan = _stateprep.make_fixed_parameter_uccsd_plan
 make_fixed_parameter_uccgsd_plan = _stateprep.make_fixed_parameter_uccgsd_plan
 make_fixed_parameter_upccgsd_plan = _stateprep.make_fixed_parameter_upccgsd_plan
-validate_fixed_parameter_ucc_plan = _stateprep.validate_fixed_parameter_ucc_plan
+
+
+def validate_fixed_parameter_ucc_plan(plan, coefficient_tolerance=1.0e-12):
+    # Accept both the C++ plan (from the uccsd/uccgsd/upccgsd makers) and the
+    # Python plan returned by make_fixed_parameter_ucc_plan, so all the helpers
+    # compose. (The C++-bound validator only accepts the C++ plan type.)
+    if isinstance(plan, _CppFixedParameterUCCPlan):
+        return _stateprep.validate_fixed_parameter_ucc_plan(
+            plan, coefficient_tolerance)
+    if coefficient_tolerance < 0.0:
+        raise ValueError(
+            "fixed_parameter_ucc error - coefficient tolerance must be non-negative."
+        )
+    if len(plan.parameters) != len(plan.pauli_words) or len(
+            plan.pauli_words) != len(plan.coefficients):
+        raise ValueError(
+            "fixed_parameter_ucc error - parameters, Pauli-word groups, and coefficient groups must have the same length."
+        )
+    for word_group, coefficient_group in zip(plan.pauli_words,
+                                             plan.coefficients):
+        if len(word_group) != len(coefficient_group):
+            raise ValueError(
+                "fixed_parameter_ucc error - each Pauli-word group must match its coefficient group."
+            )
 
 
 def estimate_fixed_parameter_ucc_resources(plan):

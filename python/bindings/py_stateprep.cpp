@@ -132,7 +132,8 @@ void bind_stateprep(nb::module_ &mod) {
 
   stateprep.def("make_hartree_fock_occupation",
                 &cudaq::algorithms::stateprep::make_hartree_fock_occupation,
-                nb::arg("num_qubits"), nb::arg("num_electrons"));
+                nb::arg("num_qubits"), nb::arg("num_electrons"),
+                nb::arg("spin") = 0);
   stateprep.def("validate_hartree_fock_occupation",
                 &cudaq::algorithms::stateprep::validate_hartree_fock_occupation,
                 nb::arg("num_qubits"), nb::arg("occupied_orbitals"));
