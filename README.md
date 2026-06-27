@@ -10,7 +10,8 @@ It imports selected reusable functionality from `cudaqx/libs/solvers`:
 - state-preparation circuits
 - state-preparation excitation/operator-pool helpers
 
-See  for the Suzuki-Trotter API.
+See [docs/hamiltonian_simulation.md](docs/hamiltonian_simulation.md) for the
+Suzuki-Trotter API.
 
 NISQ-era application workflows such as VQE, ADAPT-VQE, QAOA, GQE, PySCF drivers,
 and optimizer loops are intentionally out of scope for this library and will not

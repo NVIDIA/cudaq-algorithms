@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -63,6 +64,13 @@ def _validate_steps(steps):
     if steps < 1:
         raise ValueError("steps must be greater than zero")
     return steps
+
+
+def _validate_time(time):
+    time = float(time)
+    if not math.isfinite(time):
+        raise ValueError("time must be a finite number")
+    return time
 
 
 def _coerce_ordering(ordering):
@@ -138,14 +146,20 @@ def make_trotter_terms(hamiltonian, coefficient_tolerance=1e-12):
     else:
         return _cpp_make_trotter_terms(hamiltonian, coefficient_tolerance)
 
+    # Determine the full register width once so every Pauli word is padded to the
+    # same length. Computing it inside the term loop would leave earlier words
+    # padded to a shorter width than a later, wider term, producing ragged words
+    # whose qubit indices no longer line up. This mirrors the C++ path, which
+    # fixes num_qubits = hamiltonian.num_qubits() before padding.
+    for term in terms:
+        num_qubits = max(num_qubits, _term_qubit_extent(term))
+
     coefficients = []
     words = []
     identity_coefficient = 0.0
 
     for term in terms:
         coefficient = _term_coefficient(term, coefficient_tolerance)
-        term_extent = _term_qubit_extent(term)
-        num_qubits = max(num_qubits, term_extent)
         if term.is_identity():
             identity_coefficient += coefficient
             continue
@@ -167,6 +181,7 @@ def make_trotter_plan(hamiltonian,
     can be passed directly to ``apply_trotter``
     from a CUDA-Q kernel.
     """
+    time = _validate_time(time)
     steps = _validate_steps(steps)
     order = _validate_order(order)
     ordering = _coerce_ordering(ordering)
@@ -177,7 +192,7 @@ def make_trotter_plan(hamiltonian,
                        words=words,
                        identity_coefficient=identity,
                        num_qubits=num_qubits,
-                       time=float(time),
+                       time=time,
                        steps=steps,
                        order=order,
                        ordering=ordering)

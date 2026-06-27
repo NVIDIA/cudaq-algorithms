@@ -132,6 +132,15 @@ def _phase_align_error(actual, expected):
     return np.linalg.norm(actual - expected)
 
 
+@pytest.fixture
+def double_precision_target():
+    # The default simulator is single precision (~1e-7 floor). The scaling and
+    # commuting-exactness checks need double precision to assert tight bounds.
+    cudaq.set_target("qpp-cpu")
+    yield
+    cudaq.reset_target()
+
+
 def test_make_trotter_terms_extracts_python_spin_operator():
     hamiltonian = (0.7 * spin.x(0) + 0.4 * spin.z(1) -
                    0.2 * cudaq.SpinOperator.from_word("II"))
@@ -352,6 +361,94 @@ def test_apply_trotter_kernel_orders_track_exact_evolution():
     assert errors[1] < 2.0e-2
     assert errors[2] < 6.0e-4
     assert errors[4] < 5.0e-6
+
+
+def test_apply_trotter_kernel_error_scaling_tracks_order(
+        double_precision_target):
+    """Verify the ASYMPTOTIC error scaling: order-p Trotter error ~ dt**p.
+
+    Sweeping the step count and fitting the slope of log(error) vs log(steps)
+    must give approximately -order for each supported order. This is what
+    actually defines "order N" and is not checked by the single-point threshold
+    test above.
+    """
+    hamiltonian = (0.37 * spin.x(0) - 0.22 * spin.z(1) +
+                   0.19 * spin.x(0) * spin.x(1) +
+                   0.41 * spin.y(0) * spin.y(1) + 0.13 * spin.z(0) * spin.x(1))
+    coefficients, words, identity, num_qubits = algorithms.hamiltonian_simulation.make_trotter_terms(
+        hamiltonian)
+
+    time = 0.7
+    rx_angle = 0.37
+    ry_angle = -0.52
+    ket = _two_qubit_product_state(rx_angle, ry_angle)
+    exact = _exact_evolve(coefficients, words, identity, time, ket)
+
+    @cudaq.kernel
+    def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], t: float,
+               n_steps: int, order: int, theta0: float, theta1: float):
+        q = cudaq.qvector(2)
+        rx(theta0, q[0])
+        ry(theta1, q[1])
+        algorithms.hamiltonian_simulation.apply_trotter(
+            coeffs, paulis, t, n_steps, order, q)
+
+    # Step counts kept small so even the order-4 error stays well above the
+    # floating-point floor and the fit reflects the true asymptotic slope.
+    step_counts = [1, 2, 4]
+    log_steps = np.log(np.array(step_counts, dtype=float))
+    for order in (1, 2, 4):
+        errors = []
+        for steps in step_counts:
+            state = np.asarray(cudaq.get_state(evolve, coefficients, words,
+                                               time, steps, order, rx_angle,
+                                               ry_angle),
+                               dtype=np.complex128)
+            errors.append(_phase_align_error(state, exact))
+        slope = np.polyfit(log_steps, np.log(np.array(errors)), 1)[0]
+        assert slope == pytest.approx(
+            -order,
+            abs=0.4), (f"order {order}: fitted scaling slope {slope:.3f} "
+                       f"is not close to -{order}")
+
+
+def test_apply_trotter_kernel_exact_for_commuting_hamiltonian(
+        double_precision_target):
+    """Commuting (all-Z) terms have no Trotter error: the kernel must reproduce
+    exact evolution to machine precision for every order and step count.
+
+    This compares against exact diagonalization (an independent reference), so it
+    catches sign/coefficient/angle errors that a comparison to a re-implemented
+    product formula cannot.
+    """
+    hamiltonian = (0.5 * spin.z(0) + 0.4 * spin.z(1) +
+                   0.3 * spin.z(0) * spin.z(1))
+    coefficients, words, identity, num_qubits = algorithms.hamiltonian_simulation.make_trotter_terms(
+        hamiltonian)
+    assert identity == pytest.approx(0.0)
+
+    time = 0.7
+    rx_angle = 0.41
+    ry_angle = -0.33
+    ket = _two_qubit_product_state(rx_angle, ry_angle)
+    exact = _exact_evolve(coefficients, words, identity, time, ket)
+
+    @cudaq.kernel
+    def evolve(coeffs: list[float], paulis: list[cudaq.pauli_word], t: float,
+               n_steps: int, order: int, theta0: float, theta1: float):
+        q = cudaq.qvector(2)
+        rx(theta0, q[0])
+        ry(theta1, q[1])
+        algorithms.hamiltonian_simulation.apply_trotter(
+            coeffs, paulis, t, n_steps, order, q)
+
+    for order in (1, 2, 4):
+        for steps in (1, 3):
+            state = np.asarray(cudaq.get_state(evolve, coefficients, words,
+                                               time, steps, order, rx_angle,
+                                               ry_angle),
+                               dtype=np.complex128)
+            assert _phase_align_error(state, exact) < 1.0e-9
 
 
 def test_apply_trotter_kernel_handles_four_qubit_hamiltonian_with_many_terms():

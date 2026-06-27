@@ -207,6 +207,20 @@ struct apply_trotter_test_kernel {
         coefficients, words, time, steps, order, q);
   }
 };
+
+// Prepares the Bell state (|00> + |11>)/sqrt(2) on two qubits, then applies the
+// Trotter evolution. Used by the commuting-Hamiltonian exactness test.
+struct bell_then_trotter_kernel {
+  void operator()(const std::vector<double> &coefficients,
+                  const std::vector<cudaq::pauli_word> &words, double time,
+                  std::size_t steps, int order) __qpu__ {
+    cudaq::qvector q(2);
+    h(q[0]);
+    x<cudaq::ctrl>(q[0], q[1]);
+    cudaq::algorithms::hamiltonian_simulation::apply_trotter(
+        coefficients, words, time, steps, order, q);
+  }
+};
 } // namespace
 
 TEST(TrotterTest, MakeTrotterTermsDropsIdentityTerms) {
@@ -296,6 +310,49 @@ TEST(TrotterTest, ApplyTrotterKernelMatchesStatevectorReferenceForOrders) {
     for (std::size_t i = 0; i < expected.size(); ++i)
       expect_close(actual.amplitude(basis_bits(i, terms.num_qubits)),
                    expected[i]);
+  }
+}
+
+TEST(TrotterTest, ApplyTrotterIsExactForCommutingHamiltonian) {
+  // All terms are diagonal (Z-type) and therefore commute, so the Trotter
+  // product formula is EXACT for every order and step count. The reference here
+  // is an analytic diagonal evolution -- independent of the product-formula
+  // simulator used by the other tests -- so this catches a wrong sign, a wrong
+  // per-term angle factor, or a wrong coefficient that a self-referential test
+  // would miss.
+  cudaq::spin_op hamiltonian = 0.5 * cudaq::spin_op::from_word("ZI") +
+                               0.4 * cudaq::spin_op::from_word("IZ") +
+                               0.3 * cudaq::spin_op::from_word("ZZ");
+  auto terms = cudaq::algorithms::hamiltonian_simulation::make_trotter_terms(
+      hamiltonian);
+
+  const double time = 0.7;
+  // The Bell state mixes the all-zeros and all-ones eigenstates. Their
+  // eigenvalues depend only on each term's weight (number of Z factors), so the
+  // expected phases are independent of any qubit-ordering convention:
+  //   all-zeros: every Z gives +1            -> 0.5 + 0.4 + 0.3 =  1.2
+  //   all-ones:  single-Z flips, ZZ is even  -> -0.5 - 0.4 + 0.3 = -0.6
+  const double energy_zeros = 0.5 + 0.4 + 0.3;
+  const double energy_ones = -0.5 - 0.4 + 0.3;
+  const auto amp_zeros =
+      std::exp(std::complex<double>{0.0, -energy_zeros * time}) /
+      std::sqrt(2.0);
+  const auto amp_ones =
+      std::exp(std::complex<double>{0.0, -energy_ones * time}) / std::sqrt(2.0);
+
+  for (int order :
+       {cudaq::algorithms::hamiltonian_simulation::first_order_trotter,
+        cudaq::algorithms::hamiltonian_simulation::second_order_trotter,
+        cudaq::algorithms::hamiltonian_simulation::fourth_order_trotter}) {
+    for (std::size_t steps : {std::size_t{1}, std::size_t{3}}) {
+      auto state =
+          cudaq::get_state(bell_then_trotter_kernel{}, terms.coefficients,
+                           terms.words, time, steps, order);
+      expect_close(state.amplitude(basis_bits(0, 2)), amp_zeros, 1e-9);
+      expect_close(state.amplitude(basis_bits(3, 2)), amp_ones, 1e-9);
+      expect_close(state.amplitude(basis_bits(1, 2)), {0.0, 0.0}, 1e-9);
+      expect_close(state.amplitude(basis_bits(2, 2)), {0.0, 0.0}, 1e-9);
+    }
   }
 }
 
