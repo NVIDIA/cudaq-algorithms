@@ -65,7 +65,9 @@ def run_real_example():
     print(f"  electrons: {plan.num_electrons}")
     print(f"  Givens rotations: {resources.num_givens_rotations}")
     print(f"  exp_pauli calls: {resources.num_exp_pauli_calls}")
-    print(f"  phase-aligned L2 error: {phase_aligned_l2(state, reference):.3e}")
+    error = phase_aligned_l2(state, reference)
+    print(f"  phase-aligned L2 error: {error:.3e}")
+    assert error < 1.0e-6, "prepared state does not match the Slater determinant"
 
 
 def run_complex_example():
@@ -97,7 +99,9 @@ def run_complex_example():
     print(f"  Givens rotations: {resources.num_givens_rotations}")
     print(f"  exp_pauli calls: {resources.num_exp_pauli_calls}")
     print(f"  phase rotations: {resources.num_phase_rotations}")
-    print(f"  phase-aligned L2 error: {phase_aligned_l2(state, reference):.3e}")
+    error = phase_aligned_l2(state, reference)
+    print(f"  phase-aligned L2 error: {error:.3e}")
+    assert error < 1.0e-6, "prepared state does not match the Slater determinant"
 
 
 if __name__ == "__main__":

@@ -310,3 +310,59 @@ def test_validate_slater_determinant_plan_rejects_non_adjacent_rotation():
 
     with pytest.raises(ValueError, match="adjacent rotations"):
         algorithms.stateprep.validate_slater_determinant_plan(plan)
+
+
+def test_dispatch_complex_dtype_all_real_routes_complex():
+    # A complex-dtype array whose values are all real must still route to the
+    # complex path (dtype.kind == 'c'); the prepared state must be correct.
+    rng = np.random.default_rng(101)
+    real_q, _ = np.linalg.qr(rng.normal(size=(4, 2)))
+    occupied = real_q.astype(complex)
+    plan = algorithms.stateprep.make_slater_determinant_plan(occupied)
+    assert plan.is_complex
+
+    state = _prepare_complex_slater_state(occupied)
+    expected = _reference_slater_state(occupied)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_dispatch_python_list_with_complex_entries_routes_complex():
+    # A nested Python list with complex entries must route to the complex path
+    # via the _contains_complex recursion (no numpy dtype to inspect).
+    occupied = [[0.6 + 0.0j, 0.0 + 0.0j], [0.8 + 0.0j, 0.0 + 0.0j],
+                [0.0 + 0.0j, 0.0 + 1.0j], [0.0 + 0.0j, 0.0 + 0.0j]]
+    plan = algorithms.stateprep.make_slater_determinant_plan(occupied)
+    assert plan.is_complex
+
+    state = _prepare_complex_slater_state(occupied)
+    expected = _reference_slater_state(occupied)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+
+
+def test_dispatch_real_python_list_stays_real():
+    occupied = [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0], [0.0, 0.0]]
+    plan = algorithms.stateprep.make_slater_determinant_plan(occupied)
+    assert not plan.is_complex
+
+
+def test_estimate_givens_rotation_schedule_resources():
+    rng = np.random.default_rng(53)
+    occupied, _ = np.linalg.qr(rng.normal(size=(4, 2)))
+    schedule = algorithms.stateprep.make_givens_rotation_schedule(occupied)
+    resources = (
+        algorithms.stateprep.estimate_givens_rotation_schedule_resources(
+            schedule))
+    assert resources.num_givens_rotations == len(schedule.rotations)
+    assert resources.num_exp_pauli_calls == 2 * len(schedule.rotations)
+    assert resources.num_phase_rotations == 0  # is_complex defaults to False
+
+
+def test_localized_signed_basis_prepares_correct_determinant():
+    # A localized, sign-flipped occupied orbital leaves a negative pivot in the
+    # real reduction. The real kernel omits the 0/pi "final phase", but that is
+    # only a global phase, so the prepared determinant is still correct up to
+    # global phase (verified numerically across many inputs).
+    occupied = [[1.0, 0.0], [0.0, -1.0], [0.0, 0.0], [0.0, 0.0]]
+    state = _prepare_real_slater_state(occupied)
+    expected = _reference_slater_state(occupied)
+    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)

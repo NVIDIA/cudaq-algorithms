@@ -166,12 +166,6 @@ void bind_stateprep(nb::module_ &mod) {
           &cudaq::algorithms::stateprep::make_givens_rotation_schedule),
       nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
   stateprep.def(
-      "make_givens_rotation_schedule",
-      static_cast<cudaq::algorithms::stateprep::givens_rotation_schedule (*)(
-          const std::vector<std::vector<std::complex<double>>> &, double)>(
-          &cudaq::algorithms::stateprep::make_givens_rotation_schedule),
-      nb::arg("occupied_orbitals"), nb::arg("tolerance") = 1.0e-12);
-  stateprep.def(
       "make_slater_determinant_plan",
       static_cast<cudaq::algorithms::stateprep::slater_determinant_plan (*)(
           const std::vector<std::vector<double>> &, double)>(
