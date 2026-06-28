@@ -143,3 +143,57 @@ def test_invalid_inputs_raise():
     with pytest.raises(ValueError):
         df.compressed_double_factorization(_synthetic_eri(4, 2, 1),
                                            num_leaves=0)
+
+
+def _openfermion_factorize():
+    """OpenFermion's explicit-DF ``factorize``, or skip if unavailable.
+
+    The public ``openfermion.resource_estimates.df`` API is gated behind an
+    optional ``jax`` dependency, but the factorization itself only needs NumPy,
+    so fall back to loading the module file directly when the gate blocks the
+    normal import.
+    """
+    pytest.importorskip("openfermion")
+    try:
+        from openfermion.resource_estimates import df as of_df
+        if hasattr(of_df, "factorize"):
+            return of_df.factorize
+    except Exception:
+        pass
+    import importlib.util
+    import openfermion
+    path = os.path.join(os.path.dirname(openfermion.__file__),
+                        "resource_estimates", "df", "factorize_df.py")
+    if not os.path.exists(path):
+        pytest.skip("OpenFermion explicit-DF reference is not available")
+    spec = importlib.util.spec_from_file_location("_of_factorize_df", path)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        pytest.skip("OpenFermion explicit-DF reference could not be loaded")
+    return module.factorize
+
+
+def test_explicit_double_factorization_matches_openfermion_reference():
+    """Cross-check X-DF against OpenFermion's independent explicit-DF reference.
+
+    Compared on the reconstructed ERI tensor (convention-independent), since the
+    two implementations store leaves differently and apply different second-factor
+    truncation conventions.
+    """
+    factorize = _openfermion_factorize()
+    eri = _h2o_eri()
+    n = eri.shape[0]
+    reference_eri, _factors, rank, _num_eigenvectors = factorize(eri,
+                                                                 thresh=1.0e-13)
+
+    # The reference reconstructs the ERI, and its first-factor rank cannot exceed
+    # the symmetric-pair dimension n(n+1)/2.
+    assert np.linalg.norm(reference_eri - eri) < 1.0e-9
+    assert rank <= n * (n + 1) // 2
+
+    mine = df.explicit_double_factorization(eri, eigenvalue_threshold=0.0)
+    np.testing.assert_allclose(mine.reconstruct_eri(),
+                               reference_eri,
+                               atol=1.0e-9)
