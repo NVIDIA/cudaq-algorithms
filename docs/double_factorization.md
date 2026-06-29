@@ -35,11 +35,11 @@ accepts `backend="auto"` (default), `"cupy"`, or `"numpy"`.
 | function | description |
 |----------|-------------|
 | `explicit_double_factorization(eri, threshold=1e-8, max_num_leaves=None, second_factor_threshold=0.0, first_factorization="cholesky", backend="auto")` | X-DF (rank-one cores). First factorization defaults to **pivoted Cholesky**; pass `first_factorization="eigendecomposition"` for the eigendecomposition variant. |
-| `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). |
+| `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). `regularization=rho>0` enables **RC-DF** (see below). |
 | `reconstruct_eri(factorization)` | Rebuild the `(pq\|rs)` tensor from a factorization. |
 | `factorization_error(eri, factorization)` | Frobenius norm of the reconstruction residual. |
 | `modified_one_body_integrals(one_body, eri)` | The DF one-body correction `kappa_pq = h_pq - 1/2 sum_r (pr\|qr)`. |
-| `double_factorization_one_norm(factorization, one_body_eigenvalues)` | LCU one-norm `lambda` of the DF Hamiltonian. |
+| `double_factorization_one_norm(factorization, one_body_eigenvalues, convention="lcu")` | One-norm `lambda` of the DF Hamiltonian; `convention="lcu"` (Pauli-rotation) or `"burg"` (qubitization). |
 
 All functions return/operate on a `DoubleFactorization` dataclass with
 `num_orbitals`, `leaf_rotations` (`U^t`), `leaf_cores` (`Z^t`), `num_leaves`, and
@@ -64,6 +64,21 @@ All functions return/operate on a `DoubleFactorization` dataclass with
   optimized with L-BFGS, while the symmetric cores are solved in closed form at
   each step (the two-step scheme of the paper, warm-started from X-DF). C-DF
   reaches a target accuracy with substantially fewer leaves than X-DF.
+
+## RC-DF regularization
+
+Setting `regularization=rho > 0` enables **regularized C-DF** (RC-DF, Oumarou
+et al., *Quantum* **8**, 1371 (2024), [arXiv:2212.07957](https://arxiv.org/abs/2212.07957)),
+adding the L2 penalty `rho * sum_{t,k,l} (Z^t_kl)^2` to the objective (Eq. 17).
+The penalty is folded into the inner core solve as a ridge term, so it actually
+shrinks the cores `Z^t` (it also conditions the otherwise rank-deficient inner
+system). Smaller cores lower the Hamiltonian one-norm `lambda` — and hence the
+qubitization runtime and measurement variance — at a modest cost in
+reconstruction accuracy. `rho` is an absolute coefficient whose useful scale
+depends on the integral magnitude (the paper uses `~1e-6` to `1e-3`); pick it by
+trading off `factorization_error` against `double_factorization_one_norm`. By the
+envelope theorem the analytic optimization gradient is unchanged in form, so
+RC-DF runs at the same per-iteration cost as plain C-DF.
 
 ## Example
 

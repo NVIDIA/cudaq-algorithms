@@ -141,6 +141,53 @@ def test_compressed_double_factorization_exact_at_true_rank(backend):
     assert _max_orthogonality_error(compressed) < 1.0e-9
 
 
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_rcdf_regularization_shrinks_cores_and_one_norm(backend):
+    eri = _synthetic_eri(n=4, num_vectors=3, seed=7)
+    one_body = np.array([0.4, -0.3, 0.2, -0.1])
+
+    plain = df.compressed_double_factorization(eri, num_leaves=2,
+                                               max_iterations=800,
+                                               regularization=0.0,
+                                               backend=backend)
+    regularized = df.compressed_double_factorization(eri, num_leaves=2,
+                                                     max_iterations=800,
+                                                     regularization=1.0e-2,
+                                                     backend=backend)
+
+    def core_norm(factorization):
+        return sum(float(np.linalg.norm(z)) for z in factorization.leaf_cores)
+
+    # RC-DF shrinks the cores ...
+    assert core_norm(regularized) < core_norm(plain)
+    # ... lowering the Hamiltonian one-norm in both conventions ...
+    for convention in ("lcu", "burg"):
+        assert (df.double_factorization_one_norm(
+            regularized, one_body, convention=convention) <
+                df.double_factorization_one_norm(
+                    plain, one_body, convention=convention))
+    # ... at the cost of reconstruction accuracy.
+    assert (df.factorization_error(eri, regularized) >=
+            df.factorization_error(eri, plain) - 1.0e-9)
+
+
+def test_one_norm_conventions():
+    eri = _synthetic_eri(n=4, num_vectors=3, seed=9)
+    factorization = df.explicit_double_factorization(eri, threshold=0.0)
+    one_body = np.array([0.5, -1.0, 0.25, 0.75])
+    base = float(np.sum(np.abs(one_body)))
+
+    lcu = df.double_factorization_one_norm(factorization, one_body,
+                                           convention="lcu")
+    burg = df.double_factorization_one_norm(factorization, one_body,
+                                            convention="burg")
+    assert lcu >= base
+    assert burg >= base
+    with pytest.raises(ValueError):
+        df.double_factorization_one_norm(factorization, one_body,
+                                         convention="bogus")
+
+
 def test_reconstruct_eri_matches_helper():
     eri = _synthetic_eri(n=4, num_vectors=2, seed=3)
     factorization = df.explicit_double_factorization(eri,

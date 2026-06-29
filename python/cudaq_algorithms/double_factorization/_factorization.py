@@ -220,12 +220,18 @@ def _leaf_outer_columns(rotation, xp):
     return outer.reshape(n * n, n)
 
 
-def _solve_inner_cores(eri_dev, rotations_dev, xp):
+def _solve_inner_cores(eri_dev, rotations_dev, xp, regularization=0.0):
     """Least-squares optimal symmetric cores ``{Z^t}`` for fixed rotations.
 
-    Solves ``min_Z || eri - sum_t U^t Z^t (U^t)^T (congruence) ||_F`` exactly
-    (linear in the symmetric ``Z^t``) via a pseudoinverse / least squares, the
-    inner step of the two-step C-DF scheme.
+    Solves, for fixed ``U^t``,
+
+        min_Z  1/2 || eri - sum_t U^t Z^t (U^t)^T (congruence) ||_F^2
+                  + rho * sum_{t,k,l} (Z^t_kl)^2
+
+    exactly (linear in the symmetric ``Z^t``). The ``rho`` (``regularization``)
+    term is the RC-DF L2 penalty (arXiv:2212.07957, Eq. 17); it shrinks the cores
+    and also conditions the otherwise rank-deficient inner system. Implemented as
+    an augmented least-squares / ridge solve.
     """
     n = eri_dev.shape[0]
     target = eri_dev.reshape(-1)
@@ -243,6 +249,18 @@ def _solve_inner_cores(eri_dev, rotations_dev, xp):
                 metadata.append((leaf_index, k, l))
 
     design = xp.stack(columns, axis=1)
+
+    if regularization > 0.0:
+        # Augmented rows enforce the L2 penalty rho * ||Z||_F^2 (full k, l). For
+        # the k <= l parameterization, off-diagonal entries appear twice in
+        # ||Z||_F^2, so they carry weight 2 (diagonal weight 1). The factor 2
+        # below comes from the 1/2 on the least-squares term in Eq. 17.
+        weights = xp.asarray(
+            [1.0 if k == l else 2.0 for (_, k, l) in metadata])
+        penalty = xp.sqrt(2.0 * regularization * weights)
+        design = xp.concatenate([design, xp.diag(penalty)], axis=0)
+        target = xp.concatenate([target, xp.zeros(penalty.shape[0])], axis=0)
+
     solution = xp.linalg.lstsq(design, target, rcond=None)[0]
 
     cores = [xp.zeros((n, n)) for _ in rotations_dev]
@@ -323,8 +341,13 @@ def compressed_double_factorization(
     ``X^t`` and optimized with L-BFGS (warm-started from X-DF), while the
     symmetric cores ``Z^t`` are solved exactly in closed form at each step.
 
-    ``regularization`` adds an optional ``rho * sum_t ||Z^t||_F^2`` penalty
-    (the RC-DF extension, arXiv:2212.07957); default 0 reproduces plain C-DF.
+    ``regularization`` (``rho``) enables RC-DF (arXiv:2212.07957, Eq. 17): the
+    L2 penalty ``rho * sum_{t,k,l} (Z^t_kl)^2`` is added to the objective and,
+    crucially, folded into the inner core solve as a ridge term. It shrinks the
+    cores -- lowering the Hamiltonian one-norm ``lambda`` and the measurement
+    variance -- and conditions the inner system. ``rho`` is an absolute
+    coefficient (its useful scale depends on the integral magnitude; the paper
+    uses ~1e-6 to 1e-3). ``rho = 0`` reproduces plain C-DF.
 
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
@@ -354,26 +377,21 @@ def compressed_double_factorization(
             rotations.append(expm_skew_symmetric(skew, xp))
         return skews, rotations
 
-    def objective(parameter_vector):
-        _, rotations = unpack(parameter_vector)
-        cores = _solve_inner_cores(eri_dev, rotations, xp)
+    def objective_and_gradient(parameter_vector):
+        # Two-step objective O(X) with the cores Z at their (regularized)
+        # least-squares optimum. Because dO/dZ = 0 there, the envelope theorem
+        # gives dO/dX = (dO/dU at fixed Z) chained through dU/dX; the L2 penalty
+        # has no explicit X-dependence, so the gradient keeps the same form for
+        # any regularization. dO/dU^t_ak = -4 sum_qrsl Delta_aqrs U_qk Z_kl U_rl
+        # U_sl (Eq. 17 of arXiv:2104.08957).
+        skews, rotations = unpack(parameter_vector)
+        cores = _solve_inner_cores(eri_dev, rotations, xp, regularization)
         residual = eri_dev - _reconstruct_dev(rotations, cores, xp)
         loss = 0.5 * xp.sum(residual * residual)
         if regularization > 0.0:
             loss = loss + regularization * sum(
                 xp.sum(core * core) for core in cores)
-        return float(to_numpy(loss))
-
-    def objective_and_gradient(parameter_vector):
-        # Analytic gradient (regularization == 0 only): with the inner cores at
-        # their least-squares optimum, dO/dZ = 0, so by the envelope theorem the
-        # gradient is dO/dU chained through dU/dX (the matrix-exponential
-        # derivative). dO/dU^t_ak = -4 sum_qrsl Delta_aqrs U_qk Z_kl U_rl U_sl
-        # (Eq. 17 of arXiv:2104.08957).
-        skews, rotations = unpack(parameter_vector)
-        cores = _solve_inner_cores(eri_dev, rotations, xp)
-        residual = eri_dev - _reconstruct_dev(rotations, cores, xp)
-        loss = float(to_numpy(0.5 * xp.sum(residual * residual)))
+        loss = float(to_numpy(loss))
 
         gradient_chunks = []
         for skew, rotation, core in zip(skews, rotations, cores):
@@ -395,20 +413,18 @@ def compressed_double_factorization(
             gradient_chunks.append(grad_x[lower])
         return loss, np.concatenate(gradient_chunks)
 
-    use_analytic = regularization == 0.0
-    result = scipy.optimize.minimize(
-        objective_and_gradient if use_analytic else objective,
-        x0,
-        method="L-BFGS-B",
-        jac=use_analytic,
-        options={
-            "maxiter": max_iterations,
-            "ftol": tolerance,
-            "gtol": tolerance,
-        })
+    result = scipy.optimize.minimize(objective_and_gradient,
+                                     x0,
+                                     method="L-BFGS-B",
+                                     jac=True,
+                                     options={
+                                         "maxiter": max_iterations,
+                                         "ftol": tolerance,
+                                         "gtol": tolerance,
+                                     })
 
     _, rotations = unpack(result.x)
-    cores = _solve_inner_cores(eri_dev, rotations, xp)
+    cores = _solve_inner_cores(eri_dev, rotations, xp, regularization)
     return DoubleFactorization(
         num_orbitals=n,
         leaf_rotations=[to_numpy(r) for r in rotations],
@@ -438,14 +454,39 @@ def modified_one_body_integrals(one_body, eri) -> np.ndarray:
 
 
 def double_factorization_one_norm(factorization: DoubleFactorization,
-                                  one_body_eigenvalues) -> float:
-    """LCU one-norm ``lambda`` of the double-factorized Hamiltonian (RC-DF
-    Eq. 13): ``sum_k |F_k| + sum_t (sum_{k<l} |Z^t_kl| + 1/4 sum_k |Z^t_kk|)``."""
+                                  one_body_eigenvalues,
+                                  convention: str = "lcu") -> float:
+    """One-norm ``lambda`` of the double-factorized Hamiltonian (RC-DF,
+    arXiv:2212.07957), used to assess factorization quality.
+
+    ``convention="lcu"`` (Eq. 13) -- the LCU / Pauli-rotation norm
+    ``sum_k |F_k| + sum_t (sum_{k<l} |Z^t_kl| + 1/4 sum_k |Z^t_kk|)``.
+
+    ``convention="burg"`` (Eq. 15) -- the qubitization norm
+    ``sum_k |F_k| + 1/4 sum_t sum_i (sum_k |W^t_ki|)^2`` with ``W^t = sqrt(Z^t)``
+    (the matrix square root, which may be complex for indefinite cores).
+
+    ``one_body_eigenvalues`` are the diagonal one-body (Fock-like) eigenvalues.
+    """
     one_body_eigenvalues = np.asarray(one_body_eigenvalues, dtype=float)
     lam = float(np.sum(np.abs(one_body_eigenvalues)))
-    for core in factorization.leaf_cores:
-        core = np.asarray(core)
-        # sum_{k<l} |Z_kl| (strict upper triangle) + 1/4 sum_k |Z_kk|
-        lam += float(np.sum(np.abs(np.triu(core, k=1))))
-        lam += 0.25 * float(np.sum(np.abs(np.diag(core))))
-    return lam
+
+    if convention == "lcu":
+        for core in factorization.leaf_cores:
+            core = np.asarray(core)
+            # sum_{k<l} |Z_kl| (strict upper triangle) + 1/4 sum_k |Z_kk|
+            lam += float(np.sum(np.abs(np.triu(core, k=1))))
+            lam += 0.25 * float(np.sum(np.abs(np.diag(core))))
+        return lam
+
+    if convention == "burg":
+        for core in factorization.leaf_cores:
+            eigenvalues, vectors = np.linalg.eigh(np.asarray(core, dtype=float))
+            root = (vectors * np.sqrt(eigenvalues.astype(complex))) @ \
+                vectors.conj().T  # W = sqrt(Z), possibly complex
+            column_abs_sum = np.sum(np.abs(root), axis=0)  # sum_k |W_ki| per i
+            lam += 0.25 * float(np.sum(column_abs_sum**2))
+        return lam
+
+    raise ValueError(
+        "double_factorization error - convention must be 'lcu' or 'burg'.")
