@@ -17,8 +17,8 @@ from ._factorization import (DoubleFactorization,
                              compressed_double_factorization,
                              double_factorization_one_norm,
                              explicit_double_factorization,
-                             factorization_error,
-                             modified_one_body_integrals, reconstruct_eri)
+                             factorization_error, modified_one_body_integrals,
+                             reconstruct_eri)
 
 __all__ = [
     "DoubleFactorization",

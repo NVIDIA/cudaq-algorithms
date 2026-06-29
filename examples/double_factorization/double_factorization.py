@@ -47,17 +47,20 @@ def main():
     print(f"  backend: {backend_name}")
     print(f"  orbitals: {eri.shape[0]}   ||eri||_F: {norm:.6f}")
 
-    full = df.explicit_double_factorization(eri, threshold=0.0,
+    full = df.explicit_double_factorization(eri,
+                                            threshold=0.0,
                                             backend=backend)
     print("\nX-DF (explicit):")
     print(f"  full-rank leaves: {full.num_leaves}   "
           f"reconstruction error: {df.factorization_error(eri, full):.3e}")
     for threshold in (1.0e-2, 1.0e-3, 1.0e-4):
-        truncated = df.explicit_double_factorization(
-            eri, threshold=threshold, backend=backend)
+        truncated = df.explicit_double_factorization(eri,
+                                                     threshold=threshold,
+                                                     backend=backend)
         rel = df.factorization_error(eri, truncated) / norm
-        print(f"  threshold {threshold:.0e}: leaves={truncated.num_leaves:2d}  "
-              f"rel error={rel:.3e}")
+        print(
+            f"  threshold {threshold:.0e}: leaves={truncated.num_leaves:2d}  "
+            f"rel error={rel:.3e}")
 
     print("\nC-DF (compressed) vs X-DF at equal leaf count:")
     for num_leaves in (2, 4):

@@ -49,8 +49,10 @@ class DoubleFactorization:
     leaf_rotations: List[np.ndarray]
     leaf_cores: List[np.ndarray]
     method: str
-    first_factorization: Optional[str] = None  # "cholesky" or "eigendecomposition"
-    leaf_weights: Optional[np.ndarray] = None  # first-factor pivots/eigenvalues
+    first_factorization: Optional[
+        str] = None  # "cholesky" or "eigendecomposition"
+    leaf_weights: Optional[
+        np.ndarray] = None  # first-factor pivots/eigenvalues
 
     @property
     def num_leaves(self) -> int:
@@ -425,11 +427,10 @@ def compressed_double_factorization(
 
     _, rotations = unpack(result.x)
     cores = _solve_inner_cores(eri_dev, rotations, xp, regularization)
-    return DoubleFactorization(
-        num_orbitals=n,
-        leaf_rotations=[to_numpy(r) for r in rotations],
-        leaf_cores=[to_numpy(c) for c in cores],
-        method="C-DF")
+    return DoubleFactorization(num_orbitals=n,
+                               leaf_rotations=[to_numpy(r) for r in rotations],
+                               leaf_cores=[to_numpy(c) for c in cores],
+                               method="C-DF")
 
 
 def reconstruct_eri(factorization: DoubleFactorization) -> np.ndarray:
@@ -440,8 +441,8 @@ def reconstruct_eri(factorization: DoubleFactorization) -> np.ndarray:
 def factorization_error(eri, factorization: DoubleFactorization) -> float:
     """Frobenius norm of the ERI reconstruction residual."""
     return float(
-        np.linalg.norm(np.asarray(eri, dtype=float) -
-                       factorization.reconstruct_eri()))
+        np.linalg.norm(
+            np.asarray(eri, dtype=float) - factorization.reconstruct_eri()))
 
 
 def modified_one_body_integrals(one_body, eri) -> np.ndarray:
@@ -481,7 +482,8 @@ def double_factorization_one_norm(factorization: DoubleFactorization,
 
     if convention == "burg":
         for core in factorization.leaf_cores:
-            eigenvalues, vectors = np.linalg.eigh(np.asarray(core, dtype=float))
+            eigenvalues, vectors = np.linalg.eigh(np.asarray(core,
+                                                             dtype=float))
             root = (vectors * np.sqrt(eigenvalues.astype(complex))) @ \
                 vectors.conj().T  # W = sqrt(Z), possibly complex
             column_abs_sum = np.sum(np.abs(root), axis=0)  # sum_k |W_ki| per i

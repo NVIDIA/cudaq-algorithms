@@ -43,8 +43,7 @@ def _h2o_eri():
 
 
 def _max_orthogonality_error(factorization):
-    return max((float(
-        np.linalg.norm(u.T @ u - np.eye(u.shape[0])))
+    return max((float(np.linalg.norm(u.T @ u - np.eye(u.shape[0])))
                 for u in factorization.leaf_rotations),
                default=0.0)
 
@@ -66,19 +65,24 @@ def test_explicit_double_factorization_is_exact_at_full_rank(backend):
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_explicit_double_factorization_truncation_monotone(backend):
     eri = _h2o_eri()
-    full = df.explicit_double_factorization(eri, threshold=0.0,
+    full = df.explicit_double_factorization(eri,
+                                            threshold=0.0,
                                             backend=backend)
-    coarse = df.explicit_double_factorization(eri, threshold=1.0e-2,
+    coarse = df.explicit_double_factorization(eri,
+                                              threshold=1.0e-2,
                                               backend=backend)
-    fine = df.explicit_double_factorization(eri, threshold=1.0e-4,
+    fine = df.explicit_double_factorization(eri,
+                                            threshold=1.0e-4,
                                             backend=backend)
     # More aggressive truncation -> fewer leaves and larger (or equal) error.
     assert coarse.num_leaves <= fine.num_leaves <= full.num_leaves
-    assert (df.factorization_error(eri, coarse) >=
-            df.factorization_error(eri, fine) - 1.0e-12)
+    assert (df.factorization_error(eri, coarse)
+            >= df.factorization_error(eri, fine) - 1.0e-12)
     # max_num_leaves caps the leaf count.
-    capped = df.explicit_double_factorization(eri, threshold=0.0,
-                                              max_num_leaves=3, backend=backend)
+    capped = df.explicit_double_factorization(eri,
+                                              threshold=0.0,
+                                              max_num_leaves=3,
+                                              backend=backend)
     assert capped.num_leaves == 3
 
 
@@ -86,7 +90,8 @@ def test_explicit_double_factorization_truncation_monotone(backend):
 def test_pivoted_cholesky_is_default_and_rank_revealing(backend):
     eri = _h2o_eri()
     n = eri.shape[0]
-    factorization = df.explicit_double_factorization(eri, threshold=1.0e-12,
+    factorization = df.explicit_double_factorization(eri,
+                                                     threshold=1.0e-12,
                                                      backend=backend)
     # Pivoted Cholesky is the default first factorization.
     assert factorization.first_factorization == "cholesky"
@@ -99,17 +104,22 @@ def test_pivoted_cholesky_is_default_and_rank_revealing(backend):
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_cholesky_and_eigendecomposition_agree(backend):
     eri = _h2o_eri()
-    cholesky = df.explicit_double_factorization(
-        eri, threshold=0.0, first_factorization="cholesky", backend=backend)
+    cholesky = df.explicit_double_factorization(eri,
+                                                threshold=0.0,
+                                                first_factorization="cholesky",
+                                                backend=backend)
     eigen = df.explicit_double_factorization(
-        eri, threshold=0.0, first_factorization="eigendecomposition",
+        eri,
+        threshold=0.0,
+        first_factorization="eigendecomposition",
         backend=backend)
     assert eigen.first_factorization == "eigendecomposition"
     # Both reconstruct the same ERI exactly, regardless of first-factor method.
     assert df.factorization_error(eri, cholesky) < 1.0e-9
     assert df.factorization_error(eri, eigen) < 1.0e-9
     np.testing.assert_allclose(cholesky.reconstruct_eri(),
-                               eigen.reconstruct_eri(), atol=1.0e-9)
+                               eigen.reconstruct_eri(),
+                               atol=1.0e-9)
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
@@ -127,14 +137,15 @@ def test_compressed_double_factorization_beats_explicit(backend):
         assert compressed.method == "C-DF"
         assert compressed.num_leaves == num_leaves
         # Compression is never worse than the explicit factorization.
-        assert (df.factorization_error(eri, compressed) <=
-                df.factorization_error(eri, explicit) + 1.0e-6)
+        assert (df.factorization_error(eri, compressed)
+                <= df.factorization_error(eri, explicit) + 1.0e-6)
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_compressed_double_factorization_exact_at_true_rank(backend):
     eri = _synthetic_eri(n=4, num_vectors=3, seed=11)
-    compressed = df.compressed_double_factorization(eri, num_leaves=3,
+    compressed = df.compressed_double_factorization(eri,
+                                                    num_leaves=3,
                                                     max_iterations=1500,
                                                     backend=backend)
     assert df.factorization_error(eri, compressed) < 1.0e-4
@@ -146,11 +157,13 @@ def test_rcdf_regularization_shrinks_cores_and_one_norm(backend):
     eri = _synthetic_eri(n=4, num_vectors=3, seed=7)
     one_body = np.array([0.4, -0.3, 0.2, -0.1])
 
-    plain = df.compressed_double_factorization(eri, num_leaves=2,
+    plain = df.compressed_double_factorization(eri,
+                                               num_leaves=2,
                                                max_iterations=800,
                                                regularization=0.0,
                                                backend=backend)
-    regularized = df.compressed_double_factorization(eri, num_leaves=2,
+    regularized = df.compressed_double_factorization(eri,
+                                                     num_leaves=2,
                                                      max_iterations=800,
                                                      regularization=1.0e-2,
                                                      backend=backend)
@@ -162,13 +175,15 @@ def test_rcdf_regularization_shrinks_cores_and_one_norm(backend):
     assert core_norm(regularized) < core_norm(plain)
     # ... lowering the Hamiltonian one-norm in both conventions ...
     for convention in ("lcu", "burg"):
-        assert (df.double_factorization_one_norm(
-            regularized, one_body, convention=convention) <
-                df.double_factorization_one_norm(
-                    plain, one_body, convention=convention))
+        assert (df.double_factorization_one_norm(regularized,
+                                                 one_body,
+                                                 convention=convention)
+                < df.double_factorization_one_norm(plain,
+                                                   one_body,
+                                                   convention=convention))
     # ... at the cost of reconstruction accuracy.
-    assert (df.factorization_error(eri, regularized) >=
-            df.factorization_error(eri, plain) - 1.0e-9)
+    assert (df.factorization_error(eri, regularized)
+            >= df.factorization_error(eri, plain) - 1.0e-9)
 
 
 def test_one_norm_conventions():
@@ -177,21 +192,23 @@ def test_one_norm_conventions():
     one_body = np.array([0.5, -1.0, 0.25, 0.75])
     base = float(np.sum(np.abs(one_body)))
 
-    lcu = df.double_factorization_one_norm(factorization, one_body,
+    lcu = df.double_factorization_one_norm(factorization,
+                                           one_body,
                                            convention="lcu")
-    burg = df.double_factorization_one_norm(factorization, one_body,
+    burg = df.double_factorization_one_norm(factorization,
+                                            one_body,
                                             convention="burg")
     assert lcu >= base
     assert burg >= base
     with pytest.raises(ValueError):
-        df.double_factorization_one_norm(factorization, one_body,
+        df.double_factorization_one_norm(factorization,
+                                         one_body,
                                          convention="bogus")
 
 
 def test_reconstruct_eri_matches_helper():
     eri = _synthetic_eri(n=4, num_vectors=2, seed=3)
-    factorization = df.explicit_double_factorization(eri,
-                                                     threshold=0.0)
+    factorization = df.explicit_double_factorization(eri, threshold=0.0)
     np.testing.assert_allclose(df.reconstruct_eri(factorization),
                                factorization.reconstruct_eri())
 
@@ -207,8 +224,7 @@ def test_modified_one_body_integrals():
 
 def test_double_factorization_one_norm_nonnegative_and_additive():
     eri = _synthetic_eri(n=4, num_vectors=3, seed=9)
-    factorization = df.explicit_double_factorization(eri,
-                                                     threshold=0.0)
+    factorization = df.explicit_double_factorization(eri, threshold=0.0)
     one_body_eigenvalues = np.array([0.5, -1.0, 0.25, 0.75])
     lam = df.double_factorization_one_norm(factorization, one_body_eigenvalues)
     assert lam >= float(np.sum(np.abs(one_body_eigenvalues)))
@@ -262,8 +278,8 @@ def test_explicit_double_factorization_matches_openfermion_reference():
     factorize = _openfermion_factorize()
     eri = _h2o_eri()
     n = eri.shape[0]
-    reference_eri, _factors, rank, _num_eigenvectors = factorize(eri,
-                                                                 thresh=1.0e-13)
+    reference_eri, _factors, rank, _num_eigenvectors = factorize(
+        eri, thresh=1.0e-13)
 
     # The reference reconstructs the ERI, and its first-factor rank cannot exceed
     # the symmetric-pair dimension n(n+1)/2.
