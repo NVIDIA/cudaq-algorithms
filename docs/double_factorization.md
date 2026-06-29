@@ -34,7 +34,7 @@ accepts `backend="auto"` (default), `"cupy"`, or `"numpy"`.
 
 | function | description |
 |----------|-------------|
-| `explicit_double_factorization(eri, eigenvalue_threshold=1e-8, max_num_leaves=None, second_factor_threshold=0.0, backend="auto")` | X-DF via nested eigendecompositions (rank-one cores). |
+| `explicit_double_factorization(eri, threshold=1e-8, max_num_leaves=None, second_factor_threshold=0.0, first_factorization="cholesky", backend="auto")` | X-DF (rank-one cores). First factorization defaults to **pivoted Cholesky**; pass `first_factorization="eigendecomposition"` for the eigendecomposition variant. |
 | `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). |
 | `reconstruct_eri(factorization)` | Rebuild the `(pq\|rs)` tensor from a factorization. |
 | `factorization_error(eri, factorization)` | Frobenius norm of the reconstruction residual. |
@@ -47,11 +47,17 @@ All functions return/operate on a `DoubleFactorization` dataclass with
 
 ## X-DF vs C-DF
 
-- **X-DF** is exact and cheap: the ERI supermatrix is eigendecomposed into leaves
-  `(pq|rs) = sum_t lambda_t V^t_pq V^t_rs` (truncating small `|lambda_t|`), then
-  each symmetric leaf `V^t` is eigendecomposed to give `U^t` and the rank-one core
-  `Z^t_kl = lambda_t gamma^t_k gamma^t_l`. At full rank the reconstruction is
-  exact to machine precision.
+- **X-DF** is exact and cheap. The first factorization of the ERI supermatrix
+  into symmetric leaves `(pq|rs) = sum_t L^t_pq L^t_rs` defaults to **pivoted
+  Cholesky**: the ERI matrix is positive semidefinite (a Gram matrix of orbital
+  densities), so Cholesky is rank-revealing — it keeps leaves while the residual
+  pivot exceeds `threshold` and stops at the true rank (at most the symmetric-pair
+  dimension `n(n+1)/2`), which is cheaper than a full eigendecomposition. (Pass
+  `first_factorization="eigendecomposition"` for the symmetric-eigendecomposition
+  variant, `(pq|rs) = sum_t lambda_t V^t_pq V^t_rs`, required for indefinite
+  inputs.) Each symmetric leaf is then eigendecomposed to give `U^t` and the
+  rank-one core `Z^t`. At full rank the reconstruction is exact to machine
+  precision, independent of the first-factor method.
 - **C-DF** lifts the rank-one restriction on `Z^t` and minimizes
   `O = 1/2 || eri - reconstruction ||_F^2` over a fixed number of leaves. The leaf
   rotations are parameterized as `U^t = exp(X^t)` (antisymmetric `X^t`) and

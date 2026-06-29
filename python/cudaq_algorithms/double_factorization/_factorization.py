@@ -49,7 +49,8 @@ class DoubleFactorization:
     leaf_rotations: List[np.ndarray]
     leaf_cores: List[np.ndarray]
     method: str
-    eigenvalues: Optional[np.ndarray] = None  # first-factor eigenvalues (X-DF)
+    first_factorization: Optional[str] = None  # "cholesky" or "eigendecomposition"
+    leaf_weights: Optional[np.ndarray] = None  # first-factor pivots/eigenvalues
 
     @property
     def num_leaves(self) -> int:
@@ -77,6 +78,56 @@ def _sorted_symmetric_eigendecomposition(matrix, xp):
     return eigenvalues[order], eigenvectors[:, order]
 
 
+def _pivoted_cholesky(matrix, threshold, max_rank, xp):
+    """Pivoted Cholesky factorization of a symmetric positive-semidefinite
+    matrix: returns ``(vectors, pivots)`` with ``matrix ~= sum_t v_t v_t^T``.
+
+    The largest residual-diagonal entry is pivoted on at each step, so the
+    factorization is rank-revealing and stops once that pivot drops to or below
+    ``threshold`` (or after ``max_rank`` vectors). This is the standard
+    Cholesky/density-fitting decomposition of the (PSD) electron-repulsion
+    integrals; non-positive residual pivots (numerical null space) terminate it.
+    """
+    m = matrix.shape[0]
+    residual = xp.real(xp.diag(matrix)).astype(float).copy()
+    initial_max = float(xp.max(residual)) if m else 0.0
+    # Rank-revealing floor: stop once the residual pivot reaches the numerical
+    # null space. Without this, threshold == 0 would keep extracting vectors with
+    # vanishing (eventually denormal) pivots, and dividing by sqrt(pivot) yields
+    # garbage rotations.
+    floor = max(float(threshold), initial_max * 1.0e-14)
+    vectors: List = []
+    pivots: List[float] = []
+    limit = m if max_rank is None else min(int(max_rank), m)
+    for _ in range(limit):
+        pivot_index = int(xp.argmax(residual))
+        pivot = float(residual[pivot_index])
+        if pivot <= floor:
+            break
+        column = matrix[:, pivot_index].astype(float).copy()
+        for previous in vectors:
+            column = column - previous * float(previous[pivot_index])
+        vector = column / xp.sqrt(xp.asarray(pivot))
+        vectors.append(vector)
+        pivots.append(pivot)
+        residual = residual - vector * vector
+        residual = xp.where(residual > 0.0, residual, 0.0)
+    return vectors, pivots
+
+
+def _second_factorization(leaf, scale, second_factor_threshold, xp):
+    """Eigendecompose a symmetric leaf ``L = U diag(gamma) U^T`` and return
+    ``(U, Z)`` with the symmetric core ``Z = scale * outer(gamma, gamma)``."""
+    leaf = 0.5 * (leaf + leaf.T)
+    gamma, rotation = xp.linalg.eigh(leaf)
+    if second_factor_threshold > 0.0:
+        importance = xp.sum(xp.abs(gamma))
+        gamma = xp.where(importance * xp.abs(gamma) > second_factor_threshold,
+                         gamma, 0.0)
+    core = scale * xp.outer(gamma, gamma)
+    return to_numpy(rotation), to_numpy(core)
+
+
 def _validate_eri(eri) -> int:
     eri = np.asarray(eri)
     if eri.ndim != 4 or len(set(eri.shape)) != 1:
@@ -88,63 +139,78 @@ def _validate_eri(eri) -> int:
 
 def explicit_double_factorization(
         eri,
-        eigenvalue_threshold: float = 1.0e-8,
+        threshold: float = 1.0e-8,
         max_num_leaves: Optional[int] = None,
         second_factor_threshold: float = 0.0,
+        first_factorization: str = "cholesky",
         backend: str = "auto") -> DoubleFactorization:
-    """Explicit double factorization (X-DF) via nested eigendecompositions.
+    """Explicit double factorization (X-DF).
 
-    First factorization: the ERI supermatrix ``V_{(pq),(rs)}`` is symmetrized and
-    eigendecomposed into leaves ``(pq|rs) = sum_t lambda_t V^t_pq V^t_rs``; leaves
-    with ``|lambda_t| <= eigenvalue_threshold`` (and beyond ``max_num_leaves``)
-    are dropped. Second factorization: each symmetric leaf ``V^t`` is
-    eigendecomposed, ``V^t = U^t diag(gamma^t) (U^t)^T``, giving the rank-one core
-    ``Z^t_kl = lambda_t gamma^t_k gamma^t_l``. ``second_factor_threshold`` (an
-    importance-weighted cutoff matching OpenFermion's convention) optionally zeros
-    small ``gamma^t_k``.
+    First factorization of the ERI supermatrix ``(pq|rs) = sum_t L^t_pq L^t_rs``
+    into symmetric leaves ``L^t``:
+
+    * ``first_factorization="cholesky"`` (default) -- pivoted Cholesky of the
+      positive-semidefinite ERI matrix. Rank-revealing: it keeps leaves while the
+      residual-diagonal pivot exceeds ``threshold`` (the numerical null space
+      terminates it), so it stops at the true factorization rank.
+    * ``first_factorization="eigendecomposition"`` -- symmetric eigendecomposition
+      ``(pq|rs) = sum_t lambda_t V^t_pq V^t_rs`` keeping ``|lambda_t| > threshold``.
+      Required for indefinite inputs; the ERI is PSD so Cholesky is preferred.
+
+    ``max_num_leaves`` caps the leaf count. Second factorization: each symmetric
+    leaf is eigendecomposed, ``L^t = U^t diag(gamma^t) (U^t)^T``, giving the
+    rank-one core ``Z^t = outer(gamma^t, gamma^t)`` (scaled by ``lambda_t`` in the
+    eigendecomposition case). ``second_factor_threshold`` optionally zeros small
+    ``gamma^t_k`` (importance-weighted, matching OpenFermion's convention).
 
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
     n = _validate_eri(eri)
     xp, _ = resolve_backend(backend)
     eri_dev = to_device(np.asarray(eri, dtype=float), xp)
-
     supermatrix = eri_dev.reshape(n * n, n * n)
     supermatrix = 0.5 * (supermatrix + supermatrix.T)
-    eigenvalues, eigenvectors = _sorted_symmetric_eigendecomposition(
-        supermatrix, xp)
 
-    abs_eigenvalues = to_numpy(xp.abs(eigenvalues))
     rotations: List[np.ndarray] = []
     cores: List[np.ndarray] = []
-    kept_eigenvalues: List[float] = []
+    weights: List[float] = []
 
-    for index in range(n * n):
-        if abs_eigenvalues[index] <= eigenvalue_threshold:
-            break
-        if max_num_leaves is not None and len(rotations) >= max_num_leaves:
-            break
-
-        lam = eigenvalues[index]
-        leaf = eigenvectors[:, index].reshape(n, n)
-        leaf = 0.5 * (leaf + leaf.T)  # leaves are symmetric by ERI symmetry
-        gamma, leaf_rotation = xp.linalg.eigh(leaf)
-
-        if second_factor_threshold > 0.0:
-            importance = xp.sum(xp.abs(gamma))
-            gamma = xp.where(importance * xp.abs(gamma) > second_factor_threshold,
-                             gamma, 0.0)
-
-        core = lam * xp.outer(gamma, gamma)
-        rotations.append(to_numpy(leaf_rotation))
-        cores.append(to_numpy(core))
-        kept_eigenvalues.append(float(to_numpy(lam)))
+    if first_factorization == "cholesky":
+        vectors, pivots = _pivoted_cholesky(supermatrix, threshold,
+                                            max_num_leaves, xp)
+        for vector, pivot in zip(vectors, pivots):
+            rotation, core = _second_factorization(vector.reshape(n, n), 1.0,
+                                                   second_factor_threshold, xp)
+            rotations.append(rotation)
+            cores.append(core)
+            weights.append(pivot)
+    elif first_factorization == "eigendecomposition":
+        eigenvalues, eigenvectors = _sorted_symmetric_eigendecomposition(
+            supermatrix, xp)
+        abs_eigenvalues = to_numpy(xp.abs(eigenvalues))
+        for index in range(n * n):
+            if abs_eigenvalues[index] <= threshold:
+                break
+            if max_num_leaves is not None and len(rotations) >= max_num_leaves:
+                break
+            lam = eigenvalues[index]
+            rotation, core = _second_factorization(
+                eigenvectors[:, index].reshape(n, n), lam,
+                second_factor_threshold, xp)
+            rotations.append(rotation)
+            cores.append(core)
+            weights.append(float(to_numpy(lam)))
+    else:
+        raise ValueError(
+            "double_factorization error - first_factorization must be "
+            "'cholesky' or 'eigendecomposition'.")
 
     return DoubleFactorization(num_orbitals=n,
                                leaf_rotations=rotations,
                                leaf_cores=cores,
                                method="X-DF",
-                               eigenvalues=np.asarray(kept_eigenvalues))
+                               first_factorization=first_factorization,
+                               leaf_weights=np.asarray(weights))
 
 
 def _leaf_outer_columns(rotation, xp):
@@ -220,7 +286,7 @@ def _initial_generators(eri, num_leaves, n, backend):
     """Warm-start antisymmetric generators from a truncated X-DF (identity pads
     any missing leaves)."""
     xdf = explicit_double_factorization(eri,
-                                        eigenvalue_threshold=0.0,
+                                        threshold=0.0,
                                         max_num_leaves=num_leaves,
                                         backend=backend)
     generators = []
