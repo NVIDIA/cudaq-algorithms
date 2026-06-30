@@ -227,6 +227,60 @@ Items 1–2 are implemented in `_solve_inner_cores_cg`; they are reversible and
 preserve the NumPy/CuPy duality (verified identical to the lstsq solve, recon to
 ~1e-14 and cores to ~1e-10 when the inner system is full rank).
 
+### Measured (benchmarks/double_factorization/bench_cg_inner_solve.py)
+
+One inner core solve, warm-started X-DF rotations, `rho` = regularization.
+
+- **Tier-0 win (batched vs old list-based CG), H2O/STO-3G, n=7, 8 leaves,
+  rho=1e-3:** NumPy 64 → 39 ms (**1.7x**), CuPy 1921 → 204 ms (**9.4x**). The win
+  is GPU-weighted, as expected — batching removes the `num_leaves^2` micro-launches
+  and the per-iteration syncs that dominate on the GPU.
+- **H2O/6-311G, n=19, 20 leaves, rho=1e-3, tol=1e-10:** the lstsq design matrix is
+  **~4.0 GB** (vs a ~1 MB ERI) — this is the OOM that motivated CG. Batched CG:
+  NumPy 2557 ms, **CuPy 432 ms (~5.9x)**. So at the real problem size the GPU wins
+  and CG is the only solver that fits.
+- **At small sizes the GPU loses** (n=7: CuPy CG 204 ms vs CPU lstsq 30 ms). The
+  matvec is too small to saturate; per-iteration launch + sync latency dominates.
+- **Crossover and the GPU advantage** (synthetic, leaves=n, rho=1e-2, tol=1e-4):
+  GPU time stays nearly flat while CPU explodes, so the GPU lead compounds with
+  size — this is the regime where this code outruns CPU-bound implementations:
+
+  | n  | NumPy ms | CuPy ms | GPU speedup |
+  |----|----------|---------|-------------|
+  | 8  | 4.4      | 20.9    | 0.2x        |
+  | 12 | 18.2     | 24.8    | 0.7x        |
+  | 16 | 61.1     | 28.4    | 2.2x        |
+  | 20 | 164.8    | 31.2    | 5.3x        |
+  | 28 | 778.2    | 36.1    | 21.6x       |
+
+**The dominant cost is iteration count, not the matvec.** Time is ~linear in CG
+iterations (~0.6 ms/iter on GPU at n=19), and iterations are set by the inner
+tolerance and conditioning, not by matvec efficiency:
+
+| rho  | tol   | iters | GPU ms |
+|------|-------|-------|--------|
+| 1e-3 | 1e-10 | 700   | 435    |
+| 1e-3 | 1e-6  | 316   | 200    |
+| 1e-3 | 1e-4  | 119   | 81     |
+| 1e-2 | 1e-10 | 245   | 159    |
+| 1e-2 | 1e-4  | 60    | 45     |
+
+So the next wins are **algorithmic**, and they compound the Tier-0 kernel win:
+
+1. **Inexact inner solve / forcing sequence** — the inner solve does not need
+   `tol=1e-10` every L-BFGS step (the gradient only needs to be accurate enough).
+   Loosening to ~1e-4 early is already ~5x here, for free.
+2. **Warm-start CG across L-BFGS steps** — the cores move slowly between steps;
+   starting from the previous `Z` should collapse the iteration count.
+3. **Jacobi / diagonal preconditioner** — attacks the condition number directly
+   (larger `rho` already shows the conditioning effect above).
+4. **CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration launch
+   overhead that makes the GPU lose at small sizes.
+
+Only once iteration count is controlled does the GPU's batched-matvec advantage
+dominate end-to-end; that is the regime where this code can outrun CPU-bound
+implementations of the same algorithm.
+
 ### If/when it goes native, port only the matvec
 
 The right seam is surgical: push **just `apply_operator`** (ideally with the
