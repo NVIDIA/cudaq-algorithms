@@ -409,3 +409,14 @@ Takeaways:
   iterative optimization), growing ~linearly in leaf count. C-DF is a one-time
   classical pre-processing investment justified only when the leaf savings matter
   downstream (circuit depth, measurement variance), not for raw reconstruction.
+- **Regularization is load-bearing for CG tractability, not just the one-norm.**
+  A `rho=0` control run timed out before finishing a single leaf row. Cause
+  (measured, one inner solve at 64 leaves, n=19, tol=1e-6): the inner operator is
+  rank-deficient at `rho=0` (`lambda_min -> 0`), so CG iterations explode --
+  `rho=1e-3`: 407 iters / 0.27 s; `rho=1e-4`: 908 / 0.56 s; **`rho=0`: 4876 /
+  2.83 s (~12x)** -- and that is *per L-BFGS step*. So `rho>0` conditions the CG
+  solve (an RC-DF benefit beyond shrinking the one-norm); the explicit lstsq solver
+  tolerates `rho=0` (direct min-norm) but its design matrix OOMs at these leaf
+  counts (>12 GB). Net: **C-DF-with-CG is inherently a regularized, low-to-moderate
+  rank tool**; for near-full-rank accuracy X-DF is both exact-ish and free, so the
+  96-leaf reversal above is the expected regime boundary, not a deficiency.
