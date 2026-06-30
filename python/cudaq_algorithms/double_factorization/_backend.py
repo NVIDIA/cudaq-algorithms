@@ -21,6 +21,15 @@ try:  # CuPy is optional; absence simply forces the NumPy path.
 except Exception:  # pragma: no cover - environment without CuPy
     _cupy = None
 
+# Empirical CPU/GPU crossovers (orbital count ``n``) for ``backend="auto"``.
+# Below these the GPU's per-kernel launch + host-sync latency makes CuPy slower
+# than NumPy; above them the batched cuSOLVER/cuBLAS linear algebra wins and the
+# lead grows with ``n``. X-DF (a cheap Cholesky loop + tiny per-leaf eigh) stays
+# CPU-favorable far longer than the contraction-heavy C-DF optimization. See
+# benchmarks/double_factorization/ and DOUBLE_FACTORIZATION_CPP_PORT_NOTES.md.
+AUTO_GPU_MIN_ORBITALS_COMPRESSED = 18
+AUTO_GPU_MIN_ORBITALS_EXPLICIT = 56
+
 
 def cupy_gpu_available() -> bool:
     """Return True when CuPy is importable and at least one GPU is visible."""
@@ -32,10 +41,14 @@ def cupy_gpu_available() -> bool:
         return False
 
 
-def resolve_backend(backend: str = "auto"):
+def resolve_backend(backend: str = "auto", problem_size=None, gpu_min_size=0):
     """Return ``(array_module, name)`` for the requested backend.
 
-    ``"auto"`` selects CuPy when a GPU is available, otherwise NumPy.
+    ``"auto"`` selects CuPy when a GPU is available *and* the problem is large
+    enough to amortize GPU launch/sync overhead -- i.e. ``problem_size`` (the
+    orbital count ``n``) is at least ``gpu_min_size`` -- otherwise NumPy. With no
+    ``problem_size`` hint it keeps the legacy behavior: CuPy whenever a GPU is
+    present. ``"cupy"`` / ``"numpy"`` force the backend regardless of size.
     """
     if backend == "numpy":
         return np, "numpy"
@@ -46,7 +59,8 @@ def resolve_backend(backend: str = "auto"):
                 "but no CuPy/GPU is available.")
         return _cupy, "cupy"
     if backend == "auto":
-        if cupy_gpu_available():
+        if cupy_gpu_available() and (problem_size is None
+                                     or problem_size >= gpu_min_size):
             return _cupy, "cupy"
         return np, "numpy"
     raise ValueError(

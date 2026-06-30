@@ -275,9 +275,16 @@ So the next wins are **algorithmic**, and they compound the Tier-0 kernel win:
    accuracy is unchanged. **End-to-end (synthetic n=16, 8 leaves, rho=1e-3,
    maxiter=150): NumPy 11.2 -> 5.9 s (1.9x), CuPy 17.5 -> 9.6 s (1.8x)**, with the
    final reconstruction error matching the cold/tight path.
-2. **[TODO] Jacobi / diagonal preconditioner** — attacks the condition number
+2. **[DONE] Size-aware `auto` backend.** Since the GPU loses below the crossover,
+   `backend="auto"` now picks NumPy for small problems and CuPy only at/above an
+   empirical orbital-count threshold (C-DF `n >= 18`, X-DF `n >= 56`; the X-DF
+   crossover is higher — a cheap Cholesky loop + tiny per-leaf eigh stays
+   CPU-favorable until ~n=64). `"cupy"`/`"numpy"` still force a backend. This is
+   the "best of both" the benchmarks call for: no GPU penalty on small inputs, GPU
+   speedup (growing with `n`) on large ones.
+3. **[TODO] Jacobi / diagonal preconditioner** — attacks the condition number
    directly (larger `rho` already shows the conditioning effect above).
-3. **[TODO] CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration
+4. **[TODO] CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration
    launch overhead that makes the GPU lose at small sizes.
 
 **Where the end-to-end time now goes** (profiled, full C-DF, CuPy, n=16, 8 leaves):

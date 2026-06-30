@@ -32,8 +32,9 @@ import numpy as np
 import scipy.linalg
 import scipy.optimize
 
-from ._backend import (expm_skew_symmetric, resolve_backend, to_device,
-                       to_numpy)
+from ._backend import (AUTO_GPU_MIN_ORBITALS_COMPRESSED,
+                       AUTO_GPU_MIN_ORBITALS_EXPLICIT, expm_skew_symmetric,
+                       resolve_backend, to_device, to_numpy)
 
 
 @dataclass
@@ -168,7 +169,9 @@ def explicit_double_factorization(
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
     n = _validate_eri(eri)
-    xp, _ = resolve_backend(backend)
+    xp, _ = resolve_backend(backend,
+                            problem_size=n,
+                            gpu_min_size=AUTO_GPU_MIN_ORBITALS_EXPLICIT)
     eri_dev = to_device(np.asarray(eri, dtype=float), xp)
     supermatrix = eri_dev.reshape(n * n, n * n)
     supermatrix = 0.5 * (supermatrix + supermatrix.T)
@@ -491,7 +494,9 @@ def compressed_double_factorization(
         raise ValueError(
             "double_factorization error - inner_solver must be 'lstsq' or 'cg'."
         )
-    xp, _ = resolve_backend(backend)
+    xp, _ = resolve_backend(backend,
+                            problem_size=n,
+                            gpu_min_size=AUTO_GPU_MIN_ORBITALS_COMPRESSED)
     eri_dev = to_device(np.asarray(eri, dtype=float), xp)
 
     if initial_generators is None:

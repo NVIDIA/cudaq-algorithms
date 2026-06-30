@@ -30,6 +30,14 @@ runs on the NVIDIA math libraries — cuSOLVER and cuBLAS via **CuPy** — when 
 is available, and falls back to **NumPy/SciPy** otherwise. Every entry point
 accepts `backend="auto"` (default), `"cupy"`, or `"numpy"`.
 
+`"auto"` is **size-aware**: below an empirical orbital-count crossover the GPU's
+per-kernel launch and host-sync latency makes it slower than NumPy, so `auto`
+stays on the CPU for small problems and switches to the GPU only once the work is
+large enough to amortize that overhead (and the GPU lead then grows with `n`). The
+crossovers differ by method — C-DF (contraction-heavy) crosses around `n ≈ 18`,
+while X-DF (a cheap Cholesky loop + tiny per-leaf eigh) stays CPU-favorable until
+`n ≈ 56`. Pass `backend="cupy"` or `"numpy"` to force a backend regardless of size.
+
 ## API
 
 | function | description |
