@@ -220,8 +220,10 @@ sub-second; a port only pays off at the active-space sizes where DF matters):
    `curvature`, `step`, `beta`) stay as on-device 0-d arrays; only the convergence
    test and the curvature guard convert to host (one scalar each per iteration),
    instead of the old full-reduction-returning-`float` on every inner product.
-3. **[TODO, optional]** wrap the CG iteration in a **CUDA graph** (CuPy supports
-   capture) to amortize remaining launch overhead.
+3. **[BLOCKED from Python]** wrap the CG iteration in a **CUDA graph** to amortize
+   remaining launch overhead. Not feasible from CuPy 13.6 — the matvec is a cuBLAS
+   call and CuPy errors on cuBLAS during stream capture. See the algorithmic
+   wins list below (item 5) for details and the native route.
 
 Items 1–2 are implemented in `_solve_inner_cores_cg`; they are reversible and
 preserve the NumPy/CuPy duality (verified identical to the lstsq solve, recon to
@@ -303,8 +305,21 @@ So the next wins are **algorithmic**, and they compound the Tier-0 kernel win:
    a **polynomial (Chebyshev) accelerator** on the known interval `[2rho, lambda_max]`
    -- which is also sync-free (no per-iteration dot products, so GPU-friendly) but
    needs `rho > 0` (falls back to CG at `rho = 0`). Deferred.
-5. **[TODO] CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration
-   launch overhead that makes the GPU lose at small sizes.
+5. **[BLOCKED from Python — needs native cuBLAS] CUDA graph capture** (Tier-0
+   item 3). Capturing the CG iteration as a CUDA graph would amortize the
+   per-iteration launch + Python overhead that makes the GPU lose at small sizes.
+   But the iteration's dominant op is the matvec, which is a cuBLAS GEMM (via
+   `einsum`/`matmul`), and **CuPy 13.6 errors with "calling cuBLAS API during
+   stream capture is currently unsupported"** — verified by prototype. So the one
+   op worth capturing is exactly the one CuPy forbids during capture; capturing
+   only the elementwise axpy/reductions (which *are* capture-safe) and leaving the
+   matvec outside saves almost nothing. Additional friction: `cupy.einsum` has no
+   `out=` (so the matvec result needs a `copyto` into a fixed buffer for stable
+   graph addresses anyway). The viable route is raw cuBLAS with a
+   capture-compatible workspace (`cublasSetStream`/`cublasSetWorkspace`) under the
+   CUDA driver graph API — i.e. the native C++/CUDA port (§1, §6 "port only the
+   matvec"), where the matvec kernel and the CG driver are captured together. Not
+   pursued from Python.
 
 **Where the end-to-end time went** (profiled *before* item 3, full C-DF, CuPy,
 n=16, 8 leaves): inner CG solve ~53%, the `n^4` reconstruct/gradient `einsum`s +
