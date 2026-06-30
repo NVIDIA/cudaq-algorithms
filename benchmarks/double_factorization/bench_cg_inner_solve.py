@@ -253,11 +253,10 @@ def run_scaling(rho, tol, repeats):
             print(f"  {n:>4} {n:>7} {iters:>6d} {t*1e3:>9.1f}")
 
 
-def run_full(num_leaves, rho, max_iterations, repeats):
+def run_full(n, num_leaves, rho, max_iterations, repeats):
     """End-to-end compressed_double_factorization: warm-start + inexact in-loop
     CG ('accel', the new defaults) vs the cold/tight in-loop solve ('plain'),
     on a synthetic ERI. Verifies the final reconstruction error matches."""
-    n = 16
     eri = synthetic_eri(n, num_vectors=max(2, num_leaves - 1), seed=5)
     for backend in _backends():
         print(f"\n=== full C-DF  {backend}  n={n}  leaves={num_leaves}  "
@@ -314,6 +313,10 @@ def main():
     parser.add_argument("--full",
                         action="store_true",
                         help="end-to-end C-DF: accel vs plain in-loop CG")
+    parser.add_argument("--n",
+                        type=int,
+                        default=16,
+                        help="orbital count for --full (synthetic ERI)")
     parser.add_argument("--max-iterations", type=int, default=150)
     args = parser.parse_args()
 
@@ -321,7 +324,8 @@ def main():
         print("(CuPy GPU not available -- NumPy only)")
 
     if args.full:  # synthetic ERI; no PySCF needed
-        run_full(args.leaves, args.rho, args.max_iterations, args.repeats)
+        run_full(args.n, args.leaves, args.rho, args.max_iterations,
+                 args.repeats)
     elif args.scaling:  # synthetic sweep; no PySCF needed
         run_scaling(args.rho, args.tol, args.repeats)
     else:

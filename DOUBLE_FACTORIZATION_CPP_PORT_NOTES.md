@@ -288,13 +288,25 @@ to the §1/§2 worry — and a GPU port of it buys little on its own. After the 
 solve, the next target is the reconstruct/gradient contractions and the small
 eigendecompositions, all of which are still launch-bound at this size.
 
-**End-to-end CPU/GPU crossover is higher than the inner-solve crossover (~n=14-16)**
-because the full step also runs L-BFGS, the per-leaf eigh/Fréchet, and per-step
-host syncs — CuPy is still slower than NumPy end-to-end at n=16. Only once `n` is
-large enough that the reconstruct/gradient `einsum`s *and* the inner solve are all
-real GPU work (and iteration count is controlled, as it now is) does the GPU win
-end-to-end. That large-`n`, controlled-iteration regime is where this code can
-outrun CPU-bound implementations of the same algorithm.
+**End-to-end CPU/GPU crossover is ~n=18-20**, higher than the inner-solve
+crossover (~n=14-16), because the full step also runs L-BFGS, the per-leaf
+eigh/Fréchet, and per-step host syncs. Measured (accel path, identical problem per
+backend at each `n`, leaves as noted, rho=1e-3, maxiter=100):
+
+| n (leaves) | NumPy accel | CuPy accel | GPU vs CPU |
+|------------|-------------|------------|------------|
+| 16 (8)     | 5.9 s       | 9.6 s      | 0.6x (GPU loses) |
+| 20 (10)    | 12.0 s      | 8.1 s      | 1.5x       |
+| 24 (10)    | 11.2 s      | 5.4 s      | 2.1x       |
+
+(Errors differ across `n` because each is a different random ERI, unconverged at
+maxiter=100; the CPU-vs-GPU comparison is valid since both backends solve the same
+problem at each size.) The accelerator speedup itself holds steady at ~1.8-1.9x on
+both backends regardless of size. Only once `n` is large enough that the
+reconstruct/gradient `einsum`s *and* the inner solve are all real GPU work (and
+iteration count is controlled, as it now is) does the GPU win end-to-end — and the
+lead grows with size (2.1x by n=24). That large-`n`, controlled-iteration regime
+is where this code outruns CPU-bound implementations of the same algorithm.
 
 ### If/when it goes native, port only the matvec
 
