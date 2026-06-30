@@ -186,6 +186,44 @@ def test_rcdf_regularization_shrinks_cores_and_one_norm(backend):
             >= df.factorization_error(eri, plain) - 1.0e-9)
 
 
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_compressed_matrix_free_cg_matches_lstsq(backend):
+    eri = _synthetic_eri(n=4, num_vectors=3, seed=11)
+    # The matrix-free conjugate-gradient inner solve (RC-DF Eqs. 25-30) is an
+    # alternative to the explicit design-matrix least squares; both must reach
+    # the same reconstruction accuracy, with and without regularization.
+    for regularization in (0.0, 1.0e-2):
+        lstsq = df.compressed_double_factorization(
+            eri,
+            num_leaves=2,
+            max_iterations=800,
+            regularization=regularization,
+            inner_solver="lstsq",
+            backend=backend)
+        cg = df.compressed_double_factorization(eri,
+                                                num_leaves=2,
+                                                max_iterations=800,
+                                                regularization=regularization,
+                                                inner_solver="cg",
+                                                backend=backend)
+        assert cg.method == "C-DF"
+        assert abs(
+            df.factorization_error(eri, cg) -
+            df.factorization_error(eri, lstsq)) < 1.0e-6
+    # CG is exact at the true rank, like the least-squares solver.
+    exact = df.compressed_double_factorization(eri,
+                                               num_leaves=3,
+                                               max_iterations=1500,
+                                               inner_solver="cg",
+                                               backend=backend)
+    assert df.factorization_error(eri, exact) < 1.0e-4
+    with pytest.raises(ValueError):
+        df.compressed_double_factorization(eri,
+                                           num_leaves=2,
+                                           inner_solver="bogus",
+                                           backend=backend)
+
+
 def test_one_norm_conventions():
     eri = _synthetic_eri(n=4, num_vectors=3, seed=9)
     factorization = df.explicit_double_factorization(eri, threshold=0.0)

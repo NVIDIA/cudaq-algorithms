@@ -222,7 +222,85 @@ def _leaf_outer_columns(rotation, xp):
     return outer.reshape(n * n, n)
 
 
-def _solve_inner_cores(eri_dev, rotations_dev, xp, regularization=0.0):
+def _project_eri_into_leaf(eri_dev, rotation, xp):
+    """R^t_kl = sum_pqrs U^t_pk U^t_qk (pq|rs) U^t_rl U^t_sl (the RHS of the inner
+    normal equations / projection of the ERIs into a leaf's rotated basis)."""
+    a = xp.einsum("pk,qk->pqk", rotation, rotation)
+    return xp.einsum("pqk,pqrs,rsl->kl", a, eri_dev, a, optimize=True)
+
+
+def _solve_inner_cores_cg(eri_dev,
+                          rotations_dev,
+                          xp,
+                          regularization=0.0,
+                          tolerance=1.0e-10,
+                          max_iterations=None):
+    """Matrix-free conjugate-gradient solve for the symmetric cores ``{Z^t}``.
+
+    Solves the same normal equations as the least-squares solver,
+    ``(A + 2 rho I) Z = R``, but never forms the ``n^4 x num_params`` design
+    matrix (RC-DF Eqs. 25-30). The operator factorizes as
+
+        A(Z)^t = sum_{t'} M_{tt'} Z^{t'} M_{tt'}^T ,
+        M_{tt'} = (U^t^T U^{t'}) elementwise-squared      (Eq. 27)
+
+    so each matvec is just ``n x n`` matrix products; the ERIs are contracted
+    only once to build the RHS ``R^t``. This scales to large orbital counts where
+    the explicit design matrix is infeasible.
+    """
+    n = eri_dev.shape[0]
+    num_leaves = len(rotations_dev)
+
+    overlaps = [[
+        rotations_dev[t].T @ rotations_dev[u] for u in range(num_leaves)
+    ] for t in range(num_leaves)]
+    metric = [[overlaps[t][u] * overlaps[t][u] for u in range(num_leaves)]
+              for t in range(num_leaves)]
+    rhs = [_project_eri_into_leaf(eri_dev, u, xp) for u in rotations_dev]
+
+    def apply_operator(z):
+        result = []
+        for t in range(num_leaves):
+            acc = xp.zeros((n, n))
+            for u in range(num_leaves):
+                acc = acc + metric[t][u] @ z[u] @ metric[t][u].T
+            if regularization > 0.0:
+                acc = acc + 2.0 * regularization * z[t]
+            result.append(acc)
+        return result
+
+    def inner_product(x, y):
+        return float(to_numpy(sum(xp.sum(xi * yi) for xi, yi in zip(x, y))))
+
+    z = [xp.zeros((n, n)) for _ in range(num_leaves)]
+    residual = [r.copy() for r in rhs]  # r = rhs - A(0)
+    direction = [r.copy() for r in residual]
+    residual_norm_sq = inner_product(residual, residual)
+    threshold = (tolerance**2) * max(residual_norm_sq, 1.0)
+    limit = max_iterations if max_iterations is not None else max(
+        50, num_leaves * n * n)
+
+    for _ in range(limit):
+        if residual_norm_sq <= threshold:
+            break
+        operator_direction = apply_operator(direction)
+        curvature = inner_product(direction, operator_direction)
+        if curvature <= 0.0:
+            break
+        step = residual_norm_sq / curvature
+        z = [zi + step * di for zi, di in zip(z, direction)]
+        residual = [
+            ri - step * oi for ri, oi in zip(residual, operator_direction)
+        ]
+        new_norm_sq = inner_product(residual, residual)
+        beta = new_norm_sq / residual_norm_sq
+        direction = [ri + beta * di for ri, di in zip(residual, direction)]
+        residual_norm_sq = new_norm_sq
+
+    return [0.5 * (zi + zi.T) for zi in z]
+
+
+def _solve_inner_cores_lstsq(eri_dev, rotations_dev, xp, regularization=0.0):
     """Least-squares optimal symmetric cores ``{Z^t}`` for fixed rotations.
 
     Solves, for fixed ``U^t``,
@@ -230,10 +308,11 @@ def _solve_inner_cores(eri_dev, rotations_dev, xp, regularization=0.0):
         min_Z  1/2 || eri - sum_t U^t Z^t (U^t)^T (congruence) ||_F^2
                   + rho * sum_{t,k,l} (Z^t_kl)^2
 
-    exactly (linear in the symmetric ``Z^t``). The ``rho`` (``regularization``)
-    term is the RC-DF L2 penalty (arXiv:2212.07957, Eq. 17); it shrinks the cores
-    and also conditions the otherwise rank-deficient inner system. Implemented as
-    an augmented least-squares / ridge solve.
+    exactly (linear in the symmetric ``Z^t``) via an explicit design matrix. The
+    ``rho`` (``regularization``) term is the RC-DF L2 penalty
+    (arXiv:2212.07957, Eq. 17); it shrinks the cores and conditions the otherwise
+    rank-deficient inner system. See ``_solve_inner_cores_cg`` for the matrix-free
+    alternative that scales to large orbital counts.
     """
     n = eri_dev.shape[0]
     target = eri_dev.reshape(-1)
@@ -271,6 +350,26 @@ def _solve_inner_cores(eri_dev, rotations_dev, xp, regularization=0.0):
         cores[leaf_index][k, l] = value
         cores[leaf_index][l, k] = value
     return cores
+
+
+def _solve_inner_cores(eri_dev,
+                       rotations_dev,
+                       xp,
+                       regularization=0.0,
+                       solver="lstsq",
+                       cg_tolerance=1.0e-10,
+                       cg_max_iterations=None):
+    """Dispatch the inner core solve to the explicit ``"lstsq"`` solver or the
+    matrix-free ``"cg"`` solver."""
+    if solver == "lstsq":
+        return _solve_inner_cores_lstsq(eri_dev, rotations_dev, xp,
+                                        regularization)
+    if solver == "cg":
+        return _solve_inner_cores_cg(eri_dev, rotations_dev, xp,
+                                     regularization, cg_tolerance,
+                                     cg_max_iterations)
+    raise ValueError(
+        "double_factorization error - inner_solver must be 'lstsq' or 'cg'.")
 
 
 def _reconstruct_dev(rotations_dev, cores_dev, xp):
@@ -333,6 +432,9 @@ def compressed_double_factorization(
         max_iterations: int = 2000,
         tolerance: float = 1.0e-10,
         regularization: float = 0.0,
+        inner_solver: str = "lstsq",
+        cg_tolerance: float = 1.0e-10,
+        cg_max_iterations: Optional[int] = None,
         initial_generators: Optional[List[np.ndarray]] = None,
         backend: str = "auto") -> DoubleFactorization:
     """Compressed double factorization (C-DF) by least-squares optimization.
@@ -351,12 +453,22 @@ def compressed_double_factorization(
     coefficient (its useful scale depends on the integral magnitude; the paper
     uses ~1e-6 to 1e-3). ``rho = 0`` reproduces plain C-DF.
 
+    ``inner_solver`` selects how the cores are solved each step: ``"lstsq"``
+    (default) forms an explicit design matrix, while ``"cg"`` is the matrix-free
+    conjugate-gradient solve (RC-DF Eqs. 25-30) that avoids the ``n^4``-row design
+    matrix and scales to large orbital counts. ``cg_tolerance`` and
+    ``cg_max_iterations`` control the CG solve.
+
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
     n = _validate_eri(eri)
     if num_leaves < 1:
         raise ValueError(
             "double_factorization error - num_leaves must be >= 1.")
+    if inner_solver not in ("lstsq", "cg"):
+        raise ValueError(
+            "double_factorization error - inner_solver must be 'lstsq' or 'cg'."
+        )
     xp, _ = resolve_backend(backend)
     eri_dev = to_device(np.asarray(eri, dtype=float), xp)
 
@@ -387,7 +499,9 @@ def compressed_double_factorization(
         # any regularization. dO/dU^t_ak = -4 sum_qrsl Delta_aqrs U_qk Z_kl U_rl
         # U_sl (Eq. 17 of arXiv:2104.08957).
         skews, rotations = unpack(parameter_vector)
-        cores = _solve_inner_cores(eri_dev, rotations, xp, regularization)
+        cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
+                                   inner_solver, cg_tolerance,
+                                   cg_max_iterations)
         residual = eri_dev - _reconstruct_dev(rotations, cores, xp)
         loss = 0.5 * xp.sum(residual * residual)
         if regularization > 0.0:
@@ -426,7 +540,8 @@ def compressed_double_factorization(
                                      })
 
     _, rotations = unpack(result.x)
-    cores = _solve_inner_cores(eri_dev, rotations, xp, regularization)
+    cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
+                               inner_solver, cg_tolerance, cg_max_iterations)
     return DoubleFactorization(num_orbitals=n,
                                leaf_rotations=[to_numpy(r) for r in rotations],
                                leaf_cores=[to_numpy(c) for c in cores],

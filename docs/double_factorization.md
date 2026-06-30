@@ -35,7 +35,7 @@ accepts `backend="auto"` (default), `"cupy"`, or `"numpy"`.
 | function | description |
 |----------|-------------|
 | `explicit_double_factorization(eri, threshold=1e-8, max_num_leaves=None, second_factor_threshold=0.0, first_factorization="cholesky", backend="auto")` | X-DF (rank-one cores). First factorization defaults to **pivoted Cholesky**; pass `first_factorization="eigendecomposition"` for the eigendecomposition variant. |
-| `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). `regularization=rho>0` enables **RC-DF** (see below). |
+| `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, inner_solver="lstsq", cg_tolerance=1e-10, cg_max_iterations=None, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). `regularization=rho>0` enables **RC-DF** (see below). `inner_solver="cg"` selects the matrix-free inner core solve (see below). |
 | `reconstruct_eri(factorization)` | Rebuild the `(pq\|rs)` tensor from a factorization. |
 | `factorization_error(eri, factorization)` | Frobenius norm of the reconstruction residual. |
 | `modified_one_body_integrals(one_body, eri)` | The DF one-body correction `kappa_pq = h_pq - 1/2 sum_r (pr\|qr)`. |
@@ -79,6 +79,24 @@ depends on the integral magnitude (the paper uses `~1e-6` to `1e-3`); pick it by
 trading off `factorization_error` against `double_factorization_one_norm`. By the
 envelope theorem the analytic optimization gradient is unchanged in form, so
 RC-DF runs at the same per-iteration cost as plain C-DF.
+
+## Inner core solve: explicit vs matrix-free
+
+At each L-BFGS step the symmetric cores `Z^t` are recovered exactly by a linear
+solve for fixed rotations. Two solvers are available via `inner_solver`:
+
+- `"lstsq"` (default) forms an explicit `n^4 x num_params` design matrix and
+  solves it with least squares. Simple and robust for small/medium systems, but
+  the design matrix does not scale.
+- `"cg"` is the **matrix-free conjugate-gradient** solve (RC-DF,
+  [arXiv:2212.07957](https://arxiv.org/abs/2212.07957), Eqs. 25-30). It applies
+  the normal-equations operator `A(Z)^t = sum_{t'} M_{tt'} Z^{t'} M_{tt'}^T` with
+  `M_{tt'} = (U^t^T U^{t'})` elementwise-squared — only `n x n` matrix products,
+  never materializing the design matrix — so it scales to large orbital counts.
+  `cg_tolerance` and `cg_max_iterations` control the CG iteration.
+
+Both solvers produce the same reconstruction; when the inner system is full rank
+(e.g. `regularization > 0`) they produce the same cores to machine precision.
 
 ## Example
 
