@@ -35,7 +35,8 @@ import cudaq_algorithms as algorithms
 df = algorithms.double_factorization
 from cudaq_algorithms.double_factorization import _factorization as F
 from cudaq_algorithms.double_factorization._backend import (resolve_backend,
-                                                            to_device, to_numpy)
+                                                            to_device,
+                                                            to_numpy)
 
 
 def _sync(xp):
@@ -192,7 +193,8 @@ def run_default(eri, num_leaves, rho, tol, repeats, ab):
         new_time, new_cores = time_call(
             lambda: F._solve_inner_cores_cg(eri_dev, rotations, xp, rho, tol,
                                             None), repeats, xp)
-        print(f"  CG (batched)       : {new_time*1e3:9.2f} ms   ({iters} iters)")
+        print(
+            f"  CG (batched)       : {new_time*1e3:9.2f} ms   ({iters} iters)")
 
         if ab:
             old_time, old_cores = time_call(
@@ -207,8 +209,8 @@ def run_default(eri, num_leaves, rho, tol, repeats, ab):
         gb = lstsq_design_gb(n, num_leaves)
         if gb <= 8.0:
             ls_time, ls_cores = time_call(
-                lambda: F._solve_inner_cores_lstsq(eri_dev, rotations, xp, rho),
-                repeats, xp)
+                lambda: F._solve_inner_cores_lstsq(eri_dev, rotations, xp, rho
+                                                   ), repeats, xp)
             rn = to_numpy(F._reconstruct_dev(rotations, new_cores, xp))
             rl = to_numpy(F._reconstruct_dev(rotations, ls_cores, xp))
             print(f"  lstsq (design {gb:.2f} GB): {ls_time*1e3:9.2f} ms   "
@@ -230,8 +232,8 @@ def run_tol_sweep(eri, num_leaves, repeats):
             for tol in (1e-10, 1e-6, 1e-4):
                 iters = cg_iterations(eri_dev, rotations, xp, rho, tol)
                 t, _ = time_call(
-                    lambda: F._solve_inner_cores_cg(eri_dev, rotations, xp, rho,
-                                                    tol, None), repeats, xp)
+                    lambda: F._solve_inner_cores_cg(
+                        eri_dev, rotations, xp, rho, tol, None), repeats, xp)
                 print(f"  {rho:>8g} {tol:>8g} {iters:>6d} {t*1e3:>9.1f}")
 
 
@@ -251,6 +253,45 @@ def run_scaling(rho, tol, repeats):
             print(f"  {n:>4} {n:>7} {iters:>6d} {t*1e3:>9.1f}")
 
 
+def run_full(num_leaves, rho, max_iterations, repeats):
+    """End-to-end compressed_double_factorization: warm-start + inexact in-loop
+    CG ('accel', the new defaults) vs the cold/tight in-loop solve ('plain'),
+    on a synthetic ERI. Verifies the final reconstruction error matches."""
+    n = 16
+    eri = synthetic_eri(n, num_vectors=max(2, num_leaves - 1), seed=5)
+    for backend in _backends():
+        print(f"\n=== full C-DF  {backend}  n={n}  leaves={num_leaves}  "
+              f"rho={rho:g}  maxiter={max_iterations} ===")
+
+        def solve(accel):
+            kw = dict(num_leaves=num_leaves,
+                      max_iterations=max_iterations,
+                      regularization=rho,
+                      inner_solver="cg",
+                      backend=backend)
+            if not accel:  # original behavior: cold start, tight in-loop solve
+                kw.update(cg_warm_start=False, cg_optimization_tolerance=1e-10)
+            return df.compressed_double_factorization(eri, **kw)
+
+        best_plain = best_accel = float("inf")
+        err_plain = err_accel = None
+        for _ in range(repeats):
+            t = time.perf_counter()
+            f = solve(False)
+            best_plain = min(best_plain, time.perf_counter() - t)
+            err_plain = df.factorization_error(eri, f)
+            t = time.perf_counter()
+            f = solve(True)
+            best_accel = min(best_accel, time.perf_counter() - t)
+            err_accel = df.factorization_error(eri, f)
+        print(
+            f"  plain (cold, tol=1e-10): {best_plain:7.2f} s  err={err_plain:.3e}"
+        )
+        print(
+            f"  accel (warm + inexact) : {best_accel:7.2f} s  err={err_accel:.3e}"
+            f"   speedup x{best_plain/best_accel:.1f}")
+
+
 def _backends():
     backends = ["numpy"]
     if df.cupy_gpu_available():
@@ -265,25 +306,33 @@ def main():
     parser.add_argument("--rho", type=float, default=1e-3)
     parser.add_argument("--tol", type=float, default=1e-10)
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--ab", action="store_true",
+    parser.add_argument("--ab",
+                        action="store_true",
                         help="also time the original list-based CG (slow)")
     parser.add_argument("--tol-sweep", action="store_true")
     parser.add_argument("--scaling", action="store_true")
+    parser.add_argument("--full",
+                        action="store_true",
+                        help="end-to-end C-DF: accel vs plain in-loop CG")
+    parser.add_argument("--max-iterations", type=int, default=150)
     args = parser.parse_args()
 
     if not df.cupy_gpu_available():
         print("(CuPy GPU not available -- NumPy only)")
 
-    eri = molecular_eri(args.basis)
-    print(f"H2O/{args.basis}: n={eri.shape[0]}  "
-          f"||eri||_F={np.linalg.norm(eri):.4f}")
-
-    if args.tol_sweep:
-        run_tol_sweep(eri, args.leaves, args.repeats)
-    elif args.scaling:
+    if args.full:  # synthetic ERI; no PySCF needed
+        run_full(args.leaves, args.rho, args.max_iterations, args.repeats)
+    elif args.scaling:  # synthetic sweep; no PySCF needed
         run_scaling(args.rho, args.tol, args.repeats)
     else:
-        run_default(eri, args.leaves, args.rho, args.tol, args.repeats, args.ab)
+        eri = molecular_eri(args.basis)
+        print(f"H2O/{args.basis}: n={eri.shape[0]}  "
+              f"||eri||_F={np.linalg.norm(eri):.4f}")
+        if args.tol_sweep:
+            run_tol_sweep(eri, args.leaves, args.repeats)
+        else:
+            run_default(eri, args.leaves, args.rho, args.tol, args.repeats,
+                        args.ab)
 
 
 if __name__ == "__main__":

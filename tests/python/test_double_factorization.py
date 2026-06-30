@@ -224,6 +224,34 @@ def test_compressed_matrix_free_cg_matches_lstsq(backend):
                                            backend=backend)
 
 
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cg_accelerators_preserve_accuracy(backend):
+    eri = _synthetic_eri(n=4, num_vectors=3, seed=11)
+    # The warm-start + inexact-in-loop accelerators (defaults) must reach the
+    # same final reconstruction as the cold-start, tight-in-loop CG: the single
+    # final solve is always tightened to cg_tolerance.
+    for regularization in (0.0, 1.0e-2):
+        accel = df.compressed_double_factorization(
+            eri,
+            num_leaves=2,
+            max_iterations=800,
+            regularization=regularization,
+            inner_solver="cg",
+            backend=backend)
+        plain = df.compressed_double_factorization(
+            eri,
+            num_leaves=2,
+            max_iterations=800,
+            regularization=regularization,
+            inner_solver="cg",
+            cg_warm_start=False,
+            cg_optimization_tolerance=1.0e-10,
+            backend=backend)
+        assert abs(
+            df.factorization_error(eri, accel) -
+            df.factorization_error(eri, plain)) < 1.0e-4
+
+
 def test_one_norm_conventions():
     eri = _synthetic_eri(n=4, num_vectors=3, seed=9)
     factorization = df.explicit_double_factorization(eri, threshold=0.0)

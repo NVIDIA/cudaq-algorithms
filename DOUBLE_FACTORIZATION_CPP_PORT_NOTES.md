@@ -267,19 +267,34 @@ tolerance and conditioning, not by matvec efficiency:
 
 So the next wins are **algorithmic**, and they compound the Tier-0 kernel win:
 
-1. **Inexact inner solve / forcing sequence** — the inner solve does not need
-   `tol=1e-10` every L-BFGS step (the gradient only needs to be accurate enough).
-   Loosening to ~1e-4 early is already ~5x here, for free.
-2. **Warm-start CG across L-BFGS steps** — the cores move slowly between steps;
-   starting from the previous `Z` should collapse the iteration count.
-3. **Jacobi / diagonal preconditioner** — attacks the condition number directly
-   (larger `rho` already shows the conditioning effect above).
-4. **CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration launch
-   overhead that makes the GPU lose at small sizes.
+1. **[DONE] Inexact inner solve / forcing sequence + warm start.** The in-loop CG
+   no longer solves to `tol=1e-10` every L-BFGS step (`cg_optimization_tolerance`,
+   default `max(cg_tolerance, 1e-6)`) and warm-starts from the previous step's
+   cores (`cg_warm_start`, default `True`); only the single final solve is tight.
+   By the envelope theorem the gradient only needs to be approximate, so final
+   accuracy is unchanged. **End-to-end (synthetic n=16, 8 leaves, rho=1e-3,
+   maxiter=150): NumPy 11.2 -> 5.9 s (1.9x), CuPy 17.5 -> 9.6 s (1.8x)**, with the
+   final reconstruction error matching the cold/tight path.
+2. **[TODO] Jacobi / diagonal preconditioner** — attacks the condition number
+   directly (larger `rho` already shows the conditioning effect above).
+3. **[TODO] CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration
+   launch overhead that makes the GPU lose at small sizes.
 
-Only once iteration count is controlled does the GPU's batched-matvec advantage
-dominate end-to-end; that is the regime where this code can outrun CPU-bound
-implementations of the same algorithm.
+**Where the end-to-end time now goes** (profiled, full C-DF, CuPy, n=16, 8 leaves):
+inner CG solve ~53%, the `n^4` reconstruct/gradient `einsum`s + the per-leaf eigh
+in `unpack` (`expm_skew_symmetric`) ~45%, and `scipy.linalg.expm_frechet`
+(host) **only ~2%**. So the Fréchet derivative is *not* the bottleneck — contrary
+to the §1/§2 worry — and a GPU port of it buys little on its own. After the inner
+solve, the next target is the reconstruct/gradient contractions and the small
+eigendecompositions, all of which are still launch-bound at this size.
+
+**End-to-end CPU/GPU crossover is higher than the inner-solve crossover (~n=14-16)**
+because the full step also runs L-BFGS, the per-leaf eigh/Fréchet, and per-step
+host syncs — CuPy is still slower than NumPy end-to-end at n=16. Only once `n` is
+large enough that the reconstruct/gradient `einsum`s *and* the inner solve are all
+real GPU work (and iteration count is controlled, as it now is) does the GPU win
+end-to-end. That large-`n`, controlled-iteration regime is where this code can
+outrun CPU-bound implementations of the same algorithm.
 
 ### If/when it goes native, port only the matvec
 

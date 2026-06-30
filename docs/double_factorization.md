@@ -35,7 +35,7 @@ accepts `backend="auto"` (default), `"cupy"`, or `"numpy"`.
 | function | description |
 |----------|-------------|
 | `explicit_double_factorization(eri, threshold=1e-8, max_num_leaves=None, second_factor_threshold=0.0, first_factorization="cholesky", backend="auto")` | X-DF (rank-one cores). First factorization defaults to **pivoted Cholesky**; pass `first_factorization="eigendecomposition"` for the eigendecomposition variant. |
-| `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, inner_solver="lstsq", cg_tolerance=1e-10, cg_max_iterations=None, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). `regularization=rho>0` enables **RC-DF** (see below). `inner_solver="cg"` selects the matrix-free inner core solve (see below). |
+| `compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, inner_solver="lstsq", cg_tolerance=1e-10, cg_max_iterations=None, cg_warm_start=True, cg_optimization_tolerance=None, backend="auto")` | C-DF by least-squares optimization (warm-started from X-DF). `regularization=rho>0` enables **RC-DF** (see below). `inner_solver="cg"` selects the matrix-free inner core solve, with `cg_warm_start` / `cg_optimization_tolerance` accelerators (see below). |
 | `reconstruct_eri(factorization)` | Rebuild the `(pq\|rs)` tensor from a factorization. |
 | `factorization_error(eri, factorization)` | Frobenius norm of the reconstruction residual. |
 | `modified_one_body_integrals(one_body, eri)` | The DF one-body correction `kappa_pq = h_pq - 1/2 sum_r (pr\|qr)`. |
@@ -97,6 +97,20 @@ solve for fixed rotations. Two solvers are available via `inner_solver`:
 
 Both solvers produce the same reconstruction; when the inner system is full rank
 (e.g. `regularization > 0`) they produce the same cores to machine precision.
+
+The CG inner solve is **iteration-bound**: its cost is roughly linear in the
+number of CG iterations, which is set by the requested tolerance and the
+conditioning, not by the matvec. Two accelerators (active only for
+`inner_solver="cg"`) cut the per-step cost without changing the final accuracy:
+
+- **`cg_warm_start=True`** seeds each L-BFGS step's CG from the previous step's
+  cores. The cores move slowly between steps, so the warm start collapses the
+  iteration count.
+- **`cg_optimization_tolerance`** (default `max(cg_tolerance, 1e-6)`) solves the
+  *in-loop* systems only loosely — an inexact inner solve, which is sound here
+  because the envelope theorem only needs an approximate gradient — while the
+  single **final** solve is tightened to `cg_tolerance`. So the returned cores
+  are accurate even though the optimization steps used a cheap inner solve.
 
 ## Example
 

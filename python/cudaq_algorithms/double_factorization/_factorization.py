@@ -234,7 +234,8 @@ def _solve_inner_cores_cg(eri_dev,
                           xp,
                           regularization=0.0,
                           tolerance=1.0e-10,
-                          max_iterations=None):
+                          max_iterations=None,
+                          initial_guess=None):
     """Matrix-free conjugate-gradient solve for the symmetric cores ``{Z^t}``.
 
     Solves the same normal equations as the least-squares solver,
@@ -251,6 +252,11 @@ def _solve_inner_cores_cg(eri_dev,
     driven launches, and the CG scalars stay on device -- only the convergence and
     curvature guards sync to host. This scales to large orbital counts where the
     explicit design matrix is infeasible.
+
+    ``initial_guess`` (a stacked ``(num_leaves, n, n)`` array) warm-starts CG. In
+    the C-DF optimizer the rotations -- and hence the cores -- change slowly
+    between L-BFGS steps, so seeding from the previous step's solution collapses
+    the iteration count.
     """
     n = eri_dev.shape[0]
     num_leaves = len(rotations_dev)
@@ -273,8 +279,12 @@ def _solve_inner_cores_cg(eri_dev,
         # A device scalar (0-d array); converted to host only where needed.
         return xp.sum(x * y)
 
-    z = xp.zeros((num_leaves, n, n))
-    residual = rhs.copy()  # r = rhs - A(0) = rhs since z = 0
+    if initial_guess is None:
+        z = xp.zeros((num_leaves, n, n))
+        residual = rhs.copy()  # r = rhs - A(0) = rhs since z = 0
+    else:
+        z = xp.asarray(initial_guess).copy()
+        residual = rhs - apply_operator(z)
     direction = residual.copy()
     residual_norm_sq = inner_product(residual, residual)
     threshold = (tolerance**2) * max(float(to_numpy(residual_norm_sq)), 1.0)
@@ -358,16 +368,18 @@ def _solve_inner_cores(eri_dev,
                        regularization=0.0,
                        solver="lstsq",
                        cg_tolerance=1.0e-10,
-                       cg_max_iterations=None):
+                       cg_max_iterations=None,
+                       initial_guess=None):
     """Dispatch the inner core solve to the explicit ``"lstsq"`` solver or the
-    matrix-free ``"cg"`` solver."""
+    matrix-free ``"cg"`` solver. ``initial_guess`` warm-starts CG and is ignored
+    by the direct lstsq solver."""
     if solver == "lstsq":
         return _solve_inner_cores_lstsq(eri_dev, rotations_dev, xp,
                                         regularization)
     if solver == "cg":
         return _solve_inner_cores_cg(eri_dev, rotations_dev, xp,
                                      regularization, cg_tolerance,
-                                     cg_max_iterations)
+                                     cg_max_iterations, initial_guess)
     raise ValueError(
         "double_factorization error - inner_solver must be 'lstsq' or 'cg'.")
 
@@ -435,6 +447,8 @@ def compressed_double_factorization(
         inner_solver: str = "lstsq",
         cg_tolerance: float = 1.0e-10,
         cg_max_iterations: Optional[int] = None,
+        cg_warm_start: bool = True,
+        cg_optimization_tolerance: Optional[float] = None,
         initial_generators: Optional[List[np.ndarray]] = None,
         backend: str = "auto") -> DoubleFactorization:
     """Compressed double factorization (C-DF) by least-squares optimization.
@@ -459,6 +473,14 @@ def compressed_double_factorization(
     matrix and scales to large orbital counts. ``cg_tolerance`` and
     ``cg_max_iterations`` control the CG solve.
 
+    For ``inner_solver="cg"`` two accelerators cut the per-step CG cost without
+    changing the final accuracy: ``cg_warm_start`` (default ``True``) seeds each
+    step's CG from the previous step's cores -- which move slowly between L-BFGS
+    steps -- and ``cg_optimization_tolerance`` (default ``max(cg_tolerance,
+    1e-6)``) solves the *in-loop* systems only loosely (an inexact inner solve;
+    the gradient need only be approximate by the envelope theorem) while the
+    single final solve is tightened to ``cg_tolerance``.
+
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
     n = _validate_eri(eri)
@@ -481,6 +503,12 @@ def compressed_double_factorization(
     per_leaf = n * (n - 1) // 2
     lower = np.tril_indices(n, k=-1)
 
+    # Inexact in-loop CG (forcing sequence) + warm start across L-BFGS steps.
+    use_warm = inner_solver == "cg" and cg_warm_start
+    loop_tolerance = (cg_optimization_tolerance if cg_optimization_tolerance
+                      is not None else max(cg_tolerance, 1.0e-6))
+    warm_state = {"z": None}
+
     def unpack(parameter_vector):
         skews, rotations = [], []
         for leaf_index in range(num_leaves):
@@ -500,8 +528,11 @@ def compressed_double_factorization(
         # U_sl (Eq. 17 of arXiv:2104.08957).
         skews, rotations = unpack(parameter_vector)
         cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
-                                   inner_solver, cg_tolerance,
-                                   cg_max_iterations)
+                                   inner_solver, loop_tolerance,
+                                   cg_max_iterations,
+                                   warm_state["z"] if use_warm else None)
+        if use_warm:
+            warm_state["z"] = xp.stack(cores)
         residual = eri_dev - _reconstruct_dev(rotations, cores, xp)
         loss = 0.5 * xp.sum(residual * residual)
         if regularization > 0.0:
@@ -539,9 +570,11 @@ def compressed_double_factorization(
                                          "gtol": tolerance,
                                      })
 
+    # Final cores at the tight cg_tolerance (warm-started from the last step).
     _, rotations = unpack(result.x)
     cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
-                               inner_solver, cg_tolerance, cg_max_iterations)
+                               inner_solver, cg_tolerance, cg_max_iterations,
+                               warm_state["z"] if use_warm else None)
     return DoubleFactorization(num_orbitals=n,
                                leaf_rotations=[to_numpy(r) for r in rotations],
                                leaf_cores=[to_numpy(c) for c in cores],
