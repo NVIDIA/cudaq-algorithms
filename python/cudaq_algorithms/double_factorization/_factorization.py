@@ -245,59 +245,59 @@ def _solve_inner_cores_cg(eri_dev,
         M_{tt'} = (U^t^T U^{t'}) elementwise-squared      (Eq. 27)
 
     so each matvec is just ``n x n`` matrix products; the ERIs are contracted
-    only once to build the RHS ``R^t``. This scales to large orbital counts where
-    the explicit design matrix is infeasible.
+    only once to build the RHS ``R^t``. The cores are stacked into a single
+    ``(num_leaves, n, n)`` array so the whole operator is one batched ``einsum``
+    (a strided-batched GEMM under cuBLAS) rather than ``num_leaves^2`` Python-
+    driven launches, and the CG scalars stay on device -- only the convergence and
+    curvature guards sync to host. This scales to large orbital counts where the
+    explicit design matrix is infeasible.
     """
     n = eri_dev.shape[0]
     num_leaves = len(rotations_dev)
 
-    overlaps = [[
-        rotations_dev[t].T @ rotations_dev[u] for u in range(num_leaves)
-    ] for t in range(num_leaves)]
-    metric = [[overlaps[t][u] * overlaps[t][u] for u in range(num_leaves)]
-              for t in range(num_leaves)]
-    rhs = [_project_eri_into_leaf(eri_dev, u, xp) for u in rotations_dev]
+    # M_{tt'} = (U^t^T U^{t'}) elementwise-squared, stacked as (t, t', k, l).
+    rotations = xp.stack(rotations_dev)
+    metric = xp.einsum("tpk,upl->tukl", rotations, rotations)
+    metric = metric * metric
+    rhs = xp.stack(
+        [_project_eri_into_leaf(eri_dev, u, xp) for u in rotations_dev])
 
     def apply_operator(z):
-        result = []
-        for t in range(num_leaves):
-            acc = xp.zeros((n, n))
-            for u in range(num_leaves):
-                acc = acc + metric[t][u] @ z[u] @ metric[t][u].T
-            if regularization > 0.0:
-                acc = acc + 2.0 * regularization * z[t]
-            result.append(acc)
-        return result
+        # A(Z)^t = sum_{t'} M_{tt'} Z^{t'} M_{tt'}^T, all leaves at once.
+        out = xp.einsum("tukl,ulm,tunm->tkn", metric, z, metric, optimize=True)
+        if regularization > 0.0:
+            out = out + (2.0 * regularization) * z
+        return out
 
     def inner_product(x, y):
-        return float(to_numpy(sum(xp.sum(xi * yi) for xi, yi in zip(x, y))))
+        # A device scalar (0-d array); converted to host only where needed.
+        return xp.sum(x * y)
 
-    z = [xp.zeros((n, n)) for _ in range(num_leaves)]
-    residual = [r.copy() for r in rhs]  # r = rhs - A(0)
-    direction = [r.copy() for r in residual]
+    z = xp.zeros((num_leaves, n, n))
+    residual = rhs.copy()  # r = rhs - A(0) = rhs since z = 0
+    direction = residual.copy()
     residual_norm_sq = inner_product(residual, residual)
-    threshold = (tolerance**2) * max(residual_norm_sq, 1.0)
+    threshold = (tolerance**2) * max(float(to_numpy(residual_norm_sq)), 1.0)
     limit = max_iterations if max_iterations is not None else max(
         50, num_leaves * n * n)
 
     for _ in range(limit):
-        if residual_norm_sq <= threshold:
+        if float(to_numpy(residual_norm_sq)) <= threshold:
             break
         operator_direction = apply_operator(direction)
         curvature = inner_product(direction, operator_direction)
-        if curvature <= 0.0:
+        if float(to_numpy(curvature)) <= 0.0:
             break
-        step = residual_norm_sq / curvature
-        z = [zi + step * di for zi, di in zip(z, direction)]
-        residual = [
-            ri - step * oi for ri, oi in zip(residual, operator_direction)
-        ]
+        step = residual_norm_sq / curvature  # device scalar
+        z = z + step * direction
+        residual = residual - step * operator_direction
         new_norm_sq = inner_product(residual, residual)
-        beta = new_norm_sq / residual_norm_sq
-        direction = [ri + beta * di for ri, di in zip(residual, direction)]
+        beta = new_norm_sq / residual_norm_sq  # device scalar
+        direction = residual + beta * direction
         residual_norm_sq = new_norm_sq
 
-    return [0.5 * (zi + zi.T) for zi in z]
+    z = 0.5 * (z + z.transpose(0, 2, 1))
+    return [z[t] for t in range(num_leaves)]
 
 
 def _solve_inner_cores_lstsq(eri_dev, rotations_dev, xp, regularization=0.0):

@@ -24,6 +24,10 @@ CuPy for the NVIDIA cuSOLVER/cuBLAS path). Questions considered:
   arrays as kernel arguments.
 - The **highest-leverage C++ work is a new DF block-encoding `__qpu__` kernel**
   (which does not exist yet), not porting the classical factorization.
+- On the *classical* side, the highest-leverage native target is the **matrix-free
+  CG inner matvec**, not the optimizer. The cheap Python wins (batched-tensor
+  matvec, on-device CG scalars) are **done**; profile at scale before going
+  native. See §6.
 - Port the classical factorization to C++ **only** for a Python-free end-to-end
   pipeline or library-wide C++ consistency — not as a prerequisite for
   composition or distribution.
@@ -143,7 +147,8 @@ These bite before the language does, and are needed in *either* Python or C++:
   **not** scale. The scalable form, the paper's **matrix-free conjugate-gradient**
   solve (RC-DF Eqs. 25–30) applying the `A` operator via `n x n` contractions, is
   now available as `inner_solver="cg"`. This is the form to carry into any C++ /
-  distributed port; the explicit lstsq path is the small-system reference.
+  distributed port; the explicit lstsq path is the small-system reference. The CG
+  *matvec* is in fact the single highest-leverage native target in DF — see §6.
 - **Forming the full `n^4` ERI / `n^2 x n^2` supermatrix** is itself the memory
   wall; at scale, work directly from Cholesky / density-fitting vectors and never
   materialize the dense tensor.
@@ -168,3 +173,87 @@ These bite before the language does, and are needed in *either* Python or C++:
 clearly worth building; it makes a **C++ port of the factorization** a real option
 but still a "native pipeline / consistency" decision, not a technical prerequisite
 for composition or distribution.
+
+---
+
+## 6. The CG inner matvec: the highest-leverage native target
+
+Of everything in the classical factorization, the **matrix-free CG matvec**
+(`apply_operator` in `_solve_inner_cores_cg`) is the best C++/CUDA candidate —
+more so than the optimizer or `expm_frechet` flagged in §1. It is the one piece
+that is simultaneously **hot, regular, and small-matrix-dominated**, which is
+exactly where Python + CuPy leaves the most on the table and where hand control
+helps most.
+
+### Why this piece specifically
+
+- **It is the innermost loop.** `apply_operator` runs every CG iteration, CG runs
+  to convergence, and the whole solve runs every L-BFGS step — millions of
+  invocations over a full optimization.
+- **It is structured.** `A(Z)^t = sum_{t'} M_{tt'} Z^{t'} M_{tt'}^T` with
+  `M_{tt'} = (U^t^T U^{t'})` elementwise-squared is the *same* congruence batched
+  over `num_leaves^2` pairs — it maps cleanly onto batched GEMM or one fused
+  kernel.
+- **The matrices are small** (`n x n`, `n` = orbital count). Small GEMMs are
+  latency-bound, not throughput-bound, so the current code is dominated by
+  *overhead*, not arithmetic:
+  - `2 * num_leaves^2` tiny cuBLAS launches per matvec (`M@z`, then `…@M^T`),
+    driven from a **Python double `for t / for u` loop** that serializes launches
+    on one stream.
+  - CuPy allocates a temporary for every `@` and every `+`.
+  - `inner_product` calls `float(to_numpy(...))` — a **device→host sync every CG
+    iteration** — which stalls the pipeline and prevents overlap.
+
+### Do the cheap Python wins first (profile-gated)
+
+Most of that overhead is fixable without leaving Python, and the bottleneck
+should be *measured* before any port (at small/medium sizes the whole solve is
+sub-second; a port only pays off at the active-space sizes where DF matters):
+
+1. **[DONE]** **Vectorize the matvec into a batched `einsum`** over the leaf
+   index. `metric` is stacked as a `(t, t', k, l)` tensor and the operator is the
+   single contraction `einsum("tukl,ulm,tunm->tkn", metric, z, metric)` (a
+   strided-batched GEMM under cuBLAS), with the cores stacked as one
+   `(num_leaves, n, n)` array — replacing the `num_leaves^2` Python-driven launches
+   and the double `for t / for u` loop.
+2. **[DONE]** **Cut the per-iteration sync** — the CG scalars (`residual_norm_sq`,
+   `curvature`, `step`, `beta`) stay as on-device 0-d arrays; only the convergence
+   test and the curvature guard convert to host (one scalar each per iteration),
+   instead of the old full-reduction-returning-`float` on every inner product.
+3. **[TODO, optional]** wrap the CG iteration in a **CUDA graph** (CuPy supports
+   capture) to amortize remaining launch overhead.
+
+Items 1–2 are implemented in `_solve_inner_cores_cg`; they are reversible and
+preserve the NumPy/CuPy duality (verified identical to the lstsq solve, recon to
+~1e-14 and cores to ~1e-10 when the inner system is full rank).
+
+### If/when it goes native, port only the matvec
+
+The right seam is surgical: push **just `apply_operator`** (ideally with the
+dot/axpy reductions) across the nanobind boundary and **keep the CG driver and
+L-BFGS in Python**. The driver only touches tiny data (scalars, the small
+generator vector); the heavy, regular work is the congruence. This is the repo's
+existing pattern (Python orchestrates, C++/CUDA does the primitive) and it
+sidesteps everything expensive in a full port — the L-BFGS dependency,
+`expm_frechet`, and the OpenFermion re-validation.
+
+A fused kernel can keep `z`-blocks in shared memory across the `num_leaves^2`
+congruence terms, do the accumulation in registers, and run the reductions
+on-device — control CuPy cannot express.
+
+### This is also the distribution seam
+
+Once the matvec is a kernel over per-leaf / per-ERI-block partial sums,
+distributing it is an **NCCL allreduce of the partial `A(Z)^t`** across ranks.
+That — not single-GPU speed — is the real reason to own this in native code, and
+it lines up with the distributed-eigensolver shim in §2.
+
+### Sequencing
+
+- **Tier 0 (DONE, Python):** batched-tensor matvec + on-device CG scalars
+  (per-iteration host sync removed except the convergence/curvature guards).
+  Cheap, reversible, probably the bulk of the win.
+- **Tier 1 (C++/CUDA, when profiled as the bottleneck):** fused `apply_operator`
+  kernel via nanobind; CG driver and L-BFGS stay in Python.
+- **Tier 2 (C++/CUDA + NCCL):** partial-sum matvec with allreduce for distributed
+  ERIs/leaves.
