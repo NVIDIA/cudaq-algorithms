@@ -282,18 +282,37 @@ So the next wins are **algorithmic**, and they compound the Tier-0 kernel win:
    CPU-favorable until ~n=64). `"cupy"`/`"numpy"` still force a backend. This is
    the "best of both" the benchmarks call for: no GPU penalty on small inputs, GPU
    speedup (growing with `n`) on large ones.
-3. **[TODO] Jacobi / diagonal preconditioner** — attacks the condition number
-   directly (larger `rho` already shows the conditioning effect above).
-4. **[TODO] CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration
+3. **[DONE] Batched GPU-resident reconstruct/gradient + eigh.** The per-step work
+   outside the inner solve is now fully batched over leaves: `_reconstruct_dev` is
+   a single `einsum("tpk,tqk,tkl,trl,tsl->pqrs", ...)` (leaf sum folded in) instead
+   of a Python loop with a separate `n^4` einsum per leaf; the gradient `dO/dU` is
+   one `einsum("aqrs,tqk,tkl,trl,tsl->tak", ...)` with a single device->host
+   transfer; and `unpack` exponentiates all leaf generators in one *batched*
+   Hermitian eigh (`expm_skew_symmetric_batched`, a single cuSOLVER call) instead
+   of `num_leaves` separate ones. Numerically identical (all 25 tests pass).
+   GPU-weighted as expected (it removes per-leaf launch overhead): end-to-end
+   accel path at n=16, 8 leaves, maxiter=150 drops **CuPy 9.6 -> 7.9 s (1.21x),
+   NumPy 5.9 -> 5.3 s (1.10x)**; the gain grows with leaf count.
+4. **[WONT — Jacobi is a no-op here]** A Jacobi/diagonal (or block-Jacobi-by-leaf)
+   preconditioner does nothing for this operator: orthonormal leaves give
+   `M_tt = (U_t^T U_t)^{circ 2} = I`, so the operator is `A = (1+2rho) I + C` with
+   `C` the pure inter-leaf coupling (zero diagonal). The diagonal is *exactly
+   constant* (`1+2rho`; verified numerically), so Jacobi is a uniform rescale and
+   leaves CG convergence unchanged. The conditioning (`~3/(2rho)`: `lambda_min =
+   2rho` exactly, `lambda_max ~ 3`) lives entirely in `C`. The effective option is
+   a **polynomial (Chebyshev) accelerator** on the known interval `[2rho, lambda_max]`
+   -- which is also sync-free (no per-iteration dot products, so GPU-friendly) but
+   needs `rho > 0` (falls back to CG at `rho = 0`). Deferred.
+5. **[TODO] CUDA graph capture** (Tier-0 item 3) — amortizes the per-iteration
    launch overhead that makes the GPU lose at small sizes.
 
-**Where the end-to-end time now goes** (profiled, full C-DF, CuPy, n=16, 8 leaves):
-inner CG solve ~53%, the `n^4` reconstruct/gradient `einsum`s + the per-leaf eigh
-in `unpack` (`expm_skew_symmetric`) ~45%, and `scipy.linalg.expm_frechet`
-(host) **only ~2%**. So the Fréchet derivative is *not* the bottleneck — contrary
-to the §1/§2 worry — and a GPU port of it buys little on its own. After the inner
-solve, the next target is the reconstruct/gradient contractions and the small
-eigendecompositions, all of which are still launch-bound at this size.
+**Where the end-to-end time went** (profiled *before* item 3, full C-DF, CuPy,
+n=16, 8 leaves): inner CG solve ~53%, the `n^4` reconstruct/gradient `einsum`s +
+the per-leaf eigh in `unpack` (`expm_skew_symmetric`) ~45%, and
+`scipy.linalg.expm_frechet` (host) **only ~2%**. So the Fréchet derivative is
+*not* the bottleneck — contrary to the §1/§2 worry — and a GPU port of it buys
+little on its own. That ~45% reconstruct/gradient/eigh share is what item 3 above
+batched; `expm_frechet` is deliberately left on the host.
 
 **End-to-end CPU/GPU crossover is ~n=18-20**, higher than the inner-solve
 crossover (~n=14-16), because the full step also runs L-BFGS, the per-leaf

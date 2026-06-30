@@ -33,8 +33,9 @@ import scipy.linalg
 import scipy.optimize
 
 from ._backend import (AUTO_GPU_MIN_ORBITALS_COMPRESSED,
-                       AUTO_GPU_MIN_ORBITALS_EXPLICIT, expm_skew_symmetric,
-                       resolve_backend, to_device, to_numpy)
+                       AUTO_GPU_MIN_ORBITALS_EXPLICIT,
+                       expm_skew_symmetric_batched, resolve_backend, to_device,
+                       to_numpy)
 
 
 @dataclass
@@ -388,17 +389,25 @@ def _solve_inner_cores(eri_dev,
 
 
 def _reconstruct_dev(rotations_dev, cores_dev, xp):
-    n = rotations_dev[0].shape[0]
-    eri = xp.zeros((n, n, n, n))
-    for rotation, core in zip(rotations_dev, cores_dev):
-        eri = eri + xp.einsum("pk,qk,kl,rl,sl->pqrs",
-                              rotation,
-                              rotation,
-                              core,
-                              rotation,
-                              rotation,
-                              optimize=True)
-    return eri
+    # Stack the leaves and reconstruct in a single batched contraction (the sum
+    # over leaves t is folded into the einsum), instead of a Python loop with a
+    # separate n^4 einsum and accumulation per leaf.
+    rotations = rotations_dev if _is_stacked(rotations_dev) else xp.stack(
+        list(rotations_dev))
+    cores = cores_dev if _is_stacked(cores_dev) else xp.stack(list(cores_dev))
+    return xp.einsum("tpk,tqk,tkl,trl,tsl->pqrs",
+                     rotations,
+                     rotations,
+                     cores,
+                     rotations,
+                     rotations,
+                     optimize=True)
+
+
+def _is_stacked(arrays):
+    """True for a single stacked ``(num_leaves, n, n)`` array, False for a list
+    of ``(n, n)`` leaf arrays."""
+    return hasattr(arrays, "ndim") and arrays.ndim == 3
 
 
 def _skew_to_vector(generator, n):
@@ -515,13 +524,15 @@ def compressed_double_factorization(
     warm_state = {"z": None}
 
     def unpack(parameter_vector):
-        skews, rotations = [], []
-        for leaf_index in range(num_leaves):
-            chunk = parameter_vector[leaf_index * per_leaf:(leaf_index + 1) *
-                                     per_leaf]
-            skew = _vector_to_skew(to_device(chunk, xp), n, xp)
-            skews.append(skew)
-            rotations.append(expm_skew_symmetric(skew, xp))
+        # Build all leaf generators, then exponentiate them in one batched
+        # Hermitian eigendecomposition (single cuSOLVER call on GPU). Returns
+        # stacked (num_leaves, n, n) arrays.
+        skews = xp.stack([
+            _vector_to_skew(
+                to_device(parameter_vector[i * per_leaf:(i + 1) * per_leaf],
+                          xp), n, xp) for i in range(num_leaves)
+        ])
+        rotations = expm_skew_symmetric_batched(skews, xp)
         return skews, rotations
 
     def objective_and_gradient(parameter_vector):
@@ -545,21 +556,24 @@ def compressed_double_factorization(
                 xp.sum(core * core) for core in cores)
         loss = float(to_numpy(loss))
 
+        # dO/dU for all leaves in one batched contraction, then a single
+        # device->host transfer (the leaf index t is the batch axis).
+        cores_dev = cores if _is_stacked(cores) else xp.stack(list(cores))
+        grad_u_all = to_numpy(-4.0 * xp.einsum("aqrs,tqk,tkl,trl,tsl->tak",
+                                               residual,
+                                               rotations,
+                                               cores_dev,
+                                               rotations,
+                                               rotations,
+                                               optimize=True))
+        skews_host = to_numpy(skews)
         gradient_chunks = []
-        for skew, rotation, core in zip(skews, rotations, cores):
-            grad_u = -4.0 * xp.einsum("aqrs,qk,kl,rl,sl->ak",
-                                      residual,
-                                      rotation,
-                                      core,
-                                      rotation,
-                                      rotation,
-                                      optimize=True)
+        for leaf_index in range(num_leaves):
             # Adjoint of d(exp)/dX: grad_X = L_exp(X^T, grad_U) (Frechet
-            # derivative), then project onto the antisymmetric parameters.
-            grad_u_host = to_numpy(grad_u)
-            skew_host = to_numpy(skew)
-            grad_x = scipy.linalg.expm_frechet(skew_host.T,
-                                               grad_u_host,
+            # derivative), then project onto the antisymmetric parameters. The
+            # Frechet step stays on the host (it is ~2% of the step cost).
+            grad_x = scipy.linalg.expm_frechet(skews_host[leaf_index].T,
+                                               grad_u_all[leaf_index],
                                                compute_expm=False)
             grad_x = grad_x - grad_x.T
             gradient_chunks.append(grad_x[lower])

@@ -93,3 +93,19 @@ def expm_skew_symmetric(generator, xp):
     phases = xp.exp(-1j * eigenvalues)
     rotated = (eigenvectors * phases) @ eigenvectors.conj().T
     return xp.real(rotated)
+
+
+def expm_skew_symmetric_batched(generators, xp):
+    """Batched :func:`expm_skew_symmetric` over a stack of real antisymmetric
+    matrices ``generators`` (shape ``(num_leaves, n, n)``). One batched Hermitian
+    eigendecomposition instead of ``num_leaves`` separate ones -- on the CuPy
+    backend this is a single cuSOLVER call rather than a Python-driven loop."""
+    generators = xp.asarray(generators)
+    hermitian = 1j * generators
+    eigenvalues, eigenvectors = xp.linalg.eigh(
+        hermitian)  # batched over axis 0
+    phases = xp.exp(-1j * eigenvalues)  # (num_leaves, n)
+    # Scale each leaf's eigenvector columns by its phases, then V diag(phase) V^H.
+    scaled = eigenvectors * phases[:, None, :]
+    rotated = scaled @ xp.conj(eigenvectors).transpose(0, 2, 1)
+    return xp.real(rotated)
