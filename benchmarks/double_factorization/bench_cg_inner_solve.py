@@ -34,9 +34,9 @@ import cudaq_algorithms as algorithms
 
 df = algorithms.double_factorization
 from cudaq_algorithms.double_factorization import _factorization as F
-from cudaq_algorithms.double_factorization._backend import (resolve_backend,
-                                                            to_device,
-                                                            to_numpy)
+from cudaq_algorithms.double_factorization._backend import (
+    AUTO_GPU_MIN_ORBITALS_COMPRESSED, AUTO_GPU_MIN_ORBITALS_EXPLICIT,
+    resolve_backend, to_device, to_numpy)
 
 
 def _sync(xp):
@@ -291,6 +291,63 @@ def run_full(n, num_leaves, rho, max_iterations, repeats):
             f"   speedup x{best_plain/best_accel:.1f}")
 
 
+def run_leaf_sweep(eri, leaf_counts, rho, max_iterations, repeats):
+    """Time and accuracy vs leaf count for X-DF (Cholesky first factorization)
+    and C-DF (matrix-free CG inner solve), on a molecular ERI. Rows print as they
+    are computed so partial results survive if the large leaf counts run long."""
+    n = eri.shape[0]
+    norm = float(np.linalg.norm(eri))
+    xdf_backend = resolve_backend(
+        "auto", problem_size=n, gpu_min_size=AUTO_GPU_MIN_ORBITALS_EXPLICIT)[1]
+    cdf_backend = resolve_backend(
+        "auto", problem_size=n,
+        gpu_min_size=AUTO_GPU_MIN_ORBITALS_COMPRESSED)[1]
+    print(
+        f"\n=== leaf sweep  n={n}  rho={rho:g}  C-DF maxiter={max_iterations} "
+        f"  (auto backends: X-DF={xdf_backend}, C-DF={cdf_backend}) ===")
+    print(f"  {'leaves':>6} | {'X-DF s':>8} {'X-DF rel':>10} | "
+          f"{'C-DF s':>8} {'C-DF rel':>10}  {'C-DF/X-DF err':>13}")
+
+    for num_leaves in leaf_counts:
+
+        def do_xdf():
+            return df.explicit_double_factorization(
+                eri,
+                threshold=0.0,
+                max_num_leaves=num_leaves,
+                first_factorization="cholesky",
+                backend="auto")
+
+        def do_cdf():
+            return df.compressed_double_factorization(
+                eri,
+                num_leaves=num_leaves,
+                max_iterations=max_iterations,
+                regularization=rho,
+                inner_solver="cg",
+                backend="auto")
+
+        t_x, xdf = _best_time(do_xdf, repeats, xdf_backend)
+        x_rel = df.factorization_error(eri, xdf) / norm
+        t_c, cdf = _best_time(do_cdf, repeats, cdf_backend)
+        c_rel = df.factorization_error(eri, cdf) / norm
+        ratio = c_rel / x_rel if x_rel > 0 else float("nan")
+        print(f"  {num_leaves:>6} | {t_x:>8.3f} {x_rel:>10.3e} | "
+              f"{t_c:>8.3f} {c_rel:>10.3e}  {ratio:>12.2f}x")
+
+
+def _best_time(fn, repeats, backend_name):
+    xp, _ = resolve_backend(backend_name)
+    best = float("inf")
+    result = None
+    for _ in range(repeats):
+        start = time.perf_counter()
+        result = fn()
+        _sync(xp)
+        best = min(best, time.perf_counter() - start)
+    return best, result
+
+
 def _backends():
     backends = ["numpy"]
     if df.cupy_gpu_available():
@@ -318,6 +375,13 @@ def main():
                         default=16,
                         help="orbital count for --full (synthetic ERI)")
     parser.add_argument("--max-iterations", type=int, default=150)
+    parser.add_argument("--leaf-sweep",
+                        action="store_true",
+                        help="X-DF (Cholesky) and C-DF (CG) time/accuracy vs "
+                        "leaf count, on the molecular ERI")
+    parser.add_argument("--leaves-list",
+                        default="4,16,32,64,96",
+                        help="comma-separated leaf counts for --leaf-sweep")
     args = parser.parse_args()
 
     if not df.cupy_gpu_available():
@@ -332,7 +396,11 @@ def main():
         eri = molecular_eri(args.basis)
         print(f"H2O/{args.basis}: n={eri.shape[0]}  "
               f"||eri||_F={np.linalg.norm(eri):.4f}")
-        if args.tol_sweep:
+        if args.leaf_sweep:
+            leaf_counts = [int(x) for x in args.leaves_list.split(",")]
+            run_leaf_sweep(eri, leaf_counts, args.rho, args.max_iterations,
+                           args.repeats)
+        elif args.tol_sweep:
             run_tol_sweep(eri, args.leaves, args.repeats)
         else:
             run_default(eri, args.leaves, args.rho, args.tol, args.repeats,

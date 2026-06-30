@@ -379,3 +379,33 @@ it lines up with the distributed-eigensolver shim in §2.
   kernel via nanobind; CG driver and L-BFGS stay in Python.
 - **Tier 2 (C++/CUDA + NCCL):** partial-sum matvec with allreduce for distributed
   ERIs/leaves.
+
+---
+
+## 7. X-DF vs C-DF: accuracy and cost vs leaf count (H2O/6-311G)
+
+Measured with `benchmarks/double_factorization/bench_cg_inner_solve.py --leaf-sweep`
+(n=19, rho=1e-3, C-DF maxiter=300; X-DF auto->NumPy in ms, C-DF auto->GPU):
+
+| leaves | X-DF rel err | C-DF rel err | C-DF/X-DF | X-DF time | C-DF time |
+|--------|--------------|--------------|-----------|-----------|-----------|
+| 4      | 1.58e-1      | 4.17e-2      | 0.26x     | 0.001 s   | 28.6 s    |
+| 16     | 4.93e-2      | 7.08e-3      | 0.14x     | 0.001 s   | 65.4 s    |
+| 32     | 2.08e-2      | 3.11e-3      | 0.15x     | 0.002 s   | 91.1 s    |
+| 64     | 2.12e-3      | 9.50e-4      | 0.45x     | 0.005 s   | 125.7 s   |
+| 96     | 9.72e-5      | 5.59e-4      | 5.75x     | 0.009 s   | 155.9 s   |
+
+Takeaways:
+- **C-DF's value is compression at low/moderate rank.** At 16 leaves C-DF reaches
+  ~7e-3, an accuracy X-DF needs ~3-4x more leaves to match -- fewer leaves means a
+  cheaper Givens fabric / lower block-encoding cost. That is the point of C-DF for
+  FTQC, and it holds for leaves up to ~64 here.
+- **X-DF wins at high leaf count.** By 96 leaves X-DF (9.7e-5) is approaching the
+  true rank (~177) and marches toward machine precision, while regularized C-DF is
+  *floored* by the `rho` penalty (and the maxiter budget), so X-DF overtakes it.
+  The `rho=1e-3` term is a confound for a pure accuracy comparison at high rank;
+  `rho=0` lifts the C-DF floor (at the cost of one-norm / conditioning).
+- **Cost asymmetry is enormous.** X-DF is milliseconds; C-DF is 30-160 s (the
+  iterative optimization), growing ~linearly in leaf count. C-DF is a one-time
+  classical pre-processing investment justified only when the leaf savings matter
+  downstream (circuit depth, measurement variance), not for raw reconstruction.
