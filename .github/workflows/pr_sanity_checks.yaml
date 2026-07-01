@@ -1,0 +1,199 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: PR sanity checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+  merge_group:
+    types:
+      - checks_requested
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  check-changes:
+    name: Check changes
+    runs-on: ubuntu-latest
+    outputs:
+      check-shell: ${{ github.event_name == 'pull_request' && steps.filter.outputs.check-shell || 'true' }}
+      check-cpp: ${{ github.event_name == 'pull_request' && steps.filter.outputs.check-cpp || 'true' }}
+      check-python: ${{ github.event_name == 'pull_request' && steps.filter.outputs.check-python || 'true' }}
+      check-all: ${{ github.event_name == 'pull_request' && steps.filter.outputs.check-all || 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Check what needs testing
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            check-all:
+              - '.github/workflows/**'
+              - 'scripts/run_clang_format.sh'
+              - 'scripts/run_yapf_format.sh'
+            check-shell:
+              - 'scripts/**/*.sh'
+            check-cpp:
+              - '**/*.c'
+              - '**/*.cc'
+              - '**/*.cpp'
+              - '**/*.cxx'
+              - '**/*.h'
+              - '**/*.hh'
+              - '**/*.hpp'
+              - '**/*.hxx'
+              - '**/*.cu'
+              - '**/*.cuh'
+            check-python:
+              - '**/*.py'
+
+  check-shell:
+    name: Check shell script syntax
+    needs: [check-changes]
+    if: needs.check-changes.outputs.check-shell == 'true' || needs.check-changes.outputs.check-all == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Check shell script syntax
+        run: |
+          script_patterns=(
+            "scripts/*.sh"
+            "scripts/**/*.sh"
+          )
+
+          git ls-files "${script_patterns[@]}" |
+          while IFS= read -r script; do
+            echo "Checking $script"
+            bash -n "$script"
+          done
+
+  check-cpp:
+    name: Check C++ code formatting
+    needs: [check-changes]
+    if: needs.check-changes.outputs.check-cpp == 'true' || needs.check-changes.outputs.check-all == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format-18
+
+      - name: Run clang-format
+        run: bash scripts/run_clang_format.sh -p clang-format-18
+
+      - name: Check for formatting changes
+        run: |
+          if ! git diff --exit-code; then
+            git diff --ignore-submodules > clang-format.patch
+            exit 1
+          fi
+
+      - name: Upload format patch
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: ${{ failure() }}
+        with:
+          name: clang-format-patch
+          path: clang-format.patch
+          retention-days: 14
+
+  check-python:
+    name: Check Python code formatting
+    needs: [check-changes]
+    if: needs.check-changes.outputs.check-python == 'true' || needs.check-changes.outputs.check-all == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install YAPF
+        run: python3 -m pip install yapf==0.43.0
+
+      - name: Run YAPF
+        run: bash scripts/run_yapf_format.sh
+
+      - name: Check for formatting changes
+        run: |
+          if ! git diff --exit-code; then
+            git diff --ignore-submodules > yapf-format.patch
+            exit 1
+          fi
+
+      - name: Upload format patch
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: ${{ failure() }}
+        with:
+          name: yapf-format-patch
+          path: yapf-format.patch
+          retention-days: 14
+
+  verify:
+    name: Sanity check PR
+    if: ${{ always() }}
+    needs:
+      - check-shell
+      - check-cpp
+      - check-python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          status="success"
+
+          check_result() {
+            name=$1
+            result=$2
+
+            # Skipped jobs are expected when the path filter does not match.
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "$name job failed"
+              status="failed"
+            fi
+          }
+
+          check_result "check-shell"  "${{ needs.check-shell.result }}"
+          check_result "check-cpp"    "${{ needs.check-cpp.result }}"
+          check_result "check-python" "${{ needs.check-python.result }}"
+
+          if [[ "$status" != "success" ]]; then
+            exit 1
+          fi

@@ -1,0 +1,180 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: PR workflow
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+  merge_group:
+    types:
+      - checks_requested
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-changes:
+    name: Check changes
+    runs-on: ubuntu-latest
+    outputs:
+      build-cudaq: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-cudaq || 'true' }}
+      build-algorithms: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-algorithms || 'true' }}
+      build-examples: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-examples || 'true' }}
+      build-wheels: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-wheels || 'true' }}
+      cache-key-suffix: ${{ github.event_name == 'pull_request' && format('pr{0}', github.event.pull_request.number) || format('run{0}', github.run_id) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Check what needs testing
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            build-cudaq:
+              - '.cudaq_version'
+              - '.github/actions/get-cudaq-build/**'
+              - '.github/actions/get-cudaq-version/**'
+            build-algorithms:
+              - '.github/workflows/lib_algorithms.yaml'
+              - '.github/workflows/pr_workflow.yaml'
+              - 'CMakeLists.txt'
+              - 'cmake/**'
+              - 'include/**'
+              - 'lib/**'
+              - 'python/**'
+              - 'tests/**'
+              - 'scripts/test_algorithms_build.sh'
+              - 'scripts/validation/**'
+              - 'pyproject.toml.cu*'
+            build-examples:
+              - 'examples/**'
+            build-wheels:
+              - '.github/actions/get-cudaq-wheels/**'
+              - '.github/workflows/wheel_algorithms.yaml'
+              - '.github/workflows/scripts/**'
+              - 'scripts/ci/**'
+              - 'python/metapackages/**'
+              - 'pyproject.toml.cu*'
+              - '.cudaq_version'
+
+  build-cudaq:
+    name: Build CUDA-Q
+    needs: [check-changes]
+    if: needs.check-changes.outputs.build-cudaq == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ['amd64', 'arm64']
+        cuda_version: ['12.6', '13.0']
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
+    container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+
+      - name: Get required CUDAQ version
+        id: get-cudaq-version
+        uses: ./.github/actions/get-cudaq-version
+
+      - name: Get CUDAQ build
+        uses: ./.github/actions/get-cudaq-build
+        with:
+          repo: ${{ steps.get-cudaq-version.outputs.repo }}
+          ref: ${{ steps.get-cudaq-version.outputs.ref }}
+          token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+          cache-key-suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+          save-build: true
+          save-ccache: false
+          platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+
+  build-algorithms:
+    name: Algorithms
+    needs: [check-changes, build-cudaq]
+    if: |
+      !failure() && !cancelled() &&
+      (
+        needs.check-changes.outputs.build-algorithms == 'true' ||
+        needs.check-changes.outputs.build-cudaq == 'true' ||
+        needs.check-changes.outputs.build-examples == 'true'
+      )
+    uses: ./.github/workflows/lib_algorithms.yaml
+    with:
+      cache_key_suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  build-wheels:
+    name: Wheels
+    needs: [check-changes]
+    if: |
+      !failure() && !cancelled() &&
+      needs.check-changes.outputs.build-wheels == 'true'
+    uses: ./.github/workflows/wheel_algorithms.yaml
+    with:
+      build_type: Release
+      cache_key_suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  verify:
+    name: Verify PR
+    if: ${{ always() }}
+    needs:
+      - build-cudaq
+      - build-algorithms
+      - build-wheels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          status="success"
+
+          check_result() {
+            name=$1
+            result=$2
+
+            # Skipped jobs are expected when the path filter does not match.
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "$name job failed"
+              status="failed"
+            fi
+          }
+
+          check_result "build-cudaq"      "${{ needs.build-cudaq.result }}"
+          check_result "build-algorithms" "${{ needs.build-algorithms.result }}"
+          check_result "build-wheels"     "${{ needs.build-wheels.result }}"
+
+          if [[ "$status" != "success" ]]; then
+            exit 1
+          fi
