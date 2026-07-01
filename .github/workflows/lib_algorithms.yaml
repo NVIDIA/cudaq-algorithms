@@ -112,7 +112,6 @@ jobs:
         run: |
           apt update
           apt install -y --no-install-recommends build-essential
-          python3 -m pip install --upgrade pip
           python3 -m pip install cmake ninja nanobind numpy pytest
 
       - name: Build and run tests
