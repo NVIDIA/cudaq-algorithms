@@ -122,7 +122,10 @@ jobs:
     name: Algorithms
     needs: [check-changes, build-cudaq]
     if: |
-      !failure() && !cancelled() &&
+      always() &&
+      !cancelled() &&
+      needs.check-changes.result == 'success' &&
+      (needs.build-cudaq.result == 'success' || needs.build-cudaq.result == 'skipped') &&
       (
         needs.check-changes.outputs.build-algorithms == 'true' ||
         needs.check-changes.outputs.build-cudaq == 'true' ||
@@ -151,6 +154,7 @@ jobs:
     name: Verify PR
     if: ${{ always() }}
     needs:
+      - check-changes
       - build-cudaq
       - build-algorithms
       - build-wheels
@@ -171,6 +175,7 @@ jobs:
             fi
           }
 
+          check_result "check-changes"    "${{ needs.check-changes.result }}"
           check_result "build-cudaq"      "${{ needs.build-cudaq.result }}"
           check_result "build-algorithms" "${{ needs.build-algorithms.result }}"
           check_result "build-wheels"     "${{ needs.build-wheels.result }}"
