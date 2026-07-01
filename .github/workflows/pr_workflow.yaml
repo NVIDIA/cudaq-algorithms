@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  actions: write
+  actions: read
   contents: read
   pull-requests: read
 
@@ -88,7 +88,7 @@ jobs:
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
     container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
     permissions:
-      actions: write
+      actions: read
       contents: read
       pull-requests: read
     steps:
@@ -114,27 +114,76 @@ jobs:
           ref: ${{ steps.get-cudaq-version.outputs.ref }}
           token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
           cache-key-suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
-          save-build: true
+          save-build: false
           save-ccache: false
           platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
 
   build-algorithms:
     name: Algorithms
-    needs: [check-changes]
+    needs: [check-changes, build-cudaq]
     if: |
       always() &&
       !cancelled() &&
       needs.check-changes.result == 'success' &&
+      (needs.build-cudaq.result == 'success' || needs.build-cudaq.result == 'skipped') &&
       (
         needs.check-changes.outputs.build-algorithms == 'true' ||
         needs.check-changes.outputs.build-cudaq == 'true' ||
         needs.check-changes.outputs.build-examples == 'true'
       )
-    uses: ./.github/workflows/lib_algorithms.yaml
-    with:
-      cache_key_suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
-    secrets:
-      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ['amd64', 'arm64']
+        cuda_version: ['12.6', '13.0']
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
+    container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+
+      - name: Get required CUDAQ version
+        id: get-cudaq-version
+        uses: ./.github/actions/get-cudaq-version
+
+      - name: Get CUDAQ build
+        uses: ./.github/actions/get-cudaq-build
+        with:
+          repo: ${{ steps.get-cudaq-version.outputs.repo }}
+          ref: ${{ steps.get-cudaq-version.outputs.ref }}
+          token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+          cache-key-suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+          save-build: false
+          save-ccache: false
+          platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+
+      - name: Install build requirements
+        run: |
+          apt update
+          apt install -y --no-install-recommends build-essential
+          python3 -m pip install cmake ninja nanobind numpy pytest
+
+      - name: Build and run tests
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          export PATH=/cudaq-install/bin:$PATH
+          export LD_LIBRARY_PATH=/cudaq-install/lib:${LD_LIBRARY_PATH:-}
+          bash scripts/test_algorithms_build.sh \
+            --build-dir build \
+            --cudaq-prefix /cudaq-install \
+            --cudaq-dir /cudaq-install/lib/cmake/cudaq
 
   build-wheels:
     name: Wheels
