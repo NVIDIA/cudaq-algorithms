@@ -120,12 +120,11 @@ jobs:
 
   build-algorithms:
     name: Algorithms
-    needs: [check-changes, build-cudaq]
+    needs: [check-changes]
     if: |
       always() &&
       !cancelled() &&
       needs.check-changes.result == 'success' &&
-      (needs.build-cudaq.result == 'success' || needs.build-cudaq.result == 'skipped') &&
       (
         needs.check-changes.outputs.build-algorithms == 'true' ||
         needs.check-changes.outputs.build-cudaq == 'true' ||
