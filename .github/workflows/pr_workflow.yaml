@@ -21,11 +21,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  actions: write
-  contents: read
-  pull-requests: read
-
 jobs:
   check-changes:
     name: Check changes
@@ -88,7 +83,7 @@ jobs:
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || (startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest') }}
     container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
     permissions:
-      actions: read
+      actions: write
       contents: read
       pull-requests: read
     steps:
@@ -137,10 +132,6 @@ jobs:
         cuda_version: ['12.6', '13.0']
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || (startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest') }}
     container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -191,10 +182,6 @@ jobs:
       !failure() && !cancelled() &&
       needs.check-changes.outputs.build-wheels == 'true'
     uses: ./.github/workflows/wheel_algorithms.yaml
-    permissions:
-      actions: write
-      contents: read
-      pull-requests: read
     with:
       build_type: Release
       cache_key_suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
