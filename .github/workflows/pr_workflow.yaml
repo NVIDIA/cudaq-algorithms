@@ -27,11 +27,10 @@ jobs:
     name: Check changes
     runs-on: ubuntu-latest
     outputs:
-      # Debug: force all PR workflow jobs to run while testing the new workflow.
-      build-cudaq: 'true'
-      build-algorithms: 'true'
-      build-examples: 'true'
-      build-wheels: 'true'
+      build-cudaq: ${{ steps.filter.outputs.build-cudaq }}
+      build-algorithms: ${{ steps.filter.outputs.build-algorithms }}
+      build-examples: ${{ steps.filter.outputs.build-examples }}
+      build-wheels: ${{ steps.filter.outputs.build-wheels }}
       pr-number: ${{ steps.export-pr-info.outputs.pr_number }}
     steps:
       - name: Checkout repository
@@ -95,7 +94,7 @@ jobs:
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
     container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
     permissions:
-      actions: read
+      actions: write
       contents: read
       pull-requests: read
     steps:
@@ -212,6 +211,7 @@ jobs:
     name: Verify PR
     if: ${{ always() }}
     needs:
+      - check-changes
       - build-cudaq
       - build-algorithms
       - build-wheels

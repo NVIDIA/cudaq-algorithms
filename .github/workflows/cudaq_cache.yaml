@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: ['amd64', 'arm64']
+        platform: ['amd64']
         # cu13 packaging (pyproject.toml.cu13) is supported by the build
         # scripts but not yet exercised in CI; deferred until a cu13 devdeps
         # image is available. Add '13.x' here to enable.
