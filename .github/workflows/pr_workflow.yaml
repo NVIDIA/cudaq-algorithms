@@ -39,7 +39,6 @@ jobs:
           set-safe-directory: true
 
       - name: Check what needs testing
-        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@v3
         id: filter
         with:
