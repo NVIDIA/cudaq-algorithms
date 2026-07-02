@@ -395,16 +395,31 @@ Measured with `benchmarks/double_factorization/bench_cg_inner_solve.py --leaf-sw
 | 64     | 2.12e-3      | 9.50e-4      | 0.45x     | 0.005 s   | 125.7 s   |
 | 96     | 9.72e-5      | 5.59e-4      | 5.75x     | 0.009 s   | 155.9 s   |
 
+**The 96-leaf "X-DF wins" above was a regularization artifact.** Re-running at a
+lighter `rho=1e-5` lifts the C-DF floor and C-DF beats X-DF at *every* leaf count:
+
+| leaves | X-DF rel | C-DF rel (rho=1e-5) | ratio | C-DF rel (rho=1e-3) | C-DF time (rho=1e-5) |
+|--------|----------|---------------------|-------|---------------------|----------------------|
+| 4      | 1.58e-1  | 5.22e-2             | 0.33x | 4.17e-2             | 91 s                 |
+| 16     | 4.93e-2  | 6.87e-3             | 0.14x | 7.08e-3             | 271 s                |
+| 32     | 2.08e-2  | 2.36e-3             | 0.11x | 3.11e-3             | 490 s                |
+| 64     | 2.12e-3  | 3.39e-4             | 0.16x | 9.50e-4             | 608 s                |
+| 96     | 9.72e-5  | 8.65e-5             | 0.89x | 5.59e-4             | 682 s                |
+
+The `rho` penalty grows with the cores, so it hurts most at high leaf count:
+dropping `rho` improved C-DF@64 by 2.8x and C-DF@96 by 6.5x (5.6e-4 -> 8.6e-5,
+flipping the 96-leaf result from 5.75x *worse* to 0.89x *better*). But lighter
+`rho` worsens conditioning, so the runtime rises 4-5x (the `rho=0` extreme is
+intractable, above). There is a genuine `rho` tradeoff: small `rho` for best
+reconstruction, larger `rho` for lowest one-norm and a tractable CG solve.
+
 Takeaways:
 - **C-DF's value is compression at low/moderate rank.** At 16 leaves C-DF reaches
   ~7e-3, an accuracy X-DF needs ~3-4x more leaves to match -- fewer leaves means a
   cheaper Givens fabric / lower block-encoding cost. That is the point of C-DF for
-  FTQC, and it holds for leaves up to ~64 here.
-- **X-DF wins at high leaf count.** By 96 leaves X-DF (9.7e-5) is approaching the
-  true rank (~177) and marches toward machine precision, while regularized C-DF is
-  *floored* by the `rho` penalty (and the maxiter budget), so X-DF overtakes it.
-  The `rho=1e-3` term is a confound for a pure accuracy comparison at high rank;
-  `rho=0` lifts the C-DF floor (at the cost of one-norm / conditioning).
+  FTQC. At near-full rank (96 leaves ~ true rank 177) both methods are near-exact,
+  so C-DF's edge there is real but marginal (0.89x) -- the compression win is a
+  low-rank phenomenon.
 - **Cost asymmetry is enormous.** X-DF is milliseconds; C-DF is 30-160 s (the
   iterative optimization), growing ~linearly in leaf count. C-DF is a one-time
   classical pre-processing investment justified only when the leaf savings matter
@@ -418,5 +433,8 @@ Takeaways:
   solve (an RC-DF benefit beyond shrinking the one-norm); the explicit lstsq solver
   tolerates `rho=0` (direct min-norm) but its design matrix OOMs at these leaf
   counts (>12 GB). Net: **C-DF-with-CG is inherently a regularized, low-to-moderate
-  rank tool**; for near-full-rank accuracy X-DF is both exact-ish and free, so the
-  96-leaf reversal above is the expected regime boundary, not a deficiency.
+  rank tool** -- `rho` must be large enough for a tractable CG solve but small
+  enough not to floor accuracy (`~1e-5` beats X-DF at all leaf counts here at 4-5x
+  the runtime; `1e-3` is faster but floors high-rank accuracy). For near-full-rank
+  accuracy X-DF is exact-ish and essentially free, so C-DF is worth its cost only
+  when the low-rank leaf savings (or the one-norm reduction) matter downstream.
