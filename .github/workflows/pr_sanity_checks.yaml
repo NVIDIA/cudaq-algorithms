@@ -51,6 +51,9 @@ jobs:
               - 'scripts/run_yapf_format.sh'
             check-shell:
               - 'scripts/**/*.sh'
+              - 'scripts/*.sh'
+              - '.github/workflows/scripts/*.sh'
+              - '.github/actions/**/*.sh'
             check-cpp:
               - '**/*.c'
               - '**/*.cc'
@@ -81,6 +84,8 @@ jobs:
           script_patterns=(
             "scripts/*.sh"
             "scripts/**/*.sh"
+            ".github/workflows/scripts/*.sh"
+            ".github/actions/**/*.sh"
           )
 
           git ls-files "${script_patterns[@]}" |
