@@ -191,6 +191,10 @@ jobs:
       !failure() && !cancelled() &&
       needs.check-changes.outputs.build-wheels == 'true'
     uses: ./.github/workflows/wheel_algorithms.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     with:
       build_type: Release
       cache_key_suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
