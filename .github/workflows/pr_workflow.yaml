@@ -10,20 +10,15 @@ name: PR workflow
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened]
   merge_group:
     types:
       - checks_requested
   push:
     branches:
       - "pull-request/[0-9]+"
-      
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
