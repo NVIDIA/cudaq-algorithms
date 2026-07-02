@@ -48,7 +48,7 @@ jobs:
       - name: Export PR info
         id: export-pr-info
         run: |
-          echo "pr_number=${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}" >> $GITHUB_OUTPUT
 
       - name: Check what needs testing
         uses: dorny/paths-filter@v3
@@ -90,9 +90,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '["amd64"]' || '["amd64", "arm64"]') }}
+        platform: ['amd64', 'arm64']
         cuda_version: ['12.6', '13.0']
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || (startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest') }}
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
     container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
     permissions:
       actions: read
@@ -108,7 +108,7 @@ jobs:
         id: config
         run: |
           cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
-          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+          echo "cuda_major=$cuda_major" >> $GITHUB_OUTPUT
 
       - name: Get required CUDAQ version
         id: get-cudaq-version
@@ -121,7 +121,7 @@ jobs:
           ref: ${{ steps.get-cudaq-version.outputs.ref }}
           token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
           cache-key-suffix: pr${{ needs.check-changes.outputs.pr-number }}
-          save-build: false
+          save-build: true
           save-ccache: false
           platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
 
@@ -140,9 +140,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '["amd64"]' || '["amd64", "arm64"]') }}
+        platform: ["amd64", "arm64"]
         cuda_version: ['12.6', '13.0']
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || (startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest') }}
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
     container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
     permissions:
       actions: read
@@ -212,7 +212,6 @@ jobs:
     name: Verify PR
     if: ${{ always() }}
     needs:
-      - check-changes
       - build-cudaq
       - build-algorithms
       - build-wheels
