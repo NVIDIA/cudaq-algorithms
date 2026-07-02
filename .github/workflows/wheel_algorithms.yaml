@@ -212,7 +212,12 @@ jobs:
           python3 -m pip install build
 
       - name: Build CUDA-Q Algorithms metapackages
+        shell: bash
         run: |
+          pwd
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE/scripts/ci"
           bash scripts/ci/build_metapackages.sh ${{ inputs.version || '0.14.99' }}
           mkdir -p /metapackages
           mv python/metapackages/dist/* /metapackages/
