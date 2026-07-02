@@ -32,10 +32,11 @@ jobs:
     name: Check changes
     runs-on: ubuntu-latest
     outputs:
-      build-cudaq: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-cudaq || 'true' }}
-      build-algorithms: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-algorithms || 'true' }}
-      build-examples: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-examples || 'true' }}
-      build-wheels: ${{ github.event_name == 'pull_request' && steps.filter.outputs.build-wheels || 'true' }}
+      # Debug: force all PR workflow jobs to run while testing the new workflow.
+      build-cudaq: 'true'
+      build-algorithms: 'true'
+      build-examples: 'true'
+      build-wheels: 'true'
       cache-key-suffix: ${{ github.event_name == 'pull_request' && format('pr{0}', github.event.pull_request.number) || format('run{0}', github.run_id) }}
     steps:
       - name: Checkout repository
