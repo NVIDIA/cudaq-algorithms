@@ -10,7 +10,8 @@
 
 set -euo pipefail
 
-repo_root=$(git rev-parse --show-toplevel)
+# Relies on this script being stored at scripts/ci, two levels below the repo root
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo_root"
 
 if [[ $# -ne 1 ]]; then

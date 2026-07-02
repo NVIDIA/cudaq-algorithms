@@ -210,7 +210,7 @@ jobs:
         shell: bash
         run: |
           apt update
-          apt install -y --no-install-recommends git ca-certificates
+          apt install -y --no-install-recommends ca-certificates
           python3 -m pip install --upgrade pip
           python3 -m pip install build
 
