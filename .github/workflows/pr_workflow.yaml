@@ -9,10 +9,6 @@
 name: PR workflow
 
 on:
-  workflow_dispatch:
-  merge_group:
-    types:
-      - checks_requested
   push:
     branches:
       - "pull-request/[0-9]+"
@@ -36,22 +32,34 @@ jobs:
       build-algorithms: 'true'
       build-examples: 'true'
       build-wheels: 'true'
-      cache-key-suffix: ${{ github.event_name == 'pull_request' && format('pr{0}', github.event.pull_request.number) || format('run{0}', github.run_id) }}
+      pr-number: ${{ steps.export-pr-info.outputs.pr_number }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           set-safe-directory: true
 
+      - name: Lookup PR info
+        id: get-pr-info
+        env:
+          GH_TOKEN: ${{ github.token }}
+        uses: nv-gha-runners/get-pr-info@main
+
+      - name: Export PR info
+        id: export-pr-info
+        run: |
+          echo "pr_number=${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}" >> "$GITHUB_OUTPUT"
+
       - name: Check what needs testing
         uses: dorny/paths-filter@v3
         id: filter
         with:
+          base: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
           filters: |
             build-cudaq:
-              - '.cudaq_version'
               - '.github/actions/get-cudaq-build/**'
               - '.github/actions/get-cudaq-version/**'
+              - '.cudaq_version'
             build-algorithms:
               - '.github/workflows/lib_algorithms.yaml'
               - '.github/workflows/pr_workflow.yaml'
@@ -112,7 +120,7 @@ jobs:
           repo: ${{ steps.get-cudaq-version.outputs.repo }}
           ref: ${{ steps.get-cudaq-version.outputs.ref }}
           token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
-          cache-key-suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+          cache-key-suffix: pr${{ needs.check-changes.outputs.pr-number }}
           save-build: false
           save-ccache: false
           platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
@@ -162,7 +170,7 @@ jobs:
           repo: ${{ steps.get-cudaq-version.outputs.repo }}
           ref: ${{ steps.get-cudaq-version.outputs.ref }}
           token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
-          cache-key-suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+          cache-key-suffix: pr${{ needs.check-changes.outputs.pr-number }}
           save-build: false
           save-ccache: false
           platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
@@ -196,7 +204,7 @@ jobs:
       pull-requests: read
     with:
       build_type: Release
-      cache_key_suffix: ${{ needs.check-changes.outputs.cache-key-suffix }}
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
