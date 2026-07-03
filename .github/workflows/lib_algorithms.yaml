@@ -113,7 +113,9 @@ jobs:
           apt update
           apt install -y --no-install-recommends build-essential
           python3 -m pip install --upgrade pip
-          python3 -m pip install cmake ninja nanobind numpy pytest
+          # scipy and qsppack are needed so the QSPPACK-based QSVT
+          # Hamiltonian-simulation test is not importorskip-skipped.
+          python3 -m pip install cmake ninja nanobind numpy pytest scipy qsppack
 
       - name: Build and run tests
         run: |
