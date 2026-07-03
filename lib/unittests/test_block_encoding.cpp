@@ -416,6 +416,55 @@ TEST(BlockEncodingTester, checkBlockEncodingMatchesDenseHamiltonianAction) {
   EXPECT_NEAR(good_probability, expected_probability, 1e-10);
 }
 
+// Regression test: a single-term LCU has zero ancilla qubits, so a negative
+// coefficient cannot be carried by the multi-controlled-Z sign correction and
+// must be applied explicitly. Without that, -c * P silently encodes +c * P.
+TEST(BlockEncodingTester, checkSingleTermNegativeCoefficientEncodesSign) {
+  using namespace cudaq::algorithms;
+
+  constexpr std::size_t num_qubits = 2;
+  const std::vector<reference_pauli_term> reference_terms = {
+      {-0.5, {{0, 'X'}, {1, 'Z'}}}};
+  auto h = make_spin_hamiltonian(reference_terms);
+  pauli_lcu encoding(h, num_qubits);
+
+  ASSERT_EQ(encoding.num_system(), num_qubits);
+  ASSERT_EQ(encoding.term_count(), 1u);
+  ASSERT_EQ(encoding.num_ancilla(), 0u);
+
+  auto ket = make_normalized_random_ket(num_qubits);
+  cudaq::state input_state(ket);
+  const auto expected = apply_pauli_sum_to_ket(reference_terms, ket);
+
+  auto apply_block_encoding = [&encoding](cudaq::state state) __qpu__ {
+    cudaq::qvector<> system(state);
+    cudaq::qvector<> ancilla(encoding.num_ancilla());
+    encoding.apply(ancilla, system);
+  };
+
+  auto encoded_state = cudaq::get_state(apply_block_encoding, input_state);
+  const auto system_dimension = 1ULL << num_qubits;
+  const auto normalization = encoding.normalization();
+
+  auto reverse_bits = [](std::size_t value, std::size_t width) {
+    std::size_t reversed = 0;
+    for (std::size_t bit = 0; bit < width; ++bit)
+      if ((value >> bit) & 1ULL)
+        reversed |= 1ULL << (width - 1 - bit);
+    return reversed;
+  };
+
+  double l2_error = 0.0;
+  for (std::size_t i = 0; i < system_dimension; ++i) {
+    const auto output_index = reverse_bits(i, num_qubits);
+    const auto expected_amplitude = expected[i] / normalization;
+    const auto actual_amplitude = encoded_state[output_index];
+    l2_error += std::norm(actual_amplitude - expected_amplitude);
+  }
+
+  EXPECT_NEAR(std::sqrt(l2_error), 0.0, 1e-10);
+}
+
 TEST(BlockEncodingTester, checkIdentityTerm) {
   using namespace cudaq::spin;
   using namespace cudaq::algorithms;

@@ -29,8 +29,11 @@ inline constexpr std::size_t max_qpu_dispatch_qubits = max_lcu_ancilla_qubits;
 // ancilla / QSVT signal register whose size is `decompose_lcu`-validated
 // against `max_lcu_ancilla_qubits` (see pauli_lcu.cpp), so the cap is enforced
 // on the host before any kernel runs. A COUNT of 0 (single-term LCU, zero
-// ancilla) is intentionally a no-op for the uncontrolled ladders: the dropped
-// sign there is only an unobservable global phase. If you add a new caller
+// ancilla) is intentionally a no-op for the uncontrolled ladders at the
+// reflection and signal-phase call sites, where the dropped phase is only an
+// unobservable global phase. It is NOT safe where the phase is relative --
+// block_encoding::select handles its 0-ancilla negative-coefficient case
+// explicitly instead of relying on this ladder. If you add a new caller
 // whose register is NOT the validated LCU ancilla, validate its size on the
 // host first.
 // clang-format off

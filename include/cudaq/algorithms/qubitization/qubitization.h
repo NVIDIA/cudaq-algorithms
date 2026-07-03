@@ -56,8 +56,7 @@ __qpu__ inline void controlled_reflect_about_zero(cudaq::qubit &control,
     x(ancilla[i]);
 
   std::size_t num_ancilla = ancilla.size();
-  if (num_ancilla > 0)
-    CUDAQ_ALGORITHMS_APPLY_CONTROLLED_Z_BY_ARITY(control, ancilla, num_ancilla);
+  CUDAQ_ALGORITHMS_APPLY_CONTROLLED_Z_BY_ARITY(control, ancilla, num_ancilla);
 
   for (std::size_t i = 0; i < ancilla.size(); ++i)
     x(ancilla[i]);

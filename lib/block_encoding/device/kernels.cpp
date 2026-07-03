@@ -123,8 +123,15 @@ __qpu__ void select(cudaq::qview<> ancilla, cudaq::qview<> system,
         z<cudaq::ctrl>(ancilla, system[q_idx]);
     }
 
-    if (sign < 0)
-      CUDAQ_ALGORITHMS_APPLY_Z_BY_ARITY(ancilla, n_ancilla);
+    if (sign < 0) {
+      if (n_ancilla == 0)
+        // Single-term LCU: with no ancilla there is no projected block, so
+        // dropping the -1 would encode -H instead of H. rz(2*pi) is exactly
+        // the -I matrix, so the sign also survives control synthesis.
+        rz(2.0 * M_PI, system[0]);
+      else
+        CUDAQ_ALGORITHMS_APPLY_Z_BY_ARITY(ancilla, n_ancilla);
+    }
 
     int back_ptr = ptr_ctrl - 1;
     for (int b_rev = 0; b_rev < n_ancilla; ++b_rev) {
