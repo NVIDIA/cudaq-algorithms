@@ -712,6 +712,51 @@ def test_qsvt_phase_sequence_helper():
     assert legacy_args[4] == args[4]
 
 
+# Test purpose: verify qsp-tagged sequences execute in the projector convention.
+def test_qsvt_qsp_convention_kernel_packing(qpp_cpu_target):
+    """A qsp-tagged sequence must pack projector-convention phases.
+
+    The device kernels only implement projector phases diag(e^{i phi}, 1). QSP
+    Z-rotation phases diag(e^{i phi}, e^{-i phi}) are equivalent to projector
+    phases 2*phi up to a global phase, so kernel packing must convert them;
+    forwarding raw qsp phases would run a genuinely different circuit.
+    """
+
+    qsp_phases = [0.1, -0.2, 0.3]
+    qsp_sequence = algorithms.qsvt.phase_sequence(qsp_phases, convention="qsp")
+    projector_phases = algorithms.qsvt.projector_phases_from_qsp(qsp_phases)
+
+    assert qsp_sequence.projector_phase_data() == pytest.approx(
+        projector_phases)
+    assert qsp_sequence.kernel_data()["phases"] == pytest.approx(
+        projector_phases)
+    # Raw phases stay available for host-side helpers such as phases_to_poly.
+    assert qsp_sequence.phase_data == pytest.approx(qsp_phases)
+
+    num_system = 1
+    hamiltonian = 0.6 * spin.x(0) + 0.8 * spin.z(0)
+    encoding = algorithms.PauliLCU(hamiltonian, num_qubits=num_system)
+    kernel_data = _kernel_data(encoding)
+
+    qsp_args = algorithms.qsvt.pauli_lcu_kernel_args(qsp_sequence,
+                                                     encoding.kernel_data())
+    manual_args = algorithms.qsvt.pauli_lcu_kernel_args(
+        projector_phases, encoding.kernel_data())
+    assert qsp_args[0] == pytest.approx(manual_args[0])
+    assert qsp_args[1:] == manual_args[1:]
+
+    initial_ket = _random_normalized_ket(num_system, seed=11)
+    initial_state = cudaq.State.from_data(initial_ket)
+    qsp_component = _run_qsvt_good_component(initial_state, num_system,
+                                             encoding.num_ancilla,
+                                             qsp_sequence, None, kernel_data)
+    manual_component = _run_qsvt_good_component(initial_state, num_system,
+                                                encoding.num_ancilla,
+                                                projector_phases, None,
+                                                kernel_data)
+    assert np.allclose(qsp_component, manual_component, atol=1e-12)
+
+
 # Test purpose: verify host-side phase-to-polynomial response evaluation.
 def test_qsvt_phases_to_poly():
     """Check host-side phase-to-polynomial response evaluation."""

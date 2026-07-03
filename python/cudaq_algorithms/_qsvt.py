@@ -39,9 +39,23 @@ class _PhaseSequence:
     def walk_direction_data(self):
         return list(self.walk_directions)
 
+    def projector_phase_data(self):
+        """Return the phases in the projector convention used by the kernels.
+
+        The device kernels (apply_phase_sequence) only implement projector
+        phases diag(exp(i*phi), 1). A qsp-tagged sequence stores Z-rotation
+        phases diag(exp(i*phi), exp(-i*phi)), which are equivalent to
+        projector phases 2*phi up to a global phase, so they are converted
+        here. phase_data stays raw for host-side helpers like phases_to_poly
+        that honor the convention themselves.
+        """
+        if self.convention == QSVTPhaseConvention.qsp:
+            return _projector_phases_from_qsp(self.phases)
+        return self.phase_data
+
     def kernel_data(self):
         return {
-            "phases": self.phase_data,
+            "phases": self.projector_phase_data(),
             "walk_directions": self.walk_direction_data,
         }
 
@@ -148,14 +162,19 @@ def _pauli_lcu_sequence_kernel_args(phases,
                                     kernel_data,
                                     walk_directions=None,
                                     convention=None):
-    """Pack QSVT phase data and PauliLCU layout for apply_phase_sequence()."""
+    """Pack QSVT phase data and PauliLCU layout for apply_phase_sequence().
+
+    Phases from a qsp-tagged sequence (or a raw list with convention="qsp")
+    are converted to the projector convention the kernels implement; see
+    _PhaseSequence.projector_phase_data.
+    """
 
     sequence = _phase_sequence(phases, walk_directions, convention)
     angles, term_controls, term_ops, term_lengths, term_signs = (
         _pauli_lcu_kernel_tuple(kernel_data))
-    return (sequence.phase_data, sequence.walk_direction_data, list(angles),
-            list(term_controls), list(term_ops), list(term_lengths),
-            list(term_signs))
+    return (sequence.projector_phase_data(), sequence.walk_direction_data,
+            list(angles), list(term_controls), list(term_ops),
+            list(term_lengths), list(term_signs))
 
 
 def _projector_phases_from_qsp(phases):
