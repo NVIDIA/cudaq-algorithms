@@ -17,6 +17,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_PATH = REPO_ROOT / "examples" / "quantum_exact_lanczos" / "quantum_exact_lanczos_molecules.py"
+H2_EXAMPLE_PATH = REPO_ROOT / "examples" / "quantum_exact_lanczos" / "quantum_exact_lanczos_h2.py"
 DATA_DIR = REPO_ROOT / "examples" / "quantum_exact_lanczos" / "data"
 H2_DATA_PATH = DATA_DIR / "h2_sto3g_jw.json"
 
@@ -25,6 +26,19 @@ H2_DATA_PATH = DATA_DIR / "h2_sto3g_jw.json"
 def qel_example_module():
     spec = importlib.util.spec_from_file_location(
         "quantum_exact_lanczos_molecules", EXAMPLE_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def qel_h2_example_module(qel_example_module):
+    # The walkthrough imports quantum_exact_lanczos_molecules, which the
+    # qel_example_module fixture already registered in sys.modules.
+    spec = importlib.util.spec_from_file_location("quantum_exact_lanczos_h2",
+                                                  H2_EXAMPLE_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module
@@ -99,7 +113,7 @@ def qpp_cpu_target():
     cudaq.reset_target()
 
 
-def _h2_exact_chebyshev_moments(qel, data, num_moments):
+def _exact_chebyshev_moments(qel, data, num_moments):
     """Exact <HF| T_k(H/alpha) |HF> using CUDA-Q's own matrix/state ordering."""
     import cudaq
     import cudaq_algorithms as algorithms
@@ -108,11 +122,14 @@ def _h2_exact_chebyshev_moments(qel, data, num_moments):
     alpha = float(algorithms.PauliLCU(spin_op, data.num_qubits).normalization)
     scaled = np.array(spin_op.to_matrix(), dtype=np.complex128) / alpha
 
+    num_qubits = data.num_qubits
+    occupied = [int(q) for q in data.occupied_qubits]
+
     @cudaq.kernel
     def hartree_fock():
-        system = cudaq.qvector(4)  # H2: occupied qubits (0, 1)
-        x(system[0])
-        x(system[1])
+        system = cudaq.qvector(num_qubits)
+        for qubit in occupied:
+            x(system[qubit])
 
     psi = np.array(cudaq.get_state(hartree_fock), dtype=np.complex128)
 
@@ -141,9 +158,48 @@ def test_h2_measured_moments_match_exact_chebyshev(qel_example_module,
 
     measured = qel.collect_chebyshev_moments(encoding, data.occupied_qubits,
                                              dimension, 0)
-    exact = _h2_exact_chebyshev_moments(qel, data, num_moments)
+    exact = _exact_chebyshev_moments(qel, data, num_moments)
 
     assert np.allclose(measured, exact, atol=1e-6)
+
+
+# Test purpose: exercise the 8-qubit quantum moment path (occupied qubits
+# (0, 1, 2, 3)), which the H2 tests do not reach.
+def test_n2_measured_low_order_moments_match_exact_chebyshev(
+        qel_example_module, qpp_cpu_target):
+    import cudaq_algorithms as algorithms
+
+    qel = qel_example_module
+    data = qel.load_qubit_hamiltonian(DATA_DIR / "n2_active_space_jw.json")
+    assert data.num_qubits == 8
+    assert data.occupied_qubits == (0, 1, 2, 3)
+
+    encoding = algorithms.PauliLCU(qel.spin_hamiltonian(data.terms),
+                                   data.num_qubits)
+    # Keep this cheap: a dimension-2 basis only needs walk powers 0 and 1.
+    dimension = 2
+    num_moments = algorithms.krylov.required_chebyshev_moments(dimension)
+
+    measured = qel.collect_chebyshev_moments(encoding, data.occupied_qubits,
+                                             dimension, 0)
+    exact = _exact_chebyshev_moments(qel, data, num_moments)
+
+    assert np.allclose(measured, exact, atol=1e-8)
+
+
+# Test purpose: run the recommended-starting-point H2 walkthrough end to end.
+def test_h2_walkthrough_example_matches_dense_exact(qel_h2_example_module,
+                                                    qpp_cpu_target,
+                                                    monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["quantum_exact_lanczos_h2.py"])
+
+    # main() raises RuntimeError if the QEL energy misses dense exact
+    # diagonalization by more than the example tolerance.
+    assert qel_h2_example_module.main() == 0
+
+    output = capsys.readouterr().out
+    assert "QEL energy" in output
+    assert "Dense exact energy" in output
 
 
 # Test purpose: run the full QEL workflow end to end and check it reproduces FCI.

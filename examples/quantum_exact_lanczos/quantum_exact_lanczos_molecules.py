@@ -180,8 +180,15 @@ def exact_ground_energy(data: QubitHamiltonianData) -> float:
 
 def comparison_energy(data: QubitHamiltonianData,
                       exact_max_qubits: int) -> tuple[float | None, str]:
-    """Choose dense exact diagonalization or stored reference data."""
-    if data.num_qubits <= exact_max_qubits:
+    """Choose dense exact diagonalization or stored reference data.
+
+    Systems strictly below exact_max_qubits are re-diagonalized densely. At
+    and above the boundary the stored reference energy is preferred: the
+    fixture coefficients are rounded, so re-diagonalizing them reproduces the
+    stored CASCI/FCI value only approximately, and the stored reference is
+    the more faithful comparison.
+    """
+    if data.num_qubits < exact_max_qubits:
         return exact_ground_energy(data), "dense exact diagonalization"
     if data.reference_energy is not None:
         return data.reference_energy, data.reference_energy_kind
@@ -369,7 +376,9 @@ def main() -> int:
         "--exact-max-qubits",
         type=int,
         default=DEFAULT_EXACT_MAX_QUBITS,
-        help="Largest system size for dense exact diagonalization.")
+        help="Systems with fewer qubits than this are compared against dense "
+        "exact diagonalization; larger fixtures use their stored reference "
+        "energy.")
     parser.add_argument("--describe-only",
                         action="store_true",
                         help="Print fixture metadata without running QEL.")
