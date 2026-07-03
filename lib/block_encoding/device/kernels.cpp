@@ -330,55 +330,6 @@ __qpu__ void apply_qsp_signal_phase(cudaq::qview<> signal, double phase) {
   cudaq_algorithms::qsvt_primitives::apply_signal_phase(signal, 2.0 * phase);
 }
 
-__qpu__ void apply_sequence(cudaq::qview<> signal, cudaq::qview<> system,
-                            const std::vector<double> &phases,
-                            const std::vector<int> &walk_directions,
-                            const std::vector<double> &state_prep_angles,
-                            const std::vector<int> &term_controls,
-                            const std::vector<int> &term_ops,
-                            const std::vector<int> &term_lengths,
-                            const std::vector<int> &term_signs) {
-  if (phases.empty())
-    return;
-
-  cudaq_algorithms::qsvt_primitives::apply_signal_phase(signal, phases[0]);
-  for (std::size_t i = 1; i < phases.size(); ++i) {
-    if (walk_directions[i - 1] == 1)
-      qubitization::apply_adjoint_walk(signal, system, state_prep_angles,
-                                       term_controls, term_ops, term_lengths,
-                                       term_signs);
-    else
-      qubitization::apply_walk(signal, system, state_prep_angles, term_controls,
-                               term_ops, term_lengths, term_signs);
-    cudaq_algorithms::qsvt_primitives::apply_signal_phase(signal, phases[i]);
-  }
-}
-
-__qpu__ void apply_qsp_sequence(cudaq::qview<> signal, cudaq::qview<> system,
-                                const std::vector<double> &phases,
-                                const std::vector<int> &walk_directions,
-                                const std::vector<double> &state_prep_angles,
-                                const std::vector<int> &term_controls,
-                                const std::vector<int> &term_ops,
-                                const std::vector<int> &term_lengths,
-                                const std::vector<int> &term_signs) {
-  if (phases.empty())
-    return;
-
-  cudaq_algorithms::qsvt_primitives::apply_qsp_signal_phase(signal, phases[0]);
-  for (std::size_t i = 1; i < phases.size(); ++i) {
-    if (walk_directions[i - 1] == 1)
-      qubitization::apply_adjoint_walk(signal, system, state_prep_angles,
-                                       term_controls, term_ops, term_lengths,
-                                       term_signs);
-    else
-      qubitization::apply_walk(signal, system, state_prep_angles, term_controls,
-                               term_ops, term_lengths, term_signs);
-    cudaq_algorithms::qsvt_primitives::apply_qsp_signal_phase(signal,
-                                                              phases[i]);
-  }
-}
-
 } // namespace cudaq_algorithms::qsvt_primitives
 
 namespace cudaq_algorithms::qsvt {

@@ -84,7 +84,6 @@ TEST(QSVTTester, qsvt_sequence_kernels_compile) {
   auto qsvt_sequence_test = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     apply_qsvt_sequence(signal, system, encoding, phase_data);
   };
   EXPECT_NO_THROW(qsvt_sequence_test());
@@ -92,7 +91,6 @@ TEST(QSVTTester, qsvt_sequence_kernels_compile) {
   auto qsvt_adjoint_sequence_test = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     apply_qsvt_sequence(signal, system, encoding, phase_data,
                         qsvt_walk_direction::adjoint);
   };
@@ -101,7 +99,6 @@ TEST(QSVTTester, qsvt_sequence_kernels_compile) {
   auto qsvt_policy_sequence_test = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     apply_qsvt_sequence(signal, system, encoding, phase_data,
                         walk_direction_data);
   };
@@ -110,7 +107,6 @@ TEST(QSVTTester, qsvt_sequence_kernels_compile) {
   auto qsvt_sequence_functor_test = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     qsvt_sequence{}(signal, system, encoding, phase_data, walk_direction_data);
   };
   EXPECT_NO_THROW(qsvt_sequence_functor_test());
@@ -118,7 +114,6 @@ TEST(QSVTTester, qsvt_sequence_kernels_compile) {
   auto qsp_sequence_test = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     apply_qsp_sequence(signal, system, encoding, phase_data,
                        walk_direction_data);
   };
@@ -127,7 +122,6 @@ TEST(QSVTTester, qsvt_sequence_kernels_compile) {
   auto qsp_sequence_functor_test = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     qsp_sequence{}(signal, system, encoding, phase_data, walk_direction_data);
   };
   EXPECT_NO_THROW(qsp_sequence_functor_test());
@@ -150,7 +144,6 @@ TEST(QSVTTester, controlled_sequence_kernels_compile) {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
     x(control);
-    encoding.prepare(signal);
     apply_controlled_qsvt_sequence(control, signal, system, encoding,
                                    phase_data);
   };
@@ -161,7 +154,6 @@ TEST(QSVTTester, controlled_sequence_kernels_compile) {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
     x(control);
-    encoding.prepare(signal);
     apply_controlled_qsvt_sequence(control, signal, system, encoding,
                                    phase_data, qsvt_walk_direction::adjoint);
   };
@@ -172,7 +164,6 @@ TEST(QSVTTester, controlled_sequence_kernels_compile) {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
     x(control);
-    encoding.prepare(signal);
     apply_controlled_qsvt_sequence(control, signal, system, encoding,
                                    phase_data, walk_direction_data);
   };
@@ -183,7 +174,6 @@ TEST(QSVTTester, controlled_sequence_kernels_compile) {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
     x(control);
-    encoding.prepare(signal);
     controlled_qsvt_sequence{}(control, signal, system, encoding, phase_data,
                                walk_direction_data);
   };
@@ -194,7 +184,6 @@ TEST(QSVTTester, controlled_sequence_kernels_compile) {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
     x(control);
-    encoding.prepare(signal);
     apply_controlled_qsp_sequence(control, signal, system, encoding, phase_data,
                                   walk_direction_data);
   };
@@ -205,7 +194,6 @@ TEST(QSVTTester, controlled_sequence_kernels_compile) {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
     x(control);
-    encoding.prepare(signal);
     controlled_qsp_sequence{}(control, signal, system, encoding, phase_data,
                               walk_direction_data);
   };
@@ -236,7 +224,6 @@ TEST(QSVTTester, qsvt_sequence_executes_expected_walk_powers) {
   auto qsvt_one_walk = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     apply_qsvt_sequence(signal, system, encoding, one_walk_phases,
                         one_walk_directions);
   };
@@ -251,7 +238,6 @@ TEST(QSVTTester, qsvt_sequence_executes_expected_walk_powers) {
   auto qsvt_two_walks = [&]() __qpu__ {
     cudaq::qvector<> signal(encoding.num_ancilla());
     cudaq::qvector<> system(encoding.num_system());
-    encoding.prepare(signal);
     apply_qsvt_sequence(signal, system, encoding, two_walk_phases,
                         two_walk_directions);
   };

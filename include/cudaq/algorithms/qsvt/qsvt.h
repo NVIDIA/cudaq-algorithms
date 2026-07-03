@@ -147,11 +147,41 @@ struct controlled_qsp_signal_phase {
   }
 };
 
+/// @brief Apply one QSVT walk step for a Pauli LCU encoding.
+/// @details A QSVT walk step is the full block encoding (PREPARE, SELECT,
+/// PREPARE dagger) followed by a reflection about the all-zero signal state.
+/// QSVT requires the signal phases and the walk reflection to act on the same
+/// signal subspace: both are referenced to |0...0> here. Interleaving
+/// |0>-projector phases with a walk that reflects about the PREPARE state
+/// instead realizes the intended polynomial only in the degenerate 0-ancilla
+/// case.
+__qpu__ inline void apply_qsvt_walk_step(cudaq::qview<> signal,
+                                         cudaq::qview<> system,
+                                         const pauli_lcu &encoding) {
+  encoding.apply(signal, system);
+  reflect_about_zero(signal);
+}
+
+/// @brief Apply one adjoint QSVT walk step for a Pauli LCU encoding.
+/// @details The block encoding and the zero-state reflection are both
+/// self-adjoint, so the adjoint step applies them in the reverse order.
+__qpu__ inline void apply_adjoint_qsvt_walk_step(cudaq::qview<> signal,
+                                                 cudaq::qview<> system,
+                                                 const pauli_lcu &encoding) {
+  reflect_about_zero(signal);
+  encoding.apply(signal, system);
+}
+
 /// @brief Apply a QSVT-style phase/walk sequence for a Pauli LCU encoding.
-/// @details Uses the convention phase[0], then repeats a qubitization walk
-/// followed by phase[j] for j = 1..degree. This helper does not validate phases
-/// in device code; callers should construct or verify a qsvt_phase_sequence on
-/// the host before invoking it.
+/// @details Uses the convention phase[0], then repeats a QSVT walk step
+/// followed by phase[j] for j = 1..degree. The signal register must start in
+/// |0...0>; callers must NOT prepare the signal register first (the walk step
+/// contains the full block encoding, including PREPARE / PREPARE dagger). The
+/// all-zero-signal block of the result realizes
+/// evaluate_qsvt_response(phases, x) at x = -eigenvalue / alpha; see
+/// evaluate_qsvt_response for that sign convention. This helper does not
+/// validate phases in device code; callers should construct or verify a
+/// qsvt_phase_sequence on the host before invoking it.
 __qpu__ inline void apply_qsvt_sequence(cudaq::qview<> signal,
                                         cudaq::qview<> system,
                                         const pauli_lcu &encoding,
@@ -163,9 +193,9 @@ __qpu__ inline void apply_qsvt_sequence(cudaq::qview<> signal,
   apply_qsvt_signal_phase(signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (direction == qsvt_walk_direction::forward)
-      apply_qubitization_walk(signal, system, encoding);
+      apply_qsvt_walk_step(signal, system, encoding);
     else
-      apply_adjoint_qubitization_walk(signal, system, encoding);
+      apply_adjoint_qsvt_walk_step(signal, system, encoding);
     apply_qsvt_signal_phase(signal, phases[i]);
   }
 }
@@ -173,7 +203,8 @@ __qpu__ inline void apply_qsvt_sequence(cudaq::qview<> signal,
 /// @brief Apply a QSVT-style phase/walk sequence with per-step directions.
 /// @details walk_directions contains one primitive direction code per walk,
 /// so its host-validated size should be phases.size() - 1. This QPU helper
-/// intentionally does not validate policy shape in device code.
+/// intentionally does not validate policy shape in device code. The signal
+/// register must start in |0...0>; see apply_qsvt_sequence.
 __qpu__ inline void
 apply_qsvt_sequence(cudaq::qview<> signal, cudaq::qview<> system,
                     const pauli_lcu &encoding,
@@ -185,9 +216,9 @@ apply_qsvt_sequence(cudaq::qview<> signal, cudaq::qview<> system,
   apply_qsvt_signal_phase(signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (walk_directions[i - 1] == qsvt_adjoint_walk)
-      apply_adjoint_qubitization_walk(signal, system, encoding);
+      apply_adjoint_qsvt_walk_step(signal, system, encoding);
     else
-      apply_qubitization_walk(signal, system, encoding);
+      apply_qsvt_walk_step(signal, system, encoding);
     apply_qsvt_signal_phase(signal, phases[i]);
   }
 }
@@ -204,8 +235,8 @@ __qpu__ inline void apply_qsvt_sequence(cudaq::qview<> signal,
 /// @brief Apply a QSP-style phase/walk sequence for a Pauli LCU encoding.
 /// @details This matches the QSP phase convention used by QSPPACK: each signal
 /// phase is diag(exp(i phi), exp(-i phi)) in the abstract signal model. The
-/// qubitization walk convention and phase/walk ordering match
-/// apply_qsvt_sequence.
+/// walk-step composition, phase/walk ordering, and the |0...0> signal start
+/// requirement match apply_qsvt_sequence.
 __qpu__ inline void apply_qsp_sequence(cudaq::qview<> signal,
                                        cudaq::qview<> system,
                                        const pauli_lcu &encoding,
@@ -217,9 +248,9 @@ __qpu__ inline void apply_qsp_sequence(cudaq::qview<> signal,
   apply_qsp_signal_phase(signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (direction == qsvt_walk_direction::forward)
-      apply_qubitization_walk(signal, system, encoding);
+      apply_qsvt_walk_step(signal, system, encoding);
     else
-      apply_adjoint_qubitization_walk(signal, system, encoding);
+      apply_adjoint_qsvt_walk_step(signal, system, encoding);
     apply_qsp_signal_phase(signal, phases[i]);
   }
 }
@@ -235,9 +266,9 @@ apply_qsp_sequence(cudaq::qview<> signal, cudaq::qview<> system,
   apply_qsp_signal_phase(signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (walk_directions[i - 1] == qsvt_adjoint_walk)
-      apply_adjoint_qubitization_walk(signal, system, encoding);
+      apply_adjoint_qsvt_walk_step(signal, system, encoding);
     else
-      apply_qubitization_walk(signal, system, encoding);
+      apply_qsvt_walk_step(signal, system, encoding);
     apply_qsp_signal_phase(signal, phases[i]);
   }
 }
@@ -251,9 +282,36 @@ __qpu__ inline void apply_qsp_sequence(cudaq::qview<> signal,
                      qsvt_walk_direction::forward);
 }
 
+/// @brief Apply one externally controlled QSVT walk step.
+/// @details The uncontrolled PREPARE / PREPARE-dagger pair wraps a controlled
+/// SELECT, so the block-encoding portion collapses to the identity when
+/// @p control is |0>, and the zero-state reflection is likewise controlled.
+/// Combined with controlled signal phases, a controlled sequence is the
+/// identity for control |0>.
+__qpu__ inline void apply_controlled_qsvt_walk_step(cudaq::qubit &control,
+                                                    cudaq::qview<> signal,
+                                                    cudaq::qview<> system,
+                                                    const pauli_lcu &encoding) {
+  encoding.prepare(signal);
+  encoding.controlled_select(control, signal, system);
+  encoding.unprepare(signal);
+  controlled_reflect_about_zero(control, signal);
+}
+
+/// @brief Apply one externally controlled adjoint QSVT walk step.
+__qpu__ inline void apply_controlled_adjoint_qsvt_walk_step(
+    cudaq::qubit &control, cudaq::qview<> signal, cudaq::qview<> system,
+    const pauli_lcu &encoding) {
+  controlled_reflect_about_zero(control, signal);
+  encoding.prepare(signal);
+  encoding.controlled_select(control, signal, system);
+  encoding.unprepare(signal);
+}
+
 /// @brief Apply a controlled QSVT-style phase/walk sequence.
 /// @details Uses the same phase/walk convention as apply_qsvt_sequence, with
-/// both signal phases and qubitization walks controlled by @p control.
+/// both signal phases and walk steps controlled by @p control. The signal
+/// register must start in |0...0>; see apply_qsvt_sequence.
 __qpu__ inline void
 apply_controlled_qsvt_sequence(cudaq::qubit &control, cudaq::qview<> signal,
                                cudaq::qview<> system, const pauli_lcu &encoding,
@@ -265,10 +323,10 @@ apply_controlled_qsvt_sequence(cudaq::qubit &control, cudaq::qview<> signal,
   apply_controlled_qsvt_signal_phase(control, signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (direction == qsvt_walk_direction::forward)
-      apply_controlled_qubitization_walk(control, signal, system, encoding);
+      apply_controlled_qsvt_walk_step(control, signal, system, encoding);
     else
-      apply_controlled_adjoint_qubitization_walk(control, signal, system,
-                                                 encoding);
+      apply_controlled_adjoint_qsvt_walk_step(control, signal, system,
+                                              encoding);
     apply_controlled_qsvt_signal_phase(control, signal, phases[i]);
   }
 }
@@ -285,10 +343,10 @@ apply_controlled_qsvt_sequence(cudaq::qubit &control, cudaq::qview<> signal,
   apply_controlled_qsvt_signal_phase(control, signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (walk_directions[i - 1] == qsvt_adjoint_walk)
-      apply_controlled_adjoint_qubitization_walk(control, signal, system,
-                                                 encoding);
+      apply_controlled_adjoint_qsvt_walk_step(control, signal, system,
+                                              encoding);
     else
-      apply_controlled_qubitization_walk(control, signal, system, encoding);
+      apply_controlled_qsvt_walk_step(control, signal, system, encoding);
     apply_controlled_qsvt_signal_phase(control, signal, phases[i]);
   }
 }
@@ -303,6 +361,8 @@ apply_controlled_qsvt_sequence(cudaq::qubit &control, cudaq::qview<> signal,
 }
 
 /// @brief Apply a controlled QSP-style phase/walk sequence.
+/// @details Same walk-step composition and |0...0> signal start requirement
+/// as apply_controlled_qsvt_sequence, with QSP-convention signal phases.
 __qpu__ inline void
 apply_controlled_qsp_sequence(cudaq::qubit &control, cudaq::qview<> signal,
                               cudaq::qview<> system, const pauli_lcu &encoding,
@@ -314,10 +374,10 @@ apply_controlled_qsp_sequence(cudaq::qubit &control, cudaq::qview<> signal,
   apply_controlled_qsp_signal_phase(control, signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (direction == qsvt_walk_direction::forward)
-      apply_controlled_qubitization_walk(control, signal, system, encoding);
+      apply_controlled_qsvt_walk_step(control, signal, system, encoding);
     else
-      apply_controlled_adjoint_qubitization_walk(control, signal, system,
-                                                 encoding);
+      apply_controlled_adjoint_qsvt_walk_step(control, signal, system,
+                                              encoding);
     apply_controlled_qsp_signal_phase(control, signal, phases[i]);
   }
 }
@@ -334,10 +394,10 @@ apply_controlled_qsp_sequence(cudaq::qubit &control, cudaq::qview<> signal,
   apply_controlled_qsp_signal_phase(control, signal, phases[0]);
   for (std::size_t i = 1; i < phases.size(); ++i) {
     if (walk_directions[i - 1] == qsvt_adjoint_walk)
-      apply_controlled_adjoint_qubitization_walk(control, signal, system,
-                                                 encoding);
+      apply_controlled_adjoint_qsvt_walk_step(control, signal, system,
+                                              encoding);
     else
-      apply_controlled_qubitization_walk(control, signal, system, encoding);
+      apply_controlled_qsvt_walk_step(control, signal, system, encoding);
     apply_controlled_qsp_signal_phase(control, signal, phases[i]);
   }
 }

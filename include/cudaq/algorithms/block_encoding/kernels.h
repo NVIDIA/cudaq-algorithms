@@ -157,30 +157,6 @@ __qpu__ void apply_signal_phase(cudaq::qview<> signal, double phase);
 /// @brief Apply a QSP-style signal phase to the all-zero signal state.
 __qpu__ void apply_qsp_signal_phase(cudaq::qview<> signal, double phase);
 
-/// \pure_device_kernel
-///
-/// @brief Apply a flattened PauliLCU QSVT phase/walk sequence.
-__qpu__ void apply_sequence(cudaq::qview<> signal, cudaq::qview<> system,
-                            const std::vector<double> &phases,
-                            const std::vector<int> &walk_directions,
-                            const std::vector<double> &state_prep_angles,
-                            const std::vector<int> &term_controls,
-                            const std::vector<int> &term_ops,
-                            const std::vector<int> &term_lengths,
-                            const std::vector<int> &term_signs);
-
-/// \pure_device_kernel
-///
-/// @brief Apply a flattened PauliLCU QSP phase/walk sequence.
-__qpu__ void apply_qsp_sequence(cudaq::qview<> signal, cudaq::qview<> system,
-                                const std::vector<double> &phases,
-                                const std::vector<int> &walk_directions,
-                                const std::vector<double> &state_prep_angles,
-                                const std::vector<int> &term_controls,
-                                const std::vector<int> &term_ops,
-                                const std::vector<int> &term_lengths,
-                                const std::vector<int> &term_signs);
-
 } // namespace cudaq_algorithms::qsvt_primitives
 
 namespace cudaq_algorithms::qsvt {
@@ -230,9 +206,7 @@ using ::cudaq_algorithms::qubitization::reflect_about_zero;
 } // namespace cudaq::algorithms::qubitization
 
 namespace cudaq::algorithms::qsvt_primitives {
-using ::cudaq_algorithms::qsvt_primitives::apply_qsp_sequence;
 using ::cudaq_algorithms::qsvt_primitives::apply_qsp_signal_phase;
-using ::cudaq_algorithms::qsvt_primitives::apply_sequence;
 using ::cudaq_algorithms::qsvt_primitives::apply_signal_phase;
 } // namespace cudaq::algorithms::qsvt_primitives
 
