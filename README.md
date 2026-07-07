@@ -22,11 +22,14 @@ dependency):
 - Pauli LCU block encoding (`PauliLCU`, plus prepare/select/apply kernels)
 - qubitization walks and Chebyshev moment measurement (`Walk`)
 - QSVT phase sequences (`QSVT`, `PhaseSequence`)
+- Suzuki-Trotter product formulas (`trotter.make_trotter_plan`, orders 1/2/4)
 
 Simulation-only helpers (statevector access) are isolated in
 `cudaq_algorithms.sim_utils`; everything else is hardware-shaped. See
-[docs/pauli_lcu_qsvt.md](docs/pauli_lcu_qsvt.md) and
-[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/).
+[docs/pauli_lcu_qsvt.md](docs/pauli_lcu_qsvt.md),
+[docs/trotter.md](docs/trotter.md),
+[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/), and
+[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/).
 
 ## Chemistry Inputs
 
