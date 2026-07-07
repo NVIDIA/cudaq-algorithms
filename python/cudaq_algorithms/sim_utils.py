@@ -24,6 +24,7 @@ import cudaq
 
 # Re-exported: precision-aware initial-state construction.
 from .pauli_lcu import state_from
+from .trotter import TrotterPlan
 
 if TYPE_CHECKING:
     import numpy as np
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
     from .pauli_lcu import PauliLCU
     from .qsvt import PhaseSequence, QSVT
 
-__all__ = ["state_from", "good_subspace", "action", "transform"]
+__all__ = ["state_from", "good_subspace", "action", "transform", "evolve"]
 
 
 def good_subspace(encoding: PauliLCU,
@@ -76,3 +77,40 @@ def transform(transformer: QSVT,
     state = cudaq.get_state(transformer.kernel(sequence, convention),
                             state_from(ket))
     return good_subspace(transformer.encoding, state)
+
+
+def evolve(plan: TrotterPlan, ket, include_identity_phase: bool = True):
+    """Simulate a Trotter plan on ``ket`` and return the evolved statevector.
+
+    Unlike the circuit primitive, this can reintroduce the identity phase
+    ``exp(-i * identity_coefficient * time)`` (on by default), so the
+    result approximates the full ``exp(-i H t)|ket>``.
+
+    The plan's kernel prepares |0...0> and evolves; to evolve an arbitrary
+    ``ket``, the input state is loaded through ``cudaq.get_state``'s
+    initial-state support via a state-taking wrapper kernel.
+    """
+    import numpy as np
+
+    coefficients = [float(c) for c in plan.coefficients]
+    words = [cudaq.pauli_word(str(w)) for w in plan.words]
+    time = float(plan.time)
+    steps = int(plan.steps)
+    order = int(plan.order)
+
+    if words:
+        from .trotter import apply_trotter
+
+        @cudaq.kernel
+        def evolve_state(state: cudaq.State):
+            qubits = cudaq.qvector(state)
+            apply_trotter(coefficients, words, time, steps, order, qubits)
+
+        state = np.asarray(cudaq.get_state(evolve_state, state_from(ket)),
+                           dtype=np.complex128)
+    else:
+        state = np.asarray(ket, dtype=np.complex128).copy()
+
+    if include_identity_phase and plan.identity_coefficient != 0.0:
+        state = state * np.exp(-1.0j * plan.identity_coefficient * time)
+    return state
