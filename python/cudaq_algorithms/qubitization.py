@@ -5,7 +5,7 @@
 # This source code and the accompanying materials are made available under     #
 # the terms of the Apache License 2.0 which accompanies this distribution.     #
 # ============================================================================ #
-"""Qubitization walks over a PauliLCU block encoding.
+"""Qubitization walks over a block encoding.
 
 Provides walk kernels (forward, adjoint, and controlled variants), the
 reflection and SELECT observables, and a ``Walk`` object that measures
@@ -32,10 +32,10 @@ if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
     from .block_encoding import BlockEncoding
-    from .pauli_lcu import Kernel
+    from .pauli_lcu import Kernel, PauliLCU
 
-from .pauli_lcu import (PauliLCU, controlled_select, prepare,
-                        reflect_about_zero, select, unprepare, walk)
+from .pauli_lcu import (controlled_select, prepare, reflect_about_zero,
+                        select, unprepare)
 
 FORWARD = 0
 ADJOINT = 1
@@ -132,7 +132,7 @@ def _bit_projector(qubit: int, bit: int) -> cudaq.SpinOperator:
     return 0.5 * (spin.i(qubit) + sign * spin.z(qubit))
 
 
-def reflection_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
+def reflection_observable(encoding: BlockEncoding) -> cudaq.SpinOperator:
     """R = 2|0...0><0...0| - I on the ancilla register."""
     if encoding.num_ancilla == 0:
         raise ValueError("reflection observable needs at least one ancilla")
