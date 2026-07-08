@@ -93,6 +93,12 @@ def _random_ket(dimension, seed=3):
     return ket / np.linalg.norm(ket)
 
 
+def test_pauli_lcu_satisfies_protocol():
+    # PauliLCU conforms structurally — deliberately no inheritance.
+    assert isinstance(PauliLCU(HAMILTONIAN), BlockEncoding)
+    assert BlockEncoding not in type(PauliLCU(HAMILTONIAN)).__mro__
+
+
 def test_foreign_encoding_satisfies_protocol():
     foreign = ForeignEncoding(PauliLCU(HAMILTONIAN))
     assert isinstance(foreign, BlockEncoding)
