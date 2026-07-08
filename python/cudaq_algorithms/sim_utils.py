@@ -79,7 +79,9 @@ def transform(transformer: QSVT,
     return good_subspace(transformer.encoding, state)
 
 
-def evolve(plan: TrotterPlan, ket, include_identity_phase: bool = True):
+def evolve(plan: TrotterPlan,
+           ket: ArrayLike,
+           include_identity_phase: bool = True) -> NDArray[np.complex128]:
     """Simulate a Trotter plan on ``ket`` and return the evolved statevector.
 
     Unlike the circuit primitive, this can reintroduce the identity phase

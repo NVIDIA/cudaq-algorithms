@@ -362,8 +362,11 @@ class TrotterPlan:
         """Number of retained non-identity terms."""
         return len(self.coefficients)
 
-    def kernel(self):
+    def kernel(self) -> Any:
         """Return a ``@cudaq.kernel()`` applying this plan's evolution.
+
+        (``Any`` because CUDA-Q exposes no stable public Python type for
+        compiled kernel objects.)
 
         The kernel allocates ``num_qubits`` qubits in |0...0> and applies
         the product formula. The identity phase is not included (it cannot
