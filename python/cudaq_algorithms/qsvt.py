@@ -30,8 +30,8 @@ from typing import TYPE_CHECKING
 
 import cudaq
 
-from .pauli_lcu import (PauliLCU, controlled_select, prepare,
-                        reflect_about_zero, unprepare)
+from .pauli_lcu import (controlled_select, prepare, reflect_about_zero,
+                        unprepare)
 from .pauli_lcu import apply as lcu_apply
 from .qubitization import controlled_reflect_about_zero
 
@@ -246,7 +246,12 @@ def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
 
 
 class QSVT:
-    """Quantum singular value transformation for a PauliLCU encoding."""
+    """Quantum singular value transformation over a block encoding.
+
+    Generic over the ``BlockEncoding`` protocol: encoding-specific
+    circuits are delegated to the injected encoding (``PauliLCU`` is the
+    provided implementation).
+    """
 
     def __init__(self, encoding: BlockEncoding) -> None:
         if encoding.num_ancilla == 0:

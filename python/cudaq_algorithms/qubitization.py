@@ -173,7 +173,11 @@ def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
 
 
 class Walk:
-    """Qubitization walk for a PauliLCU encoding.
+    """Qubitization walk over a block encoding.
+
+    Generic over the ``BlockEncoding`` protocol: encoding-specific
+    circuits and the odd-moment observable are delegated to the injected
+    encoding (``PauliLCU`` is the provided implementation).
 
     Provides walk/adjoint-walk kernel factories and Chebyshev-moment
     measurement in the QEL even/odd convention. Requires a non-degenerate
