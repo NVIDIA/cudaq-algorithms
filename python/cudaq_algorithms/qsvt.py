@@ -25,6 +25,8 @@ plain scaled eigenvalue, with no caller-side negation.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 import cudaq
 
@@ -32,6 +34,12 @@ from .pauli_lcu import (PauliLCU, controlled_select, prepare,
                         reflect_about_zero, unprepare)
 from .pauli_lcu import apply as lcu_apply
 from .qubitization import controlled_reflect_about_zero
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import ArrayLike, NDArray
+
+    from .pauli_lcu import Kernel
 
 FORWARD = 0
 ADJOINT = 1
@@ -46,7 +54,7 @@ _DIRECTION_CODES = {
 }
 
 
-def _direction_code(direction):
+def _direction_code(direction: int | str) -> int:
     key = direction.lower() if isinstance(direction, str) else direction
     try:
         return _DIRECTION_CODES[key]
@@ -77,7 +85,14 @@ class PhaseSequence:
         wherever a circuit is built; ``phases`` always stays raw.
     """
 
-    def __init__(self, phases, walk_directions=None, convention="qsvt"):
+    phases: tuple[float, ...]
+    walk_directions: tuple[int, ...]
+    convention: str
+
+    def __init__(self,
+                 phases: Iterable[float],
+                 walk_directions: Iterable[int | str] | None = None,
+                 convention: str = "qsvt") -> None:
         self.phases = tuple(float(p) for p in phases)
         if not self.phases:
             raise ValueError("phases must contain at least one value")
@@ -113,12 +128,13 @@ class PhaseSequence:
             return [2.0 * p for p in self.phases]
         return list(self.phases)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (f"PhaseSequence(degree={self.degree}, "
                 f"convention={self.convention!r})")
 
 
-def _as_sequence(sequence, convention=None) -> PhaseSequence:
+def _as_sequence(sequence: PhaseSequence | Iterable[float],
+                 convention: str | None = None) -> PhaseSequence:
     if isinstance(sequence, PhaseSequence):
         if convention is not None and convention != sequence.convention:
             return PhaseSequence(sequence.phases, sequence.walk_directions,
@@ -231,17 +247,19 @@ def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
 class QSVT:
     """Quantum singular value transformation for a PauliLCU encoding."""
 
-    def __init__(self, encoding: PauliLCU):
+    def __init__(self, encoding: PauliLCU) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
                 "QSVT requires an encoding with at least one ancilla "
                 "(two or more LCU terms); the 0-ancilla case is degenerate")
         self.encoding = encoding
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"QSVT({self.encoding!r})"
 
-    def kernel(self, sequence, convention=None):
+    def kernel(self,
+               sequence: PhaseSequence | Iterable[float],
+               convention: str | None = None) -> Kernel:
         """A ``@cudaq.kernel(state)`` applying the phase/walk sequence.
 
         ``sequence`` may be a PhaseSequence or a plain list of phases
@@ -265,8 +283,10 @@ class QSVT:
 
         return qsvt_kernel
 
-    def controlled_kernel(self, sequence, convention=None,
-                          control_state: int = 1):
+    def controlled_kernel(self,
+                          sequence: PhaseSequence | Iterable[float],
+                          convention: str | None = None,
+                          control_state: int = 1) -> Kernel:
         """``@cudaq.kernel(state)`` applying the sequence controlled.
 
         Allocates the system register from ``state``, then one register
@@ -294,7 +314,10 @@ class QSVT:
         return controlled_qsvt_kernel
 
 
-def recover_real_time_evolution(cos_state, sin_state, cos_phases, sin_phases):
+def recover_real_time_evolution(
+        cos_state: ArrayLike, sin_state: ArrayLike,
+        cos_phases: Sequence[float],
+        sin_phases: Sequence[float]) -> NDArray[np.complex128]:
     """Combine cosine/sine QSP components into exp(-i H t)|psi>.
 
     ``cos_state`` and ``sin_state`` are good-subspace statevectors produced

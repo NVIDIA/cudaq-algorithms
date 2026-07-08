@@ -17,15 +17,26 @@ observables, ``Walk.moment`` via ``cudaq.observe``) never execute
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
 import cudaq
 
 # Re-exported: precision-aware initial-state construction.
 from .pauli_lcu import state_from
 
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import ArrayLike, NDArray
+
+    from .pauli_lcu import PauliLCU
+    from .qsvt import PhaseSequence, QSVT
+
 __all__ = ["state_from", "good_subspace", "action", "transform"]
 
 
-def good_subspace(encoding, state):
+def good_subspace(encoding: PauliLCU,
+                  state: ArrayLike) -> NDArray[np.complex128]:
     """Postselect the all-zero-ancilla block of a simulated statevector.
 
     The kernel factories allocate the system register first, so with
@@ -44,7 +55,7 @@ def good_subspace(encoding, state):
     return vector[:1 << encoding.num_system].copy()
 
 
-def action(encoding, ket):
+def action(encoding: PauliLCU, ket: ArrayLike) -> NDArray[np.complex128]:
     """Return (H/alpha)|ket> by simulating the encoding and postselecting.
 
     Multiply by ``encoding.alpha`` to recover H|ket>.
@@ -53,7 +64,10 @@ def action(encoding, ket):
     return good_subspace(encoding, state)
 
 
-def transform(transformer, ket, sequence, convention=None):
+def transform(transformer: QSVT,
+              ket: ArrayLike,
+              sequence: PhaseSequence | Iterable[float],
+              convention: str | None = None) -> NDArray[np.complex128]:
     """Return the good-subspace state after a QSVT sequence.
 
     For an eigenstate of H with eigenvalue lambda the result is

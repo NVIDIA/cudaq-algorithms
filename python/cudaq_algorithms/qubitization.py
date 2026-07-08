@@ -23,8 +23,15 @@ the walk block is ``-H/alpha``, and moments are measured as
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import cudaq
 from cudaq import spin
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
+    from .pauli_lcu import Kernel
 
 from .pauli_lcu import (PauliLCU, controlled_select, prepare,
                         reflect_about_zero, select, unprepare, walk)
@@ -118,13 +125,13 @@ def controlled_adjoint_walk(control_and_ancilla: cudaq.qview,
 # ============================================================================
 
 
-def _bit_projector(qubit, bit):
+def _bit_projector(qubit: int, bit: int) -> cudaq.SpinOperator:
     """|bit><bit| on one qubit as a spin operator."""
     sign = 1.0 - 2.0 * float(bit)
     return 0.5 * (spin.i(qubit) + sign * spin.z(qubit))
 
 
-def reflection_observable(encoding: PauliLCU):
+def reflection_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
     """R = 2|0...0><0...0| - I on the ancilla register."""
     if encoding.num_ancilla == 0:
         raise ValueError("reflection observable needs at least one ancilla")
@@ -135,7 +142,7 @@ def reflection_observable(encoding: PauliLCU):
     return 2.0 * projector - spin.i(offset)
 
 
-def select_observable(encoding: PauliLCU):
+def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
     """The SELECT operator sum_i sign_i |i><i|_anc x P_i as an observable."""
     if encoding.num_ancilla == 0:
         raise ValueError("select observable needs at least one ancilla")
@@ -172,7 +179,7 @@ class Walk:
     encoding (at least one ancilla, i.e. two or more LCU terms).
     """
 
-    def __init__(self, encoding: PauliLCU):
+    def __init__(self, encoding: PauliLCU) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
                 "Walk requires an encoding with at least one ancilla "
@@ -180,14 +187,15 @@ class Walk:
                 "signed Pauli word itself")
         self.encoding = encoding
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Walk({self.encoding!r})"
 
     # ------------------------------------------------------------------
     # Kernel factories
     # ------------------------------------------------------------------
 
-    def _factory(self, power, uncompute, forward):
+    def _factory(self, power: int, uncompute: bool,
+                 forward: bool) -> Kernel:
         angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
         steps = int(power)
@@ -244,15 +252,16 @@ class Walk:
 
         return adjoint_prepared
 
-    def kernel(self, power: int = 1, uncompute: bool = True):
+    def kernel(self, power: int = 1, uncompute: bool = True) -> Kernel:
         """``@cudaq.kernel(state)``: PREPARE, W^power, optionally UNPREPARE."""
         return self._factory(power, uncompute, forward=True)
 
-    def adjoint_kernel(self, power: int = 1, uncompute: bool = True):
+    def adjoint_kernel(self, power: int = 1,
+                       uncompute: bool = True) -> Kernel:
         """``@cudaq.kernel(state)``: PREPARE, (W†)^power, optionally UNPREPARE."""
         return self._factory(power, uncompute, forward=False)
 
-    def roundtrip_kernel(self, power: int = 1):
+    def roundtrip_kernel(self, power: int = 1) -> Kernel:
         """PREPARE, W^power, (W†)^power, UNPREPARE — the identity, for tests."""
         angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
@@ -273,7 +282,7 @@ class Walk:
         return roundtrip
 
     def controlled_kernel(self, power: int = 1, control_state: int = 1,
-                          uncompute: bool = True):
+                          uncompute: bool = True) -> Kernel:
         """``@cudaq.kernel(state)`` running controlled walks.
 
         Allocates the system register from ``state``, then one register
@@ -317,7 +326,7 @@ class Walk:
         return controlled_walked_prepared
 
     def controlled_roundtrip_kernel(self, power: int = 1,
-                                    control_state: int = 1):
+                                    control_state: int = 1) -> Kernel:
         """Controlled W^power then controlled (W dagger)^power — identity."""
         angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
@@ -346,7 +355,7 @@ class Walk:
     # the same circuits and operators run on hardware)
     # ------------------------------------------------------------------
 
-    def moment(self, ket, order: int) -> float:
+    def moment(self, ket: ArrayLike, order: int) -> float:
         """Measure the Chebyshev moment <T_order(H/alpha)> for |ket>."""
         from .pauli_lcu import state_from
 
@@ -363,6 +372,6 @@ class Walk:
         state = state_from(ket)
         return float(cudaq.observe(kernel, observable, state).expectation())
 
-    def moments(self, ket, count: int) -> list[float]:
+    def moments(self, ket: ArrayLike, count: int) -> list[float]:
         """Measure moments <T_0>, ..., <T_{count-1}> for |ket>."""
         return [self.moment(ket, order) for order in range(int(count))]

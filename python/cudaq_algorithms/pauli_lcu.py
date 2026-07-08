@@ -31,9 +31,30 @@ The encoding satisfies ``(<0|_anc ⊗ I) U (|0>_anc ⊗ I) = H / alpha`` with
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, TypeAlias, Union
 
 import cudaq
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
+# A Hamiltonian in any accepted input form: a ``cudaq.SpinOperator``, a
+# ``{"XZI...": coefficient}`` mapping, or an iterable of
+# ``(coefficient, word)`` pairs.
+HamiltonianLike: TypeAlias = Union[cudaq.SpinOperator, Mapping[str, float],
+                                   Iterable[tuple[float, str]]]
+
+# A compiled ``@cudaq.kernel``. CUDA-Q does not expose a stable public
+# Python type for kernel objects, so kernel factories are annotated with
+# this alias.
+Kernel: TypeAlias = Any
+
+# The flattened arrays that cross the kernel boundary, in the order the
+# module-level kernels take them:
+# (angles, term_controls, term_ops, term_lengths, term_signs).
+LCUKernelArgs: TypeAlias = tuple[list[float], list[int], list[int],
+                                 list[int], list[int]]
 
 _PAULI_CODES = {"X": 1, "Y": 2, "Z": 3}
 
@@ -215,7 +236,7 @@ def walk(ancilla: cudaq.qview, system: cudaq.qview, angles: list[float],
     prepare(ancilla, angles)
 
 
-def state_from(ket):
+def state_from(ket: ArrayLike) -> cudaq.State:
     """Build a cudaq.State from array data at the current target's precision.
 
     fp32 simulators (e.g. the default `nvidia` target) reject complex128
@@ -232,7 +253,9 @@ def state_from(ket):
 # ============================================================================
 
 
-def _terms_from_input(hamiltonian, num_qubits):
+def _terms_from_input(
+        hamiltonian: HamiltonianLike,
+        num_qubits: int | None) -> tuple[list[tuple[float, str]], int]:
     """Normalize the supported Hamiltonian input forms to (coeff, word) pairs."""
     if isinstance(hamiltonian, Mapping):
         pairs = [(float(c), str(w)) for w, c in hamiltonian.items()]
@@ -268,7 +291,7 @@ def _terms_from_input(hamiltonian, num_qubits):
     return pairs, width
 
 
-def _prepare_angles(probabilities):
+def _prepare_angles(probabilities: Sequence[float]) -> list[float]:
     """Rotation angles for the binary state-preparation tree."""
     n_leaves = len(probabilities)
     if n_leaves & (n_leaves - 1):
@@ -314,8 +337,12 @@ class PauliLCU:
         Terms with ``|coefficient|`` below this are dropped.
     """
 
-    def __init__(self, hamiltonian, num_qubits=None, *, include_identity=True,
-                 coefficient_threshold=1e-12):
+    def __init__(self,
+                 hamiltonian: HamiltonianLike,
+                 num_qubits: int | None = None,
+                 *,
+                 include_identity: bool = True,
+                 coefficient_threshold: float = 1e-12) -> None:
         pairs, width = _terms_from_input(hamiltonian, num_qubits)
 
         self._num_system = width
@@ -389,7 +416,7 @@ class PauliLCU:
         return list(self._terms)
 
     @property
-    def kernel_args(self):
+    def kernel_args(self) -> LCUKernelArgs:
         """(angles, term_controls, term_ops, term_lengths, term_signs).
 
         Escape hatch for composing the module-level kernels inside your own
@@ -399,7 +426,7 @@ class PauliLCU:
                 list(self._term_ops), list(self._term_lengths),
                 list(self._term_signs))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (f"PauliLCU(terms={self.num_terms}, "
                 f"system_qubits={self.num_system}, "
                 f"ancilla_qubits={self.num_ancilla}, "
@@ -409,7 +436,7 @@ class PauliLCU:
     # Kernel factories
     # ------------------------------------------------------------------
 
-    def _zero_ancilla_kernel(self, repetitions):
+    def _zero_ancilla_kernel(self, repetitions: int) -> Kernel:
         """Single-term (0-ancilla) special case.
 
         Needed because CUDA-Q cannot marshal empty ``list`` kernel arguments
@@ -451,7 +478,7 @@ class PauliLCU:
 
         return single_identity_term
 
-    def encode_kernel(self):
+    def encode_kernel(self) -> Kernel:
         """A ``@cudaq.kernel(state)`` applying the full block encoding.
 
         The kernel allocates the system register from ``state`` and the
@@ -471,7 +498,7 @@ class PauliLCU:
 
         return encoded
 
-    def walk_kernel(self, power: int = 1):
+    def walk_kernel(self, power: int = 1) -> Kernel:
         """A ``@cudaq.kernel(state)`` running PREPARE, walk^power, UNPREPARE.
 
         The all-zero-ancilla block of the result is T_power(-H/alpha) applied
