@@ -32,10 +32,12 @@ import numpy as np
 import scipy.linalg
 import scipy.optimize
 
+from numpy.typing import ArrayLike
+
 from ._backend import (AUTO_GPU_MIN_ORBITALS_COMPRESSED,
-                       AUTO_GPU_MIN_ORBITALS_EXPLICIT,
-                       expm_skew_symmetric_batched, resolve_backend, to_device,
-                       to_numpy)
+                       AUTO_GPU_MIN_ORBITALS_EXPLICIT, ArrayModule,
+                       DeviceArray, expm_skew_symmetric_batched,
+                       resolve_backend, to_device, to_numpy)
 
 
 @dataclass
@@ -75,14 +77,18 @@ class DoubleFactorization:
         return eri
 
 
-def _sorted_symmetric_eigendecomposition(matrix, xp):
+def _sorted_symmetric_eigendecomposition(
+        matrix: DeviceArray,
+        xp: ArrayModule) -> tuple[DeviceArray, DeviceArray]:
     """Eigenpairs of a symmetric matrix, ordered by descending |eigenvalue|."""
     eigenvalues, eigenvectors = xp.linalg.eigh(matrix)
     order = xp.argsort(xp.abs(eigenvalues))[::-1]
     return eigenvalues[order], eigenvectors[:, order]
 
 
-def _pivoted_cholesky(matrix, threshold, max_rank, xp):
+def _pivoted_cholesky(
+        matrix: DeviceArray, threshold: float, max_rank: Optional[int],
+        xp: ArrayModule) -> tuple[List[DeviceArray], List[float]]:
     """Pivoted Cholesky factorization of a symmetric positive-semidefinite
     matrix: returns ``(vectors, pivots)`` with ``matrix ~= sum_t v_t v_t^T``.
 
@@ -119,7 +125,9 @@ def _pivoted_cholesky(matrix, threshold, max_rank, xp):
     return vectors, pivots
 
 
-def _second_factorization(leaf, scale, second_factor_threshold, xp):
+def _second_factorization(
+        leaf: DeviceArray, scale: ArrayLike, second_factor_threshold: float,
+        xp: ArrayModule) -> tuple[np.ndarray, np.ndarray]:
     """Eigendecompose a symmetric leaf ``L = U diag(gamma) U^T`` and return
     ``(U, Z)`` with the symmetric core ``Z = scale * outer(gamma, gamma)``."""
     leaf = 0.5 * (leaf + leaf.T)
@@ -132,7 +140,7 @@ def _second_factorization(leaf, scale, second_factor_threshold, xp):
     return to_numpy(rotation), to_numpy(core)
 
 
-def _validate_eri(eri) -> int:
+def _validate_eri(eri: ArrayLike) -> int:
     eri = np.asarray(eri)
     if eri.ndim != 4 or len(set(eri.shape)) != 1:
         raise ValueError(
@@ -142,7 +150,7 @@ def _validate_eri(eri) -> int:
 
 
 def explicit_double_factorization(
-        eri,
+        eri: ArrayLike,
         threshold: float = 1.0e-8,
         max_num_leaves: Optional[int] = None,
         second_factor_threshold: float = 0.0,
@@ -219,27 +227,30 @@ def explicit_double_factorization(
                                leaf_weights=np.asarray(weights))
 
 
-def _leaf_outer_columns(rotation, xp):
+def _leaf_outer_columns(rotation: DeviceArray,
+                        xp: ArrayModule) -> DeviceArray:
     """Return ``A`` with ``A[:, k] = vec(u_k u_k^T)`` for rotation columns u_k."""
     n = rotation.shape[0]
     outer = xp.einsum("pk,qk->pqk", rotation, rotation)
     return outer.reshape(n * n, n)
 
 
-def _project_eri_into_leaf(eri_dev, rotation, xp):
+def _project_eri_into_leaf(eri_dev: DeviceArray, rotation: DeviceArray,
+                           xp: ArrayModule) -> DeviceArray:
     """R^t_kl = sum_pqrs U^t_pk U^t_qk (pq|rs) U^t_rl U^t_sl (the RHS of the inner
     normal equations / projection of the ERIs into a leaf's rotated basis)."""
     a = xp.einsum("pk,qk->pqk", rotation, rotation)
     return xp.einsum("pqk,pqrs,rsl->kl", a, eri_dev, a, optimize=True)
 
 
-def _solve_inner_cores_cg(eri_dev,
-                          rotations_dev,
-                          xp,
-                          regularization=0.0,
-                          tolerance=1.0e-10,
-                          max_iterations=None,
-                          initial_guess=None):
+def _solve_inner_cores_cg(
+        eri_dev: DeviceArray,
+        rotations_dev: DeviceArray,
+        xp: ArrayModule,
+        regularization: float = 0.0,
+        tolerance: float = 1.0e-10,
+        max_iterations: Optional[int] = None,
+        initial_guess: Optional[DeviceArray] = None) -> List[DeviceArray]:
     """Matrix-free conjugate-gradient solve for the symmetric cores ``{Z^t}``.
 
     Solves the same normal equations as the least-squares solver,
@@ -314,7 +325,11 @@ def _solve_inner_cores_cg(eri_dev,
     return [z[t] for t in range(num_leaves)]
 
 
-def _solve_inner_cores_lstsq(eri_dev, rotations_dev, xp, regularization=0.0):
+def _solve_inner_cores_lstsq(
+        eri_dev: DeviceArray,
+        rotations_dev: DeviceArray,
+        xp: ArrayModule,
+        regularization: float = 0.0) -> List[DeviceArray]:
     """Least-squares optimal symmetric cores ``{Z^t}`` for fixed rotations.
 
     Solves, for fixed ``U^t``,
@@ -366,14 +381,15 @@ def _solve_inner_cores_lstsq(eri_dev, rotations_dev, xp, regularization=0.0):
     return cores
 
 
-def _solve_inner_cores(eri_dev,
-                       rotations_dev,
-                       xp,
-                       regularization=0.0,
-                       solver="lstsq",
-                       cg_tolerance=1.0e-10,
-                       cg_max_iterations=None,
-                       initial_guess=None):
+def _solve_inner_cores(
+        eri_dev: DeviceArray,
+        rotations_dev: DeviceArray,
+        xp: ArrayModule,
+        regularization: float = 0.0,
+        solver: str = "lstsq",
+        cg_tolerance: float = 1.0e-10,
+        cg_max_iterations: Optional[int] = None,
+        initial_guess: Optional[DeviceArray] = None) -> List[DeviceArray]:
     """Dispatch the inner core solve to the explicit ``"lstsq"`` solver or the
     matrix-free ``"cg"`` solver. ``initial_guess`` warm-starts CG and is ignored
     by the direct lstsq solver."""
@@ -388,7 +404,8 @@ def _solve_inner_cores(eri_dev,
         "double_factorization error - inner_solver must be 'lstsq' or 'cg'.")
 
 
-def _reconstruct_dev(rotations_dev, cores_dev, xp):
+def _reconstruct_dev(rotations_dev: DeviceArray, cores_dev: DeviceArray,
+                     xp: ArrayModule) -> DeviceArray:
     # Stack the leaves and reconstruct in a single batched contraction (the sum
     # over leaves t is folded into the einsum), instead of a Python loop with a
     # separate n^4 einsum and accumulation per leaf.
@@ -404,18 +421,19 @@ def _reconstruct_dev(rotations_dev, cores_dev, xp):
                      optimize=True)
 
 
-def _is_stacked(arrays):
+def _is_stacked(arrays: object) -> bool:
     """True for a single stacked ``(num_leaves, n, n)`` array, False for a list
     of ``(n, n)`` leaf arrays."""
     return hasattr(arrays, "ndim") and arrays.ndim == 3
 
 
-def _skew_to_vector(generator, n):
+def _skew_to_vector(generator: np.ndarray, n: int) -> np.ndarray:
     rows, cols = np.tril_indices(n, k=-1)
     return generator[rows, cols]
 
 
-def _vector_to_skew(vector, n, xp):
+def _vector_to_skew(vector: DeviceArray, n: int,
+                    xp: ArrayModule) -> DeviceArray:
     generator = xp.zeros((n, n))
     rows, cols = np.tril_indices(n, k=-1)
     rows = xp.asarray(rows)
@@ -425,7 +443,8 @@ def _vector_to_skew(vector, n, xp):
     return generator
 
 
-def _initial_generators(eri, num_leaves, n, backend):
+def _initial_generators(eri: ArrayLike, num_leaves: int, n: int,
+                        backend: str) -> List[np.ndarray]:
     """Warm-start antisymmetric generators from a truncated X-DF (identity pads
     any missing leaves)."""
     xdf = explicit_double_factorization(eri,
@@ -451,7 +470,7 @@ def _initial_generators(eri, num_leaves, n, backend):
 
 
 def compressed_double_factorization(
-        eri,
+        eri: ArrayLike,
         num_leaves: int,
         max_iterations: int = 2000,
         tolerance: float = 1.0e-10,
@@ -605,14 +624,16 @@ def reconstruct_eri(factorization: DoubleFactorization) -> np.ndarray:
     return factorization.reconstruct_eri()
 
 
-def factorization_error(eri, factorization: DoubleFactorization) -> float:
+def factorization_error(eri: ArrayLike,
+                        factorization: DoubleFactorization) -> float:
     """Frobenius norm of the ERI reconstruction residual."""
     return float(
         np.linalg.norm(
             np.asarray(eri, dtype=float) - factorization.reconstruct_eri()))
 
 
-def modified_one_body_integrals(one_body, eri) -> np.ndarray:
+def modified_one_body_integrals(one_body: ArrayLike,
+                                eri: ArrayLike) -> np.ndarray:
     """Return the DF-corrected one-body matrix ``kappa_pq = h_pq - 1/2 sum_r
     (pr|qr)`` (Eq. 3 of arXiv:2104.08957), used when assembling the full
     double-factorized Hamiltonian from the two-body factorization."""
@@ -622,7 +643,7 @@ def modified_one_body_integrals(one_body, eri) -> np.ndarray:
 
 
 def double_factorization_one_norm(factorization: DoubleFactorization,
-                                  one_body_eigenvalues,
+                                  one_body_eigenvalues: ArrayLike,
                                   convention: str = "lcu") -> float:
     """One-norm ``lambda`` of the double-factorized Hamiltonian (RC-DF,
     arXiv:2212.07957), used to assess factorization quality.

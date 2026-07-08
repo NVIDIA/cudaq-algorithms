@@ -14,7 +14,19 @@ APIs accept a ``backend`` argument of ``"auto"`` (default), ``"cupy"``, or
 """
 from __future__ import annotations
 
+from typing import Any, TypeAlias
+
 import numpy as np
+from numpy.typing import ArrayLike
+
+# The array namespace used for a computation: the ``numpy`` module or, when
+# a GPU is available, ``cupy``. CuPy is optional, so there is no importable
+# static type covering both namespaces.
+ArrayModule: TypeAlias = Any
+
+# An array living on the active backend: ``numpy.ndarray`` on the NumPy
+# backend, ``cupy.ndarray`` on the CuPy backend.
+DeviceArray: TypeAlias = Any
 
 try:  # CuPy is optional; absence simply forces the NumPy path.
     import cupy as _cupy  # type: ignore
@@ -41,7 +53,9 @@ def cupy_gpu_available() -> bool:
         return False
 
 
-def resolve_backend(backend: str = "auto", problem_size=None, gpu_min_size=0):
+def resolve_backend(backend: str = "auto",
+                    problem_size: int | None = None,
+                    gpu_min_size: int = 0) -> tuple[ArrayModule, str]:
     """Return ``(array_module, name)`` for the requested backend.
 
     ``"auto"`` selects CuPy when a GPU is available *and* the problem is large
@@ -68,7 +82,7 @@ def resolve_backend(backend: str = "auto", problem_size=None, gpu_min_size=0):
         "'auto', 'cupy', or 'numpy'.")
 
 
-def to_device(array, xp):
+def to_device(array: ArrayLike, xp: ArrayModule) -> DeviceArray:
     """Move a host/device array onto the backend ``xp``."""
     if xp is np:
         return np.asarray(array)
@@ -82,7 +96,8 @@ def to_numpy(array) -> np.ndarray:
     return np.asarray(array)
 
 
-def expm_skew_symmetric(generator, xp):
+def expm_skew_symmetric(generator: ArrayLike,
+                        xp: ArrayModule) -> DeviceArray:
     """Matrix exponential of a real antisymmetric matrix, returning an orthogonal
     matrix. Uses a Hermitian eigendecomposition (cuSOLVER on the CuPy backend),
     avoiding any dependence on a general matrix-exponential routine."""
@@ -95,7 +110,8 @@ def expm_skew_symmetric(generator, xp):
     return xp.real(rotated)
 
 
-def expm_skew_symmetric_batched(generators, xp):
+def expm_skew_symmetric_batched(generators: ArrayLike,
+                                xp: ArrayModule) -> DeviceArray:
     """Batched :func:`expm_skew_symmetric` over a stack of real antisymmetric
     matrices ``generators`` (shape ``(num_leaves, n, n)``). One batched Hermitian
     eigendecomposition instead of ``num_leaves`` separate ones -- on the CuPy
