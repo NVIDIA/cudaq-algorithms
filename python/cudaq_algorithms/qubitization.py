@@ -7,8 +7,8 @@
 # ============================================================================ #
 """Qubitization walks over a block encoding.
 
-Provides walk kernels (forward, adjoint, and controlled variants), the
-reflection and SELECT observables, and a ``Walk`` object that measures
+Provides the reflection and SELECT observables and a ``Walk`` object that
+composes an injected encoding's walk kernels and measures
 Chebyshev moments ``<T_k(H/alpha)>`` with the quantum exact Lanczos (QEL)
 even/odd convention.
 
@@ -34,90 +34,14 @@ if TYPE_CHECKING:
     from .block_encoding import BlockEncoding
     from .pauli_lcu import Kernel, PauliLCU
 
-from .pauli_lcu import (controlled_select, prepare, reflect_about_zero,
-                        select, unprepare)
-
-FORWARD = 0
-ADJOINT = 1
 
 
-# ============================================================================
-# Device kernels
-# ============================================================================
 
 
-@cudaq.kernel
-def reflect_about_prepare(ancilla: cudaq.qview, angles: list[float]):
-    """Reflect about the PREPARE state: PREPARE†, zero reflection, PREPARE."""
-    unprepare(ancilla, angles)
-    reflect_about_zero(ancilla)
-    prepare(ancilla, angles)
 
 
-@cudaq.kernel
-def adjoint_walk(ancilla: cudaq.qview, system: cudaq.qview,
-                 angles: list[float], term_controls: list[int],
-                 term_ops: list[int], term_lengths: list[int],
-                 term_signs: list[int]):
-    """Adjoint walk step: reflection first, then SELECT (both self-adjoint)."""
-    reflect_about_prepare(ancilla, angles)
-    select(ancilla, system, term_controls, term_ops, term_lengths, term_signs)
 
 
-@cudaq.kernel
-def controlled_reflect_about_zero(control_and_register: cudaq.qview):
-    """Zero-state reflection on qubits 1.. controlled by qubit 0.
-
-    Qubit 0 of ``control_and_register`` is the external control (see
-    controlled_select for why the control shares a register).
-    """
-    total = control_and_register.size()
-    n = total - 1
-    for i in range(n):
-        x(control_and_register[1 + i])
-    if n == 0:
-        z(control_and_register[0])
-    else:
-        z.ctrl(control_and_register.front(total - 1),
-               control_and_register[total - 1])
-    for i in range(n):
-        x(control_and_register[1 + i])
-
-
-@cudaq.kernel
-def controlled_reflect_about_prepare(control_and_ancilla: cudaq.qview,
-                                     angles: list[float]):
-    """PREPARE-state reflection controlled by qubit 0.
-
-    The PREPARE / PREPARE-dagger pair stays uncontrolled (it cancels when
-    the control is |0>); only the zero reflection is controlled.
-    """
-    n = control_and_ancilla.size() - 1
-    unprepare(control_and_ancilla.back(n), angles)
-    controlled_reflect_about_zero(control_and_ancilla)
-    prepare(control_and_ancilla.back(n), angles)
-
-
-@cudaq.kernel
-def controlled_walk(control_and_ancilla: cudaq.qview, system: cudaq.qview,
-                    angles: list[float], term_controls: list[int],
-                    term_ops: list[int], term_lengths: list[int],
-                    term_signs: list[int]):
-    """One walk step controlled by qubit 0 of ``control_and_ancilla``."""
-    controlled_select(control_and_ancilla, system, term_controls, term_ops,
-                      term_lengths, term_signs)
-    controlled_reflect_about_prepare(control_and_ancilla, angles)
-
-
-@cudaq.kernel
-def controlled_adjoint_walk(control_and_ancilla: cudaq.qview,
-                            system: cudaq.qview, angles: list[float],
-                            term_controls: list[int], term_ops: list[int],
-                            term_lengths: list[int], term_signs: list[int]):
-    """One adjoint walk step controlled by qubit 0."""
-    controlled_reflect_about_prepare(control_and_ancilla, angles)
-    controlled_select(control_and_ancilla, system, term_controls, term_ops,
-                      term_lengths, term_signs)
 
 
 # ============================================================================

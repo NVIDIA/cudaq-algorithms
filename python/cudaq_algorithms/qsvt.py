@@ -30,10 +30,9 @@ from typing import TYPE_CHECKING
 
 import cudaq
 
-from .pauli_lcu import (controlled_select, prepare, reflect_about_zero,
-                        unprepare)
-from .pauli_lcu import apply as lcu_apply
-from .qubitization import controlled_reflect_about_zero
+from .common_kernels import (controlled_reflect_about_zero,
+                             controlled_signal_phase, reflect_about_zero,
+                             signal_phase)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -149,95 +148,10 @@ def _as_sequence(sequence: PhaseSequence | Iterable[float],
 # ============================================================================
 
 
-@cudaq.kernel
-def signal_phase(register: cudaq.qview, phase: float):
-    """exp(i * phase * |0...0><0...0|) on the signal register."""
-    n = register.size()
-    if n == 0:
-        return
-    for i in range(n):
-        x(register[i])
-    if n == 1:
-        r1(phase, register[0])
-    else:
-        r1.ctrl(phase, register.front(n - 1), register[n - 1])
-    for i in range(n):
-        x(register[i])
 
 
-@cudaq.kernel
-def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
-                         phases: list[float], walk_directions: list[int],
-                         angles: list[float], term_controls: list[int],
-                         term_ops: list[int], term_lengths: list[int],
-                         term_signs: list[int]):
-    """Projector-phase QSVT sequence: phase, then (walk step, phase) repeats.
-
-    The signal register must start in |0...0>. A forward step is the full
-    block encoding followed by the zero-state reflection; an adjoint step is
-    the reverse (both factors are self-adjoint).
-    """
-    signal_phase(signal, phases[0])
-    for i in range(1, len(phases)):
-        if walk_directions[i - 1] == 1:
-            reflect_about_zero(signal)
-            lcu_apply(signal, system, angles, term_controls, term_ops,
-                      term_lengths, term_signs)
-        else:
-            lcu_apply(signal, system, angles, term_controls, term_ops,
-                      term_lengths, term_signs)
-            reflect_about_zero(signal)
-        signal_phase(signal, phases[i])
 
 
-@cudaq.kernel
-def controlled_signal_phase(control_and_register: cudaq.qview, phase: float):
-    """Signal phase on qubits 1.. controlled by qubit 0."""
-    total = control_and_register.size()
-    n = total - 1
-    for i in range(n):
-        x(control_and_register[1 + i])
-    if n == 0:
-        r1(phase, control_and_register[0])
-    else:
-        r1.ctrl(phase, control_and_register.front(total - 1),
-                control_and_register[total - 1])
-    for i in range(n):
-        x(control_and_register[1 + i])
-
-
-@cudaq.kernel
-def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
-                                    system: cudaq.qview, phases: list[float],
-                                    walk_directions: list[int],
-                                    angles: list[float],
-                                    term_controls: list[int],
-                                    term_ops: list[int],
-                                    term_lengths: list[int],
-                                    term_signs: list[int]):
-    """QSVT sequence controlled by qubit 0 of ``control_and_signal``.
-
-    The uncontrolled PREPARE / PREPARE-dagger pair wraps a controlled
-    SELECT, so each walk step collapses to the identity for control |0>;
-    the zero reflection and signal phases are likewise controlled, making
-    the full sequence the identity when the control is off.
-    """
-    n_signal = control_and_signal.size() - 1
-    controlled_signal_phase(control_and_signal, phases[0])
-    for i in range(1, len(phases)):
-        if walk_directions[i - 1] == 1:
-            controlled_reflect_about_zero(control_and_signal)
-            prepare(control_and_signal.back(n_signal), angles)
-            controlled_select(control_and_signal, system, term_controls,
-                              term_ops, term_lengths, term_signs)
-            unprepare(control_and_signal.back(n_signal), angles)
-        else:
-            prepare(control_and_signal.back(n_signal), angles)
-            controlled_select(control_and_signal, system, term_controls,
-                              term_ops, term_lengths, term_signs)
-            unprepare(control_and_signal.back(n_signal), angles)
-            controlled_reflect_about_zero(control_and_signal)
-        controlled_signal_phase(control_and_signal, phases[i])
 
 
 # ============================================================================

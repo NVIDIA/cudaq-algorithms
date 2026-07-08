@@ -36,6 +36,10 @@ from typing import TYPE_CHECKING, Any, TypeAlias, Union
 
 import cudaq
 
+from .common_kernels import (controlled_reflect_about_zero,
+                             controlled_signal_phase, reflect_about_zero,
+                             signal_phase)
+
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
@@ -209,20 +213,6 @@ def apply(ancilla: cudaq.qview, system: cudaq.qview, angles: list[float],
     unprepare(ancilla, angles)
 
 
-@cudaq.kernel
-def reflect_about_zero(register: cudaq.qview):
-    """I - 2|0...0><0...0| (phases the all-zero state by -1)."""
-    n = register.size()
-    if n == 0:
-        return
-    for i in range(n):
-        x(register[i])
-    if n == 1:
-        z(register[0])
-    else:
-        z.ctrl(register.front(n - 1), register[n - 1])
-    for i in range(n):
-        x(register[i])
 
 
 @cudaq.kernel
@@ -235,6 +225,118 @@ def walk(ancilla: cudaq.qview, system: cudaq.qview, angles: list[float],
     reflect_about_zero(ancilla)
     prepare(ancilla, angles)
 
+
+# ============================================================================
+# LCU composite kernels: walk steps and QSVT sequences over this encoding
+# (composable from user kernels; PauliLCU.kernel_args supplies the data)
+# ============================================================================
+
+
+@cudaq.kernel
+def reflect_about_prepare(ancilla: cudaq.qview, angles: list[float]):
+    """Reflect about the PREPARE state: PREPARE†, zero reflection, PREPARE."""
+    unprepare(ancilla, angles)
+    reflect_about_zero(ancilla)
+    prepare(ancilla, angles)
+
+@cudaq.kernel
+def adjoint_walk(ancilla: cudaq.qview, system: cudaq.qview,
+                 angles: list[float], term_controls: list[int],
+                 term_ops: list[int], term_lengths: list[int],
+                 term_signs: list[int]):
+    """Adjoint walk step: reflection first, then SELECT (both self-adjoint)."""
+    reflect_about_prepare(ancilla, angles)
+    select(ancilla, system, term_controls, term_ops, term_lengths, term_signs)
+
+@cudaq.kernel
+def controlled_reflect_about_prepare(control_and_ancilla: cudaq.qview,
+                                     angles: list[float]):
+    """PREPARE-state reflection controlled by qubit 0.
+
+    The PREPARE / PREPARE-dagger pair stays uncontrolled (it cancels when
+    the control is |0>); only the zero reflection is controlled.
+    """
+    n = control_and_ancilla.size() - 1
+    unprepare(control_and_ancilla.back(n), angles)
+    controlled_reflect_about_zero(control_and_ancilla)
+    prepare(control_and_ancilla.back(n), angles)
+
+@cudaq.kernel
+def controlled_walk(control_and_ancilla: cudaq.qview, system: cudaq.qview,
+                    angles: list[float], term_controls: list[int],
+                    term_ops: list[int], term_lengths: list[int],
+                    term_signs: list[int]):
+    """One walk step controlled by qubit 0 of ``control_and_ancilla``."""
+    controlled_select(control_and_ancilla, system, term_controls, term_ops,
+                      term_lengths, term_signs)
+    controlled_reflect_about_prepare(control_and_ancilla, angles)
+
+@cudaq.kernel
+def controlled_adjoint_walk(control_and_ancilla: cudaq.qview,
+                            system: cudaq.qview, angles: list[float],
+                            term_controls: list[int], term_ops: list[int],
+                            term_lengths: list[int], term_signs: list[int]):
+    """One adjoint walk step controlled by qubit 0."""
+    controlled_reflect_about_prepare(control_and_ancilla, angles)
+    controlled_select(control_and_ancilla, system, term_controls, term_ops,
+                      term_lengths, term_signs)
+
+@cudaq.kernel
+def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
+                         phases: list[float], walk_directions: list[int],
+                         angles: list[float], term_controls: list[int],
+                         term_ops: list[int], term_lengths: list[int],
+                         term_signs: list[int]):
+    """Projector-phase QSVT sequence: phase, then (walk step, phase) repeats.
+
+    The signal register must start in |0...0>. A forward step is the full
+    block encoding followed by the zero-state reflection; an adjoint step is
+    the reverse (both factors are self-adjoint).
+    """
+    signal_phase(signal, phases[0])
+    for i in range(1, len(phases)):
+        if walk_directions[i - 1] == 1:
+            reflect_about_zero(signal)
+            lcu_apply(signal, system, angles, term_controls, term_ops,
+                      term_lengths, term_signs)
+        else:
+            lcu_apply(signal, system, angles, term_controls, term_ops,
+                      term_lengths, term_signs)
+            reflect_about_zero(signal)
+        signal_phase(signal, phases[i])
+
+@cudaq.kernel
+def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
+                                    system: cudaq.qview, phases: list[float],
+                                    walk_directions: list[int],
+                                    angles: list[float],
+                                    term_controls: list[int],
+                                    term_ops: list[int],
+                                    term_lengths: list[int],
+                                    term_signs: list[int]):
+    """QSVT sequence controlled by qubit 0 of ``control_and_signal``.
+
+    The uncontrolled PREPARE / PREPARE-dagger pair wraps a controlled
+    SELECT, so each walk step collapses to the identity for control |0>;
+    the zero reflection and signal phases are likewise controlled, making
+    the full sequence the identity when the control is off.
+    """
+    n_signal = control_and_signal.size() - 1
+    controlled_signal_phase(control_and_signal, phases[0])
+    for i in range(1, len(phases)):
+        if walk_directions[i - 1] == 1:
+            controlled_reflect_about_zero(control_and_signal)
+            prepare(control_and_signal.back(n_signal), angles)
+            controlled_select(control_and_signal, system, term_controls,
+                              term_ops, term_lengths, term_signs)
+            unprepare(control_and_signal.back(n_signal), angles)
+        else:
+            prepare(control_and_signal.back(n_signal), angles)
+            controlled_select(control_and_signal, system, term_controls,
+                              term_ops, term_lengths, term_signs)
+            unprepare(control_and_signal.back(n_signal), angles)
+            controlled_reflect_about_zero(control_and_signal)
+        controlled_signal_phase(control_and_signal, phases[i])
 
 def state_from(ket: ArrayLike) -> cudaq.State:
     """Build a cudaq.State from array data at the current target's precision.
@@ -593,8 +695,6 @@ class PauliLCU:
 
     def adjoint_walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one adjoint walk step W†."""
-        from .qubitization import adjoint_walk
-
         angles, controls, ops, lengths, signs = self.kernel_args
 
         @cudaq.kernel
@@ -606,8 +706,6 @@ class PauliLCU:
 
     def controlled_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled walk step."""
-        from .qubitization import controlled_walk
-
         angles, controls, ops, lengths, signs = self.kernel_args
 
         @cudaq.kernel
@@ -620,8 +718,6 @@ class PauliLCU:
 
     def controlled_adjoint_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled adjoint walk step."""
-        from .qubitization import controlled_adjoint_walk
-
         angles, controls, ops, lengths, signs = self.kernel_args
 
         @cudaq.kernel

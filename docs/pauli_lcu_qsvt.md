@@ -8,9 +8,13 @@ They require only the `cudaq` Python package and numpy — the compiled
 
 ```
 python/cudaq_algorithms/
-  pauli_lcu.py       block encoding: PauliLCU + prepare/select/apply kernels
-  qubitization.py    walks, walk observables, Walk (moments)
-  qsvt.py            PhaseSequence, QSVT
+  block_encoding.py  the BlockEncoding protocol Walk and QSVT consume
+  common_kernels.py  encoding-independent kernels (zero reflections,
+                     signal phases)
+  pauli_lcu.py       everything LCU: PauliLCU + prepare/select/apply,
+                     walk-step, and phase-sequence kernels
+  qubitization.py    Walk (moments) + walk observables, encoding-generic
+  qsvt.py            PhaseSequence, QSVT, encoding-generic
   sim_utils.py       simulation-only helpers (statevector access)
 tests/python/
   test_pauli_lcu.py, test_qubitization.py, test_qsvt.py
