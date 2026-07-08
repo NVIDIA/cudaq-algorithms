@@ -28,11 +28,12 @@ from typing import TYPE_CHECKING
 import cudaq
 from cudaq import spin
 
+from .common_kernels import _bit_projector
+
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
-    from .block_encoding import BlockEncoding
-    from .pauli_lcu import Kernel, PauliLCU
+    from .block_encoding import BlockEncoding, Kernel
 
 
 
@@ -50,12 +51,6 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-def _bit_projector(qubit: int, bit: int) -> cudaq.SpinOperator:
-    """|bit><bit| on one qubit as a spin operator."""
-    sign = 1.0 - 2.0 * float(bit)
-    return 0.5 * (spin.i(qubit) + sign * spin.z(qubit))
-
-
 def reflection_observable(encoding: BlockEncoding) -> cudaq.SpinOperator:
     """R = 2|0...0><0...0| - I on the ancilla register."""
     if encoding.num_ancilla == 0:
@@ -65,30 +60,6 @@ def reflection_observable(encoding: BlockEncoding) -> cudaq.SpinOperator:
     for b in range(1, encoding.num_ancilla):
         projector = projector * _bit_projector(offset + b, 0)
     return 2.0 * projector - spin.i(offset)
-
-
-def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
-    """The SELECT operator sum_i sign_i |i><i|_anc x P_i as an observable."""
-    if encoding.num_ancilla == 0:
-        raise ValueError("select observable needs at least one ancilla")
-    offset = encoding.num_system
-    n_anc = encoding.num_ancilla
-
-    observable = None
-    for index, (coefficient, word) in enumerate(encoding.terms):
-        term = 1.0 if coefficient >= 0.0 else -1.0
-        for b in range(n_anc):
-            bit = (index >> (n_anc - 1 - b)) & 1
-            term = term * _bit_projector(offset + b, bit)
-        for qubit, label in enumerate(word):
-            if label == "X":
-                term = term * spin.x(qubit)
-            elif label == "Y":
-                term = term * spin.y(qubit)
-            elif label == "Z":
-                term = term * spin.z(qubit)
-        observable = term if observable is None else observable + term
-    return observable
 
 
 # ============================================================================

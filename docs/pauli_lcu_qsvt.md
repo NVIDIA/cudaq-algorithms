@@ -12,8 +12,8 @@ python/cudaq_algorithms/
   common_kernels.py  encoding-independent kernels (zero reflections,
                      signal phases)
   pauli_lcu.py       everything LCU: PauliLCU + prepare/select/apply,
-                     walk-step, and phase-sequence kernels
-  qubitization.py    Walk (moments) + walk observables, encoding-generic
+                     walk-step and phase-sequence kernels, SELECT observable
+  qubitization.py    Walk (moments) + reflection observable, encoding-generic
   qsvt.py            PhaseSequence, QSVT, encoding-generic
   sim_utils.py       simulation-only helpers (statevector access)
 tests/python/

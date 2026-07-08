@@ -5,11 +5,12 @@
 # This source code and the accompanying materials are made available under     #
 # the terms of the Apache License 2.0 which accompanies this distribution.     #
 # ============================================================================ #
-"""Encoding-independent device kernels shared by the primitives.
+"""Encoding-independent kernels and operator helpers shared by the primitives.
 
-Reflections about the all-zero state and projector phases on the all-zero
-(signal) subspace. These act only on register geometry — they are valid
-for any zero-flagged block encoding, and are composable from user kernels.
+Reflections about the all-zero state, projector phases on the all-zero
+(signal) subspace, and the single-qubit projector spin operator. These act
+only on register geometry — they are valid for any zero-flagged block
+encoding, and the kernels are composable from user kernels.
 
 Controlled variants take a combined register whose qubit 0 is the external
 control (a CUDA-Q Python control set cannot mix a bare qubit with a
@@ -19,6 +20,13 @@ separate register).
 from __future__ import annotations
 
 import cudaq
+from cudaq import spin
+
+
+def _bit_projector(qubit: int, bit: int) -> cudaq.SpinOperator:
+    """|bit><bit| on one qubit as a spin operator."""
+    sign = 1.0 - 2.0 * float(bit)
+    return 0.5 * (spin.i(qubit) + sign * spin.z(qubit))
 
 @cudaq.kernel
 def reflect_about_zero(register: cudaq.qview):

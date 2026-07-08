@@ -42,7 +42,8 @@ from .pauli_lcu import (PauliLCU, adjoint_walk, apply,
                         controlled_adjoint_walk,
                         controlled_reflect_about_prepare, controlled_select,
                         controlled_walk, prepare, reflect_about_prepare,
-                        select, state_from, unprepare, walk)
+                        select, select_observable, state_from, unprepare,
+                        walk)
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
-from .qubitization import Walk, reflection_observable, select_observable
+from .qubitization import Walk, reflection_observable

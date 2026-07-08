@@ -38,8 +38,7 @@ if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import ArrayLike, NDArray
 
-    from .block_encoding import BlockEncoding
-    from .pauli_lcu import Kernel
+    from .block_encoding import BlockEncoding, Kernel
 
 FORWARD = 0
 ADJOINT = 1

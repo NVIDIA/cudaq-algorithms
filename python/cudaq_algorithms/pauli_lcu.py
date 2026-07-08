@@ -32,27 +32,24 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, TypeAlias, Union
+from typing import TYPE_CHECKING, TypeAlias, Union
 
 import cudaq
 
-from .common_kernels import (controlled_reflect_about_zero,
+from .common_kernels import (_bit_projector, controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
                              signal_phase)
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
+    from .block_encoding import Kernel
+
 # A Hamiltonian in any accepted input form: a ``cudaq.SpinOperator``, a
 # ``{"XZI...": coefficient}`` mapping, or an iterable of
 # ``(coefficient, word)`` pairs.
 HamiltonianLike: TypeAlias = Union[cudaq.SpinOperator, Mapping[str, float],
                                    Iterable[tuple[float, str]]]
-
-# A compiled ``@cudaq.kernel``. CUDA-Q does not expose a stable public
-# Python type for kernel objects, so kernel factories are annotated with
-# this alias.
-Kernel: TypeAlias = Any
 
 # The flattened arrays that cross the kernel boundary, in the order the
 # module-level kernels take them:
@@ -415,6 +412,38 @@ def _prepare_angles(probabilities: Sequence[float]) -> list[float]:
     return angles
 
 
+
+def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
+    """The SELECT operator sum_i sign_i |i><i|_anc x P_i as an observable.
+
+    LCU-specific: built from the encoding's signed Pauli terms. Its
+    expectation after PREPARE and p walk steps is the odd Chebyshev moment
+    <T_{2p+1}(H/alpha)> (the BlockEncoding.select_observable hook).
+    """
+    from cudaq import spin
+
+    if encoding.num_ancilla == 0:
+        raise ValueError("select observable needs at least one ancilla")
+    offset = encoding.num_system
+    n_anc = encoding.num_ancilla
+
+    observable = None
+    for index, (coefficient, word) in enumerate(encoding.terms):
+        term = 1.0 if coefficient >= 0.0 else -1.0
+        for b in range(n_anc):
+            bit = (index >> (n_anc - 1 - b)) & 1
+            term = term * _bit_projector(offset + b, bit)
+        for qubit, label in enumerate(word):
+            if label == "X":
+                term = term * spin.x(qubit)
+            elif label == "Y":
+                term = term * spin.y(qubit)
+            elif label == "Z":
+                term = term * spin.z(qubit)
+        observable = term if observable is None else observable + term
+    return observable
+
+
 # ============================================================================
 # The user-facing object
 # ============================================================================
@@ -732,8 +761,6 @@ class PauliLCU:
         """The odd-moment SELECT observable for this encoding.
 
         BlockEncoding protocol hook; delegates to the module-level
-        ``qubitization.select_observable``.
+        ``select_observable``.
         """
-        from .qubitization import select_observable
-
         return select_observable(self)
