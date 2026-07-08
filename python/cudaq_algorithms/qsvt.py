@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import ArrayLike, NDArray
 
+    from .block_encoding import BlockEncoding
     from .pauli_lcu import Kernel
 
 FORWARD = 0
@@ -247,7 +248,7 @@ def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
 class QSVT:
     """Quantum singular value transformation for a PauliLCU encoding."""
 
-    def __init__(self, encoding: PauliLCU) -> None:
+    def __init__(self, encoding: BlockEncoding) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
                 "QSVT requires an encoding with at least one ancilla "
@@ -269,17 +270,24 @@ class QSVT:
         seq = _as_sequence(sequence, convention)
         phases = seq.projector_phases
         # A degree-0 sequence has no walks; pad with one unused entry because
-        # empty list kernel arguments cannot be marshaled.
+        # empty list captures cannot be marshaled.
         directions = list(seq.walk_directions) or [FORWARD]
-        angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
+        u_a = self.encoding.apply_kernel()
 
         @cudaq.kernel
         def qsvt_kernel(state: cudaq.State):
             system = cudaq.qvector(state)
             signal = cudaq.qvector(n_anc)
-            apply_phase_sequence(signal, system, phases, directions, angles,
-                                 controls, ops, lengths, signs)
+            signal_phase(signal, phases[0])
+            for i in range(1, len(phases)):
+                if directions[i - 1] == 1:
+                    reflect_about_zero(signal)
+                    u_a(signal, system)
+                else:
+                    u_a(signal, system)
+                    reflect_about_zero(signal)
+                signal_phase(signal, phases[i])
 
         return qsvt_kernel
 
@@ -297,9 +305,9 @@ class QSVT:
         seq = _as_sequence(sequence, convention)
         phases = seq.projector_phases
         directions = list(seq.walk_directions) or [FORWARD]
-        angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
         flip_control = int(control_state) == 1
+        controlled_u_a = self.encoding.controlled_apply_kernel()
 
         @cudaq.kernel
         def controlled_qsvt_kernel(state: cudaq.State):
@@ -307,9 +315,15 @@ class QSVT:
             control_and_signal = cudaq.qvector(1 + n_anc)
             if flip_control:
                 x(control_and_signal[0])
-            apply_controlled_phase_sequence(control_and_signal, system,
-                                            phases, directions, angles,
-                                            controls, ops, lengths, signs)
+            controlled_signal_phase(control_and_signal, phases[0])
+            for i in range(1, len(phases)):
+                if directions[i - 1] == 1:
+                    controlled_reflect_about_zero(control_and_signal)
+                    controlled_u_a(control_and_signal, system)
+                else:
+                    controlled_u_a(control_and_signal, system)
+                    controlled_reflect_about_zero(control_and_signal)
+                controlled_signal_phase(control_and_signal, phases[i])
 
         return controlled_qsvt_kernel
 

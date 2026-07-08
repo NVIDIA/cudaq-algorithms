@@ -31,7 +31,8 @@ except ImportError:
     __version__ = "CUDA-Q Algorithms (pure Python; native extension not built)"
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
-from . import pauli_lcu, qsvt, qubitization, sim_utils
+from . import block_encoding, pauli_lcu, qsvt, qubitization, sim_utils
+from .block_encoding import BlockEncoding
 from .pauli_lcu import (PauliLCU, apply, controlled_select, prepare,
                         reflect_about_zero, select, state_from, unprepare,
                         walk)

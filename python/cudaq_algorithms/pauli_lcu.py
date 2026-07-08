@@ -522,3 +522,112 @@ class PauliLCU:
 
         return walked
 
+
+    # ------------------------------------------------------------------
+    # BlockEncoding protocol: data-free kernel factories
+    #
+    # Each factory returns a kernel with the protocol's fixed signature,
+    # with this encoding's flattened arrays captured inside. Walk and QSVT
+    # compose these without touching the LCU internals; kernel_args stays
+    # available as the LCU-specific escape hatch for user kernels.
+    # ------------------------------------------------------------------
+
+    def prepare_kernel(self) -> Kernel:
+        """``(ancilla: qview)``: PREPARE with this encoding's angles."""
+        angles = list(self._angles)
+
+        @cudaq.kernel
+        def prepare_ancilla(ancilla: cudaq.qview):
+            prepare(ancilla, angles)
+
+        return prepare_ancilla
+
+    def unprepare_kernel(self) -> Kernel:
+        """``(ancilla: qview)``: PREPARE dagger with this encoding's angles."""
+        angles = list(self._angles)
+
+        @cudaq.kernel
+        def unprepare_ancilla(ancilla: cudaq.qview):
+            unprepare(ancilla, angles)
+
+        return unprepare_ancilla
+
+    def apply_kernel(self) -> Kernel:
+        """``(ancilla, system)``: the full block encoding U_A."""
+        angles, controls, ops, lengths, signs = self.kernel_args
+
+        @cudaq.kernel
+        def apply_encoding(ancilla: cudaq.qview, system: cudaq.qview):
+            apply(ancilla, system, angles, controls, ops, lengths, signs)
+
+        return apply_encoding
+
+    def controlled_apply_kernel(self) -> Kernel:
+        """``(control_and_ancilla, system)``: U_A controlled by qubit 0.
+
+        Uncontrolled PREPARE pairs wrap the controlled SELECT, so the
+        circuit is the identity at control |0>.
+        """
+        angles, controls, ops, lengths, signs = self.kernel_args
+        n_anc = self.num_ancilla
+
+        @cudaq.kernel
+        def apply_controlled(control_and_ancilla: cudaq.qview,
+                             system: cudaq.qview):
+            prepare(control_and_ancilla.back(n_anc), angles)
+            controlled_select(control_and_ancilla, system, controls, ops,
+                              lengths, signs)
+            unprepare(control_and_ancilla.back(n_anc), angles)
+
+        return apply_controlled
+
+    def walk_step_kernel(self) -> Kernel:
+        """``(ancilla, system)``: one qubitization walk step W."""
+        angles, controls, ops, lengths, signs = self.kernel_args
+
+        @cudaq.kernel
+        def walk_step(ancilla: cudaq.qview, system: cudaq.qview):
+            walk(ancilla, system, angles, controls, ops, lengths, signs)
+
+        return walk_step
+
+    def adjoint_walk_step_kernel(self) -> Kernel:
+        """``(ancilla, system)``: one adjoint walk step W†."""
+        from .qubitization import adjoint_walk
+
+        angles, controls, ops, lengths, signs = self.kernel_args
+
+        @cudaq.kernel
+        def adjoint_walk_step(ancilla: cudaq.qview, system: cudaq.qview):
+            adjoint_walk(ancilla, system, angles, controls, ops, lengths,
+                         signs)
+
+        return adjoint_walk_step
+
+    def controlled_walk_step_kernel(self) -> Kernel:
+        """``(control_and_ancilla, system)``: controlled walk step."""
+        from .qubitization import controlled_walk
+
+        angles, controls, ops, lengths, signs = self.kernel_args
+
+        @cudaq.kernel
+        def controlled_walk_step(control_and_ancilla: cudaq.qview,
+                                 system: cudaq.qview):
+            controlled_walk(control_and_ancilla, system, angles, controls,
+                            ops, lengths, signs)
+
+        return controlled_walk_step
+
+    def controlled_adjoint_walk_step_kernel(self) -> Kernel:
+        """``(control_and_ancilla, system)``: controlled adjoint walk step."""
+        from .qubitization import controlled_adjoint_walk
+
+        angles, controls, ops, lengths, signs = self.kernel_args
+
+        @cudaq.kernel
+        def controlled_adjoint_walk_step(control_and_ancilla: cudaq.qview,
+                                         system: cudaq.qview):
+            controlled_adjoint_walk(control_and_ancilla, system, angles,
+                                    controls, ops, lengths, signs)
+
+        return controlled_adjoint_walk_step

@@ -31,6 +31,7 @@ from cudaq import spin
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
+    from .block_encoding import BlockEncoding
     from .pauli_lcu import Kernel
 
 from .pauli_lcu import (PauliLCU, controlled_select, prepare,
@@ -179,7 +180,7 @@ class Walk:
     encoding (at least one ancilla, i.e. two or more LCU terms).
     """
 
-    def __init__(self, encoding: PauliLCU) -> None:
+    def __init__(self, encoding: BlockEncoding) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
                 "Walk requires an encoding with at least one ancilla "
@@ -196,61 +197,37 @@ class Walk:
 
     def _factory(self, power: int, uncompute: bool,
                  forward: bool) -> Kernel:
-        angles, controls, ops, lengths, signs = self.encoding.kernel_args
+        # Delegate every encoding-specific circuit to the injected encoding;
+        # this factory only sequences the returned (data-free) kernels.
         n_anc = self.encoding.num_ancilla
         steps = int(power)
+        prep = self.encoding.prepare_kernel()
+        unprep = self.encoding.unprepare_kernel()
+        step = (self.encoding.walk_step_kernel()
+                if forward else self.encoding.adjoint_walk_step_kernel())
 
-        if forward and uncompute:
+        if uncompute:
 
             @cudaq.kernel
             def walk_and_uncompute(state: cudaq.State):
                 system = cudaq.qvector(state)
                 ancilla = cudaq.qvector(n_anc)
-                prepare(ancilla, angles)
+                prep(ancilla)
                 for _ in range(steps):
-                    walk(ancilla, system, angles, controls, ops, lengths,
-                         signs)
-                unprepare(ancilla, angles)
+                    step(ancilla, system)
+                unprep(ancilla)
 
             return walk_and_uncompute
 
-        if forward:
-
-            @cudaq.kernel
-            def walk_prepared(state: cudaq.State):
-                system = cudaq.qvector(state)
-                ancilla = cudaq.qvector(n_anc)
-                prepare(ancilla, angles)
-                for _ in range(steps):
-                    walk(ancilla, system, angles, controls, ops, lengths,
-                         signs)
-
-            return walk_prepared
-
-        if uncompute:
-
-            @cudaq.kernel
-            def adjoint_and_uncompute(state: cudaq.State):
-                system = cudaq.qvector(state)
-                ancilla = cudaq.qvector(n_anc)
-                prepare(ancilla, angles)
-                for _ in range(steps):
-                    adjoint_walk(ancilla, system, angles, controls, ops,
-                                 lengths, signs)
-                unprepare(ancilla, angles)
-
-            return adjoint_and_uncompute
-
         @cudaq.kernel
-        def adjoint_prepared(state: cudaq.State):
+        def walk_prepared(state: cudaq.State):
             system = cudaq.qvector(state)
             ancilla = cudaq.qvector(n_anc)
-            prepare(ancilla, angles)
+            prep(ancilla)
             for _ in range(steps):
-                adjoint_walk(ancilla, system, angles, controls, ops, lengths,
-                             signs)
+                step(ancilla, system)
 
-        return adjoint_prepared
+        return walk_prepared
 
     def kernel(self, power: int = 1, uncompute: bool = True) -> Kernel:
         """``@cudaq.kernel(state)``: PREPARE, W^power, optionally UNPREPARE."""
@@ -263,21 +240,23 @@ class Walk:
 
     def roundtrip_kernel(self, power: int = 1) -> Kernel:
         """PREPARE, W^power, (W†)^power, UNPREPARE — the identity, for tests."""
-        angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
         steps = int(power)
+        prep = self.encoding.prepare_kernel()
+        unprep = self.encoding.unprepare_kernel()
+        step = self.encoding.walk_step_kernel()
+        adjoint_step = self.encoding.adjoint_walk_step_kernel()
 
         @cudaq.kernel
         def roundtrip(state: cudaq.State):
             system = cudaq.qvector(state)
             ancilla = cudaq.qvector(n_anc)
-            prepare(ancilla, angles)
+            prep(ancilla)
             for _ in range(steps):
-                walk(ancilla, system, angles, controls, ops, lengths, signs)
+                step(ancilla, system)
             for _ in range(steps):
-                adjoint_walk(ancilla, system, angles, controls, ops, lengths,
-                             signs)
-            unprepare(ancilla, angles)
+                adjoint_step(ancilla, system)
+            unprep(ancilla)
 
         return roundtrip
 
@@ -291,10 +270,12 @@ class Walk:
         initialized to ``control_state``; with control |0> the circuit is
         the identity up to the (cancelling) PREPARE pair.
         """
-        angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
         steps = int(power)
         flip_control = int(control_state) == 1
+        prep = self.encoding.prepare_kernel()
+        unprep = self.encoding.unprepare_kernel()
+        controlled_step = self.encoding.controlled_walk_step_kernel()
 
         if uncompute:
 
@@ -304,11 +285,10 @@ class Walk:
                 control_and_ancilla = cudaq.qvector(1 + n_anc)
                 if flip_control:
                     x(control_and_ancilla[0])
-                prepare(control_and_ancilla.back(n_anc), angles)
+                prep(control_and_ancilla.back(n_anc))
                 for _ in range(steps):
-                    controlled_walk(control_and_ancilla, system, angles,
-                                    controls, ops, lengths, signs)
-                unprepare(control_and_ancilla.back(n_anc), angles)
+                    controlled_step(control_and_ancilla, system)
+                unprep(control_and_ancilla.back(n_anc))
 
             return controlled_walked
 
@@ -318,20 +298,23 @@ class Walk:
             control_and_ancilla = cudaq.qvector(1 + n_anc)
             if flip_control:
                 x(control_and_ancilla[0])
-            prepare(control_and_ancilla.back(n_anc), angles)
+            prep(control_and_ancilla.back(n_anc))
             for _ in range(steps):
-                controlled_walk(control_and_ancilla, system, angles, controls,
-                                ops, lengths, signs)
+                controlled_step(control_and_ancilla, system)
 
         return controlled_walked_prepared
 
     def controlled_roundtrip_kernel(self, power: int = 1,
                                     control_state: int = 1) -> Kernel:
         """Controlled W^power then controlled (W dagger)^power — identity."""
-        angles, controls, ops, lengths, signs = self.encoding.kernel_args
         n_anc = self.encoding.num_ancilla
         steps = int(power)
         flip_control = int(control_state) == 1
+        prep = self.encoding.prepare_kernel()
+        unprep = self.encoding.unprepare_kernel()
+        controlled_step = self.encoding.controlled_walk_step_kernel()
+        controlled_adjoint_step = (
+            self.encoding.controlled_adjoint_walk_step_kernel())
 
         @cudaq.kernel
         def controlled_roundtrip(state: cudaq.State):
@@ -339,14 +322,12 @@ class Walk:
             control_and_ancilla = cudaq.qvector(1 + n_anc)
             if flip_control:
                 x(control_and_ancilla[0])
-            prepare(control_and_ancilla.back(n_anc), angles)
+            prep(control_and_ancilla.back(n_anc))
             for _ in range(steps):
-                controlled_walk(control_and_ancilla, system, angles, controls,
-                                ops, lengths, signs)
+                controlled_step(control_and_ancilla, system)
             for _ in range(steps):
-                controlled_adjoint_walk(control_and_ancilla, system, angles,
-                                        controls, ops, lengths, signs)
-            unprepare(control_and_ancilla.back(n_anc), angles)
+                controlled_adjoint_step(control_and_ancilla, system)
+            unprep(control_and_ancilla.back(n_anc))
 
         return controlled_roundtrip
 
