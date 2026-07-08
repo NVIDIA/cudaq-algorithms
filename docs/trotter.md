@@ -22,19 +22,22 @@ from cudaq_algorithms import trotter
 
 # Flexible Hamiltonian input: SpinOperator, single spin term,
 # {"XZI...": coeff} mapping, or (coeff, word) pairs.
-plan = trotter.make_trotter_plan(
-    hamiltonian, time=0.8, steps=4, order=2,
+evolution = trotter.Trotter(
+    hamiltonian,
     ordering=trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
 
-plan.kernel()       # ready @cudaq.kernel(): |0...0> -> evolved state
-plan.resources()    # TrotterResourceEstimate (rotations, CNOT proxy, ...)
-plan.num_terms, plan.identity_coefficient, plan.words, plan.coefficients
+evolution.kernel(time=0.8, steps=4, order=2)   # ready @cudaq.kernel():
+                                               # |0...0> -> evolved state
+evolution.resources(steps=4, order=2)  # TrotterResourceEstimate
+evolution.num_terms, evolution.identity_coefficient
+evolution.words, evolution.coefficients
 ```
 
-`make_trotter_plan` extracts and validates the Pauli terms on the host
-(dropping identity terms into `identity_coefficient`), applies the
-requested term ordering, and returns a frozen `TrotterPlan` whose
-`kernel()` factory captures the flattened coefficient/word arrays.
+`Trotter` extracts and validates the Pauli terms on the host once at
+construction (dropping identity terms into `identity_coefficient`) and
+applies the requested term ordering; the evolution parameters `time`,
+`steps`, and `order` are supplied per kernel request, mirroring the other
+primitives (`Walk.kernel(power=...)`, `QSVT.kernel(sequence)`).
 
 ### Product-formula orders
 
@@ -68,7 +71,7 @@ def my_kernel(coeffs: list[float], words: list[cudaq.pauli_word],
     trotter.apply_trotter(coeffs, words, t, steps, order, q)
 ```
 
-`plan.coefficients` / `plan.words` supply the flattened arrays.
+`evolution.coefficients` / `evolution.words` supply the flattened arrays.
 
 ### Identity terms and the global phase
 
@@ -76,7 +79,8 @@ For `H = c I + H'`, the circuit applies the product formula for `H'` only;
 `exp(-i c t)` cannot be realized as a circuit on the evolved register. The
 phase is an unobservable global phase for a single unconditioned evolution
 but a real relative phase for controlled or interference-based algorithms —
-`plan.identity_coefficient` reports it so callers can account for it.
+`identity_coefficient` is reported on the `Trotter` object so callers
+can account for it.
 
 ## Simulation-only helper
 
@@ -87,8 +91,8 @@ hardware targets). The Trotter-specific helper is `evolve`:
 ```python
 from cudaq_algorithms import sim_utils
 
-evolved = sim_utils.evolve(plan, ket)   # approximates exp(-i H t)|ket>,
-                                        # identity phase included
+evolved = sim_utils.evolve(evolution, ket, time=0.8, steps=4, order=2)
+# approximates exp(-i H t)|ket>, identity phase included
 ```
 
 Unlike the circuit primitive, `evolve` reintroduces the identity phase by

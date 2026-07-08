@@ -22,7 +22,7 @@ dependency):
 - Pauli LCU block encoding (`PauliLCU`, plus prepare/select/apply kernels)
 - qubitization walks and Chebyshev moment measurement (`Walk`)
 - QSVT phase sequences (`QSVT`, `PhaseSequence`)
-- Suzuki-Trotter product formulas (`trotter.make_trotter_plan`, orders 1/2/4)
+- Suzuki-Trotter product formulas (`trotter.Trotter`, orders 1/2/4)
 
 Simulation-only helpers (statevector access) are isolated in
 `cudaq_algorithms.sim_utils`; everything else is hardware-shaped. See

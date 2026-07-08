@@ -24,7 +24,7 @@ import cudaq
 
 # Re-exported: precision-aware initial-state construction.
 from .pauli_lcu import state_from
-from .trotter import TrotterPlan
+from .trotter import SECOND_ORDER_TROTTER, Trotter
 
 if TYPE_CHECKING:
     import numpy as np
@@ -79,26 +79,29 @@ def transform(transformer: QSVT,
     return good_subspace(transformer.encoding, state)
 
 
-def evolve(plan: TrotterPlan,
+def evolve(evolution: Trotter,
            ket: ArrayLike,
+           time: float,
+           steps: int = 1,
+           order: int = SECOND_ORDER_TROTTER,
            include_identity_phase: bool = True) -> NDArray[np.complex128]:
-    """Simulate a Trotter plan on ``ket`` and return the evolved statevector.
+    """Simulate a Trotter evolution on ``ket``; return the evolved statevector.
 
     Unlike the circuit primitive, this can reintroduce the identity phase
     ``exp(-i * identity_coefficient * time)`` (on by default), so the
     result approximates the full ``exp(-i H t)|ket>``.
 
-    The plan's kernel prepares |0...0> and evolves; to evolve an arbitrary
+    ``Trotter.kernel`` prepares |0...0> and evolves; to evolve an arbitrary
     ``ket``, the input state is loaded through ``cudaq.get_state``'s
     initial-state support via a state-taking wrapper kernel.
     """
     import numpy as np
 
-    coefficients = [float(c) for c in plan.coefficients]
-    words = [cudaq.pauli_word(str(w)) for w in plan.words]
-    time = float(plan.time)
-    steps = int(plan.steps)
-    order = int(plan.order)
+    coefficients = [float(c) for c in evolution.coefficients]
+    words = [cudaq.pauli_word(str(w)) for w in evolution.words]
+    time = float(time)
+    steps = int(steps)
+    order = int(order)
 
     if words:
         from .trotter import apply_trotter
@@ -113,6 +116,7 @@ def evolve(plan: TrotterPlan,
     else:
         state = np.asarray(ket, dtype=np.complex128).copy()
 
-    if include_identity_phase and plan.identity_coefficient != 0.0:
-        state = state * np.exp(-1.0j * plan.identity_coefficient * time)
+    if include_identity_phase and evolution.identity_coefficient != 0.0:
+        state = state * np.exp(
+            -1.0j * evolution.identity_coefficient * time)
     return state

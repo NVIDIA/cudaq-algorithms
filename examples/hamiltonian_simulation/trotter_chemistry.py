@@ -87,25 +87,23 @@ def pauli_matrix(word):
     return matrix
 
 
-def exact_evolve(plan, ket):
-    matrix = plan.identity_coefficient * np.eye(ket.size, dtype=np.complex128)
-    for coefficient, word in zip(plan.coefficients, plan.words):
+def exact_evolve(evolution, time, ket):
+    matrix = evolution.identity_coefficient * np.eye(ket.size,
+                                                     dtype=np.complex128)
+    for coefficient, word in zip(evolution.coefficients, evolution.words):
         matrix += coefficient * pauli_matrix(str(word))
     eigenvalues, eigenvectors = np.linalg.eigh(matrix)
-    return eigenvectors @ (np.exp(-1.0j * plan.time * eigenvalues) *
+    return eigenvectors @ (np.exp(-1.0j * time * eigenvalues) *
                            (eigenvectors.conj().T @ ket))
 
 
 def main():
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
 
-    plan = trotter.make_trotter_plan(
+    evolution = trotter.Trotter(
         HAMILTONIAN,
-        time=TIME,
-        steps=STEPS,
-        order=ORDER,
         ordering=trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
-    resources = plan.resources()
+    resources = evolution.resources(steps=STEPS, order=ORDER)
 
     @cudaq.kernel
     def prepare_only():
@@ -115,12 +113,14 @@ def main():
     ket0 = np.asarray(cudaq.get_state(prepare_only), dtype=np.complex128)
 
     # Path 1: the one-call simulation helper (identity phase included).
-    evolved = sim_utils.evolve(plan, ket0)
-    exact = exact_evolve(plan, ket0)
+    evolved = sim_utils.evolve(evolution, ket0, time=TIME, steps=STEPS,
+                               order=ORDER)
+    exact = exact_evolve(evolution, TIME, ket0)
     direct_error = float(np.linalg.norm(evolved - exact))
 
     # Path 2: the escape hatch — compose apply_trotter in a user kernel.
-    coefficients, words = plan.coefficients, [str(w) for w in plan.words]
+    coefficients = evolution.coefficients
+    words = [str(w) for w in evolution.words]
 
     @cudaq.kernel
     def evolve_kernel(coeffs: list[float], paulis: list[cudaq.pauli_word],
@@ -134,16 +134,16 @@ def main():
                               dtype=np.complex128)
     # The kernel path omits the identity phase; reintroduce it for comparison.
     kernel_state = kernel_state * np.exp(
-        -1.0j * plan.identity_coefficient * TIME)
+        -1.0j * evolution.identity_coefficient * TIME)
     paths_agree = float(np.linalg.norm(kernel_state - evolved))
 
     print("Suzuki-Trotter chemistry-style example")
     print("=" * 62)
-    print(f"num_qubits:           {plan.num_qubits}")
+    print(f"num_qubits:           {evolution.num_qubits}")
     print(f"num_terms:            {resources.num_terms}")
-    print(f"identity_coefficient: {plan.identity_coefficient:+.8f}")
-    print(f"order:                {plan.order}")
-    print(f"steps:                {plan.steps}")
+    print(f"identity_coefficient: {evolution.identity_coefficient:+.8f}")
+    print(f"order:                {resources.order}")
+    print(f"steps:                {resources.steps}")
     print(f"pauli_rotations:      {resources.pauli_rotations}")
     print(f"estimated_cx_count:   {resources.estimated_cx_count}")
     print(f"l2_error_vs_exact:    {direct_error:.6e}   (identity phase "

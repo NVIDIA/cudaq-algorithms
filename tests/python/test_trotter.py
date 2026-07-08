@@ -212,42 +212,40 @@ def test_product_formula_reference_improves_with_order():
 
 
 # ----------------------------------------------------------------------------
-# Planning, ordering, resources
+# Term ordering, validation, resources
 # ----------------------------------------------------------------------------
 
 
-def test_make_trotter_plan_orders_terms_and_estimates_resources():
+def test_trotter_orders_terms_and_estimates_resources():
     hamiltonian = (0.1 * spin.x(0) + 0.7 * spin.z(1) +
                    0.4 * spin.x(0) * spin.z(1) -
                    0.2 * cudaq.SpinOperator.from_word("II"))
-    plan = trotter.make_trotter_plan(
+    evolution = trotter.Trotter(
         hamiltonian,
-        time=0.6,
-        steps=3,
-        order=4,
         ordering=trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
 
-    assert plan.steps == 3
-    assert plan.order == 4
-    assert plan.identity_coefficient == pytest.approx(-0.2)
-    assert plan.coefficients == pytest.approx([0.7, 0.4, 0.1])
-    assert [str(word) for word in plan.words] == ["IZ", "XZ", "XI"]
+    assert evolution.identity_coefficient == pytest.approx(-0.2)
+    assert evolution.coefficients == pytest.approx([0.7, 0.4, 0.1])
+    assert [str(word) for word in evolution.words] == ["IZ", "XZ", "XI"]
 
-    resources = plan.resources()
+    resources = evolution.resources(steps=3, order=4)
     assert resources.num_terms == 3
+    assert resources.steps == 3
+    assert resources.order == 4
     assert resources.pauli_rotations == 3 * 3 * 6
     assert resources.estimated_cx_count == 2 * 3 * 6
 
 
-def test_trotter_plan_rejects_invalid_options():
+def test_trotter_rejects_invalid_options():
+    evolution = trotter.Trotter(spin.x(0))
     with pytest.raises(ValueError, match="steps"):
-        trotter.make_trotter_plan(spin.x(0), time=0.1, steps=0)
+        evolution.kernel(time=0.1, steps=0)
     with pytest.raises(ValueError, match="order"):
-        trotter.make_trotter_plan(spin.x(0), time=0.1, order=3)
+        evolution.kernel(time=0.1, order=3)
     with pytest.raises(ValueError, match="unsupported"):
-        trotter.make_trotter_plan(spin.x(0), time=0.1, ordering="bogus")
+        trotter.Trotter(spin.x(0), ordering="bogus")
     with pytest.raises(ValueError, match="finite"):
-        trotter.make_trotter_plan(spin.x(0), time=float("nan"))
+        evolution.kernel(time=float("nan"))
 
 
 def test_estimate_trotter_resources_accepts_flattened_terms():
@@ -463,53 +461,55 @@ def test_apply_trotter_kernel_handles_four_qubit_hamiltonian_with_many_terms():
 
 
 # ----------------------------------------------------------------------------
-# Plan kernel factory and simulation-helper evolution
+# Kernel factory and simulation-helper evolution
 # ----------------------------------------------------------------------------
 
 
-def test_plan_kernel_factory_evolves_the_zero_state():
+def test_kernel_factory_evolves_the_zero_state():
     hamiltonian = {"XI": 0.7, "IZ": 0.4, "XZ": 0.31, "YY": 0.23}
-    plan = trotter.make_trotter_plan(hamiltonian, time=0.8, steps=3, order=2)
+    evolution = trotter.Trotter(hamiltonian)
 
     ket0 = np.zeros(4, dtype=np.complex128)
     ket0[0] = 1.0
-    factory_state = np.asarray(cudaq.get_state(plan.kernel()),
-                               dtype=np.complex128)
-    expected = _simulate_trotter(plan.coefficients, plan.words, 0.0,
-                                 plan.num_qubits, plan.time, plan.steps,
-                                 plan.order, ket0)
+    factory_state = np.asarray(
+        cudaq.get_state(evolution.kernel(time=0.8, steps=3, order=2)),
+        dtype=np.complex128)
+    expected = _simulate_trotter(evolution.coefficients, evolution.words,
+                                 0.0, evolution.num_qubits, 0.8, 3, 2, ket0)
     np.testing.assert_allclose(factory_state, expected, atol=1e-6)
 
 
 def test_sim_utils_evolve_includes_identity_phase():
     hamiltonian = {"XI": 0.7, "IZ": 0.4, "II": -0.2}
-    plan = trotter.make_trotter_plan(hamiltonian, time=0.8, steps=64, order=2)
+    evolution = trotter.Trotter(hamiltonian)
 
     rng = np.random.default_rng(3)
     ket = rng.normal(size=4) + 1.0j * rng.normal(size=4)
     ket = (ket / np.linalg.norm(ket)).astype(np.complex128)
 
-    exact = _exact_evolve(plan.coefficients, plan.words,
-                          plan.identity_coefficient, plan.time, ket)
-    evolved = sim_utils.evolve(plan, ket)
+    exact = _exact_evolve(evolution.coefficients, evolution.words,
+                          evolution.identity_coefficient, 0.8, ket)
+    evolved = sim_utils.evolve(evolution, ket, time=0.8, steps=64, order=2)
     # Direct comparison, NOT phase-aligned: evolve() reintroduces the
     # identity phase the circuit primitive omits.
     assert np.linalg.norm(evolved - exact) < 1e-3
 
-    without_phase = sim_utils.evolve(plan, ket, include_identity_phase=False)
+    without_phase = sim_utils.evolve(evolution, ket, time=0.8, steps=64,
+                                     order=2, include_identity_phase=False)
     assert np.linalg.norm(without_phase - exact) > 0.1
 
 
-def test_identity_only_plan_is_a_global_phase():
-    plan = trotter.make_trotter_plan({"II": -0.2}, time=0.5, steps=2)
-    assert plan.num_terms == 0
+def test_identity_only_hamiltonian_is_a_global_phase():
+    evolution = trotter.Trotter({"II": -0.2})
+    assert evolution.num_terms == 0
 
     ket = np.array([0.5, 0.5, 0.5, 0.5], dtype=np.complex128)
-    evolved = sim_utils.evolve(plan, ket)
+    evolved = sim_utils.evolve(evolution, ket, time=0.5, steps=2)
     np.testing.assert_allclose(evolved,
                                np.exp(0.1j) * ket,
                                atol=1e-12)
-    np.testing.assert_allclose(sim_utils.evolve(plan, ket,
+    np.testing.assert_allclose(sim_utils.evolve(evolution, ket, time=0.5,
+                                                steps=2,
                                                 include_identity_phase=False),
                                ket,
                                atol=1e-12)

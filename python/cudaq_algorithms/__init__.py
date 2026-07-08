@@ -45,9 +45,9 @@ from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
 from .qubitization import Walk, reflection_observable
-from .trotter import (TrotterOrdering, TrotterPlan, TrotterResourceEstimate,
+from .trotter import (Trotter, TrotterOrdering, TrotterResourceEstimate,
                       apply_trotter, estimate_trotter_resources,
-                      make_trotter_plan, make_trotter_terms)
+                      make_trotter_terms)
 
 # The composable device kernels keep their module namespaces
 # (cudaq_algorithms.pauli_lcu.prepare, .select, .apply_phase_sequence, ...;

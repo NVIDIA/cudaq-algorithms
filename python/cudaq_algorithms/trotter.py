@@ -15,26 +15,26 @@ The typical workflow builds a validated plan on the host and either uses
 its kernel factory or composes the ``apply_trotter`` primitive inside a
 custom kernel::
 
-    from cudaq.algorithms import trotter
+    from cudaq_algorithms import trotter
 
-    plan = trotter.make_trotter_plan(hamiltonian, time=0.8, steps=4, order=2)
-    kernel = plan.kernel()          # ready @cudaq.kernel()
-    resources = plan.resources()
+    evolution = trotter.Trotter(hamiltonian)
+    kernel = evolution.kernel(time=0.8, steps=4, order=2)  # @cudaq.kernel()
+    resources = evolution.resources(steps=4, order=2)
 
 Identity terms: for ``H = c I + H'``, ``apply_trotter`` implements the
 product formula for ``H'`` only. The omitted ``exp(-i c t)`` is an
 unobservable global phase for one unconditioned evolution but a real
 relative phase for controlled or interference-based algorithms;
-``identity_coefficient`` is reported on the plan so callers can account
-for it (the simulation helper ``sim_utils.evolve`` reintroduces it
-host-side).
+``identity_coefficient`` is reported on the ``Trotter`` object so callers
+can account for it (the simulation helper ``sim_utils.evolve``
+reintroduces it host-side).
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Union
 
@@ -222,7 +222,7 @@ def make_trotter_terms(
     where ``words`` are padded plain strings: readable, comparable, and
     accepted directly as ``list[cudaq.pauli_word]`` kernel arguments.
     (Only kernel-captured words need explicit ``cudaq.pauli_word``
-    conversion, which ``TrotterPlan.kernel`` performs internally.)
+    conversion, which ``Trotter.kernel`` performs internally.)
     """
     if coefficient_tolerance < 0.0:
         raise ValueError(
@@ -338,46 +338,90 @@ class TrotterResourceEstimate:
     identity_coefficient: float
 
 
-@dataclass(frozen=True)
-class TrotterPlan:
-    """Validated host-side plan for Suzuki-Trotter evolution.
+class Trotter:
+    """Suzuki-Trotter product formulas for a Pauli-sum Hamiltonian.
 
-    Carries the flattened data ``apply_trotter`` consumes plus a kernel
-    factory, so no caller has to thread the arrays by hand. The plan is
-    hardware-shaped: nothing here executes a simulator-only API (see
-    ``sim_utils.evolve`` for statevector-based evolution).
+    Term extraction, validation, and ordering happen once at
+    construction (identity terms are split off into
+    ``identity_coefficient``); the evolution parameters ``time``,
+    ``steps``, and ``order`` are supplied per kernel request, mirroring
+    the other primitives (``Walk.kernel(power=...)``,
+    ``QSVT.kernel(sequence)``).
+
+    The object is hardware-shaped: nothing here executes a
+    simulator-only API (see ``sim_utils.evolve`` for statevector-based
+    evolution).
     """
 
-    coefficients: list[float]
-    words: list[str] = field(repr=False)
-    identity_coefficient: float = 0.0
-    num_qubits: int = 0
-    time: float = 0.0
-    steps: int = 1
-    order: int = SECOND_ORDER_TROTTER
-    ordering: TrotterOrdering = TrotterOrdering.PRESERVE_INPUT
+    def __init__(self,
+                 hamiltonian: HamiltonianLike,
+                 ordering: TrotterOrdering | str = (
+                     TrotterOrdering.PRESERVE_INPUT),
+                 *,
+                 coefficient_tolerance: float = 1e-12) -> None:
+        ordering = _coerce_ordering(ordering)
+        coefficients, words, identity, num_qubits = make_trotter_terms(
+            hamiltonian, coefficient_tolerance)
+        coefficients, words = _ordered_terms(coefficients, words, ordering)
+        self._coefficients = coefficients
+        self._words = words
+        self._identity = identity
+        self._num_qubits = num_qubits
+        self._ordering = ordering
+
+    @property
+    def coefficients(self) -> list[float]:
+        """Retained non-identity coefficients, in application order."""
+        return list(self._coefficients)
+
+    @property
+    def words(self) -> list[str]:
+        """Retained Pauli words, parallel to ``coefficients``."""
+        return list(self._words)
+
+    @property
+    def identity_coefficient(self) -> float:
+        """Sum of identity-term coefficients (not realizable in circuit)."""
+        return self._identity
+
+    @property
+    def num_qubits(self) -> int:
+        return self._num_qubits
 
     @property
     def num_terms(self) -> int:
         """Number of retained non-identity terms."""
-        return len(self.coefficients)
+        return len(self._coefficients)
 
-    def kernel(self) -> Any:
-        """Return a ``@cudaq.kernel()`` applying this plan's evolution.
+    @property
+    def ordering(self) -> TrotterOrdering:
+        return self._ordering
+
+    def __repr__(self) -> str:
+        return (f"Trotter(terms={self.num_terms}, "
+                f"qubits={self.num_qubits}, "
+                f"identity_coefficient={self.identity_coefficient:.6g})")
+
+    def kernel(self,
+               time: float,
+               steps: int = 1,
+               order: int = SECOND_ORDER_TROTTER) -> Any:
+        """Return a ``@cudaq.kernel()`` applying the product formula.
 
         (``Any`` because CUDA-Q exposes no stable public Python type for
         compiled kernel objects.)
 
         The kernel allocates ``num_qubits`` qubits in |0...0> and applies
-        the product formula. The identity phase is not included (it cannot
-        be, in a circuit); track ``identity_coefficient`` when it matters.
+        the ``order``-order formula for ``time`` over ``steps`` steps. The
+        identity phase is not included (it cannot be, in a circuit); track
+        ``identity_coefficient`` when it matters.
         """
-        coefficients = [float(c) for c in self.coefficients]
-        words = [cudaq.pauli_word(str(w)) for w in self.words]
-        time = float(self.time)
-        steps = int(self.steps)
-        order = int(self.order)
-        num_qubits = int(self.num_qubits)
+        time = _validate_time(time)
+        steps = _validate_steps(steps)
+        order = _validate_order(order)
+        coefficients = [float(c) for c in self._coefficients]
+        words = [cudaq.pauli_word(str(w)) for w in self._words]
+        num_qubits = int(self._num_qubits)
 
         if not words:
             # Identity-only Hamiltonian: the circuit is the identity.
@@ -397,62 +441,26 @@ class TrotterPlan:
 
         return evolve
 
-    def resources(self) -> TrotterResourceEstimate:
-        """Return the resource estimate for this plan."""
-        return estimate_trotter_resources(self)
-
-
-def make_trotter_plan(hamiltonian: HamiltonianLike,
-                      time: float,
-                      steps: int = 1,
-                      order: int = SECOND_ORDER_TROTTER,
-                      ordering: TrotterOrdering | str = (
-                          TrotterOrdering.PRESERVE_INPUT),
-                      coefficient_tolerance: float = 1e-12) -> TrotterPlan:
-    """Build a validated host-side plan for Suzuki-Trotter evolution.
-
-    ``hamiltonian`` accepts any :data:`HamiltonianLike` form. ``order``
-    must be 1, 2, or 4; ``steps`` positive; ``time`` finite.
-    """
-    time = _validate_time(time)
-    steps = _validate_steps(steps)
-    order = _validate_order(order)
-    ordering = _coerce_ordering(ordering)
-    coefficients, words, identity, num_qubits = make_trotter_terms(
-        hamiltonian, coefficient_tolerance)
-    coefficients, words = _ordered_terms(coefficients, words, ordering)
-    return TrotterPlan(coefficients=coefficients,
-                       words=words,
-                       identity_coefficient=identity,
-                       num_qubits=num_qubits,
-                       time=time,
-                       steps=steps,
-                       order=order,
-                       ordering=ordering)
+    def resources(self,
+                  steps: int = 1,
+                  order: int = SECOND_ORDER_TROTTER) -> TrotterResourceEstimate:
+        """Resource estimate for ``steps`` steps of the ``order`` formula."""
+        return estimate_trotter_resources(
+            self._coefficients, self._words, steps=steps, order=order,
+            identity_coefficient=self._identity)
 
 
 def estimate_trotter_resources(
-        plan_or_coefficients: TrotterPlan | list[float],
-        words: list[str] | None = None,
-        steps: int | None = None,
-        order: int | None = None,
+        coefficients: list[float],
+        words: list[str],
+        steps: int = 1,
+        order: int = SECOND_ORDER_TROTTER,
         identity_coefficient: float = 0.0) -> TrotterResourceEstimate:
-    """Return a lightweight resource estimate for a Trotter sequence.
-
-    Accepts either a :class:`TrotterPlan` or the flattened
-    ``(coefficients, words, steps, order)`` data directly.
-    """
-    if isinstance(plan_or_coefficients, TrotterPlan):
-        coefficients = plan_or_coefficients.coefficients
-        words = plan_or_coefficients.words
-        steps = plan_or_coefficients.steps
-        order = plan_or_coefficients.order
-        identity_coefficient = plan_or_coefficients.identity_coefficient
-    else:
-        coefficients = list(plan_or_coefficients)
-        words = list(words)
-        steps = _validate_steps(steps)
-        order = _validate_order(order)
+    """Return a lightweight resource estimate for a Trotter sequence."""
+    coefficients = list(coefficients)
+    words = list(words)
+    steps = _validate_steps(steps)
+    order = _validate_order(order)
 
     if len(coefficients) != len(words):
         raise ValueError("coefficients and words must have equal length")
@@ -478,12 +486,11 @@ __all__ = [
     "FOREST_RUTH_W1",
     "FOREST_RUTH_W0",
     "HamiltonianLike",
+    "Trotter",
     "TrotterOrdering",
-    "TrotterPlan",
     "TrotterResourceEstimate",
     "apply_trotter",
     "estimate_trotter_resources",
-    "make_trotter_plan",
     "make_trotter_terms",
     "state_from",
 ]
