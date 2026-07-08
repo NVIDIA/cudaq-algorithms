@@ -631,3 +631,13 @@ class PauliLCU:
                                     controls, ops, lengths, signs)
 
         return controlled_adjoint_walk_step
+
+    def select_observable(self) -> cudaq.SpinOperator:
+        """The odd-moment SELECT observable for this encoding.
+
+        BlockEncoding protocol hook; delegates to the module-level
+        ``qubitization.select_observable``.
+        """
+        from .qubitization import select_observable
+
+        return select_observable(self)

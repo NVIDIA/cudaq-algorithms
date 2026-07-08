@@ -103,3 +103,19 @@ class BlockEncoding(Protocol):
     def controlled_adjoint_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla: qview, system: qview)``: controlled W†."""
         ...
+
+    # ------------------------------------------------------------------
+    # Observable hooks
+    # ------------------------------------------------------------------
+
+    def select_observable(self) -> Any:
+        """The odd-moment observable as a ``cudaq.SpinOperator``.
+
+        Measured after PREPARE and ``p`` walk steps (no UNPREPARE), its
+        expectation is the odd Chebyshev moment ``<T_{2p+1}(H/alpha)>``.
+        The construction is encoding-specific (for an LCU it is
+        ``sum_i sign_i |i><i|_anc x P_i``); the even-moment reflection
+        observable ``2|0..0><0..0| - I`` needs only the register geometry,
+        so ``Walk`` derives it without an encoding hook.
+        """
+        ...

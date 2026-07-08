@@ -345,11 +345,14 @@ class Walk:
             raise ValueError("order must be non-negative")
         power = order // 2
         if order % 2 == 0:
+            # Geometry-only (2|0..0><0..0| - I on the ancillas): derivable
+            # for any zero-flagged encoding, no encoding hook needed.
             kernel = self.kernel(power=power, uncompute=True)
             observable = reflection_observable(self.encoding)
         else:
+            # Encoding-specific: delegated to the BlockEncoding hook.
             kernel = self.kernel(power=power, uncompute=False)
-            observable = select_observable(self.encoding)
+            observable = self.encoding.select_observable()
         state = state_from(ket)
         return float(cudaq.observe(kernel, observable, state).expectation())
 

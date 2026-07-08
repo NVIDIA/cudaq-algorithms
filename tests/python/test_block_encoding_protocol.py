@@ -29,11 +29,11 @@ class ForeignEncoding:
 
     Wraps a PauliLCU's circuits (so the physics is known-correct) but
     exposes only the protocol surface — no ``kernel_args``, no PauliLCU
-    inheritance. ``terms`` is carried for the LCU moment observables,
-    which remain encoding-specific hooks.
+    inheritance, no ``terms``.
     """
 
     def __init__(self, inner: PauliLCU):
+        self._select_observable = inner.select_observable()
         self._kernels = {
             "prepare": inner.prepare_kernel(),
             "unprepare": inner.unprepare_kernel(),
@@ -46,7 +46,6 @@ class ForeignEncoding:
                 inner.controlled_adjoint_walk_step_kernel(),
         }
         self._geometry = (inner.num_system, inner.num_ancilla, inner.alpha)
-        self.terms = inner.terms
 
     @property
     def num_system(self):
@@ -83,6 +82,9 @@ class ForeignEncoding:
 
     def controlled_adjoint_walk_step_kernel(self):
         return self._kernels["controlled_adjoint_step"]
+
+    def select_observable(self):
+        return self._select_observable
 
 
 def _random_ket(dimension, seed=3):
