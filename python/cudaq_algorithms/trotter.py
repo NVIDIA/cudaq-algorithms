@@ -58,7 +58,6 @@ FOREST_RUTH_W0: float = -1.7024143839193153
 #: ``(coefficient, word)`` pairs.
 HamiltonianLike = Union[Mapping[str, complex], Iterable[tuple], Any]
 
-
 # ============================================================================
 # Device kernel (module level, composable from user kernels)
 # ============================================================================
@@ -121,7 +120,6 @@ def apply_trotter(coefficients: list[float], words: list[cudaq.pauli_word],
 
 # state_from lives with the block-encoding module; re-exported here since
 # Trotter workflows need the same precision-aware state construction.
-
 
 # ============================================================================
 # Host-side term extraction
@@ -213,8 +211,8 @@ def _word_pairs_from_input(
 
 
 def make_trotter_terms(
-        hamiltonian: HamiltonianLike,
-        coefficient_tolerance: float = 1e-12
+    hamiltonian: HamiltonianLike,
+    coefficient_tolerance: float = 1e-12
 ) -> tuple[list[float], list[str], float, int]:
     """Return flattened terms for the Suzuki-Trotter circuit primitive.
 
@@ -295,9 +293,8 @@ def _coerce_ordering(ordering: TrotterOrdering | str) -> TrotterOrdering:
         raise ValueError(f"unsupported Trotter ordering: {ordering}") from exc
 
 
-def _ordered_terms(
-        coefficients: list[float], words: list[str],
-        ordering: TrotterOrdering) -> tuple[list[float], list[str]]:
+def _ordered_terms(coefficients: list[float], words: list[str],
+                   ordering: TrotterOrdering) -> tuple[list[float], list[str]]:
     """Apply the ordering strategy to parallel coefficient/word lists."""
     coefficients = list(coefficients)
     words = list(words)
@@ -355,8 +352,8 @@ class Trotter:
 
     def __init__(self,
                  hamiltonian: HamiltonianLike,
-                 ordering: TrotterOrdering | str = (
-                     TrotterOrdering.PRESERVE_INPUT),
+                 ordering: TrotterOrdering
+                 | str = (TrotterOrdering.PRESERVE_INPUT),
                  *,
                  coefficient_tolerance: float = 1e-12) -> None:
         ordering = _coerce_ordering(ordering)
@@ -441,13 +438,16 @@ class Trotter:
 
         return evolve
 
-    def resources(self,
-                  steps: int = 1,
-                  order: int = SECOND_ORDER_TROTTER) -> TrotterResourceEstimate:
+    def resources(
+            self,
+            steps: int = 1,
+            order: int = SECOND_ORDER_TROTTER) -> TrotterResourceEstimate:
         """Resource estimate for ``steps`` steps of the ``order`` formula."""
-        return estimate_trotter_resources(
-            self._coefficients, self._words, steps=steps, order=order,
-            identity_coefficient=self._identity)
+        return estimate_trotter_resources(self._coefficients,
+                                          self._words,
+                                          steps=steps,
+                                          order=order,
+                                          identity_coefficient=self._identity)
 
 
 def estimate_trotter_resources(

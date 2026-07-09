@@ -24,7 +24,6 @@ from cudaq_algorithms import sim_utils, trotter
 FOREST_RUTH_W1 = 1.3512071919596578
 FOREST_RUTH_W0 = -1.7024143839193153
 
-
 # ----------------------------------------------------------------------------
 # Dense references (ported verbatim from the upstream test file)
 # ----------------------------------------------------------------------------
@@ -67,8 +66,15 @@ def _second_order_step(vector, coefficients, words, tau):
     return state
 
 
-def _simulate_trotter(coefficients, words, identity, num_qubits, time, steps,
-                      order, ket, include_identity=True):
+def _simulate_trotter(coefficients,
+                      words,
+                      identity,
+                      num_qubits,
+                      time,
+                      steps,
+                      order,
+                      ket,
+                      include_identity=True):
     state = np.array(ket, dtype=np.complex128, copy=True)
     dt = time / steps
     for _ in range(steps):
@@ -157,11 +163,7 @@ def test_make_trotter_terms_accepts_single_spin_term():
 
 
 def test_make_trotter_terms_accepts_dict_and_pairs():
-    from_dict = trotter.make_trotter_terms({
-        "XI": 0.7,
-        "IZ": 0.4,
-        "II": -0.2
-    })
+    from_dict = trotter.make_trotter_terms({"XI": 0.7, "IZ": 0.4, "II": -0.2})
     from_pairs = trotter.make_trotter_terms([(0.7, "XI"), (0.4, "IZ"),
                                              (-0.2, "II")])
     for coefficients, words, identity, num_qubits in (from_dict, from_pairs):
@@ -202,7 +204,8 @@ def test_product_formula_reference_improves_with_order():
     time, steps = 0.8, 2
     exact = _exact_evolve(coefficients, words, identity, time, ket)
     errors = {
-        order: _phase_align_error(
+        order:
+        _phase_align_error(
             _simulate_trotter(coefficients, words, identity, num_qubits, time,
                               steps, order, ket), exact)
         for order in (1, 2, 4)
@@ -471,11 +474,11 @@ def test_kernel_factory_evolves_the_zero_state():
 
     ket0 = np.zeros(4, dtype=np.complex128)
     ket0[0] = 1.0
-    factory_state = np.asarray(
-        cudaq.get_state(evolution.kernel(time=0.8, steps=3, order=2)),
-        dtype=np.complex128)
-    expected = _simulate_trotter(evolution.coefficients, evolution.words,
-                                 0.0, evolution.num_qubits, 0.8, 3, 2, ket0)
+    factory_state = np.asarray(cudaq.get_state(
+        evolution.kernel(time=0.8, steps=3, order=2)),
+                               dtype=np.complex128)
+    expected = _simulate_trotter(evolution.coefficients, evolution.words, 0.0,
+                                 evolution.num_qubits, 0.8, 3, 2, ket0)
     np.testing.assert_allclose(factory_state, expected, atol=1e-6)
 
 
@@ -494,8 +497,12 @@ def test_sim_utils_evolve_includes_identity_phase():
     # identity phase the circuit primitive omits.
     assert np.linalg.norm(evolved - exact) < 1e-3
 
-    without_phase = sim_utils.evolve(evolution, ket, time=0.8, steps=64,
-                                     order=2, include_identity_phase=False)
+    without_phase = sim_utils.evolve(evolution,
+                                     ket,
+                                     time=0.8,
+                                     steps=64,
+                                     order=2,
+                                     include_identity_phase=False)
     assert np.linalg.norm(without_phase - exact) > 0.1
 
 
@@ -505,10 +512,10 @@ def test_identity_only_hamiltonian_is_a_global_phase():
 
     ket = np.array([0.5, 0.5, 0.5, 0.5], dtype=np.complex128)
     evolved = sim_utils.evolve(evolution, ket, time=0.5, steps=2)
-    np.testing.assert_allclose(evolved,
-                               np.exp(0.1j) * ket,
-                               atol=1e-12)
-    np.testing.assert_allclose(sim_utils.evolve(evolution, ket, time=0.5,
+    np.testing.assert_allclose(evolved, np.exp(0.1j) * ket, atol=1e-12)
+    np.testing.assert_allclose(sim_utils.evolve(evolution,
+                                                ket,
+                                                time=0.5,
                                                 steps=2,
                                                 include_identity_phase=False),
                                ket,
@@ -522,14 +529,18 @@ def test_identity_only_hamiltonian_is_a_global_phase():
 
 def test_word_pairs_from_mapping():
     pairs, width = trotter._word_pairs_from_input(
-        {"XI": 0.7, "IZ": 0.4, "II": -0.2}, 1e-12)
+        {
+            "XI": 0.7,
+            "IZ": 0.4,
+            "II": -0.2
+        }, 1e-12)
     assert width == 2
     assert pairs == [(0.7, "XI"), (0.4, "IZ"), (-0.2, "II")]
 
 
 def test_word_pairs_from_pair_iterable():
-    pairs, width = trotter._word_pairs_from_input(
-        [(0.7, "XI"), (0.4, "IZ")], 1e-12)
+    pairs, width = trotter._word_pairs_from_input([(0.7, "XI"), (0.4, "IZ")],
+                                                  1e-12)
     assert width == 2
     assert pairs == [(0.7, "XI"), (0.4, "IZ")]
 
@@ -544,7 +555,10 @@ def test_word_pairs_from_spin_operator():
                    0.2 * cudaq.SpinOperator.from_word("II"))
     pairs, width = trotter._word_pairs_from_input(hamiltonian, 1e-12)
     assert width == 2
-    assert {word: coeff for coeff, word in pairs} == pytest.approx({
+    assert {
+        word: coeff
+        for coeff, word in pairs
+    } == pytest.approx({
         "XI": 0.7,
         "IZ": 0.4,
         "II": -0.2,

@@ -23,7 +23,6 @@ import os
 
 import numpy as np
 
-
 import cudaq
 
 from cudaq_algorithms import sim_utils, trotter
@@ -113,7 +112,10 @@ def main():
     ket0 = np.asarray(cudaq.get_state(prepare_only), dtype=np.complex128)
 
     # Path 1: the one-call simulation helper (identity phase included).
-    evolved = sim_utils.evolve(evolution, ket0, time=TIME, steps=STEPS,
+    evolved = sim_utils.evolve(evolution,
+                               ket0,
+                               time=TIME,
+                               steps=STEPS,
                                order=ORDER)
     exact = exact_evolve(evolution, TIME, ket0)
     direct_error = float(np.linalg.norm(evolved - exact))

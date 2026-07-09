@@ -117,6 +117,5 @@ def evolve(evolution: Trotter,
         state = np.asarray(ket, dtype=np.complex128).copy()
 
     if include_identity_phase and evolution.identity_coefficient != 0.0:
-        state = state * np.exp(
-            -1.0j * evolution.identity_coefficient * time)
+        state = state * np.exp(-1.0j * evolution.identity_coefficient * time)
     return state
