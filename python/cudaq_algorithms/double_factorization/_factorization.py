@@ -125,9 +125,9 @@ def _pivoted_cholesky(
     return vectors, pivots
 
 
-def _second_factorization(
-        leaf: DeviceArray, scale: ArrayLike, second_factor_threshold: float,
-        xp: ArrayModule) -> tuple[np.ndarray, np.ndarray]:
+def _second_factorization(leaf: DeviceArray, scale: ArrayLike,
+                          second_factor_threshold: float,
+                          xp: ArrayModule) -> tuple[np.ndarray, np.ndarray]:
     """Eigendecompose a symmetric leaf ``L = U diag(gamma) U^T`` and return
     ``(U, Z)`` with the symmetric core ``Z = scale * outer(gamma, gamma)``."""
     leaf = 0.5 * (leaf + leaf.T)
@@ -227,8 +227,7 @@ def explicit_double_factorization(
                                leaf_weights=np.asarray(weights))
 
 
-def _leaf_outer_columns(rotation: DeviceArray,
-                        xp: ArrayModule) -> DeviceArray:
+def _leaf_outer_columns(rotation: DeviceArray, xp: ArrayModule) -> DeviceArray:
     """Return ``A`` with ``A[:, k] = vec(u_k u_k^T)`` for rotation columns u_k."""
     n = rotation.shape[0]
     outer = xp.einsum("pk,qk->pqk", rotation, rotation)
@@ -325,11 +324,10 @@ def _solve_inner_cores_cg(
     return [z[t] for t in range(num_leaves)]
 
 
-def _solve_inner_cores_lstsq(
-        eri_dev: DeviceArray,
-        rotations_dev: DeviceArray,
-        xp: ArrayModule,
-        regularization: float = 0.0) -> List[DeviceArray]:
+def _solve_inner_cores_lstsq(eri_dev: DeviceArray,
+                             rotations_dev: DeviceArray,
+                             xp: ArrayModule,
+                             regularization: float = 0.0) -> List[DeviceArray]:
     """Least-squares optimal symmetric cores ``{Z^t}`` for fixed rotations.
 
     Solves, for fixed ``U^t``,

@@ -96,8 +96,7 @@ def to_numpy(array) -> np.ndarray:
     return np.asarray(array)
 
 
-def expm_skew_symmetric(generator: ArrayLike,
-                        xp: ArrayModule) -> DeviceArray:
+def expm_skew_symmetric(generator: ArrayLike, xp: ArrayModule) -> DeviceArray:
     """Matrix exponential of a real antisymmetric matrix, returning an orthogonal
     matrix. Uses a Hermitian eigendecomposition (cuSOLVER on the CuPy backend),
     avoiding any dependence on a general matrix-exponential routine."""
