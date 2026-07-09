@@ -27,6 +27,25 @@ import cudaq
 from cudaq import spin
 
 
+def state_from(ket) -> cudaq.State:
+    """Build a cudaq.State from array data at the current target's precision.
+
+    fp32 simulators (e.g. the default `nvidia` target) reject complex128
+    input ("[sim-state] invalid data precision"); cudaq.complex() reports
+    the dtype the active target expects.
+    """
+    import numpy as np
+
+    return cudaq.State.from_data(np.asarray(ket, dtype=cudaq.complex()))
+
+
+def _validate_control_state(control_state: int) -> int:
+    """Require control_state to be exactly 0 or 1 (no silent coercion)."""
+    if control_state not in (0, 1):
+        raise ValueError("control_state must be 0 or 1")
+    return int(control_state)
+
+
 def _validate_power(power: int) -> int:
     """Require a non-negative integral walk power (no silent truncation)."""
     steps = int(power)

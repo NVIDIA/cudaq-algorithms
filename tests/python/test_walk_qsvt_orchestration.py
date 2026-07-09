@@ -22,6 +22,7 @@ the PauliLCU test suites against dense references.
 from collections import Counter
 
 import numpy as np
+import pytest
 
 import cudaq
 
@@ -266,8 +267,12 @@ def test_factory_call_accounting():
     assert encoding.calls == Counter({"apply": 1})
 
 
-def test_walk_rejects_zero_ancilla_encodings():
-    import pytest
+def test_consumers_reject_zero_ancilla_encodings():
+    from cudaq_algorithms import reflection_observable
 
     with pytest.raises(ValueError):
         Walk(ZeroAncillaMock())
+    with pytest.raises(ValueError):
+        QSVT(ZeroAncillaMock())
+    with pytest.raises(ValueError):
+        reflection_observable(ZeroAncillaMock())

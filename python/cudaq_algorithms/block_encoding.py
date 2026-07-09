@@ -42,6 +42,18 @@ from typing import Any, Protocol, runtime_checkable
 Kernel = Any
 
 
+def mint_cached_kernel(cache: dict, encoding: "BlockEncoding",
+                       factory_name: str) -> Kernel:
+    """Mint ``encoding.<factory_name>()`` once and reuse it from ``cache``.
+
+    Consumers hold one cache per (consumer, encoding) pair; encodings are
+    immutable after construction, so the minted kernels never go stale.
+    """
+    if factory_name not in cache:
+        cache[factory_name] = getattr(encoding, factory_name)()
+    return cache[factory_name]
+
+
 @runtime_checkable
 class BlockEncoding(Protocol):
     """A zero-flagged block encoding ``U_A`` with ``<0|_anc U_A |0>_anc = H / alpha``.
@@ -57,7 +69,14 @@ class BlockEncoding(Protocol):
 
     @property
     def num_ancilla(self) -> int:
-        """Number of ancilla (signal) qubits flagging the encoded block."""
+        """Number of ancilla (signal) qubits flagging the encoded block.
+
+        Consumers (``Walk``, ``QSVT``, the walk observables) require
+        ``num_ancilla >= 1``: the walk's ``-H/alpha`` sign comes from a
+        reflection about the ancilla zero state, which is a no-op on an
+        empty register. ``PauliLCU`` normalizes single-term inputs to one
+        idle ancilla to satisfy this uniformly.
+        """
         ...
 
     @property

@@ -71,6 +71,8 @@ def qsppack_phases(tau, degree):
     return [float(p) for p in cos_phases], [float(p) for p in sin_phases]
 
 
+# Kept inline so the example runs standalone; the canonical copy of
+# this dense reference lives in tests/python/dense_references.py.
 def dense_matrix(terms, num_qubits):
     dimension = 1 << num_qubits
     matrix = np.zeros((dimension, dimension), dtype=np.complex128)

@@ -31,7 +31,9 @@ from typing import TYPE_CHECKING
 
 import cudaq
 
-from .common_kernels import (controlled_reflect_about_zero,
+from .block_encoding import mint_cached_kernel
+from .common_kernels import (_validate_control_state,
+                             controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
                              signal_phase)
 
@@ -168,17 +170,22 @@ class QSVT:
     def __init__(self, encoding: BlockEncoding) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
-                "QSVT requires an encoding with at least one ancilla "
-                "(two or more LCU terms); the 0-ancilla case is degenerate")
-        self.encoding = encoding
+                "QSVT requires an encoding with num_ancilla >= 1 (the "
+                "projector phases act on the signal register, which must "
+                "be non-empty)")
+        self._encoding = encoding
         # Mint the encoding's data-free kernels once; reuse across builds.
         self._kernel_cache: dict = {}
 
+    @property
+    def encoding(self):
+        """The injected block encoding (read-only: kernels are cached
+        against it, so swapping it would serve stale circuits)."""
+        return self._encoding
+
     def _encoding_kernel(self, factory_name: str):
-        if factory_name not in self._kernel_cache:
-            self._kernel_cache[factory_name] = getattr(
-                self.encoding, factory_name)()
-        return self._kernel_cache[factory_name]
+        return mint_cached_kernel(self._kernel_cache, self._encoding,
+                                  factory_name)
 
     def __repr__(self) -> str:
         return f"QSVT({self.encoding!r})"
@@ -197,7 +204,7 @@ class QSVT:
         # A degree-0 sequence has no walks; pad with one unused entry because
         # empty list captures cannot be marshaled.
         directions = list(seq.walk_directions) or [FORWARD]
-        n_anc = self.encoding.num_ancilla
+        n_anc = self._encoding.num_ancilla
         u_a = self._encoding_kernel("apply_kernel")
 
         @cudaq.kernel
@@ -230,8 +237,8 @@ class QSVT:
         seq = _as_sequence(sequence, convention)
         phases = seq.projector_phases
         directions = list(seq.walk_directions) or [FORWARD]
-        n_anc = self.encoding.num_ancilla
-        flip_control = int(control_state) == 1
+        n_anc = self._encoding.num_ancilla
+        flip_control = _validate_control_state(control_state) == 1
         controlled_u_a = self._encoding_kernel("controlled_apply_kernel")
 
         @cudaq.kernel

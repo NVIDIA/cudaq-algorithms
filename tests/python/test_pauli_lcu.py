@@ -22,7 +22,7 @@ from cudaq_algorithms import (PauliLCU, PhaseSequence, QSVT,
                               reflect_about_zero, signal_phase, state_from,
                               unprepare)
 
-from helpers import dense_matrix, random_ket
+from dense_references import dense_matrix, random_ket
 
 FOUR_TERMS = {"ZI": 0.70, "IZ": -0.43, "XX": 0.19, "YZ": 0.11}
 
@@ -192,3 +192,22 @@ def test_kernels_tolerate_empty_register_views():
     expected = np.zeros(4, dtype=np.complex128)
     expected[0] = 1.0
     assert np.allclose(state, expected, atol=1e-12)
+
+
+def test_identity_only_hamiltonian_encodes_signed_identity():
+    # Regression: identity-only Hamiltonians produce an empty term_ops
+    # list, which cannot cross the kernel boundary (cuda-quantum#4847);
+    # the extraction pads it with a never-dereferenced entry.
+    ket = random_ket(2, seed=21)
+    positive = PauliLCU({"II": 1.5})
+    assert positive.num_ancilla == 1
+    assert np.allclose(sim.action(positive, ket), ket, atol=1e-12)
+
+    negative = PauliLCU({"II": -0.5})
+    assert np.allclose(sim.action(negative, ket), -ket, atol=1e-12)
+
+    # The walk machinery applies unchanged: T_1(-H/alpha) = -sign * I.
+    walk_state = np.asarray(
+        cudaq.get_state(negative.walk_kernel(power=1), sim.state_from(ket)))
+    assert np.allclose(sim.good_subspace(negative, walk_state), ket,
+                       atol=1e-12)

@@ -14,7 +14,7 @@ import cudaq
 
 from cudaq_algorithms import (PauliLCU, Walk, reflection_observable,
                               select_observable, state_from)
-from helpers import dense_matrix, random_ket
+from dense_references import dense_matrix, random_ket
 
 
 def exact_chebyshev_moments(terms, num_qubits, alpha, ket, count):
@@ -118,6 +118,17 @@ def test_walk_power_validation():
         walk.moment([1, 0, 0, 0], 2.9)
     with pytest.raises(ValueError, match="count"):
         walk.moments([1, 0, 0, 0], -1)
+    with pytest.raises(ValueError, match="control_state"):
+        walk.controlled_kernel(power=1, control_state=2)
+
+
+def test_walk_encoding_is_read_only():
+    # Kernels and observables are cached against the injected encoding;
+    # swapping it would silently serve stale circuits, so it is read-only.
+    walk = Walk(PauliLCU({"ZI": 0.7, "XX": 0.19}))
+    walk.moment([1, 0, 0, 0], 1)
+    with pytest.raises(AttributeError):
+        walk.encoding = PauliLCU({"XI": 1.0})
 
 
 def _controlled_layout_maps(num_system, num_ancilla):

@@ -21,6 +21,8 @@ from cudaq_algorithms import (BlockEncoding, PauliLCU, PhaseSequence, QSVT,
                               Walk)
 from cudaq_algorithms import sim_utils as sim
 
+from dense_references import random_ket
+
 HAMILTONIAN = {"ZI": 0.7, "IZ": -0.43, "XX": 0.19, "YZ": 0.11}
 
 
@@ -73,9 +75,6 @@ class ForeignEncoding:
 
     def select_observable(self):
         return self._select_observable
-
-
-from helpers import random_ket
 
 
 def test_pauli_lcu_satisfies_protocol():

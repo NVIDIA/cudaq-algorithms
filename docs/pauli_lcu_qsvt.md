@@ -149,9 +149,11 @@ data.
 4. Known CUDA-Q Python lowering limitations worked around in the modules:
    - Empty `list` kernel arguments fail with "Cannot infer runtime argument
      type" ([cuda-quantum#4847](https://github.com/NVIDIA/cuda-quantum/issues/4847))
-     — single-term encodings are normalized to one (idle) ancilla so
-     no flattened list is ever empty, and degree-0 sequences pad the
-     unused directions entry.
+     — single-term encodings are normalized to one (idle) ancilla,
+     identity-only extractions pad `term_ops` with a never-read
+     entry, and the QSVT factories pad degree-0 direction lists
+     (callers composing the module-level sequence kernels must pass
+     a non-empty `walk_directions` themselves).
    - A `@dataclass` kernel argument with a `list[int]` field containing a
      negative value fails with `std::bad_cast`
      ([cuda-quantum#4846](https://github.com/NVIDIA/cuda-quantum/issues/4846))

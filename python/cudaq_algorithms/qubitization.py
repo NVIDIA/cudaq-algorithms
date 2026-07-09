@@ -28,7 +28,9 @@ from typing import TYPE_CHECKING
 import cudaq
 from cudaq import spin
 
-from .common_kernels import _bit_projector, _validate_power
+from .block_encoding import mint_cached_kernel
+from .common_kernels import (_bit_projector, _validate_control_state,
+                             _validate_power, state_from)
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
@@ -66,15 +68,19 @@ class Walk:
     encoding (``PauliLCU`` is the provided implementation).
 
     Provides walk/adjoint-walk kernel factories and Chebyshev-moment
-    measurement in the QEL even/odd convention. Requires a non-degenerate
-    encoding (at least one ancilla, i.e. two or more LCU terms).
+    measurement in the QEL even/odd convention. Requires ``num_ancilla >= 1``
+    (``PauliLCU`` always satisfies this; the guard defends against
+    degenerate foreign encodings). The encoding is fixed at construction —
+    kernels and observables are cached per instance.
     """
 
     def __init__(self, encoding: BlockEncoding) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
-                "Walk requires an encoding with at least one ancilla")
-        self.encoding = encoding
+                "Walk requires an encoding with num_ancilla >= 1 (the "
+                "walk's sign comes from a reflection that is a no-op on an "
+                "empty register)")
+        self._encoding = encoding
         # Encoding factories and observables are immutable per encoding;
         # mint each once and reuse across kernel builds (a moments() sweep
         # otherwise recompiles identical sub-kernels every call).
@@ -82,10 +88,14 @@ class Walk:
         self._observable_cache: dict = {}
 
     def _encoding_kernel(self, factory_name: str):
-        if factory_name not in self._kernel_cache:
-            self._kernel_cache[factory_name] = getattr(
-                self.encoding, factory_name)()
-        return self._kernel_cache[factory_name]
+        return mint_cached_kernel(self._kernel_cache, self._encoding,
+                                  factory_name)
+
+    @property
+    def encoding(self):
+        """The injected block encoding (read-only: kernels and observables
+        are cached against it, so swapping it would serve stale circuits)."""
+        return self._encoding
 
     def __repr__(self) -> str:
         return f"Walk({self.encoding!r})"
@@ -98,7 +108,7 @@ class Walk:
                  forward: bool) -> Kernel:
         # Delegate every encoding-specific circuit to the injected encoding;
         # this factory only sequences the returned (data-free) kernels.
-        n_anc = self.encoding.num_ancilla
+        n_anc = self._encoding.num_ancilla
         steps = _validate_power(power)
         prep = self._encoding_kernel("prepare_kernel")
         unprep = self._encoding_kernel("unprepare_kernel")
@@ -139,7 +149,7 @@ class Walk:
 
     def roundtrip_kernel(self, power: int = 1) -> Kernel:
         """PREPARE, W^power, (W†)^power, UNPREPARE — the identity, for tests."""
-        n_anc = self.encoding.num_ancilla
+        n_anc = self._encoding.num_ancilla
         steps = _validate_power(power)
         prep = self._encoding_kernel("prepare_kernel")
         unprep = self._encoding_kernel("unprepare_kernel")
@@ -169,9 +179,9 @@ class Walk:
         initialized to ``control_state``; with control |0> the circuit is
         the identity up to the (cancelling) PREPARE pair.
         """
-        n_anc = self.encoding.num_ancilla
+        n_anc = self._encoding.num_ancilla
         steps = _validate_power(power)
-        flip_control = int(control_state) == 1
+        flip_control = _validate_control_state(control_state) == 1
         prep = self._encoding_kernel("prepare_kernel")
         unprep = self._encoding_kernel("unprepare_kernel")
         controlled_step = self._encoding_kernel("controlled_walk_step_kernel")
@@ -206,9 +216,9 @@ class Walk:
     def controlled_roundtrip_kernel(self, power: int = 1,
                                     control_state: int = 1) -> Kernel:
         """Controlled W^power then controlled (W dagger)^power — identity."""
-        n_anc = self.encoding.num_ancilla
+        n_anc = self._encoding.num_ancilla
         steps = _validate_power(power)
-        flip_control = int(control_state) == 1
+        flip_control = _validate_control_state(control_state) == 1
         prep = self._encoding_kernel("prepare_kernel")
         unprep = self._encoding_kernel("unprepare_kernel")
         controlled_step = self._encoding_kernel("controlled_walk_step_kernel")
@@ -236,9 +246,10 @@ class Walk:
     # ------------------------------------------------------------------
 
     def moment(self, ket: ArrayLike, order: int) -> float:
-        """Measure the Chebyshev moment <T_order(H/alpha)> for |ket>."""
-        from .pauli_lcu import state_from
+        """Measure the Chebyshev moment <T_order(H/alpha)> for |ket>.
 
+        ``ket`` may be array-like or an already-built ``cudaq.State``.
+        """
         if int(order) != order or order < 0:
             raise ValueError("order must be a non-negative integer")
         order = int(order)
@@ -256,13 +267,14 @@ class Walk:
             kernel = self.kernel(power=power, uncompute=False)
             if "select" not in self._observable_cache:
                 self._observable_cache["select"] = (
-                    self.encoding.select_observable())
+                    self._encoding.select_observable())
             observable = self._observable_cache["select"]
-        state = state_from(ket)
+        state = ket if isinstance(ket, cudaq.State) else state_from(ket)
         return float(cudaq.observe(kernel, observable, state).expectation())
 
     def moments(self, ket: ArrayLike, count: int) -> list[float]:
         """Measure moments <T_0>, ..., <T_{count-1}> for |ket>."""
         if int(count) != count or count < 0:
             raise ValueError("count must be a non-negative integer")
-        return [self.moment(ket, order) for order in range(int(count))]
+        state = ket if isinstance(ket, cudaq.State) else state_from(ket)
+        return [self.moment(state, order) for order in range(int(count))]

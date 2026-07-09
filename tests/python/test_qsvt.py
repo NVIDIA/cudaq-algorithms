@@ -17,7 +17,7 @@ import cudaq
 from cudaq_algorithms import sim_utils as sim
 from cudaq_algorithms import (ADJOINT, FORWARD, PauliLCU, PhaseSequence, QSVT,
                               recover_real_time_evolution, state_from)
-from helpers import dense_matrix, random_ket
+from dense_references import dense_matrix, random_ket
 
 
 def reference_response(sequence: PhaseSequence, x: float) -> complex:

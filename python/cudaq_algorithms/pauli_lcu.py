@@ -39,7 +39,7 @@ import cudaq
 from .common_kernels import (_bit_projector, _validate_power,
                              controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
-                             signal_phase)
+                             signal_phase, state_from)
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
@@ -286,6 +286,10 @@ def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
     The signal register must start in |0...0>. A forward step is the full
     block encoding followed by the zero-state reflection; an adjoint step is
     the reverse (both factors are self-adjoint).
+
+    ``walk_directions`` must be non-empty (empty lists cannot cross the
+    kernel boundary, cuda-quantum#4847): for a degree-0 sequence pass one
+    unused entry, as the QSVT factories do.
     """
     signal_phase(signal, phases[0])
     for i in range(1, len(phases)):
@@ -332,16 +336,8 @@ def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
             controlled_reflect_about_zero(control_and_signal)
         controlled_signal_phase(control_and_signal, phases[i])
 
-def state_from(ket: ArrayLike) -> cudaq.State:
-    """Build a cudaq.State from array data at the current target's precision.
-
-    fp32 simulators (e.g. the default `nvidia` target) reject complex128
-    input ("[sim-state] invalid data precision"); cudaq.complex() reports
-    the dtype the active target expects.
-    """
-    import numpy as np
-
-    return cudaq.State.from_data(np.asarray(ket, dtype=cudaq.complex()))
+# Re-exported from common_kernels (encoding-independent; kept importable
+# here for compatibility with existing call sites).
 
 
 # ============================================================================
@@ -419,8 +415,6 @@ def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
     """
     from cudaq import spin
 
-    if encoding.num_ancilla == 0:
-        raise ValueError("select observable needs at least one ancilla")
     offset = encoding.num_system
     n_anc = encoding.num_ancilla
 
@@ -463,6 +457,10 @@ class PauliLCU:
         (their sum is always reported as ``constant_term``).
     coefficient_threshold
         Terms with ``|coefficient|`` below this are dropped.
+
+    ``num_ancilla`` is always at least 1: single-term (and identity-only)
+    Hamiltonians get one idle ancilla, so every encoding works uniformly
+    with ``Walk``/``QSVT`` and no flattened kernel argument is ever empty.
     """
 
     def __init__(self,
@@ -516,6 +514,11 @@ class PauliLCU:
                 self._term_ops.extend((code, qubit))
             self._term_lengths.append(len(ops))
             self._term_signs.append(-1 if coeff < 0.0 else 1)
+        if not self._term_ops:
+            # Identity-only Hamiltonian: every term_length is 0, so this
+            # padding is never dereferenced — it exists only because empty
+            # lists cannot cross the kernel boundary (cuda-quantum#4847).
+            self._term_ops = [0, 0]
 
     # ------------------------------------------------------------------
     # Inspection
@@ -624,7 +627,7 @@ class PauliLCU:
 
     def prepare_kernel(self) -> Kernel:
         """``(ancilla: qview)``: PREPARE with this encoding's angles."""
-        angles = list(self._angles)
+        angles = self._angles
 
         @cudaq.kernel
         def prepare_ancilla(ancilla: cudaq.qview):
@@ -634,7 +637,7 @@ class PauliLCU:
 
     def unprepare_kernel(self) -> Kernel:
         """``(ancilla: qview)``: PREPARE dagger with this encoding's angles."""
-        angles = list(self._angles)
+        angles = self._angles
 
         @cudaq.kernel
         def unprepare_ancilla(ancilla: cudaq.qview):
