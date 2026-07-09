@@ -5,11 +5,12 @@
 # This source code and the accompanying materials are made available under     #
 # the terms of the Apache License 2.0 which accompanies this distribution.     #
 # ============================================================================ #
-"""Quantum singular value transformation over a PauliLCU block encoding.
+"""Quantum singular value transformation over a block encoding.
 
 Provides a ``PhaseSequence`` value type with qsvt/qsp phase-convention
-handling built in, the phase/walk sequence kernels (plain and controlled),
-and a ``QSVT`` object with the corresponding kernel factories.
+handling built in and a ``QSVT`` object with plain and controlled kernel
+factories, generic over the ``BlockEncoding`` protocol. (The LCU-specific
+composable sequence kernels live in ``pauli_lcu``.)
 
 Each walk step is the full block encoding (PREPARE, SELECT, PREPARE dagger)
 composed with a reflection about the all-zero signal state, and projector
@@ -136,17 +137,15 @@ def _as_sequence(sequence: PhaseSequence | Iterable[float],
                  convention: str | None = None) -> PhaseSequence:
     if isinstance(sequence, PhaseSequence):
         if convention is not None and convention != sequence.convention:
-            return PhaseSequence(sequence.phases, sequence.walk_directions,
-                                 convention)
+            # Re-tagging would silently reinterpret (not convert) the raw
+            # phases under the other convention — a factor-of-2 phase error.
+            raise ValueError(
+                f"sequence is already tagged convention="
+                f"{sequence.convention!r}; passing convention="
+                f"{convention!r} would reinterpret its phases. Construct a "
+                "new PhaseSequence instead.")
         return sequence
     return PhaseSequence(sequence, convention=convention or "qsvt")
-
-
-# ============================================================================
-# Device kernels
-# ============================================================================
-
-
 
 
 
@@ -172,6 +171,14 @@ class QSVT:
                 "QSVT requires an encoding with at least one ancilla "
                 "(two or more LCU terms); the 0-ancilla case is degenerate")
         self.encoding = encoding
+        # Mint the encoding's data-free kernels once; reuse across builds.
+        self._kernel_cache: dict = {}
+
+    def _encoding_kernel(self, factory_name: str):
+        if factory_name not in self._kernel_cache:
+            self._kernel_cache[factory_name] = getattr(
+                self.encoding, factory_name)()
+        return self._kernel_cache[factory_name]
 
     def __repr__(self) -> str:
         return f"QSVT({self.encoding!r})"
@@ -191,7 +198,7 @@ class QSVT:
         # empty list captures cannot be marshaled.
         directions = list(seq.walk_directions) or [FORWARD]
         n_anc = self.encoding.num_ancilla
-        u_a = self.encoding.apply_kernel()
+        u_a = self._encoding_kernel("apply_kernel")
 
         @cudaq.kernel
         def qsvt_kernel(state: cudaq.State):
@@ -225,7 +232,7 @@ class QSVT:
         directions = list(seq.walk_directions) or [FORWARD]
         n_anc = self.encoding.num_ancilla
         flip_control = int(control_state) == 1
-        controlled_u_a = self.encoding.controlled_apply_kernel()
+        controlled_u_a = self._encoding_kernel("controlled_apply_kernel")
 
         @cudaq.kernel
         def controlled_qsvt_kernel(state: cudaq.State):

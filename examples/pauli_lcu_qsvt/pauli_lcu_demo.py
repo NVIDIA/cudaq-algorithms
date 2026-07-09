@@ -82,7 +82,7 @@ def main():
     print(f"manual composition matches action(): "
           f"{np.allclose(manual, good, atol=1e-12)}")
 
-    banner("7. Zero-ancilla (single-term) encodings")
+    banner("7. Single-term encodings (normalized to one ancilla)")
     negative_single = PauliLCU({"XZ": -0.5})
     positive_single = PauliLCU({"XZ": +0.5})
     print(negative_single)

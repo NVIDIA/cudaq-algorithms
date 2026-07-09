@@ -39,7 +39,7 @@ enc = PauliLCU(spin_op, num_qubits=2)
 enc = PauliLCU([(0.7, "ZI"), (-0.43, "IZ")])
 
 enc.num_system, enc.num_ancilla, enc.num_terms
-enc.alpha                  # LCU 1-norm (alias: enc.normalization)
+enc.alpha                  # LCU 1-norm
 enc.terms                  # [(coeff, word), ...]
 enc.constant_term          # sum of identity terms
 
@@ -149,7 +149,9 @@ data.
 4. Known CUDA-Q Python lowering limitations worked around in the modules:
    - Empty `list` kernel arguments fail with "Cannot infer runtime argument
      type" ([cuda-quantum#4847](https://github.com/NVIDIA/cuda-quantum/issues/4847))
-     — zero-ancilla encodings and degree-0 sequences are special-cased.
+     — single-term encodings are normalized to one (idle) ancilla so
+     no flattened list is ever empty, and degree-0 sequences pad the
+     unused directions entry.
    - A `@dataclass` kernel argument with a `list[int]` field containing a
      negative value fails with `std::bad_cast`
      ([cuda-quantum#4846](https://github.com/NVIDIA/cuda-quantum/issues/4846))
@@ -160,7 +162,15 @@ data.
      — kernel bodies use positively-guarded blocks instead of early-return
      guards.
 
-5. Test methodology: dense Pauli-sum action match, a single-term
+5. Circuit-level optimizations deliberately deferred (documented, not
+   implemented): cancelling the PREPARE / PREPARE-dagger identity pair at
+   the final walk step's uncompute boundary, folding the QSVT zero
+   reflection into the adjacent projector phase (both are diagonal on the
+   signal register), and Gray-code ordering of SELECT's control-bit
+   updates (~num_ancilla-fold fewer X gates). All are depth optimizations
+   with no effect on simulator results.
+
+6. Test methodology: dense Pauli-sum action match, a single-term
    negative-coefficient sign regression, Chebyshev moments on an asymmetric
    spectrum via both observables, adjoint walks inverting forward walks,
    controlled walks/sequences against their uncontrolled references at both

@@ -14,7 +14,7 @@ import cudaq
 
 from cudaq_algorithms import (PauliLCU, Walk, reflection_observable,
                               select_observable, state_from)
-from test_pauli_lcu import dense_matrix, random_ket
+from helpers import dense_matrix, random_ket
 
 
 def exact_chebyshev_moments(terms, num_qubits, alpha, ket, count):
@@ -96,14 +96,28 @@ def test_reflection_and_select_observables_shapes():
     assert select is not None
 
 
-def test_walk_rejects_degenerate_encoding():
+def test_single_term_encoding_walks_with_correct_sign():
+    # Single-term encodings are normalized to one ancilla, so Walk and the
+    # observables apply unchanged — and the odd moment carries the sign.
     single = PauliLCU({"XZ": -0.5})
-    with pytest.raises(ValueError):
-        Walk(single)
-    with pytest.raises(ValueError):
-        reflection_observable(single)
-    with pytest.raises(ValueError):
-        select_observable(single)
+    walk = Walk(single)
+    ket = random_ket(2, seed=9)
+    scaled = dense_matrix([(-0.5, "XZ")], 2) / single.alpha
+    expected_t1 = float(np.real(ket.conj() @ (scaled @ ket)))
+    assert walk.moment(ket, 1) == pytest.approx(expected_t1, abs=1e-10)
+    assert walk.moment(ket, 0) == pytest.approx(1.0, abs=1e-10)
+
+
+def test_walk_power_validation():
+    walk = Walk(PauliLCU({"ZI": 0.7, "XX": 0.19}))
+    with pytest.raises(ValueError, match="power"):
+        walk.kernel(power=-3)
+    with pytest.raises(ValueError, match="power"):
+        walk.kernel(power=2.9)
+    with pytest.raises(ValueError, match="order"):
+        walk.moment([1, 0, 0, 0], 2.9)
+    with pytest.raises(ValueError, match="count"):
+        walk.moments([1, 0, 0, 0], -1)
 
 
 def _controlled_layout_maps(num_system, num_ancilla):

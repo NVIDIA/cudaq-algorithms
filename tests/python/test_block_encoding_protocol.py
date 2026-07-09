@@ -33,64 +33,49 @@ class ForeignEncoding:
     """
 
     def __init__(self, inner: PauliLCU):
+        self.num_system = inner.num_system
+        self.num_ancilla = inner.num_ancilla
+        self.alpha = inner.alpha
+        self._prepare = inner.prepare_kernel()
+        self._unprepare = inner.unprepare_kernel()
+        self._apply = inner.apply_kernel()
+        self._controlled_apply = inner.controlled_apply_kernel()
+        self._walk_step = inner.walk_step_kernel()
+        self._adjoint_walk_step = inner.adjoint_walk_step_kernel()
+        self._controlled_walk_step = inner.controlled_walk_step_kernel()
+        self._controlled_adjoint_walk_step = (
+            inner.controlled_adjoint_walk_step_kernel())
         self._select_observable = inner.select_observable()
-        self._kernels = {
-            "prepare": inner.prepare_kernel(),
-            "unprepare": inner.unprepare_kernel(),
-            "apply": inner.apply_kernel(),
-            "controlled_apply": inner.controlled_apply_kernel(),
-            "step": inner.walk_step_kernel(),
-            "adjoint_step": inner.adjoint_walk_step_kernel(),
-            "controlled_step": inner.controlled_walk_step_kernel(),
-            "controlled_adjoint_step":
-                inner.controlled_adjoint_walk_step_kernel(),
-        }
-        self._geometry = (inner.num_system, inner.num_ancilla, inner.alpha)
-
-    @property
-    def num_system(self):
-        return self._geometry[0]
-
-    @property
-    def num_ancilla(self):
-        return self._geometry[1]
-
-    @property
-    def alpha(self):
-        return self._geometry[2]
 
     def prepare_kernel(self):
-        return self._kernels["prepare"]
+        return self._prepare
 
     def unprepare_kernel(self):
-        return self._kernels["unprepare"]
+        return self._unprepare
 
     def apply_kernel(self):
-        return self._kernels["apply"]
+        return self._apply
 
     def controlled_apply_kernel(self):
-        return self._kernels["controlled_apply"]
+        return self._controlled_apply
 
     def walk_step_kernel(self):
-        return self._kernels["step"]
+        return self._walk_step
 
     def adjoint_walk_step_kernel(self):
-        return self._kernels["adjoint_step"]
+        return self._adjoint_walk_step
 
     def controlled_walk_step_kernel(self):
-        return self._kernels["controlled_step"]
+        return self._controlled_walk_step
 
     def controlled_adjoint_walk_step_kernel(self):
-        return self._kernels["controlled_adjoint_step"]
+        return self._controlled_adjoint_walk_step
 
     def select_observable(self):
         return self._select_observable
 
 
-def _random_ket(dimension, seed=3):
-    rng = np.random.default_rng(seed)
-    ket = rng.normal(size=dimension).astype(np.complex128)
-    return ket / np.linalg.norm(ket)
+from helpers import random_ket
 
 
 def test_pauli_lcu_satisfies_protocol():
@@ -108,7 +93,7 @@ def test_foreign_encoding_satisfies_protocol():
 def test_walk_moments_encoding_generic():
     lcu = PauliLCU(HAMILTONIAN)
     foreign = ForeignEncoding(lcu)
-    psi = _random_ket(1 << lcu.num_system)
+    psi = random_ket(lcu.num_system, seed=3)
     for order in range(5):
         reference = Walk(lcu).moment(psi, order)
         via_protocol = Walk(foreign).moment(psi, order)
@@ -117,7 +102,7 @@ def test_walk_moments_encoding_generic():
 
 def test_walk_controlled_roundtrip_encoding_generic():
     foreign = ForeignEncoding(PauliLCU(HAMILTONIAN))
-    psi = _random_ket(1 << foreign.num_system, seed=11)
+    psi = random_ket(foreign.num_system, seed=11)
     kernel = Walk(foreign).controlled_roundtrip_kernel(power=2)
     state = np.asarray(cudaq.get_state(kernel, sim.state_from(psi)))
     dimension = len(psi)
@@ -130,7 +115,7 @@ def test_walk_controlled_roundtrip_encoding_generic():
 def test_qsvt_sequence_encoding_generic():
     lcu = PauliLCU(HAMILTONIAN)
     foreign = ForeignEncoding(lcu)
-    psi = _random_ket(1 << lcu.num_system)
+    psi = random_ket(lcu.num_system, seed=3)
     sequence = PhaseSequence([0.4, -0.2, 0.7, 0.1])
     reference = sim.transform(QSVT(lcu), psi, sequence)
     state = np.asarray(

@@ -36,7 +36,8 @@ from typing import TYPE_CHECKING, TypeAlias, Union
 
 import cudaq
 
-from .common_kernels import (_bit_projector, controlled_reflect_about_zero,
+from .common_kernels import (_bit_projector, _validate_power,
+                             controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
                              signal_phase)
 
@@ -67,11 +68,14 @@ _PAULI_CODES = {"X": 1, "Y": 2, "Z": 3}
 
 @cudaq.kernel
 def prepare(ancilla: cudaq.qview, angles: list[float]):
-    """PREPARE: encode sqrt(|c_i| / alpha) amplitudes on the ancilla register."""
+    """PREPARE: encode sqrt(|c_i| / alpha) amplitudes on the ancilla register.
+
+    Positive guard, not early return: kernel ``return`` is silently
+    ignored (cuda-quantum#4845).
+    """
     n = ancilla.size()
-    if n == 0:
-        return
-    ry(angles[0], ancilla[0])
+    if n > 0:
+        ry(angles[0], ancilla[0])
     idx = 1
     for layer in range(1, n):
         branches = 1 << layer
@@ -88,10 +92,14 @@ def prepare(ancilla: cudaq.qview, angles: list[float]):
 
 @cudaq.kernel
 def unprepare(ancilla: cudaq.qview, angles: list[float]):
-    """PREPARE dagger."""
+    """PREPARE dagger.
+
+    Hand-written inverse of ``prepare`` (deliberate: ``cudaq.adjoint`` of
+    a kernel with this loop/branch structure is not exercised by our
+    conformance checks, so the explicit reverse is kept). Guards are
+    positive blocks, not early returns (cuda-quantum#4845).
+    """
     n = ancilla.size()
-    if n == 0:
-        return
     idx = len(angles) - 1
     for reverse_layer in range(n - 1):
         layer = n - 1 - reverse_layer
@@ -106,14 +114,19 @@ def unprepare(ancilla: cudaq.qview, angles: list[float]):
             for bit in range(layer):
                 if ((branch >> bit) & 1) == 0:
                     x(ancilla[layer - 1 - bit])
-    ry(-angles[0], ancilla[0])
+    if n > 0:
+        ry(-angles[0], ancilla[0])
 
 
 @cudaq.kernel
 def select(ancilla: cudaq.qview, system: cudaq.qview, term_controls: list[int],
            term_ops: list[int], term_lengths: list[int],
            term_signs: list[int]):
-    """SELECT: apply Pauli term i, controlled on ancilla state |i>."""
+    """SELECT: apply Pauli term i, controlled on ancilla state |i>.
+
+    Requires a non-empty ancilla register (PauliLCU always provides at
+    least one ancilla).
+    """
     n_anc = ancilla.size()
     ptr_ctrl = 0
     ptr_op = 0
@@ -126,26 +139,14 @@ def select(ancilla: cudaq.qview, system: cudaq.qview, term_controls: list[int],
             code = term_ops[ptr_op]
             target = term_ops[ptr_op + 1]
             ptr_op += 2
-            if n_anc == 0:
-                if code == 1:
-                    x(system[target])
-                elif code == 2:
-                    y(system[target])
-                else:
-                    z(system[target])
+            if code == 1:
+                x.ctrl(ancilla, system[target])
+            elif code == 2:
+                y.ctrl(ancilla, system[target])
             else:
-                if code == 1:
-                    x.ctrl(ancilla, system[target])
-                elif code == 2:
-                    y.ctrl(ancilla, system[target])
-                else:
-                    z.ctrl(ancilla, system[target])
+                z.ctrl(ancilla, system[target])
         if term_signs[i] < 0:
-            if n_anc == 0:
-                # Single-term LCU: no projected block exists, so the sign is
-                # part of the encoded operator. rz(2*pi) is exactly -I.
-                rz(6.283185307179586, system[0])
-            elif n_anc == 1:
+            if n_anc == 1:
                 z(ancilla[0])
             else:
                 z.ctrl(ancilla.front(n_anc - 1), ancilla[n_anc - 1])
@@ -186,13 +187,9 @@ def controlled_select(control_and_ancilla: cudaq.qview, system: cudaq.qview,
             else:
                 z.ctrl(control_and_ancilla, system[target])
         if term_signs[i] < 0:
-            if n_anc == 0:
-                # Controlled -I on the system is a Z on the control.
-                z(control_and_ancilla[0])
-            else:
-                total = control_and_ancilla.size()
-                z.ctrl(control_and_ancilla.front(total - 1),
-                       control_and_ancilla[total - 1])
+            total = control_and_ancilla.size()
+            z.ctrl(control_and_ancilla.front(total - 1),
+                   control_and_ancilla[total - 1])
         back = ptr_ctrl - 1
         for b in range(n_anc):
             if term_controls[back] == 0:
@@ -294,10 +291,10 @@ def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
     for i in range(1, len(phases)):
         if walk_directions[i - 1] == 1:
             reflect_about_zero(signal)
-            lcu_apply(signal, system, angles, term_controls, term_ops,
+            apply(signal, system, angles, term_controls, term_ops,
                       term_lengths, term_signs)
         else:
-            lcu_apply(signal, system, angles, term_controls, term_ops,
+            apply(signal, system, angles, term_controls, term_ops,
                       term_lengths, term_signs)
             reflect_about_zero(signal)
         signal_phase(signal, phases[i])
@@ -493,7 +490,12 @@ class PauliLCU:
 
         self._terms = kept
         self._alpha = sum(abs(c) for c, _ in kept)
-        self._num_ancilla = max(0, (len(kept) - 1).bit_length())
+        # At least one ancilla even for a single term (amplitude [1, 0] on
+        # one idle qubit): empty flattened lists cannot cross the kernel
+        # boundary (cuda-quantum#4847), and a degenerate 0-ancilla encoding
+        # would lose the walk's -H/alpha sign (the reflection that supplies
+        # it is a no-op on an empty register).
+        self._num_ancilla = max(1, (len(kept) - 1).bit_length())
 
         # Precompute the flattened arrays that cross the kernel boundary.
         probabilities = [abs(c) / self._alpha for c, _ in kept]
@@ -536,8 +538,6 @@ class PauliLCU:
         """LCU normalization (1-norm of retained coefficients)."""
         return self._alpha
 
-    normalization = alpha
-
     @property
     def constant_term(self) -> float:
         return self._constant
@@ -547,11 +547,18 @@ class PauliLCU:
         return list(self._terms)
 
     @property
+    def _kernel_data(self) -> LCUKernelArgs:
+        """Internal, uncopied flattened arrays for the kernel factories."""
+        return (self._angles, self._term_controls, self._term_ops,
+                self._term_lengths, self._term_signs)
+
+    @property
     def kernel_args(self) -> LCUKernelArgs:
         """(angles, term_controls, term_ops, term_lengths, term_signs).
 
         Escape hatch for composing the module-level kernels inside your own
         ``@cudaq.kernel``; the factory methods below capture these for you.
+        Returns defensive copies.
         """
         return (list(self._angles), list(self._term_controls),
                 list(self._term_ops), list(self._term_lengths),
@@ -567,58 +574,13 @@ class PauliLCU:
     # Kernel factories
     # ------------------------------------------------------------------
 
-    def _zero_ancilla_kernel(self, repetitions: int) -> Kernel:
-        """Single-term (0-ancilla) special case.
-
-        Needed because CUDA-Q cannot marshal empty ``list`` kernel arguments
-        ("Cannot infer runtime argument type"), and with zero ancillas the
-        flattened control data is empty. The encoding degenerates to the
-        signed Pauli word, so apply it directly. One walk step also reduces
-        to one signed application (the reflections are empty-register no-ops).
-        """
-        ops = list(self._term_ops)
-        negative = self._term_signs[0] < 0
-        steps = int(repetitions)
-
-        if ops:
-
-            @cudaq.kernel
-            def single_term(state: cudaq.State):
-                system = cudaq.qvector(state)
-                for _ in range(steps):
-                    for i in range(len(ops) // 2):
-                        code = ops[2 * i]
-                        target = ops[2 * i + 1]
-                        if code == 1:
-                            x(system[target])
-                        elif code == 2:
-                            y(system[target])
-                        else:
-                            z(system[target])
-                    if negative:
-                        rz(6.283185307179586, system[0])
-
-            return single_term
-
-        @cudaq.kernel
-        def single_identity_term(state: cudaq.State):
-            system = cudaq.qvector(state)
-            for _ in range(steps):
-                if negative:
-                    rz(6.283185307179586, system[0])
-
-        return single_identity_term
-
     def encode_kernel(self) -> Kernel:
         """A ``@cudaq.kernel(state)`` applying the full block encoding.
 
         The kernel allocates the system register from ``state`` and the
         ancilla register (in |0...0>) after it.
         """
-        if self.num_ancilla == 0:
-            return self._zero_ancilla_kernel(1)
-
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
 
         @cudaq.kernel
@@ -635,12 +597,9 @@ class PauliLCU:
         The all-zero-ancilla block of the result is T_power(-H/alpha) applied
         to the input state (Chebyshev polynomial of the walk block -H/alpha).
         """
-        if self.num_ancilla == 0:
-            return self._zero_ancilla_kernel(power)
-
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
-        steps = int(power)
+        steps = _validate_power(power)
 
         @cudaq.kernel
         def walked(state: cudaq.State):
@@ -685,7 +644,7 @@ class PauliLCU:
 
     def apply_kernel(self) -> Kernel:
         """``(ancilla, system)``: the full block encoding U_A."""
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
         def apply_encoding(ancilla: cudaq.qview, system: cudaq.qview):
@@ -699,7 +658,7 @@ class PauliLCU:
         Uncontrolled PREPARE pairs wrap the controlled SELECT, so the
         circuit is the identity at control |0>.
         """
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
 
         @cudaq.kernel
@@ -714,7 +673,7 @@ class PauliLCU:
 
     def walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one qubitization walk step W."""
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
         def walk_step(ancilla: cudaq.qview, system: cudaq.qview):
@@ -724,7 +683,7 @@ class PauliLCU:
 
     def adjoint_walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one adjoint walk step W†."""
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
         def adjoint_walk_step(ancilla: cudaq.qview, system: cudaq.qview):
@@ -735,7 +694,7 @@ class PauliLCU:
 
     def controlled_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled walk step."""
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
         def controlled_walk_step(control_and_ancilla: cudaq.qview,
@@ -747,7 +706,7 @@ class PauliLCU:
 
     def controlled_adjoint_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled adjoint walk step."""
-        angles, controls, ops, lengths, signs = self.kernel_args
+        angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
         def controlled_adjoint_walk_step(control_and_ancilla: cudaq.qview,

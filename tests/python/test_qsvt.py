@@ -17,7 +17,7 @@ import cudaq
 from cudaq_algorithms import sim_utils as sim
 from cudaq_algorithms import (ADJOINT, FORWARD, PauliLCU, PhaseSequence, QSVT,
                               recover_real_time_evolution, state_from)
-from test_pauli_lcu import dense_matrix, random_ket
+from helpers import dense_matrix, random_ket
 
 
 def reference_response(sequence: PhaseSequence, x: float) -> complex:
@@ -157,9 +157,25 @@ def test_degree_zero_sequence_is_a_signal_phase():
     assert np.allclose(good, np.exp(0.7j) * ket, atol=1e-12)
 
 
-def test_qsvt_rejects_degenerate_encoding():
-    with pytest.raises(ValueError):
-        QSVT(PauliLCU({"XZ": -0.5}))
+def test_qsvt_single_term_encoding_block():
+    # Single-term encodings are normalized to one ancilla; a degree-1
+    # all-zero phase sequence implements the walk block -H/alpha.
+    enc = PauliLCU({"XZ": -0.5})
+    transformer = QSVT(enc)
+    ket = random_ket(2, seed=5)
+    block = sim.transform(transformer, ket, [0.0, 0.0])
+    expected = -(dense_matrix([(-0.5, "XZ")], 2) / enc.alpha) @ ket
+    assert np.allclose(block, expected, atol=1e-10)
+
+
+def test_phase_sequence_conflicting_retag_rejected():
+    seq = PhaseSequence([0.1, 0.2, 0.3], convention="qsp")
+    transformer = QSVT(PauliLCU({"ZI": 0.7, "XX": 0.19}))
+    with pytest.raises(ValueError, match="reinterpret"):
+        transformer.kernel(seq, convention="qsvt")
+    # Matching or absent convention tags pass through unchanged.
+    assert transformer.kernel(seq, convention="qsp") is not None
+    assert transformer.kernel(seq) is not None
 
 
 def _qsppack_hamiltonian_simulation_phases(tau, degree):

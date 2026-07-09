@@ -22,13 +22,19 @@ and work. Code that needs the compiled APIs will raise ``ImportError`` at
 the point of use instead of at package import.
 """
 
+# The absence of the compiled extension is tolerated (source checkouts
+# without a build); a PRESENT-but-broken extension is not — an extension
+# that fails to load (ABI mismatch, missing shared-library dependency)
+# re-raises with the loader's message instead of silently degrading.
+_NATIVE_IMPORT_ERROR = None
 try:
     from ._pycudaq_algorithms import *
     from ._pycudaq_algorithms import __version__
-except ImportError:
-    # Pure-Python-only environment (no compiled extension). The C++-backed
-    # APIs are unavailable, but everything imported below still works.
-    __version__ = "CUDA-Q Algorithms (pure Python; native extension not built)"
+except ModuleNotFoundError as exc:
+    if exc.name != __name__ + "._pycudaq_algorithms":
+        raise
+    _NATIVE_IMPORT_ERROR = exc
+    __version__ = "CUDA-Q Algorithms (compiled extension not built)"
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
 from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,

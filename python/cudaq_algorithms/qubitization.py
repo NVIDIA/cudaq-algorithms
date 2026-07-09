@@ -28,21 +28,12 @@ from typing import TYPE_CHECKING
 import cudaq
 from cudaq import spin
 
-from .common_kernels import _bit_projector
+from .common_kernels import _bit_projector, _validate_power
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
     from .block_encoding import BlockEncoding, Kernel
-
-
-
-
-
-
-
-
-
 
 
 # ============================================================================
@@ -82,10 +73,19 @@ class Walk:
     def __init__(self, encoding: BlockEncoding) -> None:
         if encoding.num_ancilla == 0:
             raise ValueError(
-                "Walk requires an encoding with at least one ancilla "
-                "(two or more LCU terms); a single-term encoding is the "
-                "signed Pauli word itself")
+                "Walk requires an encoding with at least one ancilla")
         self.encoding = encoding
+        # Encoding factories and observables are immutable per encoding;
+        # mint each once and reuse across kernel builds (a moments() sweep
+        # otherwise recompiles identical sub-kernels every call).
+        self._kernel_cache: dict = {}
+        self._observable_cache: dict = {}
+
+    def _encoding_kernel(self, factory_name: str):
+        if factory_name not in self._kernel_cache:
+            self._kernel_cache[factory_name] = getattr(
+                self.encoding, factory_name)()
+        return self._kernel_cache[factory_name]
 
     def __repr__(self) -> str:
         return f"Walk({self.encoding!r})"
@@ -99,11 +99,11 @@ class Walk:
         # Delegate every encoding-specific circuit to the injected encoding;
         # this factory only sequences the returned (data-free) kernels.
         n_anc = self.encoding.num_ancilla
-        steps = int(power)
-        prep = self.encoding.prepare_kernel()
-        unprep = self.encoding.unprepare_kernel()
-        step = (self.encoding.walk_step_kernel()
-                if forward else self.encoding.adjoint_walk_step_kernel())
+        steps = _validate_power(power)
+        prep = self._encoding_kernel("prepare_kernel")
+        unprep = self._encoding_kernel("unprepare_kernel")
+        step = self._encoding_kernel(
+            "walk_step_kernel" if forward else "adjoint_walk_step_kernel")
 
         if uncompute:
 
@@ -140,11 +140,11 @@ class Walk:
     def roundtrip_kernel(self, power: int = 1) -> Kernel:
         """PREPARE, W^power, (W†)^power, UNPREPARE — the identity, for tests."""
         n_anc = self.encoding.num_ancilla
-        steps = int(power)
-        prep = self.encoding.prepare_kernel()
-        unprep = self.encoding.unprepare_kernel()
-        step = self.encoding.walk_step_kernel()
-        adjoint_step = self.encoding.adjoint_walk_step_kernel()
+        steps = _validate_power(power)
+        prep = self._encoding_kernel("prepare_kernel")
+        unprep = self._encoding_kernel("unprepare_kernel")
+        step = self._encoding_kernel("walk_step_kernel")
+        adjoint_step = self._encoding_kernel("adjoint_walk_step_kernel")
 
         @cudaq.kernel
         def roundtrip(state: cudaq.State):
@@ -170,11 +170,11 @@ class Walk:
         the identity up to the (cancelling) PREPARE pair.
         """
         n_anc = self.encoding.num_ancilla
-        steps = int(power)
+        steps = _validate_power(power)
         flip_control = int(control_state) == 1
-        prep = self.encoding.prepare_kernel()
-        unprep = self.encoding.unprepare_kernel()
-        controlled_step = self.encoding.controlled_walk_step_kernel()
+        prep = self._encoding_kernel("prepare_kernel")
+        unprep = self._encoding_kernel("unprepare_kernel")
+        controlled_step = self._encoding_kernel("controlled_walk_step_kernel")
 
         if uncompute:
 
@@ -207,13 +207,13 @@ class Walk:
                                     control_state: int = 1) -> Kernel:
         """Controlled W^power then controlled (W dagger)^power — identity."""
         n_anc = self.encoding.num_ancilla
-        steps = int(power)
+        steps = _validate_power(power)
         flip_control = int(control_state) == 1
-        prep = self.encoding.prepare_kernel()
-        unprep = self.encoding.unprepare_kernel()
-        controlled_step = self.encoding.controlled_walk_step_kernel()
-        controlled_adjoint_step = (
-            self.encoding.controlled_adjoint_walk_step_kernel())
+        prep = self._encoding_kernel("prepare_kernel")
+        unprep = self._encoding_kernel("unprepare_kernel")
+        controlled_step = self._encoding_kernel("controlled_walk_step_kernel")
+        controlled_adjoint_step = self._encoding_kernel(
+            "controlled_adjoint_walk_step_kernel")
 
         @cudaq.kernel
         def controlled_roundtrip(state: cudaq.State):
@@ -239,22 +239,30 @@ class Walk:
         """Measure the Chebyshev moment <T_order(H/alpha)> for |ket>."""
         from .pauli_lcu import state_from
 
+        if int(order) != order or order < 0:
+            raise ValueError("order must be a non-negative integer")
         order = int(order)
-        if order < 0:
-            raise ValueError("order must be non-negative")
         power = order // 2
         if order % 2 == 0:
             # Geometry-only (2|0..0><0..0| - I on the ancillas): derivable
             # for any zero-flagged encoding, no encoding hook needed.
             kernel = self.kernel(power=power, uncompute=True)
-            observable = reflection_observable(self.encoding)
+            if "reflection" not in self._observable_cache:
+                self._observable_cache["reflection"] = reflection_observable(
+                    self.encoding)
+            observable = self._observable_cache["reflection"]
         else:
             # Encoding-specific: delegated to the BlockEncoding hook.
             kernel = self.kernel(power=power, uncompute=False)
-            observable = self.encoding.select_observable()
+            if "select" not in self._observable_cache:
+                self._observable_cache["select"] = (
+                    self.encoding.select_observable())
+            observable = self._observable_cache["select"]
         state = state_from(ket)
         return float(cudaq.observe(kernel, observable, state).expectation())
 
     def moments(self, ket: ArrayLike, count: int) -> list[float]:
         """Measure moments <T_0>, ..., <T_{count-1}> for |ket>."""
+        if int(count) != count or count < 0:
+            raise ValueError("count must be a non-negative integer")
         return [self.moment(ket, order) for order in range(int(count))]
