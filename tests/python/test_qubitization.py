@@ -24,8 +24,9 @@ def exact_chebyshev_moments(terms, num_qubits, alpha, ket, count):
     chebyshev = [np.eye(scaled.shape[0], dtype=np.complex128), scaled]
     while len(chebyshev) < count:
         chebyshev.append(2.0 * scaled @ chebyshev[-1] - chebyshev[-2])
-    return [float(np.real(ket.conj() @ chebyshev[k] @ ket))
-            for k in range(count)]
+    return [
+        float(np.real(ket.conj() @ chebyshev[k] @ ket)) for k in range(count)
+    ]
 
 
 THREE_TERMS_1Q = {"I": 0.2, "X": 0.5, "Z": 0.3}  # asymmetric spectrum
@@ -37,12 +38,12 @@ def test_moments_match_dense_chebyshev_1q():
     walk = Walk(enc)
 
     theta = 0.7
-    ket = np.array([np.cos(theta / 2), np.sin(theta / 2)],
-                   dtype=np.complex128)
+    ket = np.array([np.cos(theta / 2), np.sin(theta / 2)], dtype=np.complex128)
     count = 6  # both parities, walk powers up to 2
     measured = walk.moments(ket, count)
-    expected = exact_chebyshev_moments(
-        [(c, w) for w, c in THREE_TERMS_1Q.items()], 1, enc.alpha, ket, count)
+    expected = exact_chebyshev_moments([(c, w)
+                                        for w, c in THREE_TERMS_1Q.items()], 1,
+                                       enc.alpha, ket, count)
     assert np.allclose(measured, expected, atol=1e-10)
 
 
@@ -54,8 +55,9 @@ def test_moments_match_dense_chebyshev_2q():
     ket[1] = 1.0  # basis state, HF-style
     count = 5
     measured = walk.moments(ket, count)
-    expected = exact_chebyshev_moments(
-        [(c, w) for w, c in FOUR_TERMS_2Q.items()], 2, enc.alpha, ket, count)
+    expected = exact_chebyshev_moments([(c, w)
+                                        for w, c in FOUR_TERMS_2Q.items()], 2,
+                                       enc.alpha, ket, count)
     assert np.allclose(measured, expected, atol=1e-10)
 
 
@@ -137,6 +139,7 @@ def _controlled_layout_maps(num_system, num_ancilla):
     Uncontrolled: [system][ancilla]; controlled: [system][control][ancilla].
     q[0] is the least-significant statevector bit.
     """
+
     def uncontrolled(sys, anc):
         return sys + (anc << num_system)
 
@@ -171,8 +174,9 @@ def test_controlled_walk_respects_control():
             assert abs(on_state[con_index(sys, 0, anc)]) < 1e-10
             # Control |0>: identity — input state, ancillas in |0>.
             expected = ket[sys] if anc == 0 else 0.0
-            assert off_state[con_index(sys, 0, anc)] == pytest.approx(
-                expected, abs=1e-10)
+            assert off_state[con_index(sys, 0,
+                                       anc)] == pytest.approx(expected,
+                                                              abs=1e-10)
             assert abs(off_state[con_index(sys, 1, anc)]) < 1e-10
 
 

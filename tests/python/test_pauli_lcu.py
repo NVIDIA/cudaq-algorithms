@@ -34,8 +34,8 @@ def test_action_matches_dense_hamiltonian():
     assert enc.alpha == pytest.approx(1.43)
 
     ket = random_ket(2, seed=7)
-    expected = dense_matrix(list((c, w) for w, c in FOUR_TERMS.items()),
-                            2) @ ket / enc.alpha
+    expected = dense_matrix(list(
+        (c, w) for w, c in FOUR_TERMS.items()), 2) @ ket / enc.alpha
     assert np.allclose(sim.action(enc, ket), expected, atol=1e-10)
 
 
@@ -46,7 +46,8 @@ def test_spin_operator_and_pairs_inputs_agree():
 
     assert from_op.alpha == pytest.approx(from_pairs.alpha)
     ket = random_ket(2, seed=11)
-    assert np.allclose(sim.action(from_op, ket), sim.action(from_pairs, ket),
+    assert np.allclose(sim.action(from_op, ket),
+                       sim.action(from_pairs, ket),
                        atol=1e-10)
 
 
@@ -80,7 +81,11 @@ def test_identity_term_handling():
     assert enc.num_terms == 3
     assert enc.alpha == pytest.approx(1.0)
 
-    excluded = PauliLCU({"II": 0.2, "XI": 0.5, "ZI": 0.3},
+    excluded = PauliLCU({
+        "II": 0.2,
+        "XI": 0.5,
+        "ZI": 0.3
+    },
                         include_identity=False)
     assert excluded.constant_term == pytest.approx(0.2)
     assert excluded.num_terms == 2
@@ -100,7 +105,8 @@ def test_walk_moments_match_chebyshev():
     weights = (math.cos(delta / 2)**2, math.sin(delta / 2)**2)
     eigenvalues = (0.2 + lam, 0.2 - lam)
 
-    ket = np.array([math.cos(prep_angle / 2), math.sin(prep_angle / 2)],
+    ket = np.array([math.cos(prep_angle / 2),
+                    math.sin(prep_angle / 2)],
                    dtype=np.complex128)
     for k in (1, 2, 3):
         state = cudaq.get_state(enc.walk_kernel(power=k), state_from(ket))
@@ -108,9 +114,8 @@ def test_walk_moments_match_chebyshev():
             np.sum(np.abs(sim.good_subspace(enc, state))**2))
         moment = 2.0 * zero_probability - 1.0
 
-        expected = sum(
-            w * math.cos(2 * k * math.acos(e / enc.alpha))
-            for w, e in zip(weights, eigenvalues))
+        expected = sum(w * math.cos(2 * k * math.acos(e / enc.alpha))
+                       for w, e in zip(weights, eigenvalues))
         assert moment == pytest.approx(expected, abs=1e-10)
 
 
@@ -167,10 +172,11 @@ def test_module_level_phase_sequence_kernels_compose():
                                         lengths, signs)
 
     reference = np.asarray(
-        cudaq.get_state(QSVT(enc).controlled_kernel(seq, control_state=1),
-                        sim.state_from(ket)))
-    state = np.asarray(cudaq.get_state(composed_controlled,
-                                       sim.state_from(ket)))
+        cudaq.get_state(
+            QSVT(enc).controlled_kernel(seq, control_state=1),
+            sim.state_from(ket)))
+    state = np.asarray(
+        cudaq.get_state(composed_controlled, sim.state_from(ket)))
     assert np.allclose(state, reference, atol=1e-12)
 
 
@@ -209,5 +215,6 @@ def test_identity_only_hamiltonian_encodes_signed_identity():
     # The walk machinery applies unchanged: T_1(-H/alpha) = -sign * I.
     walk_state = np.asarray(
         cudaq.get_state(negative.walk_kernel(power=1), sim.state_from(ket)))
-    assert np.allclose(sim.good_subspace(negative, walk_state), ket,
+    assert np.allclose(sim.good_subspace(negative, walk_state),
+                       ket,
                        atol=1e-12)

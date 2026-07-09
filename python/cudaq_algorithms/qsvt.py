@@ -107,7 +107,7 @@ class PhaseSequence:
         self.convention = convention
 
         if walk_directions is None:
-            self.walk_directions = (FORWARD,) * self.degree
+            self.walk_directions = (FORWARD, ) * self.degree
         else:
             self.walk_directions = tuple(
                 _direction_code(d) for d in walk_directions)
@@ -148,10 +148,6 @@ def _as_sequence(sequence: PhaseSequence | Iterable[float],
                 "new PhaseSequence instead.")
         return sequence
     return PhaseSequence(sequence, convention=convention or "qsvt")
-
-
-
-
 
 
 # ============================================================================

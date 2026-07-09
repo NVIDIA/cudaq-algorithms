@@ -33,6 +33,6 @@ def dense_matrix(terms, num_qubits):
 
 def random_ket(num_qubits, seed):
     rng = np.random.default_rng(seed)
-    ket = rng.normal(size=1 << num_qubits) + 1.0j * rng.normal(
-        size=1 << num_qubits)
+    ket = rng.normal(
+        size=1 << num_qubits) + 1.0j * rng.normal(size=1 << num_qubits)
     return (ket / np.linalg.norm(ket)).astype(np.complex128)

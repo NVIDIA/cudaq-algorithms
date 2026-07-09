@@ -37,7 +37,6 @@ if TYPE_CHECKING:
 
     from .block_encoding import BlockEncoding, Kernel
 
-
 # ============================================================================
 # Observables (system register at qubits [0, ns), ancillas at [ns, ns+na) —
 # matching the factory kernels, which allocate the system register first)
@@ -104,8 +103,7 @@ class Walk:
     # Kernel factories
     # ------------------------------------------------------------------
 
-    def _factory(self, power: int, uncompute: bool,
-                 forward: bool) -> Kernel:
+    def _factory(self, power: int, uncompute: bool, forward: bool) -> Kernel:
         # Delegate every encoding-specific circuit to the injected encoding;
         # this factory only sequences the returned (data-free) kernels.
         n_anc = self._encoding.num_ancilla
@@ -142,8 +140,7 @@ class Walk:
         """``@cudaq.kernel(state)``: PREPARE, W^power, optionally UNPREPARE."""
         return self._factory(power, uncompute, forward=True)
 
-    def adjoint_kernel(self, power: int = 1,
-                       uncompute: bool = True) -> Kernel:
+    def adjoint_kernel(self, power: int = 1, uncompute: bool = True) -> Kernel:
         """``@cudaq.kernel(state)``: PREPARE, (W†)^power, optionally UNPREPARE."""
         return self._factory(power, uncompute, forward=False)
 
@@ -169,7 +166,9 @@ class Walk:
 
         return roundtrip
 
-    def controlled_kernel(self, power: int = 1, control_state: int = 1,
+    def controlled_kernel(self,
+                          power: int = 1,
+                          control_state: int = 1,
                           uncompute: bool = True) -> Kernel:
         """``@cudaq.kernel(state)`` running controlled walks.
 
@@ -213,7 +212,8 @@ class Walk:
 
         return controlled_walked_prepared
 
-    def controlled_roundtrip_kernel(self, power: int = 1,
+    def controlled_roundtrip_kernel(self,
+                                    power: int = 1,
                                     control_state: int = 1) -> Kernel:
         """Controlled W^power then controlled (W dagger)^power — identity."""
         n_anc = self._encoding.num_ancilla

@@ -46,15 +46,14 @@ def reference_response(sequence: PhaseSequence, x: float) -> complex:
 
     def phase_matrix(phi):
         if sequence.convention == "qsp":
-            return np.diag(
-                [np.exp(1.0j * phi), np.exp(-1.0j * phi)]).astype(complex)
+            return np.diag([np.exp(1.0j * phi),
+                            np.exp(-1.0j * phi)]).astype(complex)
         return np.diag([np.exp(1.0j * phi), 1.0]).astype(complex)
 
     matrix = phase_matrix(sequence.phases[0])
     for i in range(1, len(sequence.phases)):
-        step = (step_adjoint
-                if sequence.walk_directions[i - 1] == ADJOINT
-                else step_forward)
+        step = (step_adjoint if sequence.walk_directions[i - 1] == ADJOINT else
+                step_forward)
         matrix = phase_matrix(sequence.phases[i]) @ step @ matrix
     return complex(matrix[0, 0])
 
@@ -94,8 +93,8 @@ def test_response_matches_circuit_on_eigenstate():
     transformer = QSVT(enc)
     lam = math.sqrt(0.34)
     theta = math.atan2(0.5, 0.3)
-    eigenvector = np.array([math.cos(theta / 2), math.sin(theta / 2)],
-                           dtype=np.complex128)
+    eigenvector = np.array(
+        [math.cos(theta / 2), math.sin(theta / 2)], dtype=np.complex128)
 
     for phases in ([0.3, -0.4], [0.2, -0.5, 0.1, 0.4]):
         seq = PhaseSequence(phases)
@@ -182,14 +181,13 @@ def _qsppack_hamiltonian_simulation_phases(tau, degree):
     qsppack = pytest.importorskip("qsppack")
     special = pytest.importorskip("scipy.special")
 
-    cos_coefficients = np.array(
-        [0.5 * special.jv(0, tau)] +
-        [((-1)**k) * special.jv(2 * k, tau)
-         for k in range(1, degree // 2 + 1)],
-        dtype=np.float64)
-    sin_coefficients = np.array(
-        [((-1)**k) * special.jv(2 * k + 1, tau) for k in range(degree // 2)],
-        dtype=np.float64)
+    cos_coefficients = np.array([0.5 * special.jv(0, tau)] +
+                                [((-1)**k) * special.jv(2 * k, tau)
+                                 for k in range(1, degree // 2 + 1)],
+                                dtype=np.float64)
+    sin_coefficients = np.array([((-1)**k) * special.jv(2 * k + 1, tau)
+                                 for k in range(degree // 2)],
+                                dtype=np.float64)
     options = {
         "criteria": 1e-12,
         "method": "Newton",
@@ -218,12 +216,12 @@ def test_hamiltonian_simulation_with_qsppack_phases():
     ket = rng.normal(size=4).astype(np.complex128)
     ket /= np.linalg.norm(ket)
 
-    cos_state = sim.transform(
-        transformer, ket, PhaseSequence(cos_phases, convention="qsp"))
-    sin_state = sim.transform(
-        transformer, ket, PhaseSequence(sin_phases, convention="qsp"))
-    evolved = recover_real_time_evolution(cos_state, sin_state,
-                                          cos_phases, sin_phases)
+    cos_state = sim.transform(transformer, ket,
+                              PhaseSequence(cos_phases, convention="qsp"))
+    sin_state = sim.transform(transformer, ket,
+                              PhaseSequence(sin_phases, convention="qsp"))
+    evolved = recover_real_time_evolution(cos_state, sin_state, cos_phases,
+                                          sin_phases)
 
     matrix = dense_matrix([(c, w) for w, c in terms.items()], 2)
     eigenvalues, eigenvectors = np.linalg.eigh(matrix)
@@ -255,10 +253,11 @@ def test_controlled_sequence_respects_control():
     for anc in range(1 << na):
         for sys in range(1 << ns):
             unc = reference[sys + (anc << ns)]
-            assert on_state[con_index(sys, 1, anc)] == pytest.approx(
-                unc, abs=1e-10)
+            assert on_state[con_index(sys, 1, anc)] == pytest.approx(unc,
+                                                                     abs=1e-10)
             assert abs(on_state[con_index(sys, 0, anc)]) < 1e-10
             expected = ket[sys] if anc == 0 else 0.0
-            assert off_state[con_index(sys, 0, anc)] == pytest.approx(
-                expected, abs=1e-10)
+            assert off_state[con_index(sys, 0,
+                                       anc)] == pytest.approx(expected,
+                                                              abs=1e-10)
             assert abs(off_state[con_index(sys, 1, anc)]) < 1e-10

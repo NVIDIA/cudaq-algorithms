@@ -55,11 +55,10 @@ HamiltonianLike: TypeAlias = Union[cudaq.SpinOperator, Mapping[str, float],
 # The flattened arrays that cross the kernel boundary, in the order the
 # module-level kernels take them:
 # (angles, term_controls, term_ops, term_lengths, term_signs).
-LCUKernelArgs: TypeAlias = tuple[list[float], list[int], list[int],
-                                 list[int], list[int]]
+LCUKernelArgs: TypeAlias = tuple[list[float], list[int], list[int], list[int],
+                                 list[int]]
 
 _PAULI_CODES = {"X": 1, "Y": 2, "Z": 3}
-
 
 # ============================================================================
 # Device kernels (module level, composable from user kernels)
@@ -207,8 +206,6 @@ def apply(ancilla: cudaq.qview, system: cudaq.qview, angles: list[float],
     unprepare(ancilla, angles)
 
 
-
-
 @cudaq.kernel
 def walk(ancilla: cudaq.qview, system: cudaq.qview, angles: list[float],
          term_controls: list[int], term_ops: list[int],
@@ -233,6 +230,7 @@ def reflect_about_prepare(ancilla: cudaq.qview, angles: list[float]):
     reflect_about_zero(ancilla)
     prepare(ancilla, angles)
 
+
 @cudaq.kernel
 def adjoint_walk(ancilla: cudaq.qview, system: cudaq.qview,
                  angles: list[float], term_controls: list[int],
@@ -241,6 +239,7 @@ def adjoint_walk(ancilla: cudaq.qview, system: cudaq.qview,
     """Adjoint walk step: reflection first, then SELECT (both self-adjoint)."""
     reflect_about_prepare(ancilla, angles)
     select(ancilla, system, term_controls, term_ops, term_lengths, term_signs)
+
 
 @cudaq.kernel
 def controlled_reflect_about_prepare(control_and_ancilla: cudaq.qview,
@@ -255,6 +254,7 @@ def controlled_reflect_about_prepare(control_and_ancilla: cudaq.qview,
     controlled_reflect_about_zero(control_and_ancilla)
     prepare(control_and_ancilla.back(n), angles)
 
+
 @cudaq.kernel
 def controlled_walk(control_and_ancilla: cudaq.qview, system: cudaq.qview,
                     angles: list[float], term_controls: list[int],
@@ -265,6 +265,7 @@ def controlled_walk(control_and_ancilla: cudaq.qview, system: cudaq.qview,
                       term_lengths, term_signs)
     controlled_reflect_about_prepare(control_and_ancilla, angles)
 
+
 @cudaq.kernel
 def controlled_adjoint_walk(control_and_ancilla: cudaq.qview,
                             system: cudaq.qview, angles: list[float],
@@ -274,6 +275,7 @@ def controlled_adjoint_walk(control_and_ancilla: cudaq.qview,
     controlled_reflect_about_prepare(control_and_ancilla, angles)
     controlled_select(control_and_ancilla, system, term_controls, term_ops,
                       term_lengths, term_signs)
+
 
 @cudaq.kernel
 def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
@@ -296,22 +298,20 @@ def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
         if walk_directions[i - 1] == 1:
             reflect_about_zero(signal)
             apply(signal, system, angles, term_controls, term_ops,
-                      term_lengths, term_signs)
+                  term_lengths, term_signs)
         else:
             apply(signal, system, angles, term_controls, term_ops,
-                      term_lengths, term_signs)
+                  term_lengths, term_signs)
             reflect_about_zero(signal)
         signal_phase(signal, phases[i])
 
+
 @cudaq.kernel
-def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
-                                    system: cudaq.qview, phases: list[float],
-                                    walk_directions: list[int],
-                                    angles: list[float],
-                                    term_controls: list[int],
-                                    term_ops: list[int],
-                                    term_lengths: list[int],
-                                    term_signs: list[int]):
+def apply_controlled_phase_sequence(
+        control_and_signal: cudaq.qview, system: cudaq.qview,
+        phases: list[float], walk_directions: list[int], angles: list[float],
+        term_controls: list[int], term_ops: list[int], term_lengths: list[int],
+        term_signs: list[int]):
     """QSVT sequence controlled by qubit 0 of ``control_and_signal``.
 
     The uncontrolled PREPARE / PREPARE-dagger pair wraps a controlled
@@ -336,9 +336,9 @@ def apply_controlled_phase_sequence(control_and_signal: cudaq.qview,
             controlled_reflect_about_zero(control_and_signal)
         controlled_signal_phase(control_and_signal, phases[i])
 
+
 # Re-exported from common_kernels (encoding-independent; kept importable
 # here for compatibility with existing call sites).
-
 
 # ============================================================================
 # Host-side decomposition
@@ -403,7 +403,6 @@ def _prepare_angles(probabilities: Sequence[float]) -> list[float]:
                 right = sum(probabilities[start + step:start + 2 * step])
                 angles.append(2.0 * math.asin(math.sqrt(right / total)))
     return angles
-
 
 
 def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
@@ -506,8 +505,8 @@ class PauliLCU:
         self._term_signs = []
         for index, (coeff, word) in enumerate(kept):
             for b in range(self._num_ancilla):
-                self._term_controls.append(
-                    (index >> (self._num_ancilla - 1 - b)) & 1)
+                self._term_controls.append((index >>
+                                            (self._num_ancilla - 1 - b)) & 1)
             ops = [(code, qubit) for qubit, ch in enumerate(word)
                    if (code := _PAULI_CODES.get(ch)) is not None]
             for code, qubit in ops:
@@ -615,7 +614,6 @@ class PauliLCU:
 
         return walked
 
-
     # ------------------------------------------------------------------
     # BlockEncoding protocol: data-free kernel factories
     #
@@ -702,8 +700,8 @@ class PauliLCU:
         @cudaq.kernel
         def controlled_walk_step(control_and_ancilla: cudaq.qview,
                                  system: cudaq.qview):
-            controlled_walk(control_and_ancilla, system, angles, controls,
-                            ops, lengths, signs)
+            controlled_walk(control_and_ancilla, system, angles, controls, ops,
+                            lengths, signs)
 
         return controlled_walk_step
 

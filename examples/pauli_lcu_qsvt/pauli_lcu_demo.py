@@ -15,7 +15,6 @@ import os
 
 import numpy as np
 
-
 import cudaq
 from cudaq import spin
 
@@ -87,7 +86,8 @@ def main():
     positive_single = PauliLCU({"XZ": +0.5})
     print(negative_single)
     opposite = np.allclose(sim.action(negative_single, psi),
-                           -sim.action(positive_single, psi), atol=1e-12)
+                           -sim.action(positive_single, psi),
+                           atol=1e-12)
     print(f"-0.5*XZ encodes the opposite state of +0.5*XZ: {opposite}")
     print(f"action norm = "
           f"{np.linalg.norm(sim.action(negative_single, psi)):.6f} "

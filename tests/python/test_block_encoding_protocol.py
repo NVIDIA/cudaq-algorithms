@@ -107,8 +107,7 @@ def test_walk_controlled_roundtrip_encoding_generic():
     dimension = len(psi)
     # Control was flipped on and the roundtrip is the identity: the state
     # returns to |control=1, ancilla=0...0> x |psi>.
-    np.testing.assert_allclose(state[dimension:2 * dimension], psi,
-                               atol=1e-10)
+    np.testing.assert_allclose(state[dimension:2 * dimension], psi, atol=1e-10)
 
 
 def test_qsvt_sequence_encoding_generic():

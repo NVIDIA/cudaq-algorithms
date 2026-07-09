@@ -19,7 +19,6 @@ import os
 
 import numpy as np
 
-
 import cudaq
 
 from cudaq_algorithms import sim_utils as sim
@@ -50,12 +49,11 @@ def qsppack_phases(tau, degree):
             "This example needs qsppack and scipy: pip install qsppack scipy"
         ) from exc
 
-    cos_coefficients = np.array(
-        [0.5 * special.jv(0, tau)] +
-        [((-1)**k) * special.jv(2 * k, tau)
-         for k in range(1, degree // 2 + 1)])
-    sin_coefficients = np.array(
-        [((-1)**k) * special.jv(2 * k + 1, tau) for k in range(degree // 2)])
+    cos_coefficients = np.array([0.5 * special.jv(0, tau)] +
+                                [((-1)**k) * special.jv(2 * k, tau)
+                                 for k in range(1, degree // 2 + 1)])
+    sin_coefficients = np.array([((-1)**k) * special.jv(2 * k + 1, tau)
+                                 for k in range(degree // 2)])
     options = {
         "criteria": 1e-12,
         "method": "Newton",
@@ -105,12 +103,12 @@ def main():
     psi = rng.normal(size=1 << encoding.num_system).astype(np.complex128)
     psi /= np.linalg.norm(psi)
 
-    cos_state = sim.transform(
-        transformer, psi, PhaseSequence(cos_phases, convention="qsp"))
-    sin_state = sim.transform(
-        transformer, psi, PhaseSequence(sin_phases, convention="qsp"))
-    evolved = recover_real_time_evolution(cos_state, sin_state,
-                                          cos_phases, sin_phases)
+    cos_state = sim.transform(transformer, psi,
+                              PhaseSequence(cos_phases, convention="qsp"))
+    sin_state = sim.transform(transformer, psi,
+                              PhaseSequence(sin_phases, convention="qsp"))
+    evolved = recover_real_time_evolution(cos_state, sin_state, cos_phases,
+                                          sin_phases)
     # ----------------------------------------------------------------------
 
     matrix = dense_matrix(HAMILTONIAN, encoding.num_system)

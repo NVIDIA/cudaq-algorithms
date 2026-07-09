@@ -234,8 +234,9 @@ def test_controlled_walk_control_conventions():
 def test_qsvt_interleaves_phases_and_directions():
     phases = [0.3, 0.7, -0.4, 0.2]
     directions = [FORWARD, ADJOINT, FORWARD]
-    state = _state(QSVT(MockBlockEncoding()).kernel(
-        PhaseSequence(phases, walk_directions=directions)))
+    state = _state(
+        QSVT(MockBlockEncoding()).kernel(
+            PhaseSequence(phases, walk_directions=directions)))
 
     u = _on_ancilla(_ry(BETA)) @ _on_system(_rx(THETA))
     reflect = _on_ancilla(np.diag([-1.0, 1.0]))

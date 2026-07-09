@@ -48,10 +48,9 @@ def good_subspace(encoding: PauliLCU,
 
     vector = np.asarray(state, dtype=np.complex128)
     expected = 1 << (encoding.num_system + encoding.num_ancilla)
-    if vector.shape != (expected,):
-        raise ValueError(
-            f"expected a statevector of dimension {expected}, "
-            f"got shape {vector.shape}")
+    if vector.shape != (expected, ):
+        raise ValueError(f"expected a statevector of dimension {expected}, "
+                         f"got shape {vector.shape}")
     return vector[:1 << encoding.num_system].copy()
 
 
