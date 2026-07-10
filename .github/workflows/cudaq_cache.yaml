@@ -8,11 +8,12 @@ on:
     paths:
       - '.github/workflows/cudaq_cache.yaml'
       - '.github/actions/get-cudaq-build/**'
+      - '.github/actions/get-cudaq-version/**'
       - '.github/actions/get-cudaq-wheels/**'
       - '.cudaq_version'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
