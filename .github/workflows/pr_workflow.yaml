@@ -55,6 +55,7 @@ jobs:
           base: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
           filters: |
             build-cudaq:
+              - '.github/workflows/build_cudaq.yaml'
               - '.github/actions/get-cudaq-build/**'
               - '.github/actions/get-cudaq-version/**'
               - '.cudaq_version'
@@ -72,6 +73,7 @@ jobs:
               - 'pyproject.toml.cu*'
             build-wheels:
               - '.github/actions/get-cudaq-wheels/**'
+              - '.github/workflows/build_cudaq_wheels.yaml'
               - '.github/workflows/wheel_algorithms.yaml'
               - '.github/workflows/scripts/**'
               - 'scripts/ci/**'
@@ -83,43 +85,17 @@ jobs:
     name: Build CUDA-Q
     needs: [check-changes]
     if: needs.check-changes.outputs.build-cudaq == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: ['amd64', 'arm64']
-        cuda_version: ['12.6', '13.0']
-    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
-    container: ghcr.io/nvidia/cuda-quantum-devcontainer:${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
+    uses: ./.github/workflows/build_cudaq.yaml
     permissions:
       actions: write
       contents: read
       pull-requests: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          set-safe-directory: true
-
-      - name: Configure
-        id: config
-        run: |
-          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
-          echo "cuda_major=$cuda_major" >> $GITHUB_OUTPUT
-
-      - name: Get required CUDAQ version
-        id: get-cudaq-version
-        uses: ./.github/actions/get-cudaq-version
-
-      - name: Get CUDAQ build
-        uses: ./.github/actions/get-cudaq-build
-        with:
-          repo: ${{ steps.get-cudaq-version.outputs.repo }}
-          ref: ${{ steps.get-cudaq-version.outputs.ref }}
-          token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
-          cache-key-suffix: pr${{ needs.check-changes.outputs.pr-number }}
-          save-build: true
-          save-ccache: false
-          platform: ${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+    with:
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      save_build: true
+      save_ccache: false
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
   build-algorithms:
     name: Algorithms
