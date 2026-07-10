@@ -99,11 +99,11 @@ def evolve(evolution: Trotter,
     import numpy as np
 
     ket_array = np.asarray(ket, dtype=np.complex128)
-    if ket_array.size != (1 << evolution.num_qubits):
+    if ket_array.ndim != 1 or ket_array.size != (1 << evolution.num_qubits):
         raise ValueError(
-            f"ket has dimension {ket_array.size}; the evolution acts on "
-            f"{evolution.num_qubits} qubit(s) "
-            f"(dimension {1 << evolution.num_qubits})")
+            f"ket must be a 1-D statevector of dimension "
+            f"{1 << evolution.num_qubits} for {evolution.num_qubits} "
+            f"qubit(s); got shape {ket_array.shape}")
 
     kernel = evolution.state_kernel(time, steps, order)
     state = np.asarray(cudaq.get_state(kernel, state_from(ket_array)),

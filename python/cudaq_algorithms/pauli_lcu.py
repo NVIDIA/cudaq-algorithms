@@ -36,8 +36,8 @@ from typing import TYPE_CHECKING, TypeAlias, Union
 
 import cudaq
 
-from .common_kernels import (_bit_projector, _validate_power,
-                             controlled_reflect_about_zero,
+from .common_kernels import (_bit_projector, _real_coefficient,
+                             _validate_power, controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
                              signal_phase, state_from)
 
@@ -349,19 +349,6 @@ def apply_controlled_phase_sequence(
 # ============================================================================
 
 
-def _real_coefficient(value) -> float:
-    """Coerce a Hamiltonian coefficient to float, rejecting complex values.
-
-    One validation for every input form, so a complex coefficient raises
-    the same ValueError whether it arrives in a mapping, a pair list, or a
-    ``cudaq.SpinOperator``.
-    """
-    coefficient = complex(value)
-    if abs(coefficient.imag) > 1e-10:
-        raise ValueError("complex Hamiltonian coefficients are not supported")
-    return float(coefficient.real)
-
-
 def _terms_from_input(
         hamiltonian: HamiltonianLike,
         num_qubits: int | None) -> tuple[list[tuple[float, str]], int]:
@@ -378,7 +365,8 @@ def _terms_from_input(
             hamiltonian.qubit_count)
         pairs = [(_real_coefficient(term.evaluate_coefficient()),
                   str(term.get_pauli_word(width))) for term in hamiltonian]
-    elif isinstance(hamiltonian, Iterable):
+    elif isinstance(hamiltonian, Iterable) and not isinstance(
+            hamiltonian, (str, bytes, bytearray, memoryview)):
         pairs = [(_real_coefficient(c), str(w)) for c, w in hamiltonian]
     else:
         raise TypeError(

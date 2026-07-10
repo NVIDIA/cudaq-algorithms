@@ -182,6 +182,10 @@ def test_make_trotter_terms_validation():
         trotter.make_trotter_terms(spin.x(0), coefficient_tolerance=-1.0)
     with pytest.raises(ValueError, match="complex"):
         trotter.make_trotter_terms({"X": 0.5 + 0.3j})
+    with pytest.raises(ValueError, match="complex"):
+        trotter.make_trotter_terms([(0.5j, "X")])
+    with pytest.raises(ValueError, match="complex"):
+        trotter.make_trotter_terms(0.5j * spin.x(0))
     with pytest.raises(ValueError, match="same length"):
         trotter.make_trotter_terms({"XI": 0.5, "X": 0.3})
     with pytest.raises(ValueError, match="unsupported Pauli"):
@@ -525,6 +529,8 @@ def test_empty_hamiltonian_rejected():
 def test_string_hamiltonian_rejected_with_type_error():
     with pytest.raises(TypeError, match="spin operator"):
         trotter.Trotter("XZ")
+    with pytest.raises(TypeError, match="spin operator"):
+        trotter.Trotter(bytearray(b"XZ"))
 
 
 def test_zero_coefficient_terms_dropped():
@@ -533,6 +539,14 @@ def test_zero_coefficient_terms_dropped():
         "IZ": 0.4
     })
     assert words == ["IZ"]
+    # Exactly-zero terms are dropped even when the tolerance filter is
+    # disabled entirely.
+    _, words_no_tolerance, _, _ = trotter.make_trotter_terms(
+        {
+            "XI": 0.0,
+            "IZ": 0.4
+        }, coefficient_tolerance=0.0)
+    assert words_no_tolerance == ["IZ"]
     resources = trotter.Trotter({
         "XI": 0.0,
         "IZ": 0.4
@@ -572,3 +586,7 @@ def test_sim_utils_evolve_validates_parameters():
         sim_utils.evolve(evolution, ket, time=float("nan"))
     with pytest.raises(ValueError, match="dimension"):
         sim_utils.evolve(evolution, np.ones(8) / np.sqrt(8), time=0.8)
+    with pytest.raises(ValueError, match="1-D"):
+        sim_utils.evolve(evolution,
+                         np.eye(2, dtype=np.complex128) / np.sqrt(2),
+                         time=0.8)

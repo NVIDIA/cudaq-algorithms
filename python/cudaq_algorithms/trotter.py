@@ -41,7 +41,7 @@ from typing import Any, Union
 
 import cudaq
 
-from .pauli_lcu import _real_coefficient
+from .common_kernels import _real_coefficient
 
 #: Supported product-formula orders.
 FIRST_ORDER_TROTTER: int = 1
@@ -152,11 +152,14 @@ def _word_pairs_from_input(
       way);
     * an iterable of ``(coefficient, word)`` pairs.
 
-    Every word is validated to contain only I/X/Y/Z, all words must share
-    one width, and coefficients must be real (validated by the same
-    ``_real_coefficient`` used across the package). Unlike ``PauliLCU``
-    (which requires uniform-width words), mapping and pair inputs here may
-    mix widths only if explicitly padded — the width is the longest word.
+    Every word is validated to contain only I/X/Y/Z, all words in mapping
+    and pair inputs must share one width (exactly as in ``PauliLCU``), and
+    coefficients must be real (validated by the shared
+    ``_real_coefficient``). Spin-operator inputs are the one padding path:
+    their words are rendered at the widest term's extent. Deliberate
+    divergences from ``pauli_lcu._terms_from_input``: string-like inputs
+    are rejected with the TypeError below, and zero-width Hamiltonians are
+    rejected after extraction.
 
     Returns ``(pairs, num_qubits)`` where ``pairs`` is a list of
     ``(float, str)`` and ``num_qubits`` is the common word width.
@@ -177,8 +180,8 @@ def _word_pairs_from_input(
             width = max(width, _term_qubit_extent(term))
         pairs = [(_real_coefficient(term.evaluate_coefficient()),
                   str(term.get_pauli_word(width))) for term in terms]
-    elif isinstance(hamiltonian,
-                    Iterable) and not isinstance(hamiltonian, (str, bytes)):
+    elif isinstance(hamiltonian, Iterable) and not isinstance(
+            hamiltonian, (str, bytes, bytearray, memoryview)):
         pairs = [(_real_coefficient(c), str(w)) for c, w in hamiltonian]
         width = max((len(w) for _, w in pairs), default=0)
     else:
@@ -209,6 +212,12 @@ def make_trotter_terms(
     accepted directly as ``list[cudaq.pauli_word]`` kernel arguments.
     (Only kernel-captured words need explicit ``cudaq.pauli_word``
     conversion, which ``Trotter.kernel`` performs internally.)
+
+    ``coefficient_tolerance`` filters term magnitudes only: terms with
+    ``|coefficient|`` below it (and exactly-zero terms regardless of it)
+    are dropped — they would emit zero-angle rotations and inflate
+    resource estimates. It does not affect complex-coefficient
+    validation, which is fixed package-wide (see ``_real_coefficient``).
     """
     if coefficient_tolerance < 0.0:
         raise ValueError(
@@ -220,9 +229,10 @@ def make_trotter_terms(
     words: list[str] = []
     identity_coefficient = 0.0
     for coefficient, word in pairs:
-        if abs(coefficient) < coefficient_tolerance:
-            # Below-threshold (including exactly-zero) terms would emit
-            # zero-angle rotations and inflate resource estimates.
+        if coefficient == 0.0 or abs(coefficient) < coefficient_tolerance:
+            # Exactly-zero terms are always dead weight (even with
+            # tolerance 0); below-threshold terms would emit zero-angle
+            # rotations and inflate resource estimates.
             continue
         if set(word) <= {"I"}:
             identity_coefficient += coefficient
@@ -390,6 +400,12 @@ class Trotter:
                 f"qubits={self.num_qubits}, "
                 f"identity_coefficient={self.identity_coefficient:.6g})")
 
+    def _prepared_args(self, time: float, steps: int, order: int):
+        """Validated, kernel-ready arguments shared by both kernel factories."""
+        return (_validate_time(time), _validate_steps(steps),
+                _validate_order(order), list(self._coefficients),
+                [cudaq.pauli_word(w) for w in self._words])
+
     def kernel(self,
                time: float,
                steps: int = 1,
@@ -404,11 +420,8 @@ class Trotter:
         identity phase is not included (it cannot be, in a circuit); track
         ``identity_coefficient`` when it matters.
         """
-        time = _validate_time(time)
-        steps = _validate_steps(steps)
-        order = _validate_order(order)
-        coefficients = list(self._coefficients)
-        words = [cudaq.pauli_word(w) for w in self._words]
+        time, steps, order, coefficients, words = self._prepared_args(
+            time, steps, order)
         num_qubits = self._num_qubits
 
         if not words:
@@ -437,15 +450,16 @@ class Trotter:
 
         Same validated product formula as :meth:`kernel`, but the register
         is allocated from a ``cudaq.State`` argument instead of |0...0> —
-        the input-loading path ``sim_utils.evolve`` uses. Validation,
-        marshaling, and the identity-only special case
-        (cuda-quantum#4847) live here so every entry point shares them.
+        the input-loading path ``sim_utils.evolve`` uses. Both factories
+        share validation and marshaling through ``_prepared_args``.
+
+        The supplied state must have dimension ``2**num_qubits``:
+        ``sim_utils.evolve`` checks this; direct callers are responsible
+        for it themselves (the identity-only variant cannot detect a
+        mismatch).
         """
-        time = _validate_time(time)
-        steps = _validate_steps(steps)
-        order = _validate_order(order)
-        coefficients = list(self._coefficients)
-        words = [cudaq.pauli_word(w) for w in self._words]
+        time, steps, order, coefficients, words = self._prepared_args(
+            time, steps, order)
 
         if not words:
 

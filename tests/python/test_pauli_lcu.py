@@ -273,3 +273,10 @@ def test_prepare_angles_keep_tiny_sibling_terms():
     assert angles[1] == pytest.approx(2.0 * math.asin(math.sqrt(0.5)))
     # Exact-zero padding subtrees still produce zero rotations.
     assert _prepare_angles([0.5, 0.5, 0.0, 0.0])[2] == 0.0
+
+
+def test_string_hamiltonian_rejected_with_type_error():
+    # Parity with Trotter: string-like inputs must get the intended
+    # TypeError, not a misleading unpack error from the pair branch.
+    with pytest.raises(TypeError, match="SpinOperator"):
+        PauliLCU("XZ")
