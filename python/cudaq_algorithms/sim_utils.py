@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import cudaq
 
 # Re-exported: precision-aware initial-state construction.
-from .pauli_lcu import state_from
+from .common_kernels import state_from
 from .trotter import SECOND_ORDER_TROTTER, Trotter
 
 if TYPE_CHECKING:
@@ -91,31 +91,24 @@ def evolve(evolution: Trotter,
     ``exp(-i * identity_coefficient * time)`` (on by default), so the
     result approximates the full ``exp(-i H t)|ket>``.
 
-    ``Trotter.kernel`` prepares |0...0> and evolves; to evolve an arbitrary
-    ``ket``, the input state is loaded through ``cudaq.get_state``'s
-    initial-state support via a state-taking wrapper kernel.
+    Delegates to ``Trotter.state_kernel`` — the same validation (finite
+    time, positive integral steps, order in {1, 2, 4}) and marshaling as
+    ``Trotter.kernel``, raising ``ValueError`` for invalid parameters
+    instead of silently returning an unevolved state.
     """
     import numpy as np
 
-    coefficients = [float(c) for c in evolution.coefficients]
-    words = [cudaq.pauli_word(str(w)) for w in evolution.words]
-    time = float(time)
-    steps = int(steps)
-    order = int(order)
+    ket_array = np.asarray(ket, dtype=np.complex128)
+    if ket_array.size != (1 << evolution.num_qubits):
+        raise ValueError(
+            f"ket has dimension {ket_array.size}; the evolution acts on "
+            f"{evolution.num_qubits} qubit(s) "
+            f"(dimension {1 << evolution.num_qubits})")
 
-    if words:
-        from .trotter import apply_trotter
-
-        @cudaq.kernel
-        def evolve_state(state: cudaq.State):
-            qubits = cudaq.qvector(state)
-            apply_trotter(coefficients, words, time, steps, order, qubits)
-
-        state = np.asarray(cudaq.get_state(evolve_state, state_from(ket)),
-                           dtype=np.complex128)
-    else:
-        state = np.asarray(ket, dtype=np.complex128).copy()
-
+    kernel = evolution.state_kernel(time, steps, order)
+    state = np.asarray(cudaq.get_state(kernel, state_from(ket_array)),
+                       dtype=np.complex128)
     if include_identity_phase and evolution.identity_coefficient != 0.0:
-        state = state * np.exp(-1.0j * evolution.identity_coefficient * time)
+        state = state * np.exp(
+            -1.0j * evolution.identity_coefficient * float(time))
     return state

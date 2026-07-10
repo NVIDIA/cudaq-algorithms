@@ -11,8 +11,8 @@
 The Hamiltonian is hard-coded as Pauli terms to keep the example focused
 on the algorithm primitives. Two ways to run the same evolution are shown:
 
-1. ``sim_utils.evolve(plan, ket)`` — one call, identity phase included
-   (simulation helper).
+1. ``sim_utils.evolve(evolution, ket, time, ...)`` — one call, identity
+   phase included (simulation helper).
 2. A user kernel composing ``trotter.apply_trotter`` with state
    preparation — the hardware-shaped composition path.
 

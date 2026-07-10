@@ -11,9 +11,10 @@ Product-formula time evolution for Hamiltonians expressed as sums of Pauli
 strings: term extraction, host-side planning and ordering, resource
 estimation, and the circuit primitive itself.
 
-The typical workflow builds a validated plan on the host and either uses
-its kernel factory or composes the ``apply_trotter`` primitive inside a
-custom kernel::
+The typical workflow constructs a ``Trotter`` object (term extraction,
+validation, and ordering happen once) and either uses its kernel
+factories or composes the ``apply_trotter`` primitive inside a custom
+kernel::
 
     from cudaq_algorithms import trotter
 
@@ -40,23 +41,27 @@ from typing import Any, Union
 
 import cudaq
 
-from .pauli_lcu import state_from
+from .pauli_lcu import _real_coefficient
 
 #: Supported product-formula orders.
 FIRST_ORDER_TROTTER: int = 1
 SECOND_ORDER_TROTTER: int = 2
 FOURTH_ORDER_TROTTER: int = 4
 
-#: Forest-Ruth fourth-order splitting weights: the order-4 step is the
-#: symmetric second-order step applied with time fractions w1, w0, w1,
-#: where w1 = 1/(2 - 2**(1/3)) and w0 = 1 - 2*w1.
-FOREST_RUTH_W1: float = 1.3512071919596578
-FOREST_RUTH_W0: float = -1.7024143839193153
+# Forest-Ruth fourth-order splitting weights: the order-4 step is the
+# symmetric second-order step applied with time fractions w1, w0, w1,
+# where w1 = 1/(2 - 2**(1/3)) and w0 = 1 - 2*w1 (the invariant binding
+# them). Private: they are internals of this particular order-4 scheme,
+# precomputed as module constants because kernels cannot compute cube
+# roots (host-only math).
+_FOREST_RUTH_W1: float = 1.3512071919596578
+_FOREST_RUTH_W0: float = -1.7024143839193153
 
 #: Accepted Hamiltonian input forms: a ``cudaq.SpinOperator`` (or a single
-#: spin term), a ``{"XZI...": coefficient}`` mapping, or an iterable of
-#: ``(coefficient, word)`` pairs.
-HamiltonianLike = Union[Mapping[str, complex], Iterable[tuple], Any]
+#: ``cudaq.SpinOperatorTerm`` product), a ``{"XZI...": coefficient}``
+#: mapping, or an iterable of ``(coefficient, word)`` pairs.
+HamiltonianLike = Union[cudaq.SpinOperator, cudaq.SpinOperatorTerm,
+                        Mapping[str, complex], Iterable[tuple]]
 
 # ============================================================================
 # Device kernel (module level, composable from user kernels)
@@ -90,25 +95,25 @@ def apply_trotter(coefficients: list[float], words: list[cudaq.pauli_word],
                 # Forest-Ruth: symmetric second-order steps with time
                 # fractions w1, w0, w1.
                 for i in range(n):
-                    exp_pauli(-0.5 * FOREST_RUTH_W1 * dt * coefficients[i],
+                    exp_pauli(-0.5 * _FOREST_RUTH_W1 * dt * coefficients[i],
                               qubits, words[i])
                 for j in range(n):
                     i = n - 1 - j
-                    exp_pauli(-0.5 * FOREST_RUTH_W1 * dt * coefficients[i],
+                    exp_pauli(-0.5 * _FOREST_RUTH_W1 * dt * coefficients[i],
                               qubits, words[i])
                 for i in range(n):
-                    exp_pauli(-0.5 * FOREST_RUTH_W0 * dt * coefficients[i],
+                    exp_pauli(-0.5 * _FOREST_RUTH_W0 * dt * coefficients[i],
                               qubits, words[i])
                 for j in range(n):
                     i = n - 1 - j
-                    exp_pauli(-0.5 * FOREST_RUTH_W0 * dt * coefficients[i],
+                    exp_pauli(-0.5 * _FOREST_RUTH_W0 * dt * coefficients[i],
                               qubits, words[i])
                 for i in range(n):
-                    exp_pauli(-0.5 * FOREST_RUTH_W1 * dt * coefficients[i],
+                    exp_pauli(-0.5 * _FOREST_RUTH_W1 * dt * coefficients[i],
                               qubits, words[i])
                 for j in range(n):
                     i = n - 1 - j
-                    exp_pauli(-0.5 * FOREST_RUTH_W1 * dt * coefficients[i],
+                    exp_pauli(-0.5 * _FOREST_RUTH_W1 * dt * coefficients[i],
                               qubits, words[i])
             else:
                 for i in range(n):
@@ -117,9 +122,6 @@ def apply_trotter(coefficients: list[float], words: list[cudaq.pauli_word],
                     i = n - 1 - j
                     exp_pauli(-0.5 * dt * coefficients[i], qubits, words[i])
 
-
-# state_from lives with the block-encoding module; re-exported here since
-# Trotter workflows need the same precision-aware state construction.
 
 # ============================================================================
 # Host-side term extraction
@@ -131,35 +133,14 @@ def _maybe_call(value: Any) -> Any:
     return value() if callable(value) else value
 
 
-def _is_spin_like(value: Any) -> bool:
-    """Return True for cudaq spin operators and spin terms (duck-typed)."""
-    return (hasattr(value, "evaluate_coefficient")
-            or hasattr(value, "term_count")
-            or hasattr(value, "get_term_count"))
-
-
 def _term_qubit_extent(term: Any) -> int:
     """Number of qubits a spin term touches (max degree + 1)."""
     max_degree = _maybe_call(getattr(term, "max_degree", -1))
     return max_degree + 1 if max_degree >= 0 else 0
 
 
-def _real_coefficient(coefficient: complex, tolerance: float) -> float:
-    """Coerce a coefficient to its real part, rejecting imaginary content.
-
-    Raises ``ValueError`` if the imaginary part exceeds ``tolerance``.
-    """
-    coefficient = complex(coefficient)
-    if abs(coefficient.imag) > tolerance:
-        raise ValueError(
-            "trotter error - only real Hamiltonian coefficients are "
-            "supported.")
-    return float(coefficient.real)
-
-
 def _word_pairs_from_input(
-        hamiltonian: HamiltonianLike,
-        tolerance: float) -> tuple[list[tuple[float, str]], int]:
+        hamiltonian: HamiltonianLike) -> tuple[list[tuple[float, str]], int]:
     """Normalize any accepted Hamiltonian form to ``(coefficient, word)``
     pairs plus the register width.
 
@@ -172,16 +153,19 @@ def _word_pairs_from_input(
     * an iterable of ``(coefficient, word)`` pairs.
 
     Every word is validated to contain only I/X/Y/Z, all words must share
-    one width, and coefficients must be real to within ``tolerance``.
+    one width, and coefficients must be real (validated by the same
+    ``_real_coefficient`` used across the package). Unlike ``PauliLCU``
+    (which requires uniform-width words), mapping and pair inputs here may
+    mix widths only if explicitly padded — the width is the longest word.
 
     Returns ``(pairs, num_qubits)`` where ``pairs`` is a list of
     ``(float, str)`` and ``num_qubits`` is the common word width.
     """
     if isinstance(hamiltonian, Mapping):
-        pairs = [(_real_coefficient(c, tolerance), str(w))
+        pairs = [(_real_coefficient(c), str(w))
                  for w, c in hamiltonian.items()]
         width = max((len(w) for _, w in pairs), default=0)
-    elif _is_spin_like(hamiltonian):
+    elif isinstance(hamiltonian, (cudaq.SpinOperator, cudaq.SpinOperatorTerm)):
         # Wrapping canonicalizes: elementary products and full operators
         # both become a SpinOperator whose iteration yields terms with
         # evaluate_coefficient() and get_pauli_word().
@@ -191,22 +175,26 @@ def _word_pairs_from_input(
         width = 0
         for term in terms:
             width = max(width, _term_qubit_extent(term))
-        pairs = [(_real_coefficient(term.evaluate_coefficient(), tolerance),
+        pairs = [(_real_coefficient(term.evaluate_coefficient()),
                   str(term.get_pauli_word(width))) for term in terms]
-    elif isinstance(hamiltonian, Iterable):
-        pairs = [(_real_coefficient(c, tolerance), str(w))
-                 for c, w in hamiltonian]
+    elif isinstance(hamiltonian,
+                    Iterable) and not isinstance(hamiltonian, (str, bytes)):
+        pairs = [(_real_coefficient(c), str(w)) for c, w in hamiltonian]
         width = max((len(w) for _, w in pairs), default=0)
     else:
         raise TypeError(
             "hamiltonian must be a cudaq spin operator or term, a "
             "{word: coeff} mapping, or an iterable of (coeff, word) pairs")
 
+    if not pairs:
+        raise ValueError("hamiltonian has no terms")
     for _, word in pairs:
         if len(word) != width:
             raise ValueError("all Pauli words must have the same length")
         if any(ch not in "IXYZ" for ch in word):
             raise ValueError(f"unsupported Pauli word: {word!r}")
+    if width == 0:
+        raise ValueError("hamiltonian must act on at least one qubit")
     return pairs, width
 
 
@@ -226,13 +214,16 @@ def make_trotter_terms(
         raise ValueError(
             "trotter error - coefficient tolerance must be non-negative.")
 
-    pairs, num_qubits = _word_pairs_from_input(hamiltonian,
-                                               coefficient_tolerance)
+    pairs, num_qubits = _word_pairs_from_input(hamiltonian)
 
     coefficients: list[float] = []
     words: list[str] = []
     identity_coefficient = 0.0
     for coefficient, word in pairs:
+        if abs(coefficient) < coefficient_tolerance:
+            # Below-threshold (including exactly-zero) terms would emit
+            # zero-angle rotations and inflate resource estimates.
+            continue
         if set(word) <= {"I"}:
             identity_coefficient += coefficient
             continue
@@ -243,7 +234,7 @@ def make_trotter_terms(
 
 
 # ============================================================================
-# Planning, ordering, resources
+# Term ordering, validation, resources
 # ============================================================================
 
 
@@ -268,11 +259,11 @@ def _validate_order(order: int) -> int:
 
 
 def _validate_steps(steps: int) -> int:
-    """Validate and return a positive Trotter step count."""
-    steps = int(steps)
-    if steps < 1:
-        raise ValueError("steps must be greater than zero")
-    return steps
+    """Require a positive integral step count (no silent truncation)."""
+    count = int(steps)
+    if count != steps or count < 1:
+        raise ValueError("steps must be a positive integer")
+    return count
 
 
 def _validate_time(time: float) -> float:
@@ -416,9 +407,9 @@ class Trotter:
         time = _validate_time(time)
         steps = _validate_steps(steps)
         order = _validate_order(order)
-        coefficients = [float(c) for c in self._coefficients]
-        words = [cudaq.pauli_word(str(w)) for w in self._words]
-        num_qubits = int(self._num_qubits)
+        coefficients = list(self._coefficients)
+        words = [cudaq.pauli_word(w) for w in self._words]
+        num_qubits = self._num_qubits
 
         if not words:
             # Identity-only Hamiltonian: the circuit is the identity.
@@ -438,11 +429,45 @@ class Trotter:
 
         return evolve
 
-    def resources(
-            self,
-            steps: int = 1,
-            order: int = SECOND_ORDER_TROTTER) -> TrotterResourceEstimate:
-        """Resource estimate for ``steps`` steps of the ``order`` formula."""
+    def state_kernel(self,
+                     time: float,
+                     steps: int = 1,
+                     order: int = SECOND_ORDER_TROTTER) -> Any:
+        """Return a ``@cudaq.kernel(state)`` evolving an arbitrary state.
+
+        Same validated product formula as :meth:`kernel`, but the register
+        is allocated from a ``cudaq.State`` argument instead of |0...0> —
+        the input-loading path ``sim_utils.evolve`` uses. Validation,
+        marshaling, and the identity-only special case
+        (cuda-quantum#4847) live here so every entry point shares them.
+        """
+        time = _validate_time(time)
+        steps = _validate_steps(steps)
+        order = _validate_order(order)
+        coefficients = list(self._coefficients)
+        words = [cudaq.pauli_word(w) for w in self._words]
+
+        if not words:
+
+            @cudaq.kernel
+            def evolve_identity_state(state: cudaq.State):
+                cudaq.qvector(state)
+
+            return evolve_identity_state
+
+        @cudaq.kernel
+        def evolve_state(state: cudaq.State):
+            qubits = cudaq.qvector(state)
+            apply_trotter(coefficients, words, time, steps, order, qubits)
+
+        return evolve_state
+
+    def resources(self, steps: int, order: int) -> TrotterResourceEstimate:
+        """Resource estimate for ``steps`` steps of the ``order`` formula.
+
+        Both parameters are required so the estimate can never silently
+        describe a different circuit than the kernel you built.
+        """
         return estimate_trotter_resources(self._coefficients,
                                           self._words,
                                           steps=steps,
@@ -453,8 +478,8 @@ class Trotter:
 def estimate_trotter_resources(
         coefficients: list[float],
         words: list[str],
-        steps: int = 1,
-        order: int = SECOND_ORDER_TROTTER,
+        steps: int,
+        order: int,
         identity_coefficient: float = 0.0) -> TrotterResourceEstimate:
     """Return a lightweight resource estimate for a Trotter sequence."""
     coefficients = list(coefficients)
@@ -483,8 +508,6 @@ __all__ = [
     "FIRST_ORDER_TROTTER",
     "SECOND_ORDER_TROTTER",
     "FOURTH_ORDER_TROTTER",
-    "FOREST_RUTH_W1",
-    "FOREST_RUTH_W0",
     "HamiltonianLike",
     "Trotter",
     "TrotterOrdering",
@@ -492,5 +515,4 @@ __all__ = [
     "apply_trotter",
     "estimate_trotter_resources",
     "make_trotter_terms",
-    "state_from",
 ]

@@ -6,7 +6,8 @@ term extraction, host-side planning and ordering, resource estimation, and
 the circuit primitive itself. Requires only the `cudaq` Python package.
 
 ```
-python/cudaq_algorithms/trotter.py     term extraction, plans, resources,
+python/cudaq_algorithms/trotter.py     term extraction, ordering,
+                                       resources,
                                        apply_trotter kernel
 python/cudaq_algorithms/sim_utils.py   shared simulation-only helpers
                                        (evolve lives here)
@@ -47,12 +48,12 @@ primitives (`Walk.kernel(power=...)`, `QSVT.kernel(sequence)`).
   half-angle forward sweep followed by a half-angle reverse sweep; error
   O(t^3 / steps^2).
 - `order=4` — Forest-Ruth fourth-order formula: three symmetric
-  second-order sub-steps with time fractions `FOREST_RUTH_W1`,
-  `FOREST_RUTH_W0`, `FOREST_RUTH_W1`; error O(t^5 / steps^4).
+  second-order sub-steps with time fractions `w1`, `w0`, `w1`; error
+  O(t^5 / steps^4).
 
 The Forest-Ruth weights (`w1 = 1/(2 - 2^(1/3))`, `w0 = 1 - 2*w1`) are
-precomputed module constants: CUDA-Q kernels cannot call host-only math
-such as cube roots, so the kernel consumes the constants directly.
+precomputed private module constants: CUDA-Q kernels cannot call host-only
+math such as cube roots, so the kernel consumes the constants directly.
 
 ### Composing inside user kernels
 
@@ -95,6 +96,18 @@ evolved = sim_utils.evolve(evolution, ket, time=0.8, steps=4, order=2)
 # approximates exp(-i H t)|ket>, identity phase included
 ```
 
+`evolve` delegates to `Trotter.state_kernel(time, steps, order)` — a
+`@cudaq.kernel(state)` factory sharing the same validation and marshaling
+as `Trotter.kernel` — and raises `ValueError` for invalid parameters.
+
+Circuit-level optimization deliberately deferred (documented, not
+implemented): merging the back-to-back half-rotations at sweep and step
+boundaries of the order-2/4 formulas (~1/num_terms of all rotations, each
+a CX ladder on hardware); no effect on simulator results.
+
+```python
+```
+
 Unlike the circuit primitive, `evolve` reintroduces the identity phase by
 default (`include_identity_phase=True`), so the result approximates the
 full `exp(-i H t)|ket>`.
@@ -120,4 +133,4 @@ Two upstream compiler behaviors shape the implementation:
   early-return guards.
 - Captured empty lists cannot be marshaled
   ([cuda-quantum#4847](https://github.com/NVIDIA/cuda-quantum/issues/4847));
-  identity-only plans special-case their kernel factory.
+  identity-only Hamiltonians special-case the kernel factories.
