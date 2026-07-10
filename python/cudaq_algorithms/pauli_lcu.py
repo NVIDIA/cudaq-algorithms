@@ -95,9 +95,10 @@ def unprepare(ancilla: cudaq.qview, angles: list[float]):
     """PREPARE dagger.
 
     Hand-written inverse of ``prepare``: ``cudaq.adjoint(prepare, ...)``
-    fails at runtime on this kernel's loop/branch structure ("could not
-    autogenerate the adjoint of a kernel", CUDA-Q 0.15), so the explicit
-    reverse is kept and the inverse property is pinned by
+    fails at runtime on this kernel's conditionally-conjugated rotations
+    (cuda-quantum#4898), and adjoint autogeneration also silently
+    mis-replays loop-carried classical updates (cuda-quantum#4897), so
+    the explicit reverse is kept and the inverse property is pinned by
     ``test_unprepare_inverts_prepare``. Guards are positive blocks, not
     early returns (cuda-quantum#4845).
     """

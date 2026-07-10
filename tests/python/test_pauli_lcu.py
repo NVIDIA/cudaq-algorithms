@@ -222,8 +222,10 @@ def test_identity_only_hamiltonian_encodes_signed_identity():
 
 
 def test_unprepare_inverts_prepare():
-    # cudaq.adjoint(prepare, ...) fails at runtime ("could not autogenerate
-    # the adjoint of a kernel", CUDA-Q 0.15), so unprepare is hand-written;
+    # cudaq.adjoint autogeneration cannot replace unprepare: it fails
+    # loudly on prepare's conditionally-conjugated rotations
+    # (cuda-quantum#4898) and silently mis-replays loop-carried classical
+    # updates elsewhere (cuda-quantum#4897). unprepare stays hand-written;
     # this pins the inverse property directly on an arbitrary state.
     enc = PauliLCU({
         "ZI": 0.70,
