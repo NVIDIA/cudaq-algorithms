@@ -16,11 +16,12 @@ import cudaq
 from cudaq import spin
 
 from cudaq_algorithms import sim_utils as sim
-from cudaq_algorithms import (PauliLCU, PhaseSequence, QSVT,
-                              apply_controlled_phase_sequence,
-                              apply_phase_sequence, prepare,
-                              reflect_about_zero, signal_phase, state_from,
-                              unprepare)
+from cudaq_algorithms import PauliLCU, PhaseSequence, QSVT, state_from
+from cudaq_algorithms.common_kernels import reflect_about_zero, signal_phase
+from cudaq_algorithms.pauli_lcu import (_prepare_angles,
+                                        apply_controlled_phase_sequence,
+                                        apply_phase_sequence, prepare,
+                                        unprepare)
 
 from dense_references import dense_matrix, random_ket
 
@@ -218,3 +219,55 @@ def test_identity_only_hamiltonian_encodes_signed_identity():
     assert np.allclose(sim.good_subspace(negative, walk_state),
                        ket,
                        atol=1e-12)
+
+
+def test_unprepare_inverts_prepare():
+    # cudaq.adjoint(prepare, ...) fails at runtime ("could not autogenerate
+    # the adjoint of a kernel", CUDA-Q 0.15), so unprepare is hand-written;
+    # this pins the inverse property directly on an arbitrary state.
+    enc = PauliLCU({
+        "ZI": 0.70,
+        "IZ": -0.43,
+        "XX": 0.19,
+        "YZ": 0.11,
+        "XY": 0.05
+    })
+    angles = enc.kernel_args[0]
+    n_anc = enc.num_ancilla
+    ket = random_ket(n_anc, seed=17)
+
+    @cudaq.kernel
+    def roundtrip(state: cudaq.State, angles: list[float]):
+        q = cudaq.qvector(state)
+        prepare(q, angles)
+        unprepare(q, angles)
+
+    state = np.asarray(cudaq.get_state(roundtrip, sim.state_from(ket), angles))
+    assert np.allclose(state, ket, atol=1e-12)
+
+
+def test_complex_coefficients_rejected_uniformly():
+    # Every input form must reject complex coefficients with the same
+    # ValueError (the mapping path previously raised an opaque TypeError).
+    with pytest.raises(ValueError, match="complex"):
+        PauliLCU({"XI": 0.5 + 0.3j})
+    with pytest.raises(ValueError, match="complex"):
+        PauliLCU([(0.5 + 0.3j, "XI")])
+    with pytest.raises(ValueError, match="complex"):
+        PauliLCU(0.5j * spin.x(0) * spin.y(1))
+    # Real-valued complex input is fine everywhere.
+    assert PauliLCU({"XI": 0.5 + 0j}).alpha == pytest.approx(0.5)
+
+
+def test_prepare_angles_keep_tiny_sibling_terms():
+    # Regression (review): the padding guard must fire only for exact-zero
+    # (padded) subtrees. Two retained sibling terms whose combined
+    # probability is below any threshold must still split 50/50 instead of
+    # silently zeroing one branch.
+    kept = [(2e-12, "XI"), (2e-12, "IX"), (1e6, "ZZ")]
+    alpha = sum(abs(c) for c, _ in kept)
+    probabilities = [abs(c) / alpha for c, _ in kept] + [0.0]
+    angles = _prepare_angles(probabilities)
+    assert angles[1] == pytest.approx(2.0 * math.asin(math.sqrt(0.5)))
+    # Exact-zero padding subtrees still produce zero rotations.
+    assert _prepare_angles([0.5, 0.5, 0.0, 0.0])[2] == 0.0

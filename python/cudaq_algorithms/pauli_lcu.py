@@ -49,8 +49,9 @@ if TYPE_CHECKING:
 # A Hamiltonian in any accepted input form: a ``cudaq.SpinOperator``, a
 # ``{"XZI...": coefficient}`` mapping, or an iterable of
 # ``(coefficient, word)`` pairs.
-HamiltonianLike: TypeAlias = Union[cudaq.SpinOperator, Mapping[str, float],
-                                   Iterable[tuple[float, str]]]
+HamiltonianLike: TypeAlias = Union[cudaq.SpinOperator, cudaq.SpinOperatorTerm,
+                                   Mapping[str, float], Iterable[tuple[float,
+                                                                       str]]]
 
 # The flattened arrays that cross the kernel boundary, in the order the
 # module-level kernels take them:
@@ -93,10 +94,12 @@ def prepare(ancilla: cudaq.qview, angles: list[float]):
 def unprepare(ancilla: cudaq.qview, angles: list[float]):
     """PREPARE dagger.
 
-    Hand-written inverse of ``prepare`` (deliberate: ``cudaq.adjoint`` of
-    a kernel with this loop/branch structure is not exercised by our
-    conformance checks, so the explicit reverse is kept). Guards are
-    positive blocks, not early returns (cuda-quantum#4845).
+    Hand-written inverse of ``prepare``: ``cudaq.adjoint(prepare, ...)``
+    fails at runtime on this kernel's loop/branch structure ("could not
+    autogenerate the adjoint of a kernel", CUDA-Q 0.15), so the explicit
+    reverse is kept and the inverse property is pinned by
+    ``test_unprepare_inverts_prepare``. Guards are positive blocks, not
+    early returns (cuda-quantum#4845).
     """
     n = ancilla.size()
     idx = len(angles) - 1
@@ -345,24 +348,37 @@ def apply_controlled_phase_sequence(
 # ============================================================================
 
 
+def _real_coefficient(value) -> float:
+    """Coerce a Hamiltonian coefficient to float, rejecting complex values.
+
+    One validation for every input form, so a complex coefficient raises
+    the same ValueError whether it arrives in a mapping, a pair list, or a
+    ``cudaq.SpinOperator``.
+    """
+    coefficient = complex(value)
+    if abs(coefficient.imag) > 1e-10:
+        raise ValueError("complex Hamiltonian coefficients are not supported")
+    return float(coefficient.real)
+
+
 def _terms_from_input(
         hamiltonian: HamiltonianLike,
         num_qubits: int | None) -> tuple[list[tuple[float, str]], int]:
     """Normalize the supported Hamiltonian input forms to (coeff, word) pairs."""
     if isinstance(hamiltonian, Mapping):
-        pairs = [(float(c), str(w)) for w, c in hamiltonian.items()]
+        pairs = [(_real_coefficient(c), str(w))
+                 for w, c in hamiltonian.items()]
+    elif isinstance(hamiltonian, cudaq.SpinOperatorTerm):
+        # A single product term (e.g. 0.5 * spin.x(0) * spin.y(1)):
+        # normalize to a one-term operator.
+        return _terms_from_input(cudaq.SpinOperator(hamiltonian), num_qubits)
     elif isinstance(hamiltonian, cudaq.SpinOperator):
         width = num_qubits if num_qubits is not None else int(
             hamiltonian.qubit_count)
-        pairs = []
-        for term in hamiltonian:
-            coeff = term.evaluate_coefficient()
-            if abs(coeff.imag) > 1e-10:
-                raise ValueError(
-                    "complex Hamiltonian coefficients are not supported")
-            pairs.append((float(coeff.real), str(term.get_pauli_word(width))))
+        pairs = [(_real_coefficient(term.evaluate_coefficient()),
+                  str(term.get_pauli_word(width))) for term in hamiltonian]
     elif isinstance(hamiltonian, Iterable):
-        pairs = [(float(c), str(w)) for c, w in hamiltonian]
+        pairs = [(_real_coefficient(c), str(w)) for c, w in hamiltonian]
     else:
         raise TypeError(
             "hamiltonian must be a cudaq.SpinOperator, a {word: coeff} "
@@ -396,8 +412,12 @@ def _prepare_angles(probabilities: Sequence[float]) -> list[float]:
         for node in range(1 << layer):
             start = node * step * 2
             total = sum(probabilities[start:start + 2 * step])
-            if total < 1e-12:
-                # Zero-probability subtree from power-of-two padding.
+            if total == 0.0:
+                # Exactly-zero subtree: only power-of-two padding, since
+                # every retained term contributes strictly positive
+                # probability. (A threshold here would zero the split of
+                # genuinely tiny sibling terms and silently encode a
+                # different operator.)
                 angles.append(0.0)
             else:
                 right = sum(probabilities[start + step:start + 2 * step])

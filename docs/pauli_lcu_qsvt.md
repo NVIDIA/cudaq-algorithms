@@ -109,10 +109,12 @@ psi0 = sim.state_from(ket)            # precision-aware cudaq.State
 `Walk.moment`/`moments` stay in the library proper: they measure through
 `cudaq.observe`, which is a hardware-legitimate path.
 
-Escape hatch at every level: the module-level kernels (`prepare`, `select`,
-`apply`, `reflect_about_zero`, `adjoint_walk`, `signal_phase`,
-`apply_phase_sequence`, ...) compose inside user kernels, with
-`enc.kernel_args` supplying the flattened arrays they take as arguments.
+Escape hatch at every level: the module-level kernels compose inside user
+kernels, with `enc.kernel_args` supplying the flattened arrays they take as
+arguments. They live in their module namespaces — their names are too
+generic for the package root — as `cudaq_algorithms.pauli_lcu.{prepare,
+select, apply, walk, adjoint_walk, apply_phase_sequence, ...}` and
+`cudaq_algorithms.common_kernels.{reflect_about_zero, signal_phase, ...}`.
 
 ## Simulator selection
 

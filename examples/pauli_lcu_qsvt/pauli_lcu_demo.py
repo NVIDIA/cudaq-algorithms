@@ -19,7 +19,8 @@ import cudaq
 from cudaq import spin
 
 from cudaq_algorithms import sim_utils as sim
-from cudaq_algorithms import PauliLCU, prepare, select, state_from, unprepare
+from cudaq_algorithms import PauliLCU, state_from
+from cudaq_algorithms.pauli_lcu import prepare, select, unprepare
 
 
 def banner(title):

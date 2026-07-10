@@ -40,15 +40,13 @@ except ModuleNotFoundError as exc:
 from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,
                sim_utils)
 from .block_encoding import BlockEncoding
-from .common_kernels import (controlled_reflect_about_zero,
-                             controlled_signal_phase, reflect_about_zero,
-                             signal_phase)
-from .pauli_lcu import (PauliLCU, adjoint_walk, apply,
-                        apply_controlled_phase_sequence, apply_phase_sequence,
-                        controlled_adjoint_walk,
-                        controlled_reflect_about_prepare, controlled_select,
-                        controlled_walk, prepare, reflect_about_prepare,
-                        select, select_observable, state_from, unprepare, walk)
+from .common_kernels import state_from
+from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
 from .qubitization import Walk, reflection_observable
+
+# The composable device kernels keep their module namespaces
+# (cudaq_algorithms.pauli_lcu.prepare, .select, .apply_phase_sequence, ...;
+# cudaq_algorithms.common_kernels.reflect_about_zero, .signal_phase, ...):
+# their names are too generic to export from the package root.
