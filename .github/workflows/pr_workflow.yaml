@@ -1,0 +1,171 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: PR workflow
+
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-changes:
+    name: Check changes
+    runs-on: ubuntu-latest
+    outputs:
+      build-cudaq: ${{ steps.filter.outputs.build-cudaq }}
+      build-algorithms: ${{ steps.filter.outputs.build-algorithms }}
+      build-wheels: ${{ steps.filter.outputs.build-wheels }}
+      pr-number: ${{ steps.export-pr-info.outputs.pr_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Lookup PR info
+        id: get-pr-info
+        env:
+          GH_TOKEN: ${{ github.token }}
+        uses: nv-gha-runners/get-pr-info@main
+
+      - name: Export PR info
+        id: export-pr-info
+        run: |
+          echo "pr_number=${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}" >> $GITHUB_OUTPUT
+
+      - name: Check what needs testing
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
+          filters: |
+            build-cudaq:
+              - '.github/workflows/build_cudaq.yaml'
+              - '.github/actions/get-cudaq-build/**'
+              - '.github/actions/get-cudaq-version/**'
+              - '.cudaq_version'
+            build-algorithms:
+              - '.github/workflows/lib_algorithms.yaml'
+              - '.github/workflows/pr_workflow.yaml'
+              - 'CMakeLists.txt'
+              - 'cmake/**'
+              - 'include/**'
+              - 'lib/**'
+              - 'python/**'
+              - 'tests/**'
+              - 'scripts/test_algorithms_build.sh'
+              - 'scripts/validation/**'
+              - 'pyproject.toml.cu*'
+            build-wheels:
+              - '.github/actions/get-cudaq-wheels/**'
+              - '.github/workflows/build_cudaq_wheels.yaml'
+              - '.github/workflows/wheel_algorithms.yaml'
+              - '.github/workflows/scripts/**'
+              - 'scripts/ci/**'
+              - 'python/metapackages/**'
+              - 'pyproject.toml.cu*'
+              - '.cudaq_version'
+
+  build-cudaq:
+    name: Build CUDA-Q
+    needs: [check-changes]
+    if: needs.check-changes.outputs.build-cudaq == 'true'
+    uses: ./.github/workflows/build_cudaq.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      save_build: true
+      save_ccache: false
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  build-algorithms:
+    name: Algorithms
+    needs: [check-changes, build-cudaq]
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.check-changes.result == 'success' &&
+      (needs.build-cudaq.result == 'success' || needs.build-cudaq.result == 'skipped') &&
+      (
+        needs.check-changes.outputs.build-algorithms == 'true' ||
+        needs.check-changes.outputs.build-cudaq == 'true'
+      )
+    uses: ./.github/workflows/lib_algorithms.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  build-wheels:
+    name: Wheels
+    needs: [check-changes]
+    if: |
+      !failure() && !cancelled() &&
+      needs.check-changes.outputs.build-wheels == 'true'
+    uses: ./.github/workflows/wheel_algorithms.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      build_type: Release
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  verify:
+    name: Verify PR
+    if: ${{ always() }}
+    needs:
+      - check-changes
+      - build-cudaq
+      - build-algorithms
+      - build-wheels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          status="success"
+
+          check_result() {
+            name=$1
+            result=$2
+
+            # Skipped jobs are expected when the path filter does not match.
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "$name job failed"
+              status="failed"
+            fi
+          }
+
+          check_result "check-changes"    "${{ needs.check-changes.result }}"
+          check_result "build-cudaq"      "${{ needs.build-cudaq.result }}"
+          check_result "build-algorithms" "${{ needs.build-algorithms.result }}"
+          check_result "build-wheels"     "${{ needs.build-wheels.result }}"
+
+          if [[ "$status" != "success" ]]; then
+            exit 1
+          fi

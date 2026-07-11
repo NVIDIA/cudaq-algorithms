@@ -1,0 +1,29 @@
+name: PR cleanup
+
+on: delete
+
+jobs:
+  pr-cleanup:
+    name: Cleanup cache
+    if: github.event.ref_type == 'branch' && startsWith(github.event.ref, 'pull-request/')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Delete cache entries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_number=$(echo ${{ github.event.ref }} | sed 's/.*\///')
+
+          # Fetch the list of cache keys
+          cache_keys=$(gh cache list --repo ${{ github.repository }} --limit 1000 | cut -f 2)
+
+          for key in $cache_keys
+          do
+            if [[ $key =~ -pr${pr_number}$ ]]; then
+              gh cache delete $key --repo ${{ github.repository }}
+              echo "Deleted cache entry: $key"
+            fi
+          done

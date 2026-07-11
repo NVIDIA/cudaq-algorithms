@@ -1,0 +1,45 @@
+name: CUDAQ cache
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/cudaq_cache.yaml'
+      - '.github/workflows/build_cudaq.yaml'
+      - '.github/workflows/build_cudaq_wheels.yaml'
+      - '.github/actions/get-cudaq-build/**'
+      - '.github/actions/get-cudaq-version/**'
+      - '.github/actions/get-cudaq-wheels/**'
+      - '.cudaq_version'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-cudaq:
+    name: Build CUDAQ
+    uses: ./.github/workflows/build_cudaq.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      save_build: true
+      save_ccache: true
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  build-cudaq-wheels:
+    name: Build CUDAQ wheels
+    uses: ./.github/workflows/build_cudaq_wheels.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      save_build: true
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}

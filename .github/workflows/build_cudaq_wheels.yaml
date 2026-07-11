@@ -1,0 +1,91 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: CUDA-Q wheels
+
+on:
+  workflow_call:
+    inputs:
+      cache_key_suffix:
+        type: string
+        default: ''
+        required: false
+      save_build:
+        type: boolean
+        default: true
+        required: false
+      upload_artifact:
+        type: boolean
+        default: false
+        required: false
+      cudaq_repo:
+        type: string
+        default: ''
+        required: false
+      cudaq_ref:
+        type: string
+        default: ''
+        required: false
+    secrets:
+      CUDAQ_ACCESS_TOKEN:
+        required: false
+
+jobs:
+  build-cudaq-wheels:
+    name: Build CUDA-Q wheels
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ['amd64']
+        # cu13 packaging (pyproject.toml.cu13) is supported by the build
+        # scripts but not yet exercised in CI; deferred until a cu13 devdeps
+        # image is available. Add '13.x' here to enable.
+        cuda_version: ['12.6']
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          set-safe-directory: true
+
+      - name: Configure
+        id: config
+        run: |
+          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
+          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
+
+      - name: Get required CUDAQ version
+        id: get-cudaq-version
+        uses: ./.github/actions/get-cudaq-version
+        with:
+          repo: ${{ inputs.cudaq_repo }}
+          ref: ${{ inputs.cudaq_ref }}
+
+      - name: Get CUDA-Q wheels
+        uses: ./.github/actions/get-cudaq-wheels
+        with:
+          cuda_version: ${{ matrix.cuda_version }}
+          repo: ${{ steps.get-cudaq-version.outputs.repo }}
+          ref: ${{ steps.get-cudaq-version.outputs.ref }}
+          token: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+          cache-key-suffix: ${{ inputs.cache_key_suffix }}
+          save-build: ${{ inputs.save_build }}
+          platform: ${{ matrix.platform }}
+
+      - name: Upload CUDA-Q wheels
+        if: ${{ inputs.upload_artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudaq-wheels-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          path: /cudaq-wheels
+          retention-days: 14
+          if-no-files-found: error

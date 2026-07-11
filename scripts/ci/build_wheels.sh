@@ -82,12 +82,14 @@ if $devdeps; then
     elif [[ "$arch" == "aarch64" ]]; then
         plat_args=(--plat manylinux_2_34_aarch64)
     fi
-elif [[ -f /opt/rh/gcc-toolset-12/enable ]]; then
+fi
+
+if [[ -f /opt/rh/gcc-toolset-12/enable ]]; then
     source /opt/rh/gcc-toolset-12/enable
 fi
 
-export CC=${CC:-gcc}
-export CXX=${CXX:-g++}
+export CC=gcc
+export CXX=g++
 export SETUPTOOLS_SCM_PRETEND_VERSION=$wheels_version
 export CUDAQ_ALGORITHMS_VERSION=$wheels_version
 
@@ -106,7 +108,7 @@ cp "pyproject.toml.cu${cuda_major}" pyproject.toml
 
 skbuild_args="-DCUDAQ_DIR=$cudaq_prefix/lib/cmake/cudaq;-DCMAKE_BUILD_TYPE=$build_type"
 toolchain_dir="/opt/rh/gcc-toolset-12/root/usr/lib/gcc/${arch}-redhat-linux/12/"
-if ! $devdeps && [[ -d "$toolchain_dir" ]]; then
+if [[ -d "$toolchain_dir" ]]; then
     skbuild_args="$skbuild_args;-DCMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN=$toolchain_dir"
 fi
 export SKBUILD_CMAKE_ARGS=$skbuild_args
