@@ -434,6 +434,36 @@ def test_apply_trotter_kernel_handles_four_qubit_hamiltonian_with_many_terms():
 # ----------------------------------------------------------------------------
 
 
+@cudaq.kernel
+def _product_prep(qubits: cudaq.qview):
+    rx(0.37, qubits[0])
+    ry(-0.52, qubits[1])
+
+
+def test_kernel_factory_accepts_state_prep_injection():
+    # With state_prep the factory returns a zero-argument, fully
+    # hardware-shaped circuit; pin it against state_kernel fed the same
+    # prepared state as data.
+    evolution = trotter.Trotter({"XI": 0.7, "IZ": 0.4, "XZ": 0.31})
+    ket = _two_qubit_product_state(0.37, -0.52)
+
+    via_prep = np.asarray(cudaq.get_state(
+        evolution.kernel(time=0.8, steps=3, order=2,
+                         state_prep=_product_prep)),
+                          dtype=np.complex128)
+    via_state = np.asarray(cudaq.get_state(
+        evolution.state_kernel(time=0.8, steps=3, order=2),
+        sim_utils.state_from(ket)),
+                           dtype=np.complex128)
+    np.testing.assert_allclose(via_prep, via_state, atol=1e-12)
+
+    counts = cudaq.sample(evolution.kernel(time=0.8,
+                                           steps=1,
+                                           state_prep=_product_prep),
+                          shots_count=100)
+    assert sum(counts.values()) == 100
+
+
 def test_kernel_factory_evolves_the_zero_state():
     hamiltonian = {"XI": 0.7, "IZ": 0.4, "XZ": 0.31, "YY": 0.23}
     evolution = trotter.Trotter(hamiltonian)

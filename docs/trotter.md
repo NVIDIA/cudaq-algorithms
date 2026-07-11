@@ -60,6 +60,27 @@ implemented): merging the back-to-back half-rotations at sweep and step
 boundaries of the order-2/4 formulas (~1/num_terms of all rotations, each
 a CX ladder on hardware); no effect on simulator results.
 
+### State preparation injection
+
+`kernel()` takes an optional `state_prep` kernel with signature
+`(qubits: cudaq.qview)`: the returned circuit allocates the register in
+|0...0>, runs `state_prep` on it, then evolves — still zero-argument and
+directly sampleable, with no statevector anywhere:
+
+```python
+@cudaq.kernel
+def my_prep(qubits: cudaq.qview):
+    rx(0.37, qubits[0])
+    ry(-0.52, qubits[1])
+
+kernel = evolution.kernel(time=0.8, steps=4, order=2, state_prep=my_prep)
+counts = cudaq.sample(kernel)
+```
+
+`state_prep` must act only on the register it is handed (width
+`num_qubits`). The same parameter exists on the LCU/qubitization/QSVT
+factories.
+
 ### Composing inside user kernels
 
 The flattened primitive is the escape hatch for composition with state

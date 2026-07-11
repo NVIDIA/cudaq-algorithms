@@ -409,20 +409,44 @@ class Trotter:
     def kernel(self,
                time: float,
                steps: int = 1,
-               order: int = SECOND_ORDER_TROTTER) -> Any:
+               order: int = SECOND_ORDER_TROTTER,
+               state_prep: Any | None = None) -> Any:
         """Return a ``@cudaq.kernel()`` applying the product formula.
 
         (``Any`` because CUDA-Q exposes no stable public Python type for
         compiled kernel objects.)
 
-        The kernel allocates ``num_qubits`` qubits in |0...0> and applies
-        the ``order``-order formula for ``time`` over ``steps`` steps. The
+        The kernel allocates ``num_qubits`` qubits in |0...0>, optionally
+        runs ``state_prep`` (a kernel with signature
+        ``(qubits: cudaq.qview)``) on them, and applies the
+        ``order``-order formula for ``time`` over ``steps`` steps — with
+        or without ``state_prep`` the result takes no arguments and is
+        directly sampleable. ``state_prep`` must act only on the register
+        it is handed (width ``num_qubits``, arriving in |0...0>). The
         identity phase is not included (it cannot be, in a circuit); track
         ``identity_coefficient`` when it matters.
         """
         time, steps, order, coefficients, words = self._prepared_args(
             time, steps, order)
         num_qubits = self._num_qubits
+
+        if state_prep is not None:
+            if not words:
+
+                @cudaq.kernel
+                def prep_identity():
+                    qubits = cudaq.qvector(num_qubits)
+                    state_prep(qubits)
+
+                return prep_identity
+
+            @cudaq.kernel
+            def prep_evolve():
+                qubits = cudaq.qvector(num_qubits)
+                state_prep(qubits)
+                apply_trotter(coefficients, words, time, steps, order, qubits)
+
+            return prep_evolve
 
         if not words:
             # Identity-only Hamiltonian: the circuit is the identity.
