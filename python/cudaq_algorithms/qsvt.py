@@ -188,7 +188,8 @@ class QSVT:
 
     def kernel(self,
                sequence: PhaseSequence | Iterable[float],
-               convention: str | None = None) -> Kernel:
+               convention: str | None = None,
+               state_prep: Kernel | None = None) -> Kernel:
         """A ``@cudaq.kernel(state)`` applying the phase/walk sequence.
 
         ``sequence`` may be a PhaseSequence or a plain list of phases
@@ -201,7 +202,27 @@ class QSVT:
         # empty list captures cannot be marshaled.
         directions = list(seq.walk_directions) or [FORWARD]
         n_anc = self._encoding.num_ancilla
+        n_sys = self._encoding.num_system
         u_a = self._encoding_kernel("apply_kernel")
+
+        if state_prep is not None:
+
+            @cudaq.kernel
+            def prep_qsvt_kernel():
+                system = cudaq.qvector(n_sys)
+                state_prep(system)
+                signal = cudaq.qvector(n_anc)
+                signal_phase(signal, phases[0])
+                for i in range(1, len(phases)):
+                    if directions[i - 1] == 1:
+                        reflect_about_zero(signal)
+                        u_a(signal, system)
+                    else:
+                        u_a(signal, system)
+                        reflect_about_zero(signal)
+                    signal_phase(signal, phases[i])
+
+            return prep_qsvt_kernel
 
         @cudaq.kernel
         def qsvt_kernel(state: cudaq.State):
@@ -222,7 +243,8 @@ class QSVT:
     def controlled_kernel(self,
                           sequence: PhaseSequence | Iterable[float],
                           convention: str | None = None,
-                          control_state: int = 1) -> Kernel:
+                          control_state: int = 1,
+                          state_prep: Kernel | None = None) -> Kernel:
         """``@cudaq.kernel(state)`` applying the sequence controlled.
 
         Allocates the system register from ``state``, then one register
@@ -236,6 +258,28 @@ class QSVT:
         n_anc = self._encoding.num_ancilla
         flip_control = _validate_control_state(control_state) == 1
         controlled_u_a = self._encoding_kernel("controlled_apply_kernel")
+        n_sys = self._encoding.num_system
+
+        if state_prep is not None:
+
+            @cudaq.kernel
+            def prep_controlled_qsvt_kernel():
+                system = cudaq.qvector(n_sys)
+                state_prep(system)
+                control_and_signal = cudaq.qvector(1 + n_anc)
+                if flip_control:
+                    x(control_and_signal[0])
+                controlled_signal_phase(control_and_signal, phases[0])
+                for i in range(1, len(phases)):
+                    if directions[i - 1] == 1:
+                        controlled_reflect_about_zero(control_and_signal)
+                        controlled_u_a(control_and_signal, system)
+                    else:
+                        controlled_u_a(control_and_signal, system)
+                        controlled_reflect_about_zero(control_and_signal)
+                    controlled_signal_phase(control_and_signal, phases[i])
+
+            return prep_controlled_qsvt_kernel
 
         @cudaq.kernel
         def controlled_qsvt_kernel(state: cudaq.State):
