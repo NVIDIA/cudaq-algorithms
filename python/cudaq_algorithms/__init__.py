@@ -44,6 +44,10 @@ except ModuleNotFoundError as exc:
 # Pure-Python classical preprocessing (no compiled-extension dependency).
 from . import double_factorization
 
+# Chemistry bridges (JW transform requires the compiled extension at
+# call time; importing the module itself does not).
+from . import chemistry
+
 # Pure-Python quantum primitives (no compiled-extension dependency).
 from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,
                sim_utils, trotter)
