@@ -9,6 +9,28 @@
 name: Algorithms wheels
 
 on:
+  # Build wheels from main whenever a merge touches anything that ships in
+  # (or validates) the wheels, and nightly as a safety net, so installable
+  # artifacts always exist for the current main. Both events use the
+  # default Release / 0.14.99 configuration.
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build_cudaq_wheels.yaml'
+      - '.github/workflows/scripts/**'
+      - '.github/workflows/wheel_algorithms.yaml'
+      - '.cudaq_version'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'pyproject.toml.cu*'
+      - 'python/**'
+      - 'scripts/ci/**'
+      - 'tests/**'
+  schedule:
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       build_type:
@@ -93,7 +115,7 @@ jobs:
       matrix:
         python: ['3.12']
         platform: ['amd64']
-        cuda_version: ['12.6']
+        cuda_version: ['12.6', '13.0']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
     container:
       image: ghcr.io/nvidia/cuda-quantum-devdeps:manylinux-${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
@@ -139,7 +161,7 @@ jobs:
           bash scripts/ci/build_wheels.sh \
             --cuda-version ${{ steps.config.outputs.cuda_major }} \
             --cudaq-prefix /usr/local/cudaq \
-            --build-type ${{ inputs.build_type }} \
+            --build-type ${{ inputs.build_type || 'Release' }} \
             --python-version ${{ matrix.python }} \
             --version ${{ inputs.version || '0.14.99' }} \
             --devdeps
@@ -205,7 +227,7 @@ jobs:
       matrix:
         python: ['3.12']
         platform: ['amd64']
-        cuda_version: ['12.6']
+        cuda_version: ['12.6', '13.0']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
