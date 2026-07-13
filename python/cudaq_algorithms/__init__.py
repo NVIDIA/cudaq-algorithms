@@ -45,10 +45,11 @@ except ModuleNotFoundError as exc:
 from . import double_factorization
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
-from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,
-               sim_utils, trotter)
+from . import (block_encoding, common_kernels, df_encoding, pauli_lcu, qsvt,
+               qubitization, sim_utils, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
+from .df_encoding import DoubleFactorizedEncoding
 from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
