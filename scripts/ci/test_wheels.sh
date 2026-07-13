@@ -37,6 +37,28 @@ fi
 # Help the metapackage detect CUDA major version in CPU-only validation jobs.
 $python -m pip install --extra-index-url https://pypi.nvidia.com/ "cuda_toolkit[cudart]==${cuda_version}.*" || true
 
+# Pip-installed CUDA libraries live inside site-packages (e.g.
+# nvidia/cuda_runtime/lib for cu12, nvidia/cu13/lib for cu13) and are not on
+# the loader path, so the metapackage's ctypes-based CUDA detection cannot
+# load libcudart and silently falls back to the cu12 variant. Expose the
+# library directory so detection selects the variant under test.
+cudart_libdir=$($python - <<'EOF'
+import glob
+import os
+import site
+
+for directory in site.getsitepackages():
+    matches = glob.glob(os.path.join(directory, "nvidia", "**",
+                                     "libcudart.so*"), recursive=True)
+    if matches:
+        print(os.path.dirname(sorted(matches)[0]))
+        break
+EOF
+)
+if [[ -n "$cudart_libdir" ]]; then
+    export LD_LIBRARY_PATH="$cudart_libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
 $python -m pip install "${find_links[@]}" "cudaq-algorithms==${algorithms_version}"
 $python -c "import cudaq_algorithms"
 
