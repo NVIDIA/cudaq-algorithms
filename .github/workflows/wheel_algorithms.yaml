@@ -113,8 +113,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.12']
-        platform: ['amd64']
+        python: ['3.11', '3.12', '3.13']
+        platform: ['amd64', 'arm64']
         cuda_version: ['12.6', '13.0']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
     container:
@@ -225,8 +225,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.12']
-        platform: ['amd64']
+        python: ['3.11', '3.12', '3.13']
+        platform: ['amd64', 'arm64']
         cuda_version: ['12.6', '13.0']
     steps:
       - name: Checkout repository
