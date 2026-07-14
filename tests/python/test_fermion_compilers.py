@@ -441,3 +441,98 @@ def test_validation_errors():
         bravyi_kitaev(np.zeros((2, 2, 2, 2)), np.zeros((2, 2, 2, 2)))
     with pytest.raises(ValueError, match="wrong rank"):
         jordan_wigner(np.zeros((2, 2)), np.zeros((2, 2, 2)))
+
+
+# ----------------------------------------------------------------------
+# Three-way spectral agreement: exact fermionic vs JW vs BK
+# ----------------------------------------------------------------------
+
+
+def _physical_system(n_spatial, seed):
+    """Random Hamiltonian with physical electronic-structure symmetries.
+
+    Spatial one-body: real symmetric. Spatial two-electron integrals:
+    8-fold symmetric and positive semidefinite (sum of symmetric rank-one
+    squares, like real molecular ERIs). Both are spin-expanded to the
+    interleaved spin-orbital convention.
+    """
+    rng = np.random.default_rng(seed)
+    n = n_spatial
+    chem = np.zeros((n, n, n, n))
+    for _ in range(n + 1):
+        s = rng.normal(size=(n, n))
+        s = 0.5 * (s + s.T)
+        chem += float(rng.uniform(0.1, 1.0)) * np.einsum('pq,rs->pqrs', s, s)
+    h_spatial = rng.normal(size=(n, n))
+    h_spatial = 0.5 * (h_spatial + h_spatial.T)
+
+    reordered = np.ascontiguousarray(chem.transpose(0, 2, 3, 1))
+    m = 2 * n
+    one_body = np.zeros((m, m), dtype=complex)
+    two_body = np.zeros((m, m, m, m), dtype=complex)
+    for p in range(n):
+        for q in range(n):
+            one_body[2 * p, 2 * q] = h_spatial[p, q]
+            one_body[2 * p + 1, 2 * q + 1] = h_spatial[p, q]
+            for r in range(n):
+                for s in range(n):
+                    c = 0.5 * reordered[p, q, r, s]
+                    two_body[2 * p, 2 * q, 2 * r, 2 * s] = c
+                    two_body[2 * p + 1, 2 * q + 1, 2 * r + 1, 2 * s + 1] = c
+                    two_body[2 * p, 2 * q + 1, 2 * r + 1, 2 * s] = c
+                    two_body[2 * p + 1, 2 * q, 2 * r, 2 * s + 1] = c
+    return one_body, two_body
+
+
+def _sparse_fermionic_hamiltonian(one_body, two_body, scalar_offset):
+    """Exact dense Fock-space Hamiltonian via sparse ladder matrices.
+
+    Independent of both transforms under test; sparse products keep the
+    build fast enough to diagonalize 10-qubit systems exactly.
+    """
+    from scipy import sparse
+
+    m = one_body.shape[0]
+    dim = 1 << m
+    lower = []
+    for j in range(m):
+        ops = ([_Z2] * j + [_LOWER] + [_I2] * (m - j - 1))[::-1]
+        out = sparse.identity(1, format="csr")
+        for op in ops:
+            out = sparse.kron(out, sparse.csr_matrix(op), format="csr")
+        lower.append(out)
+    raise_ = [op.conj().T.tocsr() for op in lower]
+
+    h = sparse.identity(dim, format="csr", dtype=complex) * scalar_offset
+    for i, j in np.argwhere(one_body):
+        h = h + one_body[i, j] * (raise_[i] @ lower[j])
+    for i, j, k, l in np.argwhere(two_body):
+        h = h + two_body[i, j, k,
+                         l] * (raise_[i] @ raise_[j] @ lower[k] @ lower[l])
+    return h.toarray()
+
+
+@pytest.mark.parametrize("n_spatial", [2, 3, 4, 5])
+def test_three_way_spectrum_agreement(n_spatial):
+    """Exact fermionic, JW, and BK spectra must agree at every size."""
+    one_body, two_body = _physical_system(n_spatial, seed=31 + n_spatial)
+    offset = 0.317
+    m = 2 * n_spatial
+    dim = 1 << m
+
+    exact = np.linalg.eigvalsh(
+        _sparse_fermionic_hamiltonian(one_body, two_body, offset))
+
+    jw_matrix = np.asarray(
+        jordan_wigner(one_body, two_body, scalar_offset=offset).to_matrix())
+    bk_matrix = np.asarray(
+        bravyi_kitaev(one_body, two_body, scalar_offset=offset).to_matrix())
+    assert jw_matrix.shape == (dim, dim)
+    assert bk_matrix.shape == (dim, dim)
+
+    jw_spectrum = np.linalg.eigvalsh(jw_matrix)
+    bk_spectrum = np.linalg.eigvalsh(bk_matrix)
+
+    np.testing.assert_allclose(jw_spectrum, exact, atol=1e-10)
+    np.testing.assert_allclose(bk_spectrum, exact, atol=1e-10)
+    np.testing.assert_allclose(bk_spectrum, jw_spectrum, atol=1e-10)
