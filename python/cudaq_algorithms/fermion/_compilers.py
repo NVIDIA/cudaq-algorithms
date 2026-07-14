@@ -247,11 +247,12 @@ def _to_spin_operator(accumulator: dict, tolerance: float):
     # tree costs O(T log T) — the difference between seconds and hours for
     # multi-thousand-term Hamiltonians.
     while len(operators) > 1:
-        operators = [
-            operators[i] +
-            operators[i + 1] if i + 1 < len(operators) else operators[i]
-            for i in range(0, len(operators), 2)
-        ]
+        paired = []
+        for i in range(0, len(operators) - 1, 2):
+            paired.append(operators[i] + operators[i + 1])
+        if len(operators) & 1:
+            paired.append(operators[-1])
+        operators = paired
     return operators[0].canonicalize()
 
 
