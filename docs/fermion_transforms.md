@@ -43,8 +43,8 @@ Jordan-Wigner strings touch `O(n)`.
 Both transforms compile arbitrary coefficient tensors — no hermiticity
 or index-ordering symmetry is assumed, and the two transforms are
 guaranteed to encode the same fermionic operator (isospectral, pinned
-by tests). This is a deliberate difference from the compiled C++
-`bravyi_kitaev` this module replaces, which enumerated restricted index
+by tests). This is a deliberate difference from the retired C++
+`bravyi_kitaev` this module replaced, which enumerated restricted index
 patterns and silently assumed a chemistry-canonical tensor ordering;
 tensors outside that form produced a wrong operator. The pure
 transforms have Jordan-Wigner's generic semantics for every input.
@@ -53,11 +53,12 @@ transforms have Jordan-Wigner's generic semantics for every input.
 
 The test suite pins: Jordan-Wigner against dense ladder-operator
 matrices (including non-hermitian tensors); Bravyi-Kitaev against the
-exact per-pair operators and the H2 operator from the C++ unit tests;
-isospectrality between the two encodings on unstructured tensors; the
-`O(log n)` word-weight advantage; and, when the compiled extension is
-present, term-by-term parity with the C++ transforms on their supported
-inputs.
+exact per-pair operators and the H2 operator inherited from the retired
+C++ implementation's unit tests; three-way spectral agreement (exact
+Fock-space diagonalization via sparse ladder operators vs. both
+transforms) on random Hamiltonians with physical symmetries at 4-10
+qubits; isospectrality between the two encodings on unstructured
+tensors; and the `O(log n)` word-weight advantage.
 
 ## Notes
 

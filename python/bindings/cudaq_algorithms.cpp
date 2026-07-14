@@ -12,12 +12,6 @@ NB_MODULE(_pycudaq_algorithms, mod) {
   nb::module_::import_("cudaq");
 
   try {
-    cudaq::algorithms::bind_fermion(mod);
-  } catch (const std::exception &e) {
-    throw std::runtime_error(std::string("bind_fermion failed: ") + e.what());
-  }
-
-  try {
     cudaq::algorithms::bind_stateprep(mod);
   } catch (const std::exception &e) {
     throw std::runtime_error(std::string("bind_stateprep failed: ") + e.what());

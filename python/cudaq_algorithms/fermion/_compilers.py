@@ -38,16 +38,15 @@ representation — a pair of bitmasks ``(x, z)`` meaning
 ``i^{popcount(x & z)} X^x Z^z`` (``Y`` on overlap) — so products are two
 XORs and a phase.
 
-The compiled Hamiltonian convention matches the C++ transforms this
-module replaces:
+The Hamiltonian convention matches the C++ transforms this module
+replaced:
 
     H = scalar_offset * I + sum_ij  h[i, j]      adag_i a_j
                           + sum_ijkl V[i, j, k, l] adag_i adag_j a_k a_l
 
-Unlike the replaced C++ Bravyi-Kitaev (which assumed a Hermitian
-integral tensor and only read its lower triangle), both transforms here
-compile the tensors exactly as given, term by term — for physical
-(Hermitian) inputs the results agree.
+Unlike the retired C++ Bravyi-Kitaev (which assumed additional
+tensor structure beyond hermiticity), both transforms here compile the
+tensors exactly as given, term by term.
 """
 
 from __future__ import annotations

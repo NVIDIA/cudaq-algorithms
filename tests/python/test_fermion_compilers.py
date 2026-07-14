@@ -8,13 +8,11 @@
 """Pure-Python fermion-to-qubit compilers, pinned against ground truth.
 
 References used: dense Jordan-Wigner ladder matrices built in NumPy, the
-exact Seeley-Richard-Love per-pair operators and the H2 operator from the
-C++ unit tests, spectral equivalence between encodings, and (when the
-compiled extension is present) term-by-term parity with the C++
-transforms.
+exact Seeley-Richard-Love per-pair operators and the H2 operator
+inherited from the retired C++ implementation's unit tests, exact
+Fock-space diagonalization via sparse ladder operators, and spectral
+equivalence between encodings.
 """
-
-import importlib.util
 
 import numpy as np
 import pytest
@@ -22,9 +20,6 @@ import pytest
 import cudaq
 
 from cudaq_algorithms.fermion import bravyi_kitaev, jordan_wigner
-
-_HAVE_COMPILED = importlib.util.find_spec(
-    "cudaq_algorithms._pycudaq_algorithms") is not None
 
 # ----------------------------------------------------------------------
 # References
@@ -131,7 +126,7 @@ def test_jordan_wigner_one_body_only_and_two_body_only():
 
 
 # ----------------------------------------------------------------------
-# Bravyi-Kitaev: exact known answers from the C++ unit tests
+# Bravyi-Kitaev: exact known answers (from the retired C++ unit tests)
 # ----------------------------------------------------------------------
 
 
@@ -358,59 +353,6 @@ def test_bravyi_kitaev_word_weight_advantage():
 
     assert max_weight(jordan_wigner(one_body)) == m
     assert max_weight(bravyi_kitaev(one_body)) < m // 2
-
-
-# ----------------------------------------------------------------------
-# Parity with the compiled extension
-# ----------------------------------------------------------------------
-
-
-@pytest.mark.skipif(not _HAVE_COMPILED, reason="compiled extension not built")
-def test_jordan_wigner_parity_with_compiled():
-    from cudaq_algorithms._pycudaq_algorithms import fermion as compiled
-
-    one_body, two_body = _random_generic_system(9, 5)
-    ours = jordan_wigner(one_body,
-                         two_body,
-                         scalar_offset=0.3,
-                         tolerance=1e-12)
-    theirs = compiled.jordan_wigner(one_body,
-                                    two_body,
-                                    scalar_offset=0.3,
-                                    tolerance=1e-12)
-    assert _max_term_difference(ours, theirs, 5) < 1e-12
-
-
-@pytest.mark.skipif(not _HAVE_COMPILED, reason="compiled extension not built")
-def test_bravyi_kitaev_parity_with_compiled_on_h2():
-    from cudaq_algorithms._pycudaq_algorithms import fermion as compiled
-
-    two_body = _h2_two_body()
-    ours = bravyi_kitaev(_H2_ONE_BODY, two_body, scalar_offset=_H2_OFFSET)
-    theirs = compiled.bravyi_kitaev(_H2_ONE_BODY,
-                                    two_body,
-                                    scalar_offset=_H2_OFFSET)
-    assert _max_term_difference(ours, theirs, 4) < 1e-12
-
-
-@pytest.mark.skipif(not _HAVE_COMPILED, reason="compiled extension not built")
-def test_bravyi_kitaev_generalizes_beyond_compiled():
-    """The pure transform handles tensor orderings the C++ one assumed away.
-
-    The C++ Bravyi-Kitaev enumerated restricted index patterns and is only
-    correct for tensors in its expected canonical ordering; the pure
-    transform compiles any tensor exactly as given. Pin that here by
-    checking the pure BK against the compiled *Jordan-Wigner* spectrum on
-    a tensor ordering outside that canonical form.
-    """
-    from cudaq_algorithms._pycudaq_algorithms import fermion as compiled
-
-    one_body, two_body = _random_generic_system(7, 4)
-    ours = bravyi_kitaev(one_body, two_body, scalar_offset=0.1)
-    reference = compiled.jordan_wigner(one_body, two_body, scalar_offset=0.1)
-    np.testing.assert_allclose(_spectrum(ours),
-                               _spectrum(reference),
-                               atol=1e-10)
 
 
 # ----------------------------------------------------------------------

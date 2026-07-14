@@ -47,9 +47,6 @@ except ModuleNotFoundError as exc:
 from . import double_factorization
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
-# ``fermion`` is imported explicitly so the pure package deterministically
-# owns the ``cudaq_algorithms.fermion`` attribute even when the compiled
-# extension's ``import *`` above also exposed a submodule of that name.
 from . import (block_encoding, common_kernels, fermion, pauli_lcu, qsvt,
                qubitization, sim_utils, trotter)
 from .block_encoding import BlockEncoding
