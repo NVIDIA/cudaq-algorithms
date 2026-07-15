@@ -266,7 +266,12 @@ def uccsd(qubits: cudaq.qview, thetas: list[float], num_electrons: int,
     indices are computed inline: occupied alpha 2i, virtual alpha
     2j + 2*n_occ_alpha, occupied beta 2i + 1, virtual beta
     2j + 2*n_occ_beta + 1 (for spin == 0 these reduce to the closed-shell
-    formulas of the C++ implementation since 2*n_occ = num_electrons).
+    formulas of the C++ implementation since 2*n_occ = num_electrons;
+    they differ from the C++ only for the invalid odd-electrons/spin==0
+    input, which the host API rejects). Do NOT rewrite the offsets as
+    variables reassigned inside the spin > 0 branch: that shape
+    miscompiles on CUDA-Q 0.15 — successive launches of a calling kernel
+    at different qubit counts accumulate qubits in get_state.
     """
     n_spatial = qubits.size() // 2
     n_occ_alpha = num_electrons // 2

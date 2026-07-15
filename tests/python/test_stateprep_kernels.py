@@ -11,8 +11,10 @@ Each ansatz kernel is checked against an independently computed dense
 reference: the ordered product of single-term matrix exponentials
 ``prod_j exp(i * theta_k * c_kj * P_kj)`` applied to the Hartree-Fock
 determinant, with the terms taken from the operator pool in kernel
-parameter order. This makes no commutation assumptions and pins both the
-circuits and the pool/parameter ordering.
+parameter order. The terms within one generator mutually commute, so the
+reference is exact even where the circuits interleave the term
+exponentials in a different order; the check pins the circuits, the pool
+contents, and the parameter ordering.
 
 A separate parity test compares the pure-Python pools against the
 compiled bindings when the native extension is available.
@@ -124,7 +126,10 @@ def _state(kernel, *args):
     return np.array(cudaq.get_state(kernel, *args))
 
 
-def _assert_close(actual, reference, tol=1e-12):
+def _assert_close(actual, reference):
+    # fp32 targets (e.g. the default `nvidia` simulator) land around 5e-6.
+    single_precision = np.dtype(cudaq.complex()) == np.dtype(np.complex64)
+    tol = 5e-5 if single_precision else 1e-12
     assert np.max(np.abs(actual - reference)) < tol
 
 
@@ -226,22 +231,70 @@ def test_ceo_kernel_matches_dense_exponential(num_orbitals):
 def test_pools_match_compiled_bindings():
     native = pytest.importorskip("cudaq_algorithms._pycudaq_algorithms")
     compiled = native.stateprep
+    # Guard against the compiled submodule shadowing the pure package
+    # (from-imports do not re-import an attribute the extension's
+    # `import *` already bound): this test must compare two distinct
+    # implementations, not the extension with itself.
+    assert algorithms.stateprep is not compiled
 
     def as_lists(excitations):
         return [[list(entry) for entry in group] for group in excitations]
 
-    assert as_lists(compiled.get_uccsd_excitations(8, 4, 0)) == as_lists(
-        algorithms.stateprep.get_uccsd_excitations(8, 4, 0))
+    for config in [(8, 4, 0), (6, 3, 1), (8, 3, 1), (12, 6, 0)]:
+        assert as_lists(compiled.get_uccsd_excitations(*config)) == as_lists(
+            algorithms.stateprep.get_uccsd_excitations(*config))
+        assert (compiled.get_num_uccsd_parameters(
+            *config) == algorithms.stateprep.get_num_uccsd_parameters(*config))
 
     for pure_pool, compiled_pool, num_qubits in [
         (algorithms.stateprep.make_uccsd_operator_pool(8, 4, 0),
          compiled.make_uccsd_operator_pool(8, 4, 0), 8),
+        (algorithms.stateprep.make_uccsd_operator_pool(8, 3, 1),
+         compiled.make_uccsd_operator_pool(8, 3, 1), 8),
         (algorithms.stateprep.make_uccgsd_operator_pool(6),
          compiled.make_uccgsd_operator_pool(6), 6),
+        (algorithms.stateprep.make_uccgsd_operator_pool(6, True, False),
+         compiled.make_uccgsd_operator_pool(6, True, False), 6),
+        (algorithms.stateprep.make_uccgsd_operator_pool(6, False, True),
+         compiled.make_uccgsd_operator_pool(6, False, True), 6),
         (algorithms.stateprep.make_upccgsd_operator_pool(8),
          compiled.make_upccgsd_operator_pool(8), 8),
+        (algorithms.stateprep.make_upccgsd_operator_pool(8, True),
+         compiled.make_upccgsd_operator_pool(8, True), 8),
         (algorithms.stateprep.make_ceo_operator_pool(3),
          compiled.make_ceo_operator_pool(3), 6),
+        (algorithms.stateprep.make_ceo_operator_pool(4),
+         compiled.make_ceo_operator_pool(4), 8),
     ]:
         assert _pool_term_groups(pure_pool, num_qubits) == _pool_term_groups(
             compiled_pool, num_qubits)
+
+
+def test_pauli_lists_match_compiled_bindings():
+    native = pytest.importorskip("cudaq_algorithms._pycudaq_algorithms")
+    compiled = native.stateprep
+    assert algorithms.stateprep is not compiled
+
+    # pauli_word objects are opaque (no string accessor), so compare the
+    # coefficient groups exactly and the word-group shapes; the word
+    # contents are pinned by the pool comparison above, which uses the
+    # same construction path.
+    for pure_lists, compiled_lists in [
+        (algorithms.stateprep.get_uccgsd_pauli_lists(6),
+         compiled.get_uccgsd_pauli_lists(6)),
+        (algorithms.stateprep.get_uccgsd_pauli_lists(6, True, False),
+         compiled.get_uccgsd_pauli_lists(6, only_singles=True)),
+        (algorithms.stateprep.get_upccgsd_pauli_lists(8),
+         compiled.get_upccgsd_pauli_lists(8)),
+        (algorithms.stateprep.get_upccgsd_pauli_lists(8, True),
+         compiled.get_upccgsd_pauli_lists(8, only_doubles=True)),
+        (algorithms.stateprep.get_ceo_pauli_lists(3),
+         compiled.get_ceo_pauli_lists(3)),
+    ]:
+        pure_words, pure_coeffs = pure_lists
+        compiled_words, compiled_coeffs = compiled_lists
+        assert [len(group) for group in pure_words
+                ] == [len(group) for group in compiled_words]
+        assert len(pure_coeffs) == len(compiled_coeffs)
+        for pure_group, compiled_group in zip(pure_coeffs, compiled_coeffs):
+            assert pure_group == pytest.approx(compiled_group, abs=1e-14)

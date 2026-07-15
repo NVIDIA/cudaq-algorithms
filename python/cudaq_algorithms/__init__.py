@@ -47,11 +47,19 @@ except ModuleNotFoundError as exc:
 from . import double_factorization
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
-# stateprep is imported AFTER the extension's `import *` so the pure
-# package deterministically owns the attribute (the extension also
-# exposes a `stateprep` submodule name).
 from . import (block_encoding, common_kernels, fermion, pauli_lcu, qsvt,
-               qubitization, sim_utils, stateprep, trotter)
+               qubitization, sim_utils, trotter)
+
+# The extension also exposes a `stateprep` submodule name, and `from .
+# import stateprep` would NOT shadow it: the import system only imports
+# a submodule for a from-import when the attribute is missing from the
+# package. Import through importlib so the pure package deterministically
+# owns the attribute (the compiled module stays reachable as
+# `_pycudaq_algorithms.stateprep`).
+import importlib as _importlib
+
+stateprep = _importlib.import_module(__name__ + ".stateprep")
+del _importlib
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
 from .pauli_lcu import PauliLCU, select_observable
