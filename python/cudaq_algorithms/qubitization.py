@@ -134,7 +134,7 @@ class Walk:
                 return prep_walk_and_uncompute
 
             @cudaq.kernel
-            def prep_walk():
+            def prep_walk_prepared():
                 system = cudaq.qvector(n_sys)
                 state_prep(system)
                 ancilla = cudaq.qvector(n_anc)
@@ -142,7 +142,7 @@ class Walk:
                 for _ in range(steps):
                     step(ancilla, system)
 
-            return prep_walk
+            return prep_walk_prepared
 
         if uncompute:
 
@@ -243,11 +243,15 @@ class Walk:
                           control_state: int = 1,
                           uncompute: bool = True,
                           state_prep: Kernel | None = None) -> Kernel:
-        """``@cudaq.kernel(state)`` running controlled walks.
+        """Controlled walks over the system register.
 
-        Allocates the system register from ``state``, then one register
-        holding [control, ancillas] (the control cannot share a control set
-        with a separate register in CUDA-Q Python). The control qubit is
+        Input modes as in ``kernel``: without ``state_prep`` the returned
+        kernel takes one ``cudaq.State`` argument; with ``state_prep`` it
+        takes no arguments and prepares the system register itself (the
+        injected prep runs once, uncontrolled, as in QPE). Either way the
+        system register is followed by one register holding
+        [control, ancillas] (the control cannot share a control set with
+        a separate register in CUDA-Q Python). The control qubit is
         initialized to ``control_state``; with control |0> the circuit is
         the identity up to the (cancelling) PREPARE pair.
         """
@@ -277,7 +281,7 @@ class Walk:
                 return prep_controlled_walked
 
             @cudaq.kernel
-            def prep_controlled_walked_only():
+            def prep_controlled_walked_prepared():
                 system = cudaq.qvector(n_sys)
                 state_prep(system)
                 control_and_ancilla = cudaq.qvector(1 + n_anc)
@@ -287,7 +291,7 @@ class Walk:
                 for _ in range(steps):
                     controlled_step(control_and_ancilla, system)
 
-            return prep_controlled_walked_only
+            return prep_controlled_walked_prepared
 
         if uncompute:
 
@@ -389,18 +393,21 @@ class Walk:
             raise ValueError("order must be a non-negative integer")
         order = int(order)
         power = order // 2
-        prep_kwargs = {"state_prep": state_prep}
         if order % 2 == 0:
             # Geometry-only (2|0..0><0..0| - I on the ancillas): derivable
             # for any zero-flagged encoding, no encoding hook needed.
-            kernel = self.kernel(power=power, uncompute=True, **prep_kwargs)
+            kernel = self.kernel(power=power,
+                                 uncompute=True,
+                                 state_prep=state_prep)
             if "reflection" not in self._observable_cache:
                 self._observable_cache["reflection"] = reflection_observable(
                     self.encoding)
             observable = self._observable_cache["reflection"]
         else:
             # Encoding-specific: delegated to the BlockEncoding hook.
-            kernel = self.kernel(power=power, uncompute=False, **prep_kwargs)
+            kernel = self.kernel(power=power,
+                                 uncompute=False,
+                                 state_prep=state_prep)
             if "select" not in self._observable_cache:
                 self._observable_cache["select"] = (
                     self._encoding.select_observable())
@@ -416,11 +423,11 @@ class Walk:
                 *,
                 state_prep: Kernel | None = None) -> list[float]:
         """Measure moments <T_0>, ..., <T_{count-1}> (see ``moment``)."""
+        if (ket is None) == (state_prep is None):
+            raise ValueError("provide exactly one of ket or state_prep")
         if int(count) != count or count < 0:
             raise ValueError("count must be a non-negative integer")
         if state_prep is not None:
-            if ket is not None:
-                raise ValueError("provide exactly one of ket or state_prep")
             return [
                 self.moment(None, order, state_prep=state_prep)
                 for order in range(int(count))

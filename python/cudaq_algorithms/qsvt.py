@@ -190,11 +190,14 @@ class QSVT:
                sequence: PhaseSequence | Iterable[float],
                convention: str | None = None,
                state_prep: Kernel | None = None) -> Kernel:
-        """A ``@cudaq.kernel(state)`` applying the phase/walk sequence.
+        """A kernel applying the phase/walk sequence.
 
         ``sequence`` may be a PhaseSequence or a plain list of phases
-        (optionally with ``convention="qsp"``). The signal register is
-        allocated in |0...0> after the system register.
+        (optionally with ``convention="qsp"``). Without ``state_prep``
+        the returned kernel takes one ``cudaq.State`` argument; with
+        ``state_prep`` — a ``(qubits: cudaq.qview)`` kernel — it takes
+        no arguments and prepares the system register itself. The signal
+        register is allocated in |0...0> after the system register.
         """
         seq = _as_sequence(sequence, convention)
         phases = seq.projector_phases
@@ -245,12 +248,15 @@ class QSVT:
                           convention: str | None = None,
                           control_state: int = 1,
                           state_prep: Kernel | None = None) -> Kernel:
-        """``@cudaq.kernel(state)`` applying the sequence controlled.
+        """A kernel applying the sequence controlled.
 
-        Allocates the system register from ``state``, then one register
-        holding [control, signal] (a CUDA-Q Python control set cannot mix a
-        bare qubit with a separate register). With control |0> the sequence
-        is the identity.
+        Input modes as in ``kernel``: a ``cudaq.State``-taking kernel, or
+        a zero-argument kernel when ``state_prep`` is given (the injected
+        prep runs on the system register only, uncontrolled). Either way
+        the system register is followed by one register holding
+        [control, signal] (a CUDA-Q Python control set cannot mix a bare
+        qubit with a separate register). With control |0> the sequence is
+        the identity.
         """
         seq = _as_sequence(sequence, convention)
         phases = seq.projector_phases

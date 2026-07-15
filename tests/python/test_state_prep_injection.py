@@ -28,8 +28,14 @@ THETA0, THETA1 = 0.37, -0.52
 
 @cudaq.kernel
 def product_prep(qubits: cudaq.qview):
-    rx(0.37, qubits[0])
-    ry(-0.52, qubits[1])
+    rx(THETA0, qubits[0])
+    ry(THETA1, qubits[1])
+
+
+@cudaq.kernel
+def noop_prep(qubits: cudaq.qview):
+    # Degenerate injection: leaves the register in |0...0>.
+    pass
 
 
 def _prepared_ket():
@@ -66,9 +72,11 @@ def test_walk_factories_prep_injection():
         (walk.kernel, dict(power=2)),
         (walk.kernel, dict(power=1, uncompute=False)),
         (walk.adjoint_kernel, dict(power=2)),
+        (walk.adjoint_kernel, dict(power=1, uncompute=False)),
         (walk.roundtrip_kernel, dict(power=2)),
         (walk.controlled_kernel, dict(power=2, control_state=1)),
         (walk.controlled_kernel, dict(power=2, control_state=0)),
+        (walk.controlled_kernel, dict(power=1, uncompute=False)),
         (walk.controlled_roundtrip_kernel, dict(power=1)),
     ):
         via_prep = _state(factory(state_prep=product_prep, **kwargs))
@@ -120,11 +128,62 @@ def test_moment_requires_exactly_one_input_mode():
         walk.moment(None, 1)
     with pytest.raises(ValueError, match="exactly one"):
         walk.moments(ket, 3, state_prep=product_prep)
+    # Both-None must raise too (it previously fell through to
+    # state_from(None), which aborts the process in native code).
+    with pytest.raises(ValueError, match="exactly one"):
+        walk.moments(None, 3)
 
 
 def test_prep_mode_returns_zero_argument_kernels():
-    # The injected form must be directly sampleable: no arguments at all.
+    # Every injected form must be directly sampleable: no arguments at
+    # all, through the sample launcher (a different marshaling path than
+    # get_state).
     enc = PauliLCU(HAMILTONIAN)
-    kernel = Walk(enc).kernel(power=1, state_prep=product_prep)
-    counts = cudaq.sample(kernel, shots_count=100)
-    assert sum(counts.values()) == 100
+    walk = Walk(enc)
+    transformer = QSVT(enc)
+    sequence = PhaseSequence([0.4, -0.2, 0.7],
+                             walk_directions=["forward", "adjoint"])
+    for kernel in (
+            enc.encode_kernel(state_prep=product_prep),
+            enc.walk_kernel(power=1, state_prep=product_prep),
+            walk.kernel(power=1, state_prep=product_prep),
+            walk.kernel(power=1, uncompute=False, state_prep=product_prep),
+            walk.adjoint_kernel(power=1, state_prep=product_prep),
+            walk.roundtrip_kernel(power=1, state_prep=product_prep),
+            walk.controlled_kernel(power=1, state_prep=product_prep),
+            walk.controlled_kernel(power=1,
+                                   uncompute=False,
+                                   state_prep=product_prep),
+            walk.controlled_roundtrip_kernel(power=1, state_prep=product_prep),
+            transformer.kernel(sequence, state_prep=product_prep),
+            transformer.controlled_kernel(sequence, state_prep=product_prep),
+    ):
+        counts = cudaq.sample(kernel, shots_count=100)
+        assert sum(counts.values()) == 100
+
+
+def test_noop_prep_matches_zero_state_input():
+    # A do-nothing prep must equal the State-taking twin fed |0...0>.
+    enc = PauliLCU(HAMILTONIAN)
+    zero = np.zeros(1 << enc.num_system, dtype=np.complex128)
+    zero[0] = 1.0
+    via_prep = _state(enc.encode_kernel(state_prep=noop_prep))
+    via_state = _state(enc.encode_kernel(), sim.state_from(zero))
+    np.testing.assert_allclose(via_prep, via_state, atol=1e-12)
+
+
+def test_two_preps_from_one_factory_do_not_cross_contaminate():
+    # Two kernels minted by the same factory capture different preps
+    # under identical inner-kernel names; each must keep its own prep,
+    # including after the other has been built and launched.
+    walk = Walk(PauliLCU(HAMILTONIAN))
+    with_product = walk.kernel(power=1, state_prep=product_prep)
+    first = _state(with_product)
+    with_noop = walk.kernel(power=1, state_prep=noop_prep)
+    zero = np.zeros_like(_prepared_ket())
+    zero[0] = 1.0
+    np.testing.assert_allclose(_state(with_noop),
+                               _state(walk.kernel(power=1),
+                                      sim.state_from(zero)),
+                               atol=1e-12)
+    np.testing.assert_allclose(_state(with_product), first, atol=1e-12)
