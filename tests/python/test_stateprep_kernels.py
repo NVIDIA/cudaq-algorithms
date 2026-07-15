@@ -16,8 +16,11 @@ reference is exact even where the circuits interleave the term
 exponentials in a different order; the check pins the circuits, the pool
 contents, and the parameter ordering.
 
-A separate parity test compares the pure-Python pools against the
-compiled bindings when the native extension is available.
+Invalid-input tests pin the host-side validation: the error cases the
+C++ bindings defined (odd qubit counts, odd electrons at spin 0, odd
+spin-orbital counts) plus explicit guards where the C++ had undefined
+behavior (counts that are negative, fractional, or mutually
+inconsistent).
 """
 
 import numpy as np
@@ -224,77 +227,34 @@ def test_ceo_kernel_matches_dense_exponential(num_orbitals):
 
 
 # ----------------------------------------------------------------------------
-# Parity with the compiled bindings (when built)
+# Host-side input validation
 # ----------------------------------------------------------------------------
 
 
-def test_pools_match_compiled_bindings():
-    native = pytest.importorskip("cudaq_algorithms._pycudaq_algorithms")
-    compiled = native.stateprep
-    # Guard against the compiled submodule shadowing the pure package
-    # (from-imports do not re-import an attribute the extension's
-    # `import *` already bound): this test must compare two distinct
-    # implementations, not the extension with itself.
-    assert algorithms.stateprep is not compiled
+def test_invalid_inputs_raise():
+    stateprep = algorithms.stateprep
 
-    def as_lists(excitations):
-        return [[list(entry) for entry in group] for group in excitations]
+    # Error cases the C++ bindings also defined.
+    with pytest.raises(RuntimeError, match="should be even"):
+        stateprep.get_uccsd_excitations(5, 2, 0)
+    with pytest.raises(RuntimeError, match="spin multiplicity"):
+        stateprep.get_uccsd_excitations(4, 3, 0)
+    with pytest.raises(ValueError, match="even number"):
+        stateprep.make_upccgsd_operator_pool(7)
 
-    for config in [(8, 4, 0), (6, 3, 1), (8, 3, 1), (12, 6, 0)]:
-        assert as_lists(compiled.get_uccsd_excitations(*config)) == as_lists(
-            algorithms.stateprep.get_uccsd_excitations(*config))
-        assert (compiled.get_num_uccsd_parameters(
-            *config) == algorithms.stateprep.get_num_uccsd_parameters(*config))
-
-    for pure_pool, compiled_pool, num_qubits in [
-        (algorithms.stateprep.make_uccsd_operator_pool(8, 4, 0),
-         compiled.make_uccsd_operator_pool(8, 4, 0), 8),
-        (algorithms.stateprep.make_uccsd_operator_pool(8, 3, 1),
-         compiled.make_uccsd_operator_pool(8, 3, 1), 8),
-        (algorithms.stateprep.make_uccgsd_operator_pool(6),
-         compiled.make_uccgsd_operator_pool(6), 6),
-        (algorithms.stateprep.make_uccgsd_operator_pool(6, True, False),
-         compiled.make_uccgsd_operator_pool(6, True, False), 6),
-        (algorithms.stateprep.make_uccgsd_operator_pool(6, False, True),
-         compiled.make_uccgsd_operator_pool(6, False, True), 6),
-        (algorithms.stateprep.make_upccgsd_operator_pool(8),
-         compiled.make_upccgsd_operator_pool(8), 8),
-        (algorithms.stateprep.make_upccgsd_operator_pool(8, True),
-         compiled.make_upccgsd_operator_pool(8, True), 8),
-        (algorithms.stateprep.make_ceo_operator_pool(3),
-         compiled.make_ceo_operator_pool(3), 6),
-        (algorithms.stateprep.make_ceo_operator_pool(4),
-         compiled.make_ceo_operator_pool(4), 8),
-    ]:
-        assert _pool_term_groups(pure_pool, num_qubits) == _pool_term_groups(
-            compiled_pool, num_qubits)
-
-
-def test_pauli_lists_match_compiled_bindings():
-    native = pytest.importorskip("cudaq_algorithms._pycudaq_algorithms")
-    compiled = native.stateprep
-    assert algorithms.stateprep is not compiled
-
-    # pauli_word objects are opaque (no string accessor), so compare the
-    # coefficient groups exactly and the word-group shapes; the word
-    # contents are pinned by the pool comparison above, which uses the
-    # same construction path.
-    for pure_lists, compiled_lists in [
-        (algorithms.stateprep.get_uccgsd_pauli_lists(6),
-         compiled.get_uccgsd_pauli_lists(6)),
-        (algorithms.stateprep.get_uccgsd_pauli_lists(6, True, False),
-         compiled.get_uccgsd_pauli_lists(6, only_singles=True)),
-        (algorithms.stateprep.get_upccgsd_pauli_lists(8),
-         compiled.get_upccgsd_pauli_lists(8)),
-        (algorithms.stateprep.get_upccgsd_pauli_lists(8, True),
-         compiled.get_upccgsd_pauli_lists(8, only_doubles=True)),
-        (algorithms.stateprep.get_ceo_pauli_lists(3),
-         compiled.get_ceo_pauli_lists(3)),
-    ]:
-        pure_words, pure_coeffs = pure_lists
-        compiled_words, compiled_coeffs = compiled_lists
-        assert [len(group) for group in pure_words
-                ] == [len(group) for group in compiled_words]
-        assert len(pure_coeffs) == len(compiled_coeffs)
-        for pure_group, compiled_group in zip(pure_coeffs, compiled_coeffs):
-            assert pure_group == pytest.approx(compiled_group, abs=1e-14)
+    # Guards where the C++ had undefined behavior (unsigned underflow)
+    # or rejected the value at the size_t type level.
+    with pytest.raises(ValueError, match="num_electrons cannot exceed"):
+        stateprep.get_uccsd_excitations(4, 6, 0)
+    with pytest.raises(ValueError, match="spin cannot exceed"):
+        stateprep.get_uccsd_excitations(4, 1, 3)
+    with pytest.raises(ValueError, match="does not fit"):
+        stateprep.get_uccsd_excitations(4, 4, 2)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        stateprep.get_uccsd_excitations(4, 2.5, 0)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        stateprep.make_uccgsd_operator_pool(-4)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        stateprep.make_ceo_operator_pool(-1)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        stateprep.get_ceo_pauli_lists(1.5)

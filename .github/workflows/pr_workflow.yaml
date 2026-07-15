@@ -62,10 +62,6 @@ jobs:
             build-algorithms:
               - '.github/workflows/lib_algorithms.yaml'
               - '.github/workflows/pr_workflow.yaml'
-              - 'CMakeLists.txt'
-              - 'cmake/**'
-              - 'include/**'
-              - 'lib/**'
               - 'python/**'
               - 'tests/**'
               - 'scripts/test_algorithms_build.sh'

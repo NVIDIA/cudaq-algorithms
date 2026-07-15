@@ -32,6 +32,18 @@ from cudaq import spin
 # ============================================================================
 
 
+def _as_count(value, name):
+    """Validate an integral, non-negative count (no silent coercion).
+
+    The compiled bindings rejected negative and fractional inputs at the
+    ``size_t`` type level; this keeps that contract explicit.
+    """
+    count = int(value)
+    if count != value or count < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return count
+
+
 def _z_parity(low, high):
     """Product of Z operators strictly between low and high (or None)."""
     parity = None
@@ -63,16 +75,26 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
     doubles_beta)`` as lists of index lists, in the C++ enumeration order
     (which fixes the parameter order of the ``uccsd`` kernel).
     """
-    num_qubits = int(num_qubits)
-    num_electrons = int(num_electrons)
-    spin_number = int(spin)
+    num_qubits = _as_count(num_qubits, "num_qubits")
+    num_electrons = _as_count(num_electrons, "num_electrons")
+    spin_number = _as_count(spin, "spin")
     if num_qubits % 2 != 0:
         raise RuntimeError("The total number of qubits should be even.")
+    # The C++ implementation has no defined behavior for these (unsigned
+    # underflow); reject them explicitly.
+    if num_electrons > num_qubits:
+        raise ValueError("num_electrons cannot exceed num_qubits")
+    if spin_number > num_electrons:
+        raise ValueError("spin cannot exceed num_electrons")
 
     num_spatial = num_qubits // 2
     if spin_number > 0:
         n_occ_beta = (num_electrons - spin_number) // 2
         n_occ_alpha = num_electrons - n_occ_beta
+        if n_occ_alpha > num_spatial:
+            raise ValueError(
+                "the requested (num_electrons, spin) does not fit in "
+                "num_qubits spin orbitals")
         n_virt_alpha = num_spatial - n_occ_alpha
         n_virt_beta = num_spatial - n_occ_beta
         occupied_alpha = [i * 2 for i in range(n_occ_alpha)]
@@ -234,6 +256,7 @@ def make_uccgsd_operator_pool(num_qubits,
                               only_singles=False,
                               only_doubles=False):
     """Generalized singles and doubles over all qubit pairs/quadruples."""
+    num_qubits = _as_count(num_qubits, "num_qubits")
     ops = []
     if not only_doubles:
         for p, q in _generate_uccgsd_singles(num_qubits):
@@ -251,7 +274,7 @@ def make_uccgsd_operator_pool(num_qubits,
 
 def make_upccgsd_operator_pool(num_qubits, only_doubles=False):
     """Spin-preserving singles plus paired (same-spatial-orbital) doubles."""
-    num_qubits = int(num_qubits)
+    num_qubits = _as_count(num_qubits, "num_qubits")
     if num_qubits % 2 != 0:
         raise ValueError("make_upccgsd_operator_pool expects an even number "
                          "of spin orbitals.")
@@ -320,7 +343,7 @@ def _ceo_double_pair(p, q, r, s):
 
 def make_ceo_operator_pool(num_orbitals):
     """Coupled-exchange-operator pool (arXiv:2407.08696 conventions)."""
-    num_orbitals = int(num_orbitals)
+    num_orbitals = _as_count(num_orbitals, "num_orbitals")
     ops = []
     for p, q in _generate_ceo_singles(num_orbitals, 0):
         ops.append(_ceo_single(p, q))
@@ -370,4 +393,5 @@ def get_upccgsd_pauli_lists(num_qubits, only_doubles=False):
 def get_ceo_pauli_lists(num_orbitals):
     """CEO pool as (pauli word groups, coefficient groups)."""
     ops = make_ceo_operator_pool(num_orbitals)
-    return _pauli_lists_from_pool(ops, 2 * int(num_orbitals))
+    return _pauli_lists_from_pool(ops,
+                                  2 * _as_count(num_orbitals, "num_orbitals"))

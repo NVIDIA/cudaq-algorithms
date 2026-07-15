@@ -268,7 +268,11 @@ def uccsd(qubits: cudaq.qview, thetas: list[float], num_electrons: int,
     2j + 2*n_occ_beta + 1 (for spin == 0 these reduce to the closed-shell
     formulas of the C++ implementation since 2*n_occ = num_electrons;
     they differ from the C++ only for the invalid odd-electrons/spin==0
-    input, which the host API rejects). Do NOT rewrite the offsets as
+    input, which the host API rejects). The kernel performs no input
+    validation — device kernels have no error channel — so arguments
+    must satisfy the ``get_uccsd_excitations`` contract, and ``thetas``
+    must hold ``get_num_uccsd_parameters`` entries. Do NOT rewrite the
+    offsets as
     variables reassigned inside the spin > 0 branch: that shape
     miscompiles on CUDA-Q 0.15 — successive launches of a calling kernel
     at different qubit counts accumulate qubits in get_state.

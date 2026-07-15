@@ -24,7 +24,7 @@ fi
 python=python${python_version}
 cuda_major=$(echo "$cuda_version" | cut -d . -f 1)
 
-$python -m pip install --no-cache-dir pytest
+$python -m pip install --no-cache-dir pytest scipy
 
 find_links=(--find-links /wheels --find-links /metapackages)
 if [[ -d /cudaq-wheels ]]; then
