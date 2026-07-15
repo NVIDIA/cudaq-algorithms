@@ -23,7 +23,8 @@ from typing import TYPE_CHECKING
 import cudaq
 
 # Re-exported: precision-aware initial-state construction.
-from .pauli_lcu import state_from
+from .common_kernels import state_from
+from .trotter import SECOND_ORDER_TROTTER, Trotter
 
 if TYPE_CHECKING:
     import numpy as np
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
     from .pauli_lcu import PauliLCU
     from .qsvt import PhaseSequence, QSVT
 
-__all__ = ["state_from", "good_subspace", "action", "transform"]
+__all__ = ["state_from", "good_subspace", "action", "transform", "evolve"]
 
 
 def good_subspace(encoding: PauliLCU,
@@ -76,3 +77,38 @@ def transform(transformer: QSVT,
     state = cudaq.get_state(transformer.kernel(sequence, convention),
                             state_from(ket))
     return good_subspace(transformer.encoding, state)
+
+
+def evolve(evolution: Trotter,
+           ket: ArrayLike,
+           time: float,
+           steps: int = 1,
+           order: int = SECOND_ORDER_TROTTER,
+           include_identity_phase: bool = True) -> NDArray[np.complex128]:
+    """Simulate a Trotter evolution on ``ket``; return the evolved statevector.
+
+    Unlike the circuit primitive, this can reintroduce the identity phase
+    ``exp(-i * identity_coefficient * time)`` (on by default), so the
+    result approximates the full ``exp(-i H t)|ket>``.
+
+    Delegates to ``Trotter.state_kernel`` — the same validation (finite
+    time, positive integral steps, order in {1, 2, 4}) and marshaling as
+    ``Trotter.kernel``, raising ``ValueError`` for invalid parameters
+    instead of silently returning an unevolved state.
+    """
+    import numpy as np
+
+    ket_array = np.asarray(ket, dtype=np.complex128)
+    if ket_array.ndim != 1 or ket_array.size != (1 << evolution.num_qubits):
+        raise ValueError(
+            f"ket must be a 1-D statevector of dimension "
+            f"{1 << evolution.num_qubits} for {evolution.num_qubits} "
+            f"qubit(s); got shape {ket_array.shape}")
+
+    kernel = evolution.state_kernel(time, steps, order)
+    state = np.asarray(cudaq.get_state(kernel, state_from(ket_array)),
+                       dtype=np.complex128)
+    if include_identity_phase and evolution.identity_coefficient != 0.0:
+        state = state * np.exp(
+            -1.0j * evolution.identity_coefficient * float(time))
+    return state

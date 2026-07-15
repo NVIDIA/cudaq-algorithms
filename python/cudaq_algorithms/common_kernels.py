@@ -39,6 +39,19 @@ def state_from(ket) -> cudaq.State:
     return cudaq.State.from_data(np.asarray(ket, dtype=cudaq.complex()))
 
 
+def _real_coefficient(value) -> float:
+    """Coerce a Hamiltonian coefficient to float, rejecting complex values.
+
+    One validation for every input form across the package (PauliLCU and
+    Trotter both route through it), so a complex coefficient raises the
+    same ValueError everywhere.
+    """
+    coefficient = complex(value)
+    if abs(coefficient.imag) > 1e-10:
+        raise ValueError("complex Hamiltonian coefficients are not supported")
+    return float(coefficient.real)
+
+
 def _validate_control_state(control_state: int) -> int:
     """Require control_state to be exactly 0 or 1 (no silent coercion)."""
     if control_state not in (0, 1):

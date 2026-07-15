@@ -13,8 +13,8 @@ The package has two kinds of components:
   fermion and state-preparation utilities. These require the native
   extension built against CUDA-Q.
 - Pure-Python modules (:mod:`.pauli_lcu`, :mod:`.qubitization`, :mod:`.qsvt`,
-  :mod:`.sim_utils`): quantum primitives implemented as CUDA-Q Python
-  kernels. These only require the ``cudaq`` Python package.
+  :mod:`.trotter`, :mod:`.sim_utils`): quantum primitives implemented as
+  CUDA-Q Python kernels. These only require the ``cudaq`` Python package.
 
 The native extension is optional: if it is not present (for example in a
 source checkout without a build), the pure-Python APIs below still import
@@ -38,13 +38,14 @@ except ModuleNotFoundError as exc:
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
 from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,
-               sim_utils)
+               sim_utils, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
 from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
 from .qubitization import Walk, reflection_observable
+from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 
 # The composable device kernels keep their module namespaces
 # (cudaq_algorithms.pauli_lcu.prepare, .select, .apply_phase_sequence, ...;
