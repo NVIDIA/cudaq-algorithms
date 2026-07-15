@@ -50,8 +50,8 @@ if TYPE_CHECKING:
 # ``{"XZI...": coefficient}`` mapping, or an iterable of
 # ``(coefficient, word)`` pairs.
 HamiltonianLike: TypeAlias = Union[cudaq.SpinOperator, cudaq.SpinOperatorTerm,
-                                   Mapping[str, float], Iterable[tuple[float,
-                                                                       str]]]
+                                   Mapping[str, complex],
+                                   Iterable[tuple[complex, str]]]
 
 # The flattened arrays that cross the kernel boundary, in the order the
 # module-level kernels take them:

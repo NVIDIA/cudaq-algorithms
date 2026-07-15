@@ -61,7 +61,7 @@ _FOREST_RUTH_W0: float = -1.7024143839193153
 #: ``cudaq.SpinOperatorTerm`` product), a ``{"XZI...": coefficient}``
 #: mapping, or an iterable of ``(coefficient, word)`` pairs.
 HamiltonianLike = Union[cudaq.SpinOperator, cudaq.SpinOperatorTerm,
-                        Mapping[str, complex], Iterable[tuple]]
+                        Mapping[str, complex], Iterable[tuple[complex, str]]]
 
 # ============================================================================
 # Device kernel (module level, composable from user kernels)
