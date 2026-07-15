@@ -91,6 +91,31 @@ test oracle.
 Phase *generation* stays external (e.g. QSPPACK): the primitives consume
 whatever phase list they are given.
 
+## State preparation injection
+
+Every kernel factory takes an optional ``state_prep`` kernel with
+signature ``(qubits: cudaq.qview)``. Without it, factories return
+``@cudaq.kernel(state)`` circuits that load the input state as data (the
+simulation-friendly form). With it, they return **zero-argument** circuits
+— the system register is allocated in |0...0>, ``state_prep`` runs on it,
+and the operation follows — directly sampleable and fully synthesizable,
+with no statevector anywhere:
+
+```python
+@cudaq.kernel
+def my_prep(qubits: cudaq.qview):
+    rx(0.37, qubits[0])
+    ry(-0.52, qubits[1])
+
+kernel = walk.kernel(power=3, state_prep=my_prep)   # zero-arg circuit
+counts = cudaq.sample(kernel)
+moment = walk.moment(None, 3, state_prep=my_prep)   # hardware-path moment
+```
+
+Contract: ``state_prep`` acts only on the system register it is handed,
+which arrives in |0...0> with width ``num_system`` — not verifiable at
+factory time, so a mismatched prep fails at launch.
+
 ## Hardware-shaped vs. simulation-only
 
 `cudaq.get_state` is a simulator-only API, so nothing in `pauli_lcu`,
