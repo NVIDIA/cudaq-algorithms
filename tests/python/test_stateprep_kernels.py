@@ -211,7 +211,9 @@ def test_upccgsd_kernel_matches_dense_exponential(num_qubits):
     _assert_close(actual, reference)
 
 
-@pytest.mark.parametrize("num_orbitals", [2, 3])
+# num_orbitals = 4 is the smallest size with same-spin doubles
+# (they need four descending spatial orbitals).
+@pytest.mark.parametrize("num_orbitals", [2, 3, 4])
 def test_ceo_kernel_matches_dense_exponential(num_orbitals):
     num_qubits = 2 * num_orbitals
     words, coeffs = algorithms.stateprep.get_ceo_pauli_lists(num_orbitals)
@@ -258,3 +260,5 @@ def test_invalid_inputs_raise():
         stateprep.make_ceo_operator_pool(-1)
     with pytest.raises(ValueError, match="non-negative integer"):
         stateprep.get_ceo_pauli_lists(1.5)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        stateprep.make_ceo_operator_pool(True)

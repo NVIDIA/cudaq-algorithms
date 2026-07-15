@@ -271,11 +271,17 @@ def uccsd(qubits: cudaq.qview, thetas: list[float], num_electrons: int,
     input, which the host API rejects). The kernel performs no input
     validation — device kernels have no error channel — so arguments
     must satisfy the ``get_uccsd_excitations`` contract, and ``thetas``
-    must hold ``get_num_uccsd_parameters`` entries. Do NOT rewrite the
-    offsets as
-    variables reassigned inside the spin > 0 branch: that shape
-    miscompiles on CUDA-Q 0.15 — successive launches of a calling kernel
-    at different qubit counts accumulate qubits in get_state.
+    must hold ``get_num_uccsd_parameters`` entries.
+
+    Implementation caution: the virtual-orbital offsets must stay
+    inlined in the index expressions below (``2 * n_occ_alpha`` etc.).
+    Introducing dedicated offset variables that are reassigned inside
+    the ``spin > 0`` branch (mirroring the C++'s ``num_electrons``
+    closed-shell offsets) miscompiled on CUDA-Q 0.15: successive
+    launches of a calling kernel at different qubit counts accumulated
+    qubits in ``get_state``. The existing ``n_occ_alpha``/``n_occ_beta``
+    reassignments just below are fine — the failing shape was
+    specifically the additional offset variables.
     """
     n_spatial = qubits.size() // 2
     n_occ_alpha = num_electrons // 2

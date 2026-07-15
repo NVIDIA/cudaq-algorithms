@@ -36,8 +36,11 @@ def _as_count(value, name):
     """Validate an integral, non-negative count (no silent coercion).
 
     The compiled bindings rejected negative and fractional inputs at the
-    ``size_t`` type level; this keeps that contract explicit.
+    ``size_t`` type level; this keeps that contract explicit. Booleans
+    are rejected too (``True`` is not a qubit count).
     """
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a non-negative integer")
     count = int(value)
     if count != value or count < 0:
         raise ValueError(f"{name} must be a non-negative integer")
