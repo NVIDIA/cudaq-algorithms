@@ -516,6 +516,33 @@ def test_identity_only_hamiltonian_is_a_global_phase():
                                atol=1e-12)
 
 
+def test_identity_only_hamiltonian_kernel_factory_branches():
+    # The empty-words branches of kernel() exist as workarounds for the
+    # captured-empty-list marshaling failure
+    # (https://github.com/NVIDIA/cuda-quantum/issues/4847); execute both
+    # so a refactor cannot silently reintroduce the capture.
+    evolution = trotter.Trotter({"II": -0.2})
+
+    # Without state_prep: the circuit is the identity on |0...0> (the
+    # identity phase is documented as not included in circuits).
+    identity_kernel = evolution.kernel(time=0.5, steps=2)
+    state = np.asarray(cudaq.get_state(identity_kernel), dtype=np.complex128)
+    expected = np.zeros(4, dtype=np.complex128)
+    expected[0] = 1.0
+    np.testing.assert_allclose(state, expected, atol=1e-12)
+    counts = cudaq.sample(identity_kernel, shots_count=50)
+    assert sum(counts.values()) == 50
+
+    # With state_prep: the circuit is exactly the preparation.
+    prep_kernel = evolution.kernel(time=0.5, steps=2, state_prep=_product_prep)
+    via_prep = np.asarray(cudaq.get_state(prep_kernel), dtype=np.complex128)
+    np.testing.assert_allclose(via_prep,
+                               _two_qubit_product_state(0.37, -0.52),
+                               atol=1e-12)
+    counts = cudaq.sample(prep_kernel, shots_count=50)
+    assert sum(counts.values()) == 50
+
+
 # ----------------------------------------------------------------------------
 # Input forms, degenerate inputs, and validation (public API)
 # ----------------------------------------------------------------------------
