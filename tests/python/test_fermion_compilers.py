@@ -478,3 +478,114 @@ def test_three_way_spectrum_agreement(n_spatial):
     np.testing.assert_allclose(jw_spectrum, exact, atol=1e-10)
     np.testing.assert_allclose(bk_spectrum, exact, atol=1e-10)
     np.testing.assert_allclose(bk_spectrum, jw_spectrum, atol=1e-10)
+
+
+# ----------------------------------------------------------------------
+# Exact permutation equivalence between the encodings
+# ----------------------------------------------------------------------
+
+
+def _encoding_permutation(num_modes):
+    """P with P|n> = |A n mod 2>, the basis map from the Jordan-Wigner
+    (occupation) to the Bravyi-Kitaev (partial-sum) computational basis,
+    little-endian bit order matching ``to_matrix``."""
+    from cudaq_algorithms.fermion._compilers import _fenwick_matrix
+
+    encoding = _fenwick_matrix(num_modes)
+    dim = 1 << num_modes
+    perm = np.zeros((dim, dim))
+    for n in range(dim):
+        bits = [(n >> j) & 1 for j in range(num_modes)]
+        image_bits = encoding.dot(bits) % 2
+        image = sum(int(b) << j for j, b in enumerate(image_bits))
+        perm[image, n] = 1.0
+    return perm
+
+
+@pytest.mark.parametrize("seed,m", [(11, 3), (12, 4), (13, 5), (14, 6)])
+def test_bravyi_kitaev_is_permuted_jordan_wigner(seed, m):
+    """BK == P JW P^T as exact matrices, pinning BK term content on
+    arbitrary hermitian tensors (stronger than matching spectra)."""
+    one_body, two_body = _random_generic_system(seed, m)
+    jw = np.asarray(
+        jordan_wigner(one_body, two_body, scalar_offset=0.125).to_matrix())
+    bk = np.asarray(
+        bravyi_kitaev(one_body, two_body, scalar_offset=0.125).to_matrix())
+    perm = _encoding_permutation(m)
+    np.testing.assert_allclose(bk, perm @ jw @ perm.T, atol=1e-12)
+
+
+def test_bravyi_kitaev_is_permuted_jordan_wigner_nonhermitian():
+    rng = np.random.default_rng(7)
+    m = 4
+    one_body = rng.normal(size=(m, m)) + 1.0j * rng.normal(size=(m, m))
+    two_body = 0.3 * (rng.normal(size=(m, m, m, m)) +
+                      1.0j * rng.normal(size=(m, m, m, m)))
+    jw = np.asarray(jordan_wigner(one_body, two_body).to_matrix())
+    bk = np.asarray(bravyi_kitaev(one_body, two_body).to_matrix())
+    perm = _encoding_permutation(m)
+    np.testing.assert_allclose(bk, perm @ jw @ perm.T, atol=1e-12)
+
+
+# ----------------------------------------------------------------------
+# H2 against a frozen full-CI reference
+# ----------------------------------------------------------------------
+
+# Frozen once from pyscf 2.13.1 (RHF + FCI, H2 at 0.7474 A, STO-3G,
+# OMP_NUM_THREADS=1) using the exact integral recipe of
+# test_jordan_wigner.py. Freezing the MO-basis integrals makes the
+# full-CI cross-check deterministic and dependency-free: the SCF
+# orbitals are the only non-reproducible ingredient, and they are baked
+# into these numbers together with the reference energy computed from
+# the same mean field. test_jordan_wigner.py remains the live-pyscf
+# version of this check.
+_H2_NUCLEAR_REPULSION = 0.7080240981000804
+_H2_FCI_ENERGY = -1.1371757102406845
+_H2_H1_SPATIAL = [
+    [-1.2488468037963385, 8.867226166437188e-18],
+    [9.4085812113517e-17, -0.4796778131338564],
+]
+_H2_H2E_SPATIAL = [
+    [[[0.6733439450064822, -2.0816681711721685e-17],
+      [0.0, 0.18162533147656484]],
+     [[0.0, 0.18162533147656507], [0.6624272943269697,
+                                   8.326672684688674e-17]]],
+    [[[2.0816681711721685e-17, 0.6624272943269696], [0.18162533147656484,
+                                                     0.0]],
+     [[0.18162533147656523, -5.551115123125783e-17],
+      [-8.326672684688674e-17, 0.6962915699872075]]],
+]
+
+
+def _h2_frozen_spin_orbital_tensors():
+    """Interleaved spin expansion (the test_jordan_wigner.py loop)."""
+    h1e = np.array(_H2_H1_SPATIAL)
+    h2e = np.array(_H2_H2E_SPATIAL)
+    num_spin_orbitals = 2 * h1e.shape[0]
+    one_body = np.zeros((num_spin_orbitals, num_spin_orbitals),
+                        dtype=np.complex128)
+    two_body = np.zeros((num_spin_orbitals, ) * 4, dtype=np.complex128)
+    for p in range(num_spin_orbitals // 2):
+        for q in range(num_spin_orbitals // 2):
+            one_body[2 * p, 2 * q] = h1e[p, q]
+            one_body[2 * p + 1, 2 * q + 1] = h1e[p, q]
+            for r in range(num_spin_orbitals // 2):
+                for s in range(num_spin_orbitals // 2):
+                    coefficient = 0.5 * h2e[p, q, r, s]
+                    two_body[2 * p, 2 * q, 2 * r, 2 * s] = coefficient
+                    two_body[2 * p + 1, 2 * q + 1, 2 * r + 1,
+                             2 * s + 1] = coefficient
+                    two_body[2 * p, 2 * q + 1, 2 * r + 1, 2 * s] = coefficient
+                    two_body[2 * p + 1, 2 * q, 2 * r, 2 * s + 1] = coefficient
+    return one_body, two_body
+
+
+@pytest.mark.parametrize("transform", [jordan_wigner, bravyi_kitaev])
+def test_h2_ground_state_matches_frozen_fci(transform):
+    one_body, two_body = _h2_frozen_spin_orbital_tensors()
+    op = transform(one_body,
+                   two_body,
+                   scalar_offset=_H2_NUCLEAR_REPULSION,
+                   tolerance=1e-12)
+    ground = float(np.min(np.linalg.eigvalsh(np.asarray(op.to_matrix()))))
+    assert abs(ground - _H2_FCI_ENERGY) < 1e-10
