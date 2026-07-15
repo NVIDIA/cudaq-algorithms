@@ -1,20 +1,25 @@
-from cudaq_algorithms._pycudaq_algorithms import stateprep as _stateprep
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+"""State-preparation kernels and operator pools (pure Python).
 
-uccsd = _stateprep.uccsd
-uccgsd = _stateprep.uccgsd
-upccgsd = _stateprep.upccgsd
-ceo = _stateprep.ceo
+Same API as the former compiled bindings: the ``uccsd``, ``uccgsd``,
+``upccgsd``, and ``ceo`` device kernels are ``@cudaq.kernel`` functions
+composable from user kernels, and the excitation/pool helpers run on the
+host with ``cudaq.spin`` algebra.
+"""
 
-get_uccsd_excitations = _stateprep.get_uccsd_excitations
-get_num_uccsd_parameters = _stateprep.get_num_uccsd_parameters
-get_uccgsd_pauli_lists = _stateprep.get_uccgsd_pauli_lists
-get_upccgsd_pauli_lists = _stateprep.get_upccgsd_pauli_lists
-get_ceo_pauli_lists = _stateprep.get_ceo_pauli_lists
-
-make_uccsd_operator_pool = _stateprep.make_uccsd_operator_pool
-make_uccgsd_operator_pool = _stateprep.make_uccgsd_operator_pool
-make_upccgsd_operator_pool = _stateprep.make_upccgsd_operator_pool
-make_ceo_operator_pool = _stateprep.make_ceo_operator_pool
+from ._kernels import (ceo, double_excitation, single_excitation, uccgsd,
+                       uccsd, upccgsd)
+from ._pools import (get_ceo_pauli_lists, get_num_uccsd_parameters,
+                     get_uccgsd_pauli_lists, get_uccsd_excitations,
+                     get_upccgsd_pauli_lists, make_ceo_operator_pool,
+                     make_uccgsd_operator_pool, make_uccsd_operator_pool,
+                     make_upccgsd_operator_pool)
 
 __all__ = [
     "uccsd",
