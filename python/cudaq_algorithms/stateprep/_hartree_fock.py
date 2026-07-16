@@ -60,7 +60,7 @@ def _fixed_parameter_ucc_flat(qubits: cudaq.qview, angles: list[float],
 
 
 @dataclass(frozen=True)
-class HartreeFockResources:
+class HartreeFockResourceEstimate:
     """Circuit cost of a Hartree-Fock reference preparation."""
 
     num_qubits: int
@@ -69,7 +69,7 @@ class HartreeFockResources:
 
 
 @dataclass(frozen=True)
-class FixedParameterUccResources:
+class FixedParameterUccResourceEstimate:
     """Circuit cost of a fixed-parameter UCC product (Pauli rotations)."""
 
     num_qubits: int
@@ -134,19 +134,20 @@ def validate_hartree_fock_occupation(num_qubits, occupied_orbitals):
 
 def estimate_hartree_fock_resources(num_qubits,
                                     num_electrons,
-                                    spin=0) -> HartreeFockResources:
+                                    spin=0) -> HartreeFockResourceEstimate:
     """Resource estimate for the canonical Hartree-Fock reference."""
     occupation = make_hartree_fock_occupation(num_qubits, num_electrons, spin)
     return estimate_hartree_fock_occupation_resources(num_qubits, occupation)
 
 
 def estimate_hartree_fock_occupation_resources(
-        num_qubits, occupied_orbitals) -> HartreeFockResources:
+        num_qubits, occupied_orbitals) -> HartreeFockResourceEstimate:
     """Resource estimate for an explicit-occupation reference."""
     validate_hartree_fock_occupation(num_qubits, occupied_orbitals)
-    return HartreeFockResources(num_qubits=_as_count(num_qubits, "num_qubits"),
-                                num_electrons=len(occupied_orbitals),
-                                num_x_gates=len(occupied_orbitals))
+    num_qubits = _as_count(num_qubits, "num_qubits")
+    return HartreeFockResourceEstimate(num_qubits=num_qubits,
+                                       num_electrons=len(occupied_orbitals),
+                                       num_x_gates=len(occupied_orbitals))
 
 
 # ============================================================================
@@ -215,10 +216,10 @@ def validate_fixed_parameter_ucc(num_qubits, parameters, pauli_words,
 
 
 def estimate_fixed_parameter_ucc_resources(
-        num_qubits, pauli_words) -> FixedParameterUccResources:
+        num_qubits, pauli_words) -> FixedParameterUccResourceEstimate:
     """Resource estimate for a fixed-parameter UCC product."""
     group_sizes = [len(group) for group in pauli_words]
-    return FixedParameterUccResources(
+    return FixedParameterUccResourceEstimate(
         num_qubits=_as_count(num_qubits, "num_qubits"),
         num_excitations=len(group_sizes),
         num_pauli_rotations=sum(group_sizes),

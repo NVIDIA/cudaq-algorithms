@@ -25,7 +25,7 @@ acts on ``2 * num_orbitals`` qubits), matching the compiled API.
 """
 
 from ._hartree_fock import (
-    FixedParameterUccResources, HartreeFockResources,
+    FixedParameterUccResourceEstimate, HartreeFockResourceEstimate,
     estimate_fixed_parameter_ucc_resources,
     estimate_hartree_fock_occupation_resources,
     estimate_hartree_fock_resources, get_fixed_parameter_ucc_pauli_lists,
@@ -65,6 +65,6 @@ __all__ = [
     "estimate_hartree_fock_occupation_resources",
     "estimate_fixed_parameter_ucc_resources",
     "hartree_fock_ucc_kernel",
-    "HartreeFockResources",
-    "FixedParameterUccResources",
+    "HartreeFockResourceEstimate",
+    "FixedParameterUccResourceEstimate",
 ]
