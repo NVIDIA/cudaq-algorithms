@@ -10,7 +10,9 @@
 Same API as the former compiled bindings: the ``uccsd``, ``uccgsd``,
 ``upccgsd``, and ``ceo`` device kernels are ``@cudaq.kernel`` functions
 composable from user kernels, and the excitation/pool helpers run on the
-host with ``cudaq.spin`` algebra.
+host with ``cudaq.spin`` algebra. The Givens-rotation Slater-determinant
+kernels and schedule helpers (:mod:`._givens`) follow the same split:
+composable device kernels plus host-side planning.
 
 Error-type convention: the two error cases the compiled bindings
 defined keep their historical ``RuntimeError`` (odd qubit count and
@@ -20,6 +22,13 @@ the CEO helpers take ``num_orbitals`` in *spatial* orbitals (the pool
 acts on ``2 * num_orbitals`` qubits), matching the compiled API.
 """
 
+from ._givens import (
+    GivensResourceEstimate, GivensRotation, GivensRotationSchedule,
+    apply_givens_rotation, apply_phase_givens_rotation,
+    estimate_givens_resources, get_givens_rotation_angles,
+    get_givens_rotation_indices, get_givens_rotation_phases,
+    make_givens_rotation_schedule, prepare_complex_slater_determinant,
+    prepare_slater_determinant, validate_givens_rotation_schedule)
 from ._kernels import (ceo, double_excitation, single_excitation, uccgsd,
                        uccsd, upccgsd)
 from ._pools import (get_ceo_pauli_lists, get_num_uccsd_parameters,
@@ -42,4 +51,17 @@ __all__ = [
     "make_uccgsd_operator_pool",
     "make_upccgsd_operator_pool",
     "make_ceo_operator_pool",
+    "GivensRotation",
+    "GivensRotationSchedule",
+    "GivensResourceEstimate",
+    "apply_givens_rotation",
+    "apply_phase_givens_rotation",
+    "prepare_slater_determinant",
+    "prepare_complex_slater_determinant",
+    "make_givens_rotation_schedule",
+    "validate_givens_rotation_schedule",
+    "get_givens_rotation_indices",
+    "get_givens_rotation_angles",
+    "get_givens_rotation_phases",
+    "estimate_givens_resources",
 ]
