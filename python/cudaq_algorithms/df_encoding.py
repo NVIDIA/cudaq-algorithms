@@ -611,15 +611,31 @@ class DoubleFactorizedEncoding:
     # Convenience factories (mirroring PauliLCU)
     # ------------------------------------------------------------------
 
-    def encode_kernel(self) -> Kernel:
-        """A ``@cudaq.kernel(state)`` applying the full block encoding.
+    def encode_kernel(self, state_prep: Kernel | None = None) -> Kernel:
+        """A kernel applying the full block encoding.
 
-        The kernel allocates the system register from ``state`` and the
-        ancilla register (in |0...0>) after it.
+        Without ``state_prep``: a ``@cudaq.kernel(state)`` allocating the
+        system register from ``state`` and the ancilla register (in
+        |0...0>) after it. With ``state_prep`` (a ``(qubits: qview)``
+        kernel): a zero-argument kernel that allocates the system register
+        in |0...0>, runs ``state_prep`` on it, then applies the encoding.
         """
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
         n_anc = self.num_ancilla
+        n_sys = self.num_system
+
+        if state_prep is not None:
+
+            @cudaq.kernel
+            def prep_encoded():
+                system = cudaq.qvector(n_sys)
+                state_prep(system)
+                ancilla = cudaq.qvector(n_anc)
+                apply(ancilla, system, angles, controls, targets, lengths,
+                      signs, frame_counts, seg_counts, orbitals, thetas)
+
+            return prep_encoded
 
         @cudaq.kernel
         def encoded(state: cudaq.State):
@@ -630,16 +646,36 @@ class DoubleFactorizedEncoding:
 
         return encoded
 
-    def walk_kernel(self, power: int = 1) -> Kernel:
-        """A ``@cudaq.kernel(state)`` running PREPARE, walk^power, UNPREPARE.
+    def walk_kernel(self,
+                    power: int = 1,
+                    state_prep: Kernel | None = None) -> Kernel:
+        """A kernel running PREPARE, walk^power, UNPREPARE.
 
         The all-zero-ancilla block of the result is T_power(-H/alpha)
-        applied to the input state.
+        applied to the input state. Input modes as in ``encode_kernel``: a
+        ``cudaq.State``-taking kernel, or a zero-argument kernel when
+        ``state_prep`` is given.
         """
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
         n_anc = self.num_ancilla
+        n_sys = self.num_system
         steps = _validate_power(power)
+
+        if state_prep is not None:
+
+            @cudaq.kernel
+            def prep_walked():
+                system = cudaq.qvector(n_sys)
+                state_prep(system)
+                ancilla = cudaq.qvector(n_anc)
+                prepare(ancilla, angles)
+                for _ in range(steps):
+                    walk(ancilla, system, angles, controls, targets, lengths,
+                         signs, frame_counts, seg_counts, orbitals, thetas)
+                unprepare(ancilla, angles)
+
+            return prep_walked
 
         @cudaq.kernel
         def walked(state: cudaq.State):

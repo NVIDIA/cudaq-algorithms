@@ -330,3 +330,66 @@ def test_diagonal_system():
     ket = random_ket(16)
     block = encoded_block(encoding, encoding.encode_kernel(), ket)
     np.testing.assert_allclose(block, (h @ ket) / encoding.alpha, atol=1e-12)
+
+
+# ----------------------------------------------------------------------
+# state_prep injection (twin-pinning, as in test_state_prep_injection)
+# ----------------------------------------------------------------------
+
+_T0, _T1, _T2, _T3 = 0.37, -0.52, 0.21, -0.83
+
+
+@cudaq.kernel
+def _product_prep(qubits: cudaq.qview):
+    rx(_T0, qubits[0])
+    ry(_T1, qubits[1])
+    rx(_T2, qubits[2])
+    ry(_T3, qubits[3])
+
+
+def _injected_ket() -> np.ndarray:
+    """The dense statevector _product_prep produces (little-endian)."""
+    rx0 = np.array([np.cos(0.5 * _T0), -1.0j * np.sin(0.5 * _T0)])
+    ry1 = np.array([np.cos(0.5 * _T1), np.sin(0.5 * _T1)])
+    rx2 = np.array([np.cos(0.5 * _T2), -1.0j * np.sin(0.5 * _T2)])
+    ry3 = np.array([np.cos(0.5 * _T3), np.sin(0.5 * _T3)])
+    out = np.array([1.0])
+    for factor in (rx0, ry1, rx2, ry3):
+        out = np.kron(factor, out)
+    return out.astype(np.complex128)
+
+
+def test_encode_kernel_prep_injection():
+    one_body, eri = random_system(7)
+    encoding = DoubleFactorizedEncoding(one_body, eri)
+    via_prep = np.array(
+        cudaq.get_state(encoding.encode_kernel(state_prep=_product_prep)))
+    via_state = np.array(
+        cudaq.get_state(encoding.encode_kernel(), state_from(_injected_ket())))
+    np.testing.assert_allclose(via_prep, via_state, atol=1e-12)
+
+
+def test_walk_kernel_prep_injection():
+    one_body, eri = random_system(7)
+    encoding = DoubleFactorizedEncoding(one_body, eri)
+    via_prep = np.array(
+        cudaq.get_state(encoding.walk_kernel(power=2,
+                                             state_prep=_product_prep)))
+    via_state = np.array(
+        cudaq.get_state(encoding.walk_kernel(power=2),
+                        state_from(_injected_ket())))
+    np.testing.assert_allclose(via_prep, via_state, atol=1e-12)
+
+
+def test_prep_mode_returns_zero_argument_kernels():
+    # The injected forms must be directly sampleable: no arguments at
+    # all, through the sample launcher (a different marshaling path than
+    # get_state).
+    one_body, eri = random_system(7)
+    encoding = DoubleFactorizedEncoding(one_body, eri)
+    for kernel in (
+            encoding.encode_kernel(state_prep=_product_prep),
+            encoding.walk_kernel(power=1, state_prep=_product_prep),
+    ):
+        counts = cudaq.sample(kernel, shots_count=100)
+        assert sum(counts.values()) == 100
