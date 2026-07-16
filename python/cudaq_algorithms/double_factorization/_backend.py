@@ -68,18 +68,16 @@ def resolve_backend(backend: str = "auto",
         return np, "numpy"
     if backend == "cupy":
         if not cupy_gpu_available():
-            raise RuntimeError(
-                "double_factorization error - the 'cupy' backend was requested "
-                "but no CuPy/GPU is available.")
+            raise RuntimeError("the 'cupy' backend was requested but no "
+                               "CuPy/GPU is available.")
         return _cupy, "cupy"
     if backend == "auto":
         if cupy_gpu_available() and (problem_size is None
                                      or problem_size >= gpu_min_size):
             return _cupy, "cupy"
         return np, "numpy"
-    raise ValueError(
-        f"double_factorization error - unknown backend '{backend}'; expected "
-        "'auto', 'cupy', or 'numpy'.")
+    raise ValueError(f"unknown backend '{backend}'; expected 'auto', 'cupy', "
+                     "or 'numpy'.")
 
 
 def to_device(array: ArrayLike, xp: ArrayModule) -> DeviceArray:

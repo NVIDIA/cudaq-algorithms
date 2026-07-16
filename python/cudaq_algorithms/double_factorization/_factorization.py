@@ -154,17 +154,15 @@ def _second_factorization(leaf: DeviceArray, scale: ArrayLike,
 def _validate_eri(eri: ArrayLike) -> int:
     eri = np.asarray(eri)
     if eri.ndim != 4 or len(set(eri.shape)) != 1:
-        raise ValueError(
-            "double_factorization error - eri must be a square rank-4 tensor "
-            "(n, n, n, n) in chemist notation (pq|rs).")
+        raise ValueError("eri must be a square rank-4 tensor (n, n, n, n) in "
+                         "chemist notation (pq|rs).")
     # The leaf symmetrization silently assumes the real-orbital index
     # symmetries within each pair; a violation would otherwise surface only
     # as an unexplained reconstruction error.
     if not (np.allclose(eri, eri.transpose(1, 0, 2, 3))
             and np.allclose(eri, eri.transpose(0, 1, 3, 2))):
-        raise ValueError(
-            "double_factorization error - eri must have the real-orbital "
-            "chemist symmetries (pq|rs) == (qp|rs) == (pq|sr).")
+        raise ValueError("eri must have the real-orbital chemist symmetries "
+                         "(pq|rs) == (qp|rs) == (pq|sr).")
     return eri.shape[0]
 
 
@@ -234,9 +232,8 @@ def explicit_double_factorization(
             cores.append(core)
             weights.append(float(to_numpy(lam)))
     else:
-        raise ValueError(
-            "double_factorization error - first_factorization must be "
-            "'cholesky' or 'eigendecomposition'.")
+        raise ValueError("first_factorization must be 'cholesky' or "
+                         "'eigendecomposition'.")
 
     return DoubleFactorization(num_orbitals=n,
                                leaf_rotations=rotations,
@@ -417,8 +414,7 @@ def _solve_inner_cores(
         return _solve_inner_cores_cg(eri_dev, rotations_dev, xp,
                                      regularization, cg_tolerance,
                                      cg_max_iterations, initial_guess)
-    raise ValueError(
-        "double_factorization error - inner_solver must be 'lstsq' or 'cg'.")
+    raise ValueError("inner_solver must be 'lstsq' or 'cg'.")
 
 
 def _reconstruct_dev(rotations_dev: DeviceArray, cores_dev: DeviceArray,
@@ -533,12 +529,9 @@ def compressed_double_factorization(
     """
     n = _validate_eri(eri)
     if num_leaves < 1:
-        raise ValueError(
-            "double_factorization error - num_leaves must be >= 1.")
+        raise ValueError("num_leaves must be >= 1.")
     if inner_solver not in ("lstsq", "cg"):
-        raise ValueError(
-            "double_factorization error - inner_solver must be 'lstsq' or 'cg'."
-        )
+        raise ValueError("inner_solver must be 'lstsq' or 'cg'.")
     xp, _ = resolve_backend(backend,
                             problem_size=n,
                             gpu_min_size=AUTO_GPU_MIN_ORBITALS_COMPRESSED)
@@ -695,5 +688,4 @@ def double_factorization_one_norm(factorization: DoubleFactorization,
             lam += 0.25 * float(np.sum(column_abs_sum**2))
         return lam
 
-    raise ValueError(
-        "double_factorization error - convention must be 'lcu' or 'burg'.")
+    raise ValueError("convention must be 'lcu' or 'burg'.")
