@@ -11,6 +11,13 @@ Same API as the former compiled bindings: the ``uccsd``, ``uccgsd``,
 ``upccgsd``, and ``ceo`` device kernels are ``@cudaq.kernel`` functions
 composable from user kernels, and the excitation/pool helpers run on the
 host with ``cudaq.spin`` algebra.
+
+Error-type convention: the two error cases the compiled bindings
+defined keep their historical ``RuntimeError`` (odd qubit count and
+odd-electrons-at-spin-0 in ``get_uccsd_excitations``); every guard
+added in the pure implementation raises ``ValueError``. Note also that
+the CEO helpers take ``num_orbitals`` in *spatial* orbitals (the pool
+acts on ``2 * num_orbitals`` qubits), matching the compiled API.
 """
 
 from ._kernels import (ceo, double_excitation, single_excitation, uccgsd,
