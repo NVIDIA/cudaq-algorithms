@@ -109,7 +109,10 @@ def _pivoted_cholesky(
     floor = max(float(threshold), initial_max * 1.0e-14)
     vectors: List = []
     pivots: List[float] = []
-    most_negative = 0.0
+    # Track the initial diagonal too: a (near-)negative-semidefinite input
+    # yields few or zero pivots, and that is exactly the case that most
+    # needs the warning below.
+    most_negative = min(0.0, float(xp.min(residual))) if m else 0.0
     limit = m if max_rank is None else min(int(max_rank), m)
     for _ in range(limit):
         pivot_index = int(xp.argmax(residual))
@@ -125,7 +128,8 @@ def _pivoted_cholesky(
         residual = residual - vector * vector
         most_negative = min(most_negative, float(xp.min(residual)))
         residual = xp.where(residual > 0.0, residual, 0.0)
-    if initial_max > 0.0 and most_negative < -1.0e-8 * initial_max:
+    negative_scale = max(initial_max, -most_negative)
+    if negative_scale > 0.0 and most_negative < -1.0e-8 * negative_scale:
         warnings.warn(
             "double_factorization: the ERI supermatrix is not positive "
             f"semidefinite (residual diagonal reached {most_negative:.3e}); "
@@ -158,11 +162,16 @@ def _validate_eri(eri: ArrayLike) -> int:
                          "chemist notation (pq|rs).")
     # The leaf symmetrization silently assumes the real-orbital index
     # symmetries within each pair; a violation would otherwise surface only
-    # as an unexplained reconstruction error.
+    # as an unexplained reconstruction error. Pair swap is included: the
+    # C-DF gradient folds four residual terms into a single -4 prefactor,
+    # which assumes the full 8-fold symmetry on the unsymmetrized tensor
+    # (X-DF symmetrizes the supermatrix and would hide a violation; C-DF
+    # would silently optimize the wrong objective).
     if not (np.allclose(eri, eri.transpose(1, 0, 2, 3))
-            and np.allclose(eri, eri.transpose(0, 1, 3, 2))):
+            and np.allclose(eri, eri.transpose(0, 1, 3, 2))
+            and np.allclose(eri, eri.transpose(2, 3, 0, 1))):
         raise ValueError("eri must have the real-orbital chemist symmetries "
-                         "(pq|rs) == (qp|rs) == (pq|sr).")
+                         "(pq|rs) == (qp|rs) == (pq|sr) == (rs|pq).")
     return eri.shape[0]
 
 
@@ -219,8 +228,12 @@ def explicit_double_factorization(
         eigenvalues, eigenvectors = _sorted_symmetric_eigendecomposition(
             supermatrix, xp)
         abs_eigenvalues = to_numpy(xp.abs(eigenvalues))
+        # Same relative rank floor as the Cholesky path: threshold == 0
+        # stops at the numerical rank instead of emitting n^2 null leaves.
+        top = float(abs_eigenvalues[0]) if abs_eigenvalues.size else 0.0
+        floor = max(float(threshold), top * 1.0e-14)
         for index in range(n * n):
-            if abs_eigenvalues[index] <= threshold:
+            if abs_eigenvalues[index] <= floor:
                 break
             if max_num_leaves is not None and len(rotations) >= max_num_leaves:
                 break
@@ -476,6 +489,13 @@ def _initial_generators(eri: ArrayLike, num_leaves: int, n: int,
             rotation[:, 0] *= -1.0
         skew = scipy.linalg.logm(rotation).real
         skew = 0.5 * (skew - skew.T)  # clean numerical asymmetry
+        # logm sits on a branch cut for rotations with a (-1, -1)
+        # eigenvalue pair (det +1), where taking .real silently yields
+        # exp(skew) != rotation. The generators are only a warm start, so
+        # fall back to a neutral zero generator instead of seeding the
+        # optimizer with a wrong one.
+        if not np.allclose(scipy.linalg.expm(skew), rotation, atol=1.0e-8):
+            skew = np.zeros_like(skew)
         generators.append(skew)
     while len(generators) < num_leaves:
         generators.append(np.zeros((n, n)))
@@ -661,9 +681,15 @@ def double_factorization_one_norm(factorization: DoubleFactorization,
     ``convention="lcu"`` (Eq. 13) -- the LCU / Pauli-rotation norm
     ``sum_k |F_k| + sum_t (sum_{k<l} |Z^t_kl| + 1/4 sum_k |Z^t_kk|)``.
 
-    ``convention="burg"`` (Eq. 15) -- the qubitization norm
-    ``sum_k |F_k| + 1/4 sum_t sum_i (sum_k |W^t_ki|)^2`` with ``W^t = sqrt(Z^t)``
-    (the matrix square root, which may be complex for indefinite cores).
+    ``convention="burg"`` -- the qubitization norm in the standard
+    von Burg/Lee form: with each core eigendecomposed as
+    ``Z^t = sum_i lambda^t_i v^t_i (v^t_i)^T``,
+    ``sum_k |F_k| + 1/4 sum_t sum_i |lambda^t_i| (sum_k |v^t_ki|)^2``.
+    (A factorization ``Z = W W^T`` leaves ``W`` free up to a right
+    orthogonal gauge, and the column-norm formula is not gauge
+    invariant; the eigenfactor is the standard, gauge-fixed choice and
+    reduces to RC-DF Eq. 15 / von Burg's ``(1/4)(sum_k |gamma_k|)^2``
+    for rank-one cores.)
 
     ``one_body_eigenvalues`` are the diagonal one-body (Fock-like) eigenvalues.
     """
@@ -682,10 +708,9 @@ def double_factorization_one_norm(factorization: DoubleFactorization,
         for core in factorization.leaf_cores:
             eigenvalues, vectors = np.linalg.eigh(np.asarray(core,
                                                              dtype=float))
-            root = (vectors * np.sqrt(eigenvalues.astype(complex))) @ \
-                vectors.conj().T  # W = sqrt(Z), possibly complex
-            column_abs_sum = np.sum(np.abs(root), axis=0)  # sum_k |W_ki| per i
-            lam += 0.25 * float(np.sum(column_abs_sum**2))
+            column_abs_sum = np.sum(np.abs(vectors), axis=0)
+            lam += 0.25 * float(np.sum(
+                np.abs(eigenvalues) * column_abs_sum**2))
         return lam
 
     raise ValueError("convention must be 'lcu' or 'burg'.")

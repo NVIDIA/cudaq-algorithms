@@ -391,3 +391,112 @@ def test_indefinite_eri_warns_on_cholesky_path():
     exact = df.explicit_double_factorization(
         eri, first_factorization="eigendecomposition")
     assert df.factorization_error(eri, exact) < 1.0e-10
+
+
+def test_one_norms_match_hand_computation():
+    # One leaf with a core built from hand-chosen eigenpairs:
+    # V = rotation by pi/6, lambda = (2.0, -0.5), Z = V diag(lambda) V^T.
+    c, s = np.cos(np.pi / 6.0), np.sin(np.pi / 6.0)
+    rotation = np.array([[c, -s], [s, c]])
+    core = rotation @ np.diag([2.0, -0.5]) @ rotation.T
+    factorization = df.DoubleFactorization(num_orbitals=2,
+                                           leaf_rotations=[np.eye(2)],
+                                           leaf_cores=[core],
+                                           method="X-DF")
+    one_body_eigenvalues = [0.3, -0.7]  # sum |F| = 1.0
+
+    # lcu: sum|F| + sum_{k<l}|Z_kl| + 1/4 sum_k |Z_kk|, entries by hand:
+    # Z00 = 2c^2 - 0.5s^2, Z11 = 2s^2 - 0.5c^2, Z01 = 2.5cs.
+    z00 = 2.0 * c**2 - 0.5 * s**2
+    z11 = 2.0 * s**2 - 0.5 * c**2
+    z01 = 2.5 * c * s
+    expected_lcu = 1.0 + abs(z01) + 0.25 * (abs(z00) + abs(z11))
+    assert df.double_factorization_one_norm(factorization,
+                                            one_body_eigenvalues,
+                                            convention="lcu") == pytest.approx(
+                                                expected_lcu, abs=1e-12)
+
+    # burg (gauge-fixed eigen form): 1/4 sum_i |lambda_i| (sum_k |v_ki|)^2;
+    # both eigenvector columns have |c| + |s| absolute column sum.
+    expected_burg = 1.0 + 0.25 * (2.0 + 0.5) * (c + s)**2
+    assert df.double_factorization_one_norm(
+        factorization, one_body_eigenvalues,
+        convention="burg") == pytest.approx(expected_burg, abs=1e-12)
+
+
+def test_modified_one_body_matches_independent_loop():
+    rng = np.random.default_rng(21)
+    n = 3
+    one_body = rng.standard_normal((n, n))
+    eri = _synthetic_eri(n, 2, seed=22)
+
+    expected = np.empty((n, n))
+    for p in range(n):
+        for q in range(n):
+            correction = 0.0
+            for r in range(n):
+                correction += eri[p, r, q, r]
+            expected[p, q] = one_body[p, q] - 0.5 * correction
+
+    np.testing.assert_allclose(df.modified_one_body_integrals(one_body, eri),
+                               expected,
+                               atol=1e-14)
+
+
+def test_second_factor_threshold_truncates_cores():
+    eri = _synthetic_eri(4, 3, seed=23)
+    exact = df.explicit_double_factorization(eri)
+    # Pick a threshold from the data: the median importance-weighted gamma
+    # across the exact cores, so roughly half the entries get zeroed.
+    weighted = []
+    for core in exact.leaf_cores:
+        # Cholesky-path cores are outer(gamma, gamma), so |gamma_k| is
+        # sqrt of the core diagonal; the code weights |gamma_k| by
+        # importance = sum_k |gamma_k|.
+        gammas = np.sqrt(np.maximum(np.diag(core), 0.0))
+        weighted.extend(np.sum(gammas) * gammas)
+    threshold = float(np.median([w for w in weighted if w > 1.0e-12]))
+    truncated = df.explicit_double_factorization(
+        eri, second_factor_threshold=threshold)
+    heavy = df.explicit_double_factorization(eri,
+                                             second_factor_threshold=1.0e6)
+
+    err_exact = df.factorization_error(eri, exact)
+    err_truncated = df.factorization_error(eri, truncated)
+    assert err_exact < 1.0e-10
+    assert err_truncated > err_exact
+
+    # Truncation zeroes small gamma entries: the (rank-one) cores keep
+    # their rank but gain zero diagonal entries where gammas were dropped.
+    def zero_diagonal_count(cores):
+        return sum(
+            int(np.sum(np.isclose(np.diag(core), 0.0, atol=1.0e-12)))
+            for core in cores)
+
+    assert zero_diagonal_count(truncated.leaf_cores) > zero_diagonal_count(
+        exact.leaf_cores)
+    # An absurd threshold zeroes every core entirely.
+    assert all(np.allclose(core, 0.0) for core in heavy.leaf_cores)
+
+
+def test_negative_definite_supermatrix_warns_with_no_leaves():
+    eri = -_synthetic_eri(4, 3, seed=24)  # negative semidefinite supermatrix
+    with pytest.warns(RuntimeWarning, match="not positive semidefinite"):
+        factorization = df.explicit_double_factorization(eri)
+    assert factorization.num_leaves == 0
+    assert df.factorization_error(eri, factorization) > 1.0
+
+
+def test_eigendecomposition_threshold_zero_stops_at_numerical_rank():
+    eri = _synthetic_eri(5, 3, seed=25)
+    factorization = df.explicit_double_factorization(
+        eri, threshold=0.0, first_factorization="eigendecomposition")
+    assert factorization.num_leaves == 3
+    assert df.factorization_error(eri, factorization) < 1.0e-10
+
+
+def test_pair_swap_asymmetry_rejected():
+    eri = _synthetic_eri(4, 3, seed=26)
+    eri[0, 0, 1, 1] += 0.05  # breaks (pq|rs) == (rs|pq) only
+    with pytest.raises(ValueError, match="chemist symmetries"):
+        df.explicit_double_factorization(eri)

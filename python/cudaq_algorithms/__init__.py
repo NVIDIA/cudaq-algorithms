@@ -17,7 +17,9 @@ The package has two kinds of components:
   CUDA-Q Python kernels. These only require the ``cudaq`` Python package.
 - Pure-Python classical preprocessing (:mod:`.double_factorization`):
   chemistry-oriented numerics on NumPy/SciPy with optional CuPy GPU
-  acceleration; no ``cudaq`` or compiled-extension dependency.
+  acceleration. The subpackage itself imports neither ``cudaq`` nor the
+  compiled extension, but it is reached through this package, whose
+  import does load ``cudaq`` alongside it.
 
 The native extension is optional: if it is not present (for example in a
 source checkout without a build), the pure-Python APIs below still import
