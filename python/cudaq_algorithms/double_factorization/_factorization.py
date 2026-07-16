@@ -25,6 +25,7 @@ fewer leaves at equal accuracy.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -108,6 +109,7 @@ def _pivoted_cholesky(
     floor = max(float(threshold), initial_max * 1.0e-14)
     vectors: List = []
     pivots: List[float] = []
+    most_negative = 0.0
     limit = m if max_rank is None else min(int(max_rank), m)
     for _ in range(limit):
         pivot_index = int(xp.argmax(residual))
@@ -121,7 +123,16 @@ def _pivoted_cholesky(
         vectors.append(vector)
         pivots.append(pivot)
         residual = residual - vector * vector
+        most_negative = min(most_negative, float(xp.min(residual)))
         residual = xp.where(residual > 0.0, residual, 0.0)
+    if initial_max > 0.0 and most_negative < -1.0e-8 * initial_max:
+        warnings.warn(
+            "double_factorization: the ERI supermatrix is not positive "
+            f"semidefinite (residual diagonal reached {most_negative:.3e}); "
+            "the pivoted-Cholesky first factorization drops the negative "
+            "part, so the reconstruction error can far exceed `threshold`. "
+            "Use first_factorization='eigendecomposition' for indefinite "
+            "inputs.", RuntimeWarning)
     return vectors, pivots
 
 
@@ -146,6 +157,14 @@ def _validate_eri(eri: ArrayLike) -> int:
         raise ValueError(
             "double_factorization error - eri must be a square rank-4 tensor "
             "(n, n, n, n) in chemist notation (pq|rs).")
+    # The leaf symmetrization silently assumes the real-orbital index
+    # symmetries within each pair; a violation would otherwise surface only
+    # as an unexplained reconstruction error.
+    if not (np.allclose(eri, eri.transpose(1, 0, 2, 3))
+            and np.allclose(eri, eri.transpose(0, 1, 3, 2))):
+        raise ValueError(
+            "double_factorization error - eri must have the real-orbital "
+            "chemist symmetries (pq|rs) == (qp|rs) == (pq|sr).")
     return eri.shape[0]
 
 

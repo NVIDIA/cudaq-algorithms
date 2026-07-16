@@ -11,8 +11,8 @@ integrals, following Cohn, Motta, and Parrish, PRX Quantum 2, 040352 (2021).
 Generates restricted Hartree-Fock molecular-orbital integrals for H2O/STO-3G with
 PySCF, then double-factorizes the ERI tensor two ways:
 
-  * X-DF: exact nested eigendecompositions (rank-one cores), truncated by leaf
-    eigenvalue magnitude.
+  * X-DF: the exact factorization (rank-one cores) via pivoted Cholesky of
+    the ERI supermatrix (the default), truncated by residual pivot.
   * C-DF: a least-squares-optimized factorization that reaches comparable
     accuracy with far fewer leaves.
 

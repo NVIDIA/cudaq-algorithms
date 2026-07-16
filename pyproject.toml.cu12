@@ -14,6 +14,7 @@ license = "Apache-2.0"
 dependencies = [
   "cuda-quantum-cu12 == 0.14.*",
   "numpy",
+  "scipy",
 ]
 
 [tool.scikit-build]

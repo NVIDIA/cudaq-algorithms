@@ -370,3 +370,24 @@ def test_explicit_double_factorization_matches_openfermion_reference():
     np.testing.assert_allclose(mine.reconstruct_eri(),
                                reference_eri,
                                atol=1.0e-9)
+
+
+def test_asymmetric_eri_is_rejected():
+    eri = _synthetic_eri(4, 3, seed=11)
+    eri[0, 1, 2, 3] += 0.05  # break (pq|rs) == (qp|rs)
+    with pytest.raises(ValueError, match="chemist symmetries"):
+        df.explicit_double_factorization(eri)
+
+
+def test_indefinite_eri_warns_on_cholesky_path():
+    # A negative-weight leaf makes the supermatrix indefinite while keeping
+    # the within-pair index symmetries intact.
+    eri = _synthetic_eri(4, 3, seed=12) - 2.0 * _synthetic_eri(4, 1, seed=13)
+    with pytest.warns(RuntimeWarning, match="not positive semidefinite"):
+        factorization = df.explicit_double_factorization(eri)
+    # The dropped negative part shows up as reconstruction error far above
+    # the threshold; the eigendecomposition path handles the same input.
+    assert df.factorization_error(eri, factorization) > 1.0e-3
+    exact = df.explicit_double_factorization(
+        eri, first_factorization="eigendecomposition")
+    assert df.factorization_error(eri, exact) < 1.0e-10

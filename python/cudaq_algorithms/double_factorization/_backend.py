@@ -38,7 +38,7 @@ except Exception:  # pragma: no cover - environment without CuPy
 # than NumPy; above them the batched cuSOLVER/cuBLAS linear algebra wins and the
 # lead grows with ``n``. X-DF (a cheap Cholesky loop + tiny per-leaf eigh) stays
 # CPU-favorable far longer than the contraction-heavy C-DF optimization. See
-# benchmarks/double_factorization/ and DOUBLE_FACTORIZATION_CPP_PORT_NOTES.md.
+# benchmarks/double_factorization/.
 AUTO_GPU_MIN_ORBITALS_COMPRESSED = 18
 AUTO_GPU_MIN_ORBITALS_EXPLICIT = 56
 
