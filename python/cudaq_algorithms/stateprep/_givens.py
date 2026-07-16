@@ -7,10 +7,11 @@
 # ============================================================================ #
 """Givens-rotation Slater determinant preparation.
 
-Prepares the Slater determinant of an orthonormal occupied-orbital
-matrix ``Q`` (``num_orbitals x num_electrons``) on the Jordan-Wigner /
-little-endian qubit layout: the amplitude of basis state ``|S>`` with
-occupied set ``S`` is ``det(Q[S, :])``, up to a global phase.
+Prepares the Slater determinant of an orthonormal orbital-coefficient
+matrix ``Q`` (``num_spin_orbitals x num_electrons``) on the
+Jordan-Wigner / little-endian qubit layout: the amplitude of basis state
+``|S>`` with occupied set ``S`` is ``det(Q[S, :])``, up to a global
+phase.
 
 Host side, ``make_givens_rotation_schedule`` reduces ``Q`` to the
 computational-basis determinant with adjacent (nearest-neighbor) Givens
@@ -24,9 +25,10 @@ final phase per electron.
 The kernels are module-level and composable from user kernels, like the
 ansatz kernels in ``_kernels``; the host helpers
 (``get_givens_rotation_indices`` / ``..._angles`` / ``..._phases``)
-supply the flattened arrays that cross the kernel boundary. Device
-kernels have no error channel, so mismatched flattened inputs are a
-no-op — validation belongs on the host
+supply the flattened arrays that cross the kernel boundary, and
+``slater_determinant_kernel`` packages a schedule as a ready-to-inject
+``(qubits: qview)`` kernel. Device kernels have no error channel, so
+mismatched flattened inputs are a no-op — validation belongs on the host
 (``validate_givens_rotation_schedule`` runs automatically for built
 schedules).
 
@@ -57,15 +59,15 @@ import cudaq
 
 
 @cudaq.kernel
-def apply_givens_rotation(qubits: cudaq.qview, theta: float,
-                          first_orbital: int, second_orbital: int):
+def givens_rotation(qubits: cudaq.qview, theta: float, first_orbital: int,
+                    second_orbital: int):
     """Apply an adjacent real fermionic Givens rotation.
 
     CUDA-Q's built-in Givens convention maps |10> to
     cos(theta)|10> - sin(theta)|01>; the state-preparation convention
-    here uses the opposite sign, so this inlines givens_rotation(-theta).
-    Non-adjacent orbital pairs are a no-op, matching the host-side
-    adjacency validation.
+    here uses the opposite sign, so this inlines the built-in rotation
+    at -theta. Non-adjacent orbital pairs are a no-op, matching the
+    host-side adjacency validation.
     """
     if first_orbital + 1 == second_orbital:
         pair = qubits[first_orbital:first_orbital + 2]
@@ -78,18 +80,17 @@ def apply_givens_rotation(qubits: cudaq.qview, theta: float,
 
 
 @cudaq.kernel
-def apply_phase_givens_rotation(qubits: cudaq.qview, theta: float,
-                                phase: float, first_orbital: int,
-                                second_orbital: int):
+def phase_givens_rotation(qubits: cudaq.qview, theta: float, phase: float,
+                          first_orbital: int, second_orbital: int):
     """Apply an adjacent phase-aware fermionic Givens rotation."""
-    apply_givens_rotation(qubits, theta, first_orbital, second_orbital)
+    givens_rotation(qubits, theta, first_orbital, second_orbital)
     # rz(phase) equals exp(i * phase * n) on this qubit up to global phase.
     rz(phase, qubits[second_orbital])
 
 
 @cudaq.kernel
-def prepare_slater_determinant(qubits: cudaq.qview, orbital_indices: list[int],
-                               angles: list[float], num_electrons: int):
+def slater_determinant(qubits: cudaq.qview, orbital_indices: list[int],
+                       angles: list[float], num_electrons: int):
     """Prepare a real Slater determinant from a flattened Givens schedule.
 
     ``orbital_indices`` holds two entries per angle
@@ -100,14 +101,14 @@ def prepare_slater_determinant(qubits: cudaq.qview, orbital_indices: list[int],
         for i in range(num_electrons):
             x(qubits[i])
         for i in range(len(angles)):
-            apply_givens_rotation(qubits, angles[i], orbital_indices[2 * i],
-                                  orbital_indices[2 * i + 1])
+            givens_rotation(qubits, angles[i], orbital_indices[2 * i],
+                            orbital_indices[2 * i + 1])
 
 
 @cudaq.kernel
-def prepare_complex_slater_determinant(
-        qubits: cudaq.qview, orbital_indices: list[int], angles: list[float],
-        phases: list[float], final_phases: list[float], num_electrons: int):
+def complex_slater_determinant(qubits: cudaq.qview, orbital_indices: list[int],
+                               angles: list[float], phases: list[float],
+                               final_phases: list[float], num_electrons: int):
     """Prepare a complex Slater determinant from a flattened Givens schedule."""
     if (len(orbital_indices) == 2 * len(angles) and len(phases) == len(angles)
             and len(final_phases) >= num_electrons):
@@ -116,9 +117,9 @@ def prepare_complex_slater_determinant(
         for i in range(num_electrons):
             rz(final_phases[i], qubits[i])
         for i in range(len(angles)):
-            apply_phase_givens_rotation(qubits, angles[i], phases[i],
-                                        orbital_indices[2 * i],
-                                        orbital_indices[2 * i + 1])
+            phase_givens_rotation(qubits, angles[i], phases[i],
+                                  orbital_indices[2 * i],
+                                  orbital_indices[2 * i + 1])
 
 
 # ============================================================================
@@ -150,48 +151,49 @@ class GivensRotationSchedule:
     for real schedules.
     """
 
-    num_orbitals: int
+    num_spin_orbitals: int
     num_electrons: int
     is_complex: bool = False
     rotations: list[GivensRotation] = field(default_factory=list)
     final_phases: list[float] = field(default_factory=list)
 
 
-def _as_matrix(occupied_orbitals):
+def _as_matrix(orbital_coefficients):
     """Normalize input to a list of rows; detect complex entries."""
-    if hasattr(occupied_orbitals, "tolist"):
-        is_complex = getattr(getattr(occupied_orbitals, "dtype", None), "kind",
-                             None) == "c"
-        rows = occupied_orbitals.tolist()
+    if hasattr(orbital_coefficients, "tolist"):
+        is_complex = getattr(getattr(orbital_coefficients, "dtype", None),
+                             "kind", None) == "c"
+        rows = orbital_coefficients.tolist()
     else:
         is_complex = False
-        rows = [list(row) for row in occupied_orbitals]
+        rows = [list(row) for row in orbital_coefficients]
     if not is_complex:
         is_complex = any(
             isinstance(value, complex) for row in rows for value in row)
     return rows, is_complex
 
 
-def _validate_occupied_orbitals(rows, tolerance, is_complex):
+def _validate_orbital_coefficients(rows, tolerance, is_complex):
     if not rows:
-        raise ValueError("occupied_orbitals must not be empty")
+        raise ValueError("orbital_coefficients must not be empty")
 
     num_electrons = len(rows[0])
     if num_electrons == 0:
         raise ValueError(
-            "occupied_orbitals must contain at least one occupied orbital")
+            "orbital_coefficients must contain at least one occupied orbital")
     if num_electrons > len(rows):
         raise ValueError(
             "number of occupied orbitals cannot exceed number of spin "
             "orbitals")
     for row in rows:
         if len(row) != num_electrons:
-            raise ValueError("occupied_orbitals must be a rectangular matrix")
+            raise ValueError(
+                "orbital_coefficients must be a rectangular matrix")
 
     for col in range(num_electrons):
         norm = sum(abs(row[col])**2 for row in rows)
         if abs(norm - 1.0) > 100.0 * tolerance:
-            raise ValueError("occupied_orbitals columns must be normalized")
+            raise ValueError("orbital_coefficients columns must be normalized")
         for other in range(col + 1, num_electrons):
             if is_complex:
                 overlap = sum(
@@ -200,7 +202,7 @@ def _validate_occupied_orbitals(rows, tolerance, is_complex):
                 overlap = sum(row[col] * row[other] for row in rows)
             if abs(overlap) > 100.0 * tolerance:
                 raise ValueError(
-                    "occupied_orbitals columns must be orthogonal")
+                    "orbital_coefficients columns must be orthogonal")
 
 
 def _argument_or_zero(value, tolerance):
@@ -209,19 +211,23 @@ def _argument_or_zero(value, tolerance):
     return cmath.phase(value)
 
 
-def make_givens_rotation_schedule(occupied_orbitals,
+def make_givens_rotation_schedule(orbital_coefficients,
                                   tolerance=1.0e-12) -> GivensRotationSchedule:
     """Build the Givens rotation schedule preparing a Slater determinant.
 
-    ``occupied_orbitals`` is a (num_orbitals x num_electrons) matrix
-    (numpy array or nested lists) whose orthonormal columns are the
-    occupied orbitals. Real and complex inputs dispatch automatically (a
-    complex dtype routes complex even when all values are real).
+    ``orbital_coefficients`` is a (num_spin_orbitals x num_electrons)
+    matrix (numpy array or nested lists) whose orthonormal columns are
+    the occupied orbitals. Real and complex inputs dispatch automatically
+    (a complex dtype routes complex even when all values are real). For
+    interleaved-spin systems the matrix rows must follow the package's
+    alpha (even) / beta (odd) spin-orbital ordering, so the prepared
+    determinant composes with ``hartree_fock_occupation`` references and
+    the UCCSD excitation conventions built at the same spin.
     """
-    rows, is_complex = _as_matrix(occupied_orbitals)
-    _validate_occupied_orbitals(rows, tolerance, is_complex)
+    rows, is_complex = _as_matrix(orbital_coefficients)
+    _validate_orbital_coefficients(rows, tolerance, is_complex)
 
-    num_orbitals = len(rows)
+    num_spin_orbitals = len(rows)
     num_electrons = len(rows[0])
     work = [[complex(value) for value in row] for row in rows]
     eliminations = []
@@ -230,7 +236,7 @@ def make_givens_rotation_schedule(occupied_orbitals,
     # adjacent rows; the surviving diagonal is real for real inputs and a
     # per-column phase (the final phases) for complex inputs.
     for col in range(num_electrons):
-        for row in range(num_orbitals - 1, col, -1):
+        for row in range(num_spin_orbitals - 1, col, -1):
             upper_row = row - 1
             upper = work[upper_row][col]
             lower = work[row][col]
@@ -273,8 +279,8 @@ def make_givens_rotation_schedule(occupied_orbitals,
         final_phases = [0.0] * num_electrons
 
     # State preparation applies the inverse of the row rotations that
-    # reduce the occupied-orbital matrix to the basis determinant.
-    schedule = GivensRotationSchedule(num_orbitals=num_orbitals,
+    # reduce the orbital-coefficient matrix to the basis determinant.
+    schedule = GivensRotationSchedule(num_spin_orbitals=num_spin_orbitals,
                                       num_electrons=num_electrons,
                                       is_complex=is_complex,
                                       rotations=list(reversed(eliminations)),
@@ -289,18 +295,18 @@ def validate_givens_rotation_schedule(schedule: GivensRotationSchedule):
     ``make_givens_rotation_schedule`` output always passes; this guards
     hand-built schedules (the kernels themselves cannot raise).
     """
-    if schedule.num_orbitals <= 0:
-        raise ValueError("num_orbitals must be greater than zero")
+    if schedule.num_spin_orbitals <= 0:
+        raise ValueError("num_spin_orbitals must be greater than zero")
     if schedule.num_electrons <= 0:
         raise ValueError("num_electrons must be greater than zero")
-    if schedule.num_electrons > schedule.num_orbitals:
-        raise ValueError("num_electrons cannot exceed num_orbitals")
+    if schedule.num_electrons > schedule.num_spin_orbitals:
+        raise ValueError("num_electrons cannot exceed num_spin_orbitals")
 
     for rotation in schedule.rotations:
         first = rotation.first_orbital
         second = rotation.second_orbital
         if (min(first, second) < 0
-                or max(first, second) >= schedule.num_orbitals):
+                or max(first, second) >= schedule.num_spin_orbitals):
             raise ValueError("Givens rotation orbital index is out of range")
         if abs(first - second) != 1:
             raise ValueError(
@@ -344,6 +350,70 @@ def get_givens_rotation_phases(
 
 
 # ============================================================================
+# Kernel factory
+# ============================================================================
+
+
+def slater_determinant_kernel(schedule: GivensRotationSchedule):
+    """A ``(qubits: qview)`` kernel preparing the schedule's determinant.
+
+    The returned kernel expects a ``schedule.num_spin_orbitals``-wide
+    register in |0...0> and is directly injectable as a ``state_prep``
+    kernel (e.g. into ``PauliLCU.encode_kernel``). It dispatches on
+    ``schedule.is_complex`` to the ``slater_determinant`` /
+    ``complex_slater_determinant`` kernel path. The schedule is flattened
+    into plain index/angle/phase arrays before capture — nested
+    structures marshal as kernel *arguments* but cannot be
+    closure-*captured* by Python kernels.
+    """
+    validate_givens_rotation_schedule(schedule)
+    orbital_indices = get_givens_rotation_indices(schedule)
+    angles = get_givens_rotation_angles(schedule)
+    phases = get_givens_rotation_phases(schedule)
+    final_phases = [float(value) for value in schedule.final_phases]
+    num_electrons = int(schedule.num_electrons)
+
+    # Positive guards choose a kernel shape whose captured lists are all
+    # non-empty: empty list captures fail to launch (cuda-quantum#4847),
+    # and num_electrons >= 1 always holds for a valid schedule.
+    if schedule.is_complex:
+        if len(angles) > 0:
+
+            @cudaq.kernel
+            def complex_prep(qubits: cudaq.qview):
+                complex_slater_determinant(qubits, orbital_indices, angles,
+                                           phases, final_phases, num_electrons)
+
+            return complex_prep
+
+        # Rotation-free complex schedule: occupation plus final phases.
+        @cudaq.kernel
+        def complex_basis_prep(qubits: cudaq.qview):
+            for i in range(num_electrons):
+                x(qubits[i])
+            for i in range(num_electrons):
+                rz(final_phases[i], qubits[i])
+
+        return complex_basis_prep
+
+    if len(angles) > 0:
+
+        @cudaq.kernel
+        def real_prep(qubits: cudaq.qview):
+            slater_determinant(qubits, orbital_indices, angles, num_electrons)
+
+        return real_prep
+
+    # Rotation-free real schedule: the basis determinant |1...10...0>.
+    @cudaq.kernel
+    def basis_prep(qubits: cudaq.qview):
+        for i in range(num_electrons):
+            x(qubits[i])
+
+    return basis_prep
+
+
+# ============================================================================
 # Resource estimation
 # ============================================================================
 
@@ -352,6 +422,7 @@ def get_givens_rotation_phases(
 class GivensResourceEstimate:
     """Lightweight circuit-cost summary for a Givens schedule.
 
+    ``num_spin_orbitals`` and ``num_electrons`` echo the schedule.
     ``num_exp_pauli_calls`` counts the two-qubit ``exp_pauli`` rotations
     (two per Givens rotation); ``num_phase_rotations`` counts the
     single-qubit ``rz`` gates of a complex preparation (one per rotation
@@ -359,6 +430,8 @@ class GivensResourceEstimate:
     upper bounds, not transpiled gate counts.
     """
 
+    num_spin_orbitals: int
+    num_electrons: int
     num_givens_rotations: int
     num_exp_pauli_calls: int
     num_phase_rotations: int
@@ -375,6 +448,8 @@ def estimate_givens_resources(
     num_phase_rotations = (num_rotations + schedule.num_electrons
                            if schedule.is_complex else 0)
     return GivensResourceEstimate(
+        num_spin_orbitals=schedule.num_spin_orbitals,
+        num_electrons=schedule.num_electrons,
         num_givens_rotations=num_rotations,
         num_exp_pauli_calls=num_exp_pauli_calls,
         num_phase_rotations=num_phase_rotations,

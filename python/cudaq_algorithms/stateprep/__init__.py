@@ -22,13 +22,14 @@ the CEO helpers take ``num_orbitals`` in *spatial* orbitals (the pool
 acts on ``2 * num_orbitals`` qubits), matching the compiled API.
 """
 
-from ._givens import (
-    GivensResourceEstimate, GivensRotation, GivensRotationSchedule,
-    apply_givens_rotation, apply_phase_givens_rotation,
-    estimate_givens_resources, get_givens_rotation_angles,
-    get_givens_rotation_indices, get_givens_rotation_phases,
-    make_givens_rotation_schedule, prepare_complex_slater_determinant,
-    prepare_slater_determinant, validate_givens_rotation_schedule)
+from ._givens import (GivensResourceEstimate, GivensRotation,
+                      GivensRotationSchedule, complex_slater_determinant,
+                      estimate_givens_resources, get_givens_rotation_angles,
+                      get_givens_rotation_indices, get_givens_rotation_phases,
+                      givens_rotation, make_givens_rotation_schedule,
+                      phase_givens_rotation, slater_determinant,
+                      slater_determinant_kernel,
+                      validate_givens_rotation_schedule)
 from ._kernels import (ceo, double_excitation, single_excitation, uccgsd,
                        uccsd, upccgsd)
 from ._pools import (get_ceo_pauli_lists, get_num_uccsd_parameters,
@@ -54,10 +55,11 @@ __all__ = [
     "GivensRotation",
     "GivensRotationSchedule",
     "GivensResourceEstimate",
-    "apply_givens_rotation",
-    "apply_phase_givens_rotation",
-    "prepare_slater_determinant",
-    "prepare_complex_slater_determinant",
+    "givens_rotation",
+    "phase_givens_rotation",
+    "slater_determinant",
+    "complex_slater_determinant",
+    "slater_determinant_kernel",
     "make_givens_rotation_schedule",
     "validate_givens_rotation_schedule",
     "get_givens_rotation_indices",
