@@ -15,6 +15,11 @@ The package has two kinds of components:
 - Pure-Python modules (:mod:`.pauli_lcu`, :mod:`.qubitization`, :mod:`.qsvt`,
   :mod:`.trotter`, :mod:`.sim_utils`): quantum primitives implemented as
   CUDA-Q Python kernels. These only require the ``cudaq`` Python package.
+- Pure-Python classical preprocessing (:mod:`.double_factorization`):
+  chemistry-oriented numerics on NumPy/SciPy with optional CuPy GPU
+  acceleration. The subpackage itself imports neither ``cudaq`` nor the
+  compiled extension, but it is reached through this package, whose
+  import does load ``cudaq`` alongside it.
 
 The native extension is optional: if it is not present (for example in a
 source checkout without a build), the pure-Python APIs below still import
@@ -35,6 +40,9 @@ except ModuleNotFoundError as exc:
         raise
     _NATIVE_IMPORT_ERROR = exc
     __version__ = "CUDA-Q Algorithms (compiled extension not built)"
+
+# Pure-Python classical preprocessing (no compiled-extension dependency).
+from . import double_factorization
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
 from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,

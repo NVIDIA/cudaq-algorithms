@@ -31,6 +31,11 @@ Simulation-only helpers (statevector access) are isolated in
 [examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/), and
 [examples/hamiltonian_simulation/](examples/hamiltonian_simulation/).
 
+Classical chemistry preprocessing ships as a peer pure-Python module:
+double factorization of two-electron integrals (X-DF and C-DF/RC-DF) on
+NumPy/SciPy with optional CuPy GPU acceleration — see
+[docs/double_factorization.md](docs/double_factorization.md).
+
 ## Chemistry Inputs
 
 CUDA-Q Algorithms does not provide an official bridge to PySCF or any other
