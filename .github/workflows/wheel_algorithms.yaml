@@ -72,6 +72,10 @@ concurrency:
 jobs:
   build-cudaq-wheels:
     name: Build CUDA-Q wheels
+    # Building CUDA-Q from source needs the large self-hosted runners;
+    # forks skip it (and the test job below) and still get the pure
+    # algorithms wheels + metapackages artifacts.
+    if: startsWith(github.repository, 'NVIDIA/cudaq-algorithms')
     uses: ./.github/workflows/build_cudaq_wheels.yaml
     permissions:
       actions: write
@@ -95,9 +99,9 @@ jobs:
         platform: ['amd64']
         cuda_version: ['12.6']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
-    container:
-      image: ghcr.io/nvidia/cuda-quantum-devdeps:manylinux-${{ matrix.platform }}-cu${{ matrix.cuda_version }}-gcc12-main
-      options: --ulimit nofile=1048576:1048576
+    # The wheels are pure Python (py3-none-any): no CUDA-Q toolchain, no
+    # manylinux devdeps image — a stock python container is enough.
+    container: python:${{ matrix.python }}
     permissions:
       contents: read
     steps:
@@ -112,37 +116,13 @@ jobs:
           cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
           echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
 
-      - name: Get required CUDAQ version
-        id: get-cudaq-version
-        uses: ./.github/actions/get-cudaq-version
-        with:
-          repo: ${{ inputs.cudaq_repo }}
-          ref: ${{ inputs.cudaq_ref }}
-
-      - name: Get CUDAQ code
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ steps.get-cudaq-version.outputs.repo }}
-          ref: ${{ steps.get-cudaq-version.outputs.ref }}
-          path: cudaq
-          set-safe-directory: true
-
-      - name: Build CUDA-Q toolchain
-        run: |
-          bash .github/workflows/scripts/build_cudaq.sh \
-            --python-version ${{ matrix.python }} \
-            --cuda-version ${{ matrix.cuda_version }}
-
       - name: Build CUDA-Q Algorithms wheels
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           bash scripts/ci/build_wheels.sh \
             --cuda-version ${{ steps.config.outputs.cuda_major }} \
-            --cudaq-prefix /usr/local/cudaq \
-            --build-type ${{ inputs.build_type }} \
             --python-version ${{ matrix.python }} \
-            --version ${{ inputs.version || '0.14.99' }} \
-            --devdeps
+            --version ${{ inputs.version || '0.14.99' }}
 
       - name: Upload CUDA-Q Algorithms wheels
         uses: actions/upload-artifact@v4
@@ -195,7 +175,9 @@ jobs:
   test-wheels-cpu:
     name: Test CUDA-Q Algorithms wheels (CPU)
     needs: [build-cudaq-wheels, build-algorithms-wheels, build-metapackages]
-    if: ${{ !failure() && !cancelled() }}
+    # Consumes the from-source CUDA-Q wheels, so it can only run where
+    # build-cudaq-wheels ran (skipped on forks along with it).
+    if: ${{ !failure() && !cancelled() && startsWith(github.repository, 'NVIDIA/cudaq-algorithms') }}
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu4', matrix.platform) || 'ubuntu-latest' }}
     container: ubuntu:24.04
     permissions:
