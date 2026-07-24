@@ -160,8 +160,12 @@ def _uccsd_circuit_signs(num_qubits, num_electrons, spin):
     return signs
 
 
-@pytest.mark.parametrize("num_qubits,num_electrons,spin",
-                         [(4, 2, 0), (6, 3, 1), (8, 4, 0)])
+@pytest.mark.parametrize(
+    "num_qubits,num_electrons,spin",
+    # (10, 5, 1) is open-shell (spin>0) and large enough to emit same-spin
+    # alpha *and* beta doubles (3 each) -- the occupancy split the smaller
+    # (6, 3, 1) case leaves empty.
+    [(4, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1)])
 def test_uccsd_kernel_matches_dense_exponential(num_qubits, num_electrons,
                                                 spin):
     pool = algorithms.stateprep.make_uccsd_operator_pool(

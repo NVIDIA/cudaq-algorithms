@@ -68,6 +68,9 @@ jobs:
               - 'scripts/validation/**'
               - 'pyproject.toml.cu*'
             build-wheels:
+              # The wheel is the deliverable, so package-source edits must
+              # build and test it (not just run pytest against the source tree).
+              - 'python/**'
               - '.github/actions/get-cudaq-wheels/**'
               - '.github/workflows/build_cudaq_wheels.yaml'
               - '.github/workflows/wheel_algorithms.yaml'
