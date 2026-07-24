@@ -47,6 +47,20 @@ replaced:
 Unlike the retired C++ Bravyi-Kitaev (which assumed additional
 tensor structure beyond hermiticity), both transforms here compile the
 tensors exactly as given, term by term.
+
+Migration from the compiled extension (behavior differences, not bugs):
+
+- Invalid shapes/ranks raise ``ValueError`` (the Pythonic choice), where
+  the compiled binding surfaced C++ ``throw`` as ``RuntimeError``. Code
+  with ``except RuntimeError`` around a transform must be updated.
+- The returned operator's qubit width tracks the qubits actually touched.
+  A Hamiltonian that never couples the highest orbital(s) yields a
+  narrower operator, and a fully-pruned or all-zero Hamiltonian yields an
+  empty operator; ``to_matrix()`` is then ``2^(touched)``, not ``2^n``.
+  Callers needing a fixed ``2^n`` must ensure the top orbital is touched
+  (or pad the result themselves).
+- Bravyi-Kitaev no longer antisymmetrizes the two-body tensor internally
+  (see ``bravyi_kitaev``).
 """
 
 from __future__ import annotations
@@ -260,7 +274,9 @@ def _compile_hamiltonian(encoding: _Encoding, one_body: np.ndarray,
                          tolerance: float):
 
     def negligible(value: complex) -> bool:
-        return abs(value.real) < tolerance and abs(value.imag) < tolerance
+        # Magnitude cutoff, matching the docstrings and the output-side prune
+        # in _to_spin_operator (a magnitude disk, not a componentwise square).
+        return abs(value) < tolerance
 
     raise_terms = [
         encoding.ladder_terms(j, dagger=True)
@@ -324,6 +340,15 @@ def bravyi_kitaev(one_body_or_two_body: ArrayLike,
     Same input conventions as ``jordan_wigner``; the qubits store
     Fenwick-tree partial sums of the occupations, giving O(log n)-weight
     Pauli words. Returns a ``cudaq.SpinOperator``.
+
+    Migration note: the two-body tensor is compiled *literally*, entry by
+    entry as ``V[i,j,k,l] adag_i adag_j a_k a_l`` — identical to
+    ``jordan_wigner``. The retired compiled binding instead antisymmetrized
+    the tensor internally before transforming; matching ``jordan_wigner``
+    here repairs a prior JW/BK inconsistency. A caller who passed a raw,
+    non-antisymmetrized (e.g. chemist-ordered) two-body tensor and relied on
+    that internal antisymmetrization must now antisymmetrize the input
+    themselves, or they will silently get a different operator.
     """
     one_body, two_body_arr, n = _validate_tensors(one_body_or_two_body,
                                                   two_body)
