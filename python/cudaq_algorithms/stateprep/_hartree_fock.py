@@ -106,6 +106,14 @@ def make_hartree_fock_occupation(num_qubits, num_electrons, spin=0):
         raise ValueError("num_qubits must be even when spin > 0")
     if spin_number > num_electrons:
         raise ValueError("spin cannot exceed num_electrons")
+    # spin is 2*S_z, so (num_electrons - spin) must be even. Otherwise the
+    # n_occ_beta floor below silently realizes spin+1 rather than spin
+    # (e.g. (8, 4, 1) would return the same occupation as (8, 4, 2)),
+    # contradicting the documented open-shell spin. Matches
+    # get_uccsd_excitations.
+    if (num_electrons - spin_number) % 2 != 0:
+        raise ValueError("(num_electrons - spin) must be even when spin > 0 "
+                         "(spin is 2*S_z)")
 
     num_spatial = num_qubits // 2
     n_occ_beta = (num_electrons - spin_number) // 2
@@ -209,8 +217,11 @@ def validate_fixed_parameter_ucc(num_qubits, parameters, pauli_words,
                              "coefficient group")
         for word in words:
             if isinstance(word, str):
-                if len(word) > num_qubits:
-                    raise ValueError("Pauli word exceeds num_qubits")
+                # Every valid word spans the whole register (the get_*_pauli_
+                # lists helpers pad to full width); a short word would slip
+                # past here and fail later inside exp_pauli at kernel launch.
+                if len(word) != num_qubits:
+                    raise ValueError("Pauli word width must equal num_qubits")
                 if any(ch not in "IXYZ" for ch in word):
                     raise ValueError(f"unsupported Pauli word: {word!r}")
 
@@ -263,7 +274,13 @@ def hartree_fock_ucc_kernel(num_qubits,
             raise ValueError(
                 "spin only applies with num_electrons; encode the open-shell "
                 "reference directly in occupied_orbitals")
-        occupation = [int(index) for index in occupied_orbitals]
+        # Validate the raw indices (rejecting non-integral / bool) rather
+        # than int()-coercing first, which would truncate e.g. 2.5 -> 2 into
+        # a silently wrong reference determinant.
+        occupation = [
+            _as_count(index, "occupied orbital index")
+            for index in occupied_orbitals
+        ]
         validate_hartree_fock_occupation(num_qubits, occupation)
 
     flat_angles = []

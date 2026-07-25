@@ -277,7 +277,8 @@ end-to-end.
 former compiled implementation (bit-identical circuits and operator
 coefficients). `test_stateprep_hf_ucc.py` validates the Hartree-Fock and
 fixed-parameter UCC surface against dense matrix exponentials of the
-operator pools, including open-shell occupations, input guards, and
-injection through the other primitives; `test_stateprep_givens.py` (on
+operator pools, including open-shell occupations and input guards
+(injection through the primitives is covered by
+`test_state_prep_injection.py`); `test_stateprep_givens.py` (on
 the Givens branch) does the same for Slater determinants against dense
 `det(Q[S, :])` amplitudes.

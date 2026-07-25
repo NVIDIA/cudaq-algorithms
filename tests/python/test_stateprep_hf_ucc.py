@@ -148,6 +148,11 @@ def test_hartree_fock_open_shell_occupation():
         stateprep.make_hartree_fock_occupation(8, 2, 3)
     with pytest.raises(ValueError, match="does not fit"):
         stateprep.make_hartree_fock_occupation(4, 4, 2)
+    # Open-shell spin must share parity with num_electrons (spin is 2*S_z),
+    # else the beta floor would silently realize spin+1: (8, 4, 1) must not
+    # be accepted as an alias of (8, 4, 2).
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.make_hartree_fock_occupation(8, 4, 1)
 
 
 # ----------------------------------------------------------------------------
@@ -213,8 +218,12 @@ def test_fixed_parameter_ucc_validation_and_resources():
     with pytest.raises(ValueError, match="coefficient group"):
         stateprep.validate_fixed_parameter_ucc(4, parameters, words,
                                                [g[:-1] for g in coeffs])
-    with pytest.raises(ValueError, match="exceeds num_qubits"):
+    # Every valid word spans the whole register; both over- and under-width
+    # words must be rejected on the host (not later inside exp_pauli).
+    with pytest.raises(ValueError, match="width must equal num_qubits"):
         stateprep.validate_fixed_parameter_ucc(2, [0.1], [["XYZ"]], [[1.0]])
+    with pytest.raises(ValueError, match="width must equal num_qubits"):
+        stateprep.validate_fixed_parameter_ucc(4, [0.1], [["XY"]], [[1.0]])
     with pytest.raises(ValueError, match="unsupported Pauli"):
         stateprep.validate_fixed_parameter_ucc(2, [0.1], [["XQ"]], [[1.0]])
 
@@ -359,6 +368,14 @@ def test_factory_validates_inputs():
                                           words,
                                           coeffs,
                                           occupied_orbitals=[0, 4])
+    # A non-integral occupied index must be rejected, not int()-truncated into
+    # a silently wrong reference determinant.
+    with pytest.raises(ValueError, match="non-negative integer"):
+        stateprep.hartree_fock_ucc_kernel(4,
+                                          parameters,
+                                          words,
+                                          coeffs,
+                                          occupied_orbitals=[0, 2.5])
     with pytest.raises(ValueError, match="num_electrons cannot exceed"):
         stateprep.hartree_fock_ucc_kernel(4,
                                           parameters,
