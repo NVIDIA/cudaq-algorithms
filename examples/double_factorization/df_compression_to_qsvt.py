@@ -10,13 +10,13 @@
 Takes H2/STO-3G molecular integrals (hardcoded, so the example needs no
 PySCF), double-factorizes the two-electron tensor, and — for each leaf
 count — reconstructs the truncated tensor, bridges it to a qubit
-Hamiltonian (``chemistry.qubit_hamiltonian``: spin expansion + compiled
+Hamiltonian (``chemistry.qubit_hamiltonian``: spin expansion +
 Jordan-Wigner), and reports what the truncation buys on the quantum side:
 the PauliLCU normalization ``alpha`` (which sets QSVT polynomial degree
 via ``d ~ alpha * t`` for time evolution), the Pauli term count (SELECT
 cost), and the exact ground-state shift it costs.
 
-Requires the compiled extension (``fermion.jordan_wigner``).
+Uses ``fermion.jordan_wigner`` via ``chemistry.qubit_hamiltonian``.
 """
 from __future__ import annotations
 

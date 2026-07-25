@@ -133,7 +133,7 @@ preprocessing above and the quantum primitives. It consumes the same
 conventions this module does — an `(n, n)` core Hamiltonian and an
 `(n, n, n, n)` chemist-notation `(pq|rs)` tensor over real spatial
 orbitals — spin-expands them (interleaved spins: `2p` up, `2p + 1` down),
-and applies the compiled Jordan-Wigner transform:
+and applies the Jordan-Wigner transform:
 
 ```python
 from cudaq_algorithms import PauliLCU, chemistry
@@ -155,8 +155,8 @@ spectrum shift controlled by the tensor reconstruction error.
 `chemistry.spin_orbital_tensors` exposes the spin expansion by itself for
 users who need the fermionic tensors.
 
-The bridge requires the compiled extension (`fermion.jordan_wigner`); the
-classical factorization itself does not. See
+`chemistry.qubit_hamiltonian` uses `fermion.jordan_wigner`; the classical
+factorization itself does not. See
 [`examples/double_factorization/df_compression_to_qsvt.py`](../examples/double_factorization/df_compression_to_qsvt.py),
 which sweeps X-DF leaf counts on H2/STO-3G (hardcoded integrals, no PySCF
 needed) and tabulates tensor error, `alpha`, term count, and the exact
