@@ -24,6 +24,14 @@ import cudaq_algorithms as algorithms
 from cudaq_algorithms import PauliLCU, stateprep
 from cudaq_algorithms import sim_utils as sim
 
+# Tolerance for simulator-state-vs-dense-reference comparisons, gated on the
+# active simulator precision (matching test_stateprep_kernels.py): fp32
+# targets (CUDAQ_DEFAULT_SIMULATOR=nvidia) reach only ~5e-6 over a
+# multi-rotation circuit, while fp64 (qpp-cpu) is machine precision. Exact
+# same-simulator and pure-NumPy comparisons keep their tight 1e-12.
+_REFERENCE_ATOL = (5.0e-5 if np.dtype(cudaq.complex()) == np.dtype(
+    np.complex64) else 1.0e-6)
+
 # ----------------------------------------------------------------------------
 # Entry kernels
 # ----------------------------------------------------------------------------
@@ -152,7 +160,7 @@ def test_givens_schedule_two_orbital_statevector():
 
     state = _prepare_real_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_prepare_random_real_slater_determinant_statevector():
@@ -161,7 +169,7 @@ def test_prepare_random_real_slater_determinant_statevector():
 
     state = _prepare_real_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_prepare_real_slater_determinant_sign_convention():
@@ -173,7 +181,7 @@ def test_prepare_real_slater_determinant_sign_convention():
     expected = _reference_slater_state(orbital_coefficients)
     assert np.isclose(expected[0b011], np.cos(theta))
     assert np.isclose(expected[0b110], -np.sin(theta))
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_prepare_random_real_five_orbital_three_electron_statevector():
@@ -182,7 +190,7 @@ def test_prepare_random_real_five_orbital_three_electron_statevector():
 
     state = _prepare_real_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_prepare_complex_one_electron_slater_determinant_statevector():
@@ -197,7 +205,7 @@ def test_prepare_complex_one_electron_slater_determinant_statevector():
 
     state = _prepare_complex_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_complex_slater_determinant_relative_phase_and_sign():
@@ -211,7 +219,7 @@ def test_complex_slater_determinant_relative_phase_and_sign():
     expected = _reference_slater_state(orbital_coefficients)
     assert np.isclose(expected[0b011], np.cos(theta))
     assert np.isclose(expected[0b110], -np.exp(1j * phase) * np.sin(theta))
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_prepare_random_complex_slater_determinant_statevector():
@@ -221,7 +229,7 @@ def test_prepare_random_complex_slater_determinant_statevector():
 
     state = _prepare_complex_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_prepare_random_complex_five_orbital_three_electron_statevector():
@@ -231,7 +239,7 @@ def test_prepare_random_complex_five_orbital_three_electron_statevector():
 
     state = _prepare_complex_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_slater_determinant_preserves_particle_number():
@@ -259,7 +267,9 @@ def test_second_quantized_reference_spot_check():
     np.testing.assert_allclose(second_quantized, minors, atol=1.0e-12)
 
     state = _prepare_complex_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, second_quantized, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state,
+                                        second_quantized,
+                                        atol=_REFERENCE_ATOL)
 
 
 def test_localized_signed_basis_prepares_correct_determinant():
@@ -270,7 +280,7 @@ def test_localized_signed_basis_prepares_correct_determinant():
     occupied = [[1.0, 0.0], [0.0, -1.0], [0.0, 0.0], [0.0, 0.0]]
     state = _prepare_real_slater_state(occupied)
     expected = _reference_slater_state(occupied)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_complex_kernel_with_zero_phases_matches_real_kernel():
@@ -336,7 +346,7 @@ def test_full_filling_prepares_all_ones_determinant():
     state = _prepare_complex_slater_state(occupied)
     expected = _reference_slater_state(occupied)
     assert np.isclose(abs(expected[0b111]), 1.0)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 # ----------------------------------------------------------------------------
@@ -355,7 +365,7 @@ def test_dispatch_complex_dtype_all_real_routes_complex():
 
     state = _prepare_complex_slater_state(occupied)
     expected = _reference_slater_state(occupied)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_dispatch_python_list_with_complex_entries_routes_complex():
@@ -368,7 +378,34 @@ def test_dispatch_python_list_with_complex_entries_routes_complex():
 
     state = _prepare_complex_slater_state(occupied)
     expected = _reference_slater_state(occupied)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
+
+
+def test_dispatch_complex64_python_list_routes_complex():
+    # np.complex64 is not a subclass of Python `complex` (only np.complex128
+    # is), so a nested list of np.complex64 scalars must still route to the
+    # complex path -- otherwise the imaginary parts are silently dropped
+    # (num_electrons == 1) or a spurious orthogonality error is raised
+    # (num_electrons >= 2). Regression for the dtype-dispatch bug; the looser
+    # build tolerance absorbs complex64 rounding of the (normalized) columns.
+    occupied = [[np.complex64(0.6), np.complex64(0.0)],
+                [np.complex64(0.8), np.complex64(0.0)],
+                [np.complex64(0.0), np.complex64(1.0j)],
+                [np.complex64(0.0), np.complex64(0.0)]]
+    schedule = stateprep.make_givens_rotation_schedule(occupied,
+                                                       tolerance=1e-5)
+    assert schedule.is_complex
+
+    # Prepare from the list-built schedule (not through the complex128 helper,
+    # which would convert to an array and dispatch correctly regardless).
+    state = np.asarray(
+        cudaq.get_state(_complex_entry, 4,
+                        stateprep.get_givens_rotation_indices(schedule),
+                        stateprep.get_givens_rotation_angles(schedule),
+                        stateprep.get_givens_rotation_phases(schedule),
+                        list(schedule.final_phases), 2))
+    expected = _reference_slater_state(np.asarray(occupied, dtype=complex))
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_dispatch_real_python_list_stays_real():
@@ -408,7 +445,7 @@ def test_real_schedule_shape_and_resources():
 
     state = _prepare_real_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_complex_schedule_shape_and_resources():
@@ -439,7 +476,7 @@ def test_complex_schedule_shape_and_resources():
 
     state = _prepare_complex_slater_state(orbital_coefficients)
     expected = _reference_slater_state(orbital_coefficients)
-    _assert_allclose_up_to_global_phase(state, expected, atol=1.0e-6)
+    _assert_allclose_up_to_global_phase(state, expected, atol=_REFERENCE_ATOL)
 
 
 def test_validate_schedule_rejects_non_adjacent_rotation():

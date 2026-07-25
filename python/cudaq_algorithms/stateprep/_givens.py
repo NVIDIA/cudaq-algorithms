@@ -51,6 +51,8 @@ import cmath
 import math
 from dataclasses import dataclass, field
 
+import numpy as np
+
 import cudaq
 
 # ============================================================================
@@ -168,8 +170,12 @@ def _as_matrix(orbital_coefficients):
         is_complex = False
         rows = [list(row) for row in orbital_coefficients]
     if not is_complex:
+        # np.complex64 is not a subclass of Python ``complex`` (only
+        # np.complex128 is), so a nested list of np.complex64 scalars would
+        # otherwise misdispatch to the real branch and silently drop phases.
         is_complex = any(
-            isinstance(value, complex) for row in rows for value in row)
+            isinstance(value, (complex, np.complexfloating)) for row in rows
+            for value in row)
     return rows, is_complex
 
 
