@@ -151,6 +151,38 @@ def _assert_terms(op, width, expected, tol=1e-12):
                                                    abs=tol), word
 
 
+def test_fenwick_matrix_matches_binary_indexed_tree():
+    # The permutation and spectral BK tests are invariant to *which*
+    # invertible GF(2) matrix _fenwick_matrix returns (BK = P.JW.P^T holds
+    # for any invertible P), so they do not pin the matrix itself. The
+    # sparse single-pair known-answers only touch modes {0,1,2,6,7,18,19};
+    # a single off-by-one at a mid-range mode would leave the suite green.
+    # Pin the matrix directly: cross-check against an independent Fenwick
+    # formulation (the "update" traversal i += i & -i, versus the
+    # implementation's range marking) over mid-range modes, and anchor n=8
+    # against a hand-written binary-indexed tree.
+    from cudaq_algorithms.fermion._compilers import _fenwick_matrix
+
+    def independent(n):
+        matrix = np.zeros((n, n), dtype=np.uint8)
+        for mode in range(1, n + 1):  # one-based
+            i = mode
+            while i <= n:
+                matrix[i - 1, mode - 1] = 1
+                i += i & (-i)
+        return matrix
+
+    for n in (1, 2, 3, 4, 5, 8, 12, 13, 16, 20):
+        assert np.array_equal(_fenwick_matrix(n), independent(n)), n
+
+    expected_8 = np.array([[1, 0, 0, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0, 0],
+                           [0, 0, 1, 0, 0, 0, 0, 0], [1, 1, 1, 1, 0, 0, 0, 0],
+                           [0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 1, 1, 0, 0],
+                           [0, 0, 0, 0, 0, 0, 1, 0], [1, 1, 1, 1, 1, 1, 1, 1]],
+                          dtype=np.uint8)
+    assert np.array_equal(_fenwick_matrix(8), expected_8)
+
+
 def test_bravyi_kitaev_number_operator():
     _assert_terms(_single_pair(2, 2, 4.0, 20), 20,
                   _expected(20, (2.0, {}), (-2.0, {
@@ -369,9 +401,31 @@ def test_scalar_offset_and_tolerance():
     assert all("I" == word[1] for word in got)  # 1e-9 entry pruned
 
 
-def test_empty_input_yields_empty_operator():
-    op = jordan_wigner(np.zeros((3, 3)))
-    assert op.term_count == 0
+def test_output_side_tolerance_trims_small_compiled_terms():
+    # A one-body diagonal entry c compiles to Pauli-word coefficients of
+    # magnitude |c|/2, so an entry that survives the input prune
+    # (|c| >= tolerance) can still yield a term below tolerance that the
+    # output-side prune in _to_spin_operator must drop. With tolerance 1e-6:
+    #   c = 3.0e-6 -> Z coefficient 1.5e-6   (kept),
+    #   c = 1.5e-6 -> Z coefficient 0.75e-6  (dropped by the output prune).
+    op = jordan_wigner(np.diag([3e-6, 1.5e-6]).astype(complex), tolerance=1e-6)
+    got = _terms(op, 2)
+    assert "ZI" in got  # 1.5e-6 >= tolerance: kept
+    assert "IZ" not in got  # 0.75e-6 < tolerance: output-trimmed
+    assert got["ZI"] == pytest.approx(-1.5e-6, abs=1e-12)
+
+
+def test_operator_width_tracks_touched_qubits():
+    # Documented edge: the operator's width tracks the qubits actually
+    # touched, not the input dimension n.
+    idle_top = np.zeros((3, 3), dtype=complex)
+    idle_top[0, 0] = 1.0  # only orbital 0 is coupled
+    op = jordan_wigner(idle_top)
+    assert np.asarray(op.to_matrix()).shape == (2, 2)  # 2^1, not 2^3
+
+    empty = jordan_wigner(np.zeros((3, 3), dtype=complex))
+    assert empty.term_count == 0
+    assert np.asarray(empty.to_matrix()).shape == (0, 0)
 
 
 def test_validation_errors():
