@@ -3,8 +3,7 @@
 Pure-Python quantum primitives in `cudaq_algorithms`, implemented as CUDA-Q
 Python kernels: Pauli LCU block encoding, qubitization walks with Chebyshev
 moment measurement, and QSVT phase sequences, each with controlled variants.
-They require only the `cudaq` Python package and numpy — the compiled
-`_pycudaq_algorithms` extension is not involved.
+They require only the `cudaq` Python package and numpy.
 
 ```
 python/cudaq_algorithms/

@@ -15,10 +15,13 @@ be ported; they remain available in `cudaqx/libs/solvers`.
 
 ## Python primitives
 
-Alongside the compiled bindings, `cudaq_algorithms` ships pure-Python
-primitives implemented as CUDA-Q Python kernels (no compiled-extension
-dependency):
+`cudaq_algorithms` is a pure-Python package implemented as CUDA-Q Python
+kernels and host-side helpers (the only runtime requirement is the
+`cudaq` Python package):
 
+- fermion-to-qubit transforms (`fermion.jordan_wigner`,
+  `fermion.bravyi_kitaev`)
+- state-preparation kernels and operator pools (`stateprep`)
 - Pauli LCU block encoding (`PauliLCU`, plus prepare/select/apply kernels)
 - qubitization walks and Chebyshev moment measurement (`Walk`)
 - QSVT phase sequences (`QSVT`, `PhaseSequence`)
@@ -28,8 +31,10 @@ Simulation-only helpers (statevector access) are isolated in
 `cudaq_algorithms.sim_utils`; everything else is hardware-shaped. See
 [docs/pauli_lcu_qsvt.md](docs/pauli_lcu_qsvt.md),
 [docs/trotter.md](docs/trotter.md),
-[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/), and
-[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/).
+[docs/stateprep.md](docs/stateprep.md),
+[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/),
+[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/), and
+[examples/stateprep/](examples/stateprep/).
 
 Classical chemistry preprocessing ships as a peer pure-Python module:
 double factorization of two-electron integrals (X-DF and C-DF/RC-DF) on
