@@ -125,3 +125,39 @@ conditioning, not by the matvec. Two accelerators (active only for
 See [`examples/double_factorization/double_factorization.py`](../examples/double_factorization/double_factorization.py),
 which factorizes H2O/STO-3G integrals from PySCF and compares X-DF and C-DF
 reconstruction errors at equal leaf counts.
+
+## From factorization to circuits (the chemistry bridge)
+
+`cudaq_algorithms.chemistry` closes the loop between the classical
+preprocessing above and the quantum primitives. It consumes the same
+conventions this module does — an `(n, n)` core Hamiltonian and an
+`(n, n, n, n)` chemist-notation `(pq|rs)` tensor over real spatial
+orbitals — spin-expands them (interleaved spins: `2p` up, `2p + 1` down),
+and applies the Jordan-Wigner transform:
+
+```python
+from cudaq_algorithms import PauliLCU, chemistry
+from cudaq_algorithms import double_factorization as df
+
+factorization = df.compressed_double_factorization(eri, num_leaves=T)
+h = chemistry.qubit_hamiltonian(one_body,
+                                df.reconstruct_eri(factorization),
+                                scalar_offset=nuclear_repulsion)
+encoding = PauliLCU(h)      # block encoding of h / alpha -> Walk / QSVT
+```
+
+`chemistry.qubit_hamiltonian` returns a `cudaq.SpinOperator`, so the
+truncated Hamiltonian feeds `PauliLCU`, `Walk`, and `QSVT` directly. The
+payoff of compression shows up on the quantum side as a smaller LCU
+normalization `alpha` (QSVT degree scales like `alpha * t` for time
+evolution) and fewer Pauli terms (SELECT cost), at the price of a
+spectrum shift controlled by the tensor reconstruction error.
+`chemistry.spin_orbital_tensors` exposes the spin expansion by itself for
+users who need the fermionic tensors.
+
+`chemistry.qubit_hamiltonian` uses `fermion.jordan_wigner`; the classical
+factorization itself does not. See
+[`examples/double_factorization/df_compression_to_qsvt.py`](../examples/double_factorization/df_compression_to_qsvt.py),
+which sweeps X-DF leaf counts on H2/STO-3G (hardcoded integrals, no PySCF
+needed) and tabulates tensor error, `alpha`, term count, and the exact
+ground-state shift at each truncation.

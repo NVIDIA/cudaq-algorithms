@@ -33,7 +33,7 @@ def _resolve_version() -> str:
 __version__ = _resolve_version()
 del _resolve_version
 
-from . import (block_encoding, common_kernels, df_encoding,
+from . import (block_encoding, chemistry, common_kernels, df_encoding,
                double_factorization, fermion, pauli_lcu, qsvt, qubitization,
                sim_utils, stateprep, trotter)
 from .block_encoding import BlockEncoding
