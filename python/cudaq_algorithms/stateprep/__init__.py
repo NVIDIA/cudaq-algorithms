@@ -14,7 +14,10 @@ host with ``cudaq.spin`` algebra. ``hartree_fock`` /
 ``hartree_fock_occupation`` prepare the reference determinant (closed
 shell, or open shell via ``make_hartree_fock_occupation``), and
 ``fixed_parameter_ucc`` / ``hartree_fock_ucc_kernel`` apply an arbitrary
-operator pool at fixed, non-variational amplitudes on top of it.
+operator pool at fixed, non-variational amplitudes on top of it. The
+Givens-rotation Slater-determinant kernels and schedule helpers
+(:mod:`._givens`) follow the same split: composable device kernels plus
+host-side planning.
 
 Error-type convention: the two error cases the compiled bindings
 defined keep their historical ``RuntimeError`` (odd qubit count and
@@ -24,6 +27,14 @@ the CEO helpers take ``num_orbitals`` in *spatial* orbitals (the pool
 acts on ``2 * num_orbitals`` qubits), matching the compiled API.
 """
 
+from ._givens import (GivensResourceEstimate, GivensRotation,
+                      GivensRotationSchedule, complex_slater_determinant,
+                      estimate_givens_resources, get_givens_rotation_angles,
+                      get_givens_rotation_indices, get_givens_rotation_phases,
+                      givens_rotation, make_givens_rotation_schedule,
+                      phase_givens_rotation, slater_determinant,
+                      slater_determinant_kernel,
+                      validate_givens_rotation_schedule)
 from ._hartree_fock import (
     FixedParameterUccResourceEstimate, HartreeFockResourceEstimate,
     estimate_fixed_parameter_ucc_resources,
@@ -67,4 +78,18 @@ __all__ = [
     "hartree_fock_ucc_kernel",
     "HartreeFockResourceEstimate",
     "FixedParameterUccResourceEstimate",
+    "GivensRotation",
+    "GivensRotationSchedule",
+    "GivensResourceEstimate",
+    "givens_rotation",
+    "phase_givens_rotation",
+    "slater_determinant",
+    "complex_slater_determinant",
+    "slater_determinant_kernel",
+    "make_givens_rotation_schedule",
+    "validate_givens_rotation_schedule",
+    "get_givens_rotation_indices",
+    "get_givens_rotation_angles",
+    "get_givens_rotation_phases",
+    "estimate_givens_resources",
 ]
