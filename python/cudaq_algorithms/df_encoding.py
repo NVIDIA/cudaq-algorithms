@@ -349,24 +349,24 @@ def _leaf_pauli_expansion(
     """
     rank = core.shape[0]
     constant = -0.5 * float(core.sum()) + 0.25 * float(np.trace(core))
+    # Each (k, l) pair contributes to distinct qubit pairs (diagonal ->
+    # (2k, 2k+1); off-diagonal -> four (2k+s, 2l+t) with the second index
+    # >= 2l > 2k+1), so no word accumulates from more than one term and the
+    # threshold can be applied inline on the single coefficient.
     words: dict[tuple[int, ...], float] = {}
     for k in range(rank):
         c = 0.25 * float(core[k, k])
-        if c != 0.0:
-            words[(2 * k, 2 * k + 1)] = words.get((2 * k, 2 * k + 1), 0.0) + c
+        if abs(c) >= threshold:
+            words[(2 * k, 2 * k + 1)] = c
         for l in range(k + 1, rank):
             c = 0.125 * float(core[k, l] + core[l, k])
-            if c == 0.0:
+            if abs(c) < threshold:
                 continue
             for sigma in range(2):
                 for tau in range(2):
                     a, b = 2 * k + sigma, 2 * l + tau
-                    pair = (a, b) if a < b else (b, a)
-                    words[pair] = words.get(pair, 0.0) + c
-    return constant, {
-        qubits: coeff
-        for qubits, coeff in words.items() if abs(coeff) >= threshold
-    }
+                    words[(a, b) if a < b else (b, a)] = c
+    return constant, words
 
 
 class DoubleFactorizedEncoding:
@@ -422,6 +422,16 @@ class DoubleFactorizedEncoding:
                     "two_body must be a DoubleFactorization or an "
                     "(n, n, n, n) chemist-notation ERI tensor matching "
                     "one_body")
+            # Fast-fail on a non-chemist-symmetric ERI (matching the one_body
+            # symmetry check above): otherwise the factorizer symmetrizes it
+            # and the encoding would silently block-encode an operator that
+            # differs from the tensor passed in.
+            for axes in ((1, 0, 2, 3), (0, 1, 3, 2), (2, 3, 0, 1)):
+                if not np.allclose(eri, eri.transpose(axes), atol=1e-8):
+                    raise ValueError(
+                        "two_body ERI must obey the chemist-notation "
+                        "permutation symmetry (pq|rs) = (qp|rs) = (pq|sr) = "
+                        "(rs|pq)")
             factorization = explicit_double_factorization(eri, threshold=0.0)
         if factorization.num_orbitals != n:
             raise ValueError(
@@ -442,7 +452,13 @@ class DoubleFactorizedEncoding:
         kappa = kappa_base.copy()
         for rotation, core in zip(factorization.leaf_rotations,
                                   factorization.leaf_cores):
-            absorbed = core.sum(axis=1) - 0.5 * np.diag(core)
+            # The leaf ZZ expansion symmetrizes the core (1/2 (core + core^T)),
+            # so the matching one-body centering is 1/2 (rowsum + colsum). For
+            # a symmetric core these coincide; the symmetric form keeps a
+            # user-built non-symmetric leaf core consistent with what the ZZ
+            # terms encode (off by 1/2 (colsum - rowsum) otherwise).
+            absorbed = (0.5 * (core.sum(axis=1) + core.sum(axis=0)) -
+                        0.5 * np.diag(core))
             kappa += (rotation * absorbed) @ rotation.T
         eigenvalues, eigenvectors = np.linalg.eigh(kappa)
 
@@ -465,23 +481,23 @@ class DoubleFactorizedEncoding:
             leaf_constant, leaf_words = _leaf_pauli_expansion(
                 core, coefficient_threshold)
             constant += leaf_constant
-            if leaf_words:
-                frames.append((_givens_sweep(rotation), leaf_words))
+            # Keep every leaf frame, even if all its words were thresholded
+            # away, so num_frames == 1 + num_leaves stays true and frame 0
+            # remains the kappa eigenbasis. An empty frame contributes no
+            # SELECT terms; its rotation sweep telescopes to the identity.
+            frames.append((_givens_sweep(rotation), leaf_words))
 
         self._constant = constant
 
         # The identity total is one frameless term; it lives in the first
-        # frame's group (rotations act trivially on it).
+        # frame's group (rotations act trivially on it). Frames are retained
+        # as placeholders (frame 0 is always present), so the count/index
+        # invariant holds regardless of thresholding.
         terms: list[tuple[float, tuple[int, ...], int]] = []
         if abs(constant) >= coefficient_threshold:
             terms.append((constant, (), 0))
-        frames = [(sweep, words) for sweep, words in frames if words]
-        if not terms and not frames:
+        if not terms and not any(words for _, words in frames):
             raise ValueError("hamiltonian has no retained terms")
-        if not frames:
-            # Identity-only: one empty frame so the kernels have a
-            # well-formed (single-frame, no-rotation) program.
-            frames = [([], {})]
 
         frame_term_counts = []
         for frame_index, (_, words) in enumerate(frames):

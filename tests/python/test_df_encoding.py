@@ -141,21 +141,12 @@ def test_alpha_matches_published_lcu_one_norm():
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("seed", [7, 21])
-def test_encode_block_is_h_over_alpha(seed):
-    one_body, eri = random_system(seed)
+@pytest.mark.parametrize("seed,n", [(7, 2), (21, 2), (5, 3)])
+def test_encode_block_is_h_over_alpha(seed, n):
+    one_body, eri = random_system(seed, n=n)
     encoding = DoubleFactorizedEncoding(one_body, eri)
     h = dense_hamiltonian(one_body, eri)
-    ket = random_ket(16)
-    block = encoded_block(encoding, encoding.encode_kernel(), ket)
-    np.testing.assert_allclose(block, (h @ ket) / encoding.alpha, atol=1e-12)
-
-
-def test_encode_block_three_orbitals():
-    one_body, eri = random_system(5, n=3)
-    encoding = DoubleFactorizedEncoding(one_body, eri)
-    h = dense_hamiltonian(one_body, eri)
-    ket = random_ket(64)
+    ket = random_ket(1 << (2 * n))
     block = encoded_block(encoding, encoding.encode_kernel(), ket)
     np.testing.assert_allclose(block, (h @ ket) / encoding.alpha, atol=1e-12)
 
@@ -393,3 +384,108 @@ def test_prep_mode_returns_zero_argument_kernels():
     ):
         counts = cudaq.sample(kernel, shots_count=100)
         assert sum(counts.values()) == 100
+
+
+# ----------------------------------------------------------------------
+# Review-driven coverage: symmetry, frame invariant, controlled walk step,
+# single-ancilla sign
+# ----------------------------------------------------------------------
+
+
+def test_nonsymmetric_leaf_core_matches_symmetrized():
+    # The physical leaf depends only on the symmetric part of its core, so an
+    # encoding built from a user-supplied non-symmetric core must encode the
+    # same operator as its symmetrized version (the one-body centering uses
+    # the symmetric 1/2 (rowsum + colsum), matching the ZZ expansion).
+    rng = np.random.default_rng(3)
+    n = 2
+    rotation, _ = np.linalg.qr(rng.normal(size=(n, n)))
+    core = rng.normal(size=(n, n))  # deliberately non-symmetric
+    one_body = 0.5 * rng.normal(size=(n, n))
+    one_body = 0.5 * (one_body + one_body.T)
+    asymmetric = df.DoubleFactorization(num_orbitals=n,
+                                        leaf_rotations=[rotation],
+                                        leaf_cores=[core],
+                                        method="X-DF")
+    symmetric = df.DoubleFactorization(num_orbitals=n,
+                                       leaf_rotations=[rotation],
+                                       leaf_cores=[0.5 * (core + core.T)],
+                                       method="X-DF")
+    ket = random_ket(1 << (2 * n))
+    encoding_a = DoubleFactorizedEncoding(one_body, asymmetric)
+    encoding_s = DoubleFactorizedEncoding(one_body, symmetric)
+    block_a = encoded_block(encoding_a, encoding_a.encode_kernel(), ket)
+    block_s = encoded_block(encoding_s, encoding_s.encode_kernel(), ket)
+    np.testing.assert_allclose(block_a, block_s, atol=1e-10)
+
+
+def test_num_frames_invariant_when_kappa_frame_is_elided():
+    # Frame 0 (kappa eigenbasis) is retained as a zero-term placeholder even
+    # when all its one-body words vanish, so num_frames == 1 + num_leaves and
+    # frame 0 stays the kappa eigenbasis regardless of thresholding.
+    rng = np.random.default_rng(9)
+    n = 2
+    rotation, _ = np.linalg.qr(rng.normal(size=(n, n)))
+    core = rng.normal(size=(n, n))
+    core = 0.5 * (core + core.T)
+    factorization = df.DoubleFactorization(num_orbitals=n,
+                                           leaf_rotations=[rotation],
+                                           leaf_cores=[core],
+                                           method="X-DF")
+    # Choose one_body so kappa == 0 -> frame 0's one-body words all vanish.
+    absorbed = (0.5 * (core.sum(axis=1) + core.sum(axis=0)) -
+                0.5 * np.diag(core))
+    one_body = -(rotation * absorbed) @ rotation.T
+    encoding = DoubleFactorizedEncoding(one_body, factorization)
+    assert encoding.num_frames == 1 + factorization.num_leaves
+    # ...and it still block-encodes the right operator.
+    eri = df.reconstruct_eri(factorization)
+    h = dense_hamiltonian(one_body, eri)
+    ket = random_ket(1 << (2 * n))
+    block = encoded_block(encoding, encoding.encode_kernel(), ket)
+    np.testing.assert_allclose(block, (h @ ket) / encoding.alpha, atol=1e-10)
+
+
+@pytest.mark.parametrize("control_value", [0, 1])
+def test_controlled_walk_step_roundtrip_is_identity(control_value):
+    # Directly pins controlled_walk_step and controlled_adjoint_walk_step (and
+    # the underlying controlled_walk / controlled_adjoint_walk): the composition
+    # W then W-dagger is identity at control |1|, and both controlled ops are
+    # identity at control |0|.
+    one_body, eri = random_system(7)
+    encoding = DoubleFactorizedEncoding(one_body, eri)
+    step = encoding.controlled_walk_step_kernel()
+    adjoint_step = encoding.controlled_adjoint_walk_step_kernel()
+    n_anc = encoding.num_ancilla
+    flip = control_value
+
+    @cudaq.kernel
+    def circuit(state: cudaq.State):
+        system = cudaq.qvector(state)
+        control_and_ancilla = cudaq.qvector(n_anc + 1)
+        if flip == 1:
+            x(control_and_ancilla[0])
+        step(control_and_ancilla, system)
+        adjoint_step(control_and_ancilla, system)
+        if flip == 1:
+            x(control_and_ancilla[0])
+
+    ket = random_ket(16)
+    out = np.array(cudaq.get_state(circuit, state_from(ket)))
+    expected = np.zeros_like(out)
+    expected[:16] = ket
+    np.testing.assert_allclose(out, expected, atol=1e-10)
+
+
+def test_single_ancilla_negative_sign_select():
+    # scalar_offset=-1.5 with zero integrals: identity-only, one negative term
+    # with num_ancilla == 1, which exercises the n_anc == 1 z(ancilla[0]) SELECT
+    # sign branch (skipped by the +1.5 identity-only test).
+    encoding = DoubleFactorizedEncoding(np.zeros((2, 2)),
+                                        np.zeros((2, 2, 2, 2)),
+                                        scalar_offset=-1.5)
+    assert encoding.num_ancilla == 1
+    assert encoding.alpha == pytest.approx(1.5)
+    ket = random_ket(1 << encoding.num_system)
+    block = encoded_block(encoding, encoding.encode_kernel(), ket)
+    np.testing.assert_allclose(block, -ket, atol=1e-10)  # constant/alpha = -1
