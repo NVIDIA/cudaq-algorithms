@@ -10,11 +10,13 @@
 The package has two kinds of components:
 
 - Compiled bindings (``_pycudaq_algorithms``): C++-backed APIs such as the
-  fermion and state-preparation utilities. These require the native
-  extension built against CUDA-Q.
-- Pure-Python modules (:mod:`.pauli_lcu`, :mod:`.qubitization`, :mod:`.qsvt`,
-  :mod:`.trotter`, :mod:`.sim_utils`): quantum primitives implemented as
-  CUDA-Q Python kernels. These only require the ``cudaq`` Python package.
+  state-preparation utilities. These require the native extension built
+  against CUDA-Q.
+- Pure-Python modules (:mod:`.fermion`, :mod:`.pauli_lcu`,
+  :mod:`.qubitization`, :mod:`.qsvt`, :mod:`.trotter`,
+  :mod:`.sim_utils`): the fermion-to-qubit transforms and the quantum
+  primitives implemented as CUDA-Q Python kernels. These only require
+  the ``cudaq`` Python package.
 - Pure-Python classical preprocessing (:mod:`.double_factorization`):
   chemistry-oriented numerics on NumPy/SciPy with optional CuPy GPU
   acceleration. The subpackage itself imports neither ``cudaq`` nor the
@@ -45,8 +47,8 @@ except ModuleNotFoundError as exc:
 from . import double_factorization
 
 # Pure-Python quantum primitives (no compiled-extension dependency).
-from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,
-               sim_utils, trotter)
+from . import (block_encoding, common_kernels, fermion, pauli_lcu, qsvt,
+               qubitization, sim_utils, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
 from .pauli_lcu import PauliLCU, select_observable
