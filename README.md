@@ -15,10 +15,13 @@ be ported; they remain available in `cudaqx/libs/solvers`.
 
 ## Python primitives
 
-Alongside the compiled bindings, `cudaq_algorithms` ships pure-Python
-primitives implemented as CUDA-Q Python kernels (no compiled-extension
-dependency):
+`cudaq_algorithms` is a pure-Python package implemented as CUDA-Q Python
+kernels and host-side helpers (the only runtime requirement is the
+`cudaq` Python package):
 
+- fermion-to-qubit transforms (`fermion.jordan_wigner`,
+  `fermion.bravyi_kitaev`)
+- state-preparation kernels and operator pools (`stateprep`)
 - Pauli LCU block encoding (`PauliLCU`, plus prepare/select/apply kernels)
 - qubitization walks and Chebyshev moment measurement (`Walk`)
 - QSVT phase sequences (`QSVT`, `PhaseSequence`)
