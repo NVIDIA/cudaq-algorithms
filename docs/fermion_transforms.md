@@ -66,6 +66,5 @@ tensors; and the `O(log n)` word-weight advantage.
   products each for two-body entries); a fully dense 14-spin-orbital
   tensor compiles in seconds. Vectorizing the inner accumulation is
   documented future work if larger dense tensors become routine.
-- The state-preparation utilities are likewise pure Python
-  (``cudaq_algorithms.stateprep``); the package has no compiled
-  extension.
+- The state-preparation utilities remain in the compiled extension for
+  now; migrating them is planned separately.

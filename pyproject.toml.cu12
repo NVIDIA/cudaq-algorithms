@@ -25,3 +25,6 @@ where = ["python"]
 include = ["cudaq_algorithms*"]
 
 [tool.setuptools_scm]
+# Degrade gracefully when building from a tree without git metadata
+# (unpacked sdist, shallow/exported checkout, release tarball).
+fallback_version = "0.0.0"

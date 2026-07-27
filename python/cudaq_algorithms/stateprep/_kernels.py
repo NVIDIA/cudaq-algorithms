@@ -15,6 +15,13 @@ parameter order match the C++ exactly. ``uccgsd``, ``upccgsd``, and
 ``ceo`` consume the grouped Pauli words and coefficients produced by the
 ``get_*_pauli_lists`` helpers, one parameter per group.
 
+``hartree_fock`` and ``hartree_fock_occupation`` prepare the reference
+determinant those ansatz kernels are applied to, and
+``fixed_parameter_ucc`` applies an arbitrary grouped Pauli product at
+fixed amplitudes (one parameter per excitation group) on top of it; the
+occupation builders and the pool-to-Pauli-list converter live in
+``_hartree_fock``.
+
 Descending CNOT ladders are written as ``range(hi, lo, -1)`` just like the
 C++; guards use positive ``if`` blocks, never early ``return`` (kernel
 ``return`` is silently ignored by the compiler,
@@ -26,6 +33,30 @@ from __future__ import annotations
 import cudaq
 
 M_PI_2 = 1.5707963267948966
+
+
+@cudaq.kernel
+def hartree_fock(qubits: cudaq.qview, num_electrons: int):
+    """Fill the first ``num_electrons`` spin orbitals (closed-shell HF).
+
+    For an open-shell system build the occupation with
+    ``make_hartree_fock_occupation(num_qubits, num_electrons, spin)`` and
+    use ``hartree_fock_occupation`` instead.
+    """
+    for i in range(num_electrons):
+        x(qubits[i])
+
+
+@cudaq.kernel
+def hartree_fock_occupation(qubits: cudaq.qview, occupied_orbitals: list[int]):
+    """Prepare a determinant from explicit occupied spin-orbital indices.
+
+    The indices must be valid and unique (validate on the host with
+    ``validate_hartree_fock_occupation``); the list must be non-empty
+    (empty lists cannot cross the kernel boundary, cuda-quantum#4847).
+    """
+    for i in range(len(occupied_orbitals)):
+        x(qubits[occupied_orbitals[i]])
 
 
 @cudaq.kernel
@@ -370,6 +401,28 @@ def ceo(qubits: cudaq.qview, thetas: list[float],
         pauli_words_list: list[list[cudaq.pauli_word]],
         coefficients_list: list[list[float]]):
     """Coupled-exchange-operator product: one parameter per group."""
+    for i in range(len(pauli_words_list)):
+        theta = thetas[i]
+        words = pauli_words_list[i]
+        coefficients = coefficients_list[i]
+        for j in range(len(words)):
+            exp_pauli(theta * coefficients[j], qubits, words[j])
+
+
+@cudaq.kernel
+def fixed_parameter_ucc(qubits: cudaq.qview, thetas: list[float],
+                        pauli_words_list: list[list[cudaq.pauli_word]],
+                        coefficients_list: list[list[float]]):
+    """Fixed-amplitude UCC product over an arbitrary operator pool.
+
+    One (fixed, non-variational) parameter per excitation group; the
+    grouped words and coefficients come from any pool via
+    ``get_fixed_parameter_ucc_pauli_lists`` (or from the
+    ``get_*_pauli_lists`` helpers directly). The qubits must already hold
+    a reference determinant — prepare it with ``hartree_fock`` /
+    ``hartree_fock_occupation`` first; applied to |0...0> this yields a
+    physically meaningless state.
+    """
     for i in range(len(pauli_words_list)):
         theta = thetas[i]
         words = pauli_words_list[i]
