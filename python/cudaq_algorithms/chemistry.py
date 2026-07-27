@@ -22,10 +22,12 @@ called, not at import.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 from numpy.typing import ArrayLike
 
-__all__ = ["spin_orbital_tensors", "qubit_hamiltonian"]
+__all__ = ["from_fcidump", "spin_orbital_tensors", "qubit_hamiltonian"]
 
 
 def spin_orbital_tensors(
@@ -123,3 +125,115 @@ def qubit_hamiltonian(one_body: ArrayLike,
                                  two_body_so,
                                  scalar_offset=float(scalar_offset),
                                  tolerance=float(tolerance))
+
+
+# The eight index tuples of the real-orbital chemist symmetry orbit of
+# (pq|rs): swap p<->q, r<->s, and (pq)<->(rs). A set dedups the diagonal
+# records (e.g. (pp|pp) collapses to one tuple).
+def _eri_symmetry_orbit(p, q, r, s):
+    return {(p, q, r, s), (q, p, r, s), (p, q, s, r), (q, p, s, r),
+            (r, s, p, q), (s, r, p, q), (r, s, q, p), (s, r, q, p)}
+
+
+def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
+    """Parse FCIDUMP *contents* into chemist-notation spatial integrals.
+
+    Takes the integral data as a string -- the text of the file, already
+    read -- not a path; the caller does the file I/O::
+
+        one_body, eri, core = from_fcidump(Path("mol.fcidump").read_text())
+
+    Keeping the parse pure (no file access) lets callers and tests inject
+    the integrals directly. Returns ``(one_body, eri, core_energy)``: the
+    ``(n, n)`` core Hamiltonian, the dense ``(n, n, n, n)`` chemist-notation
+    ``(pq|rs)`` two-electron tensor (all eight symmetry partners of each
+    stored record populated), and the scalar core/constant energy -- the
+    same triple ``from_pyscf``/``from_psi4`` return and the exact convention
+    ``qubit_hamiltonian`` and ``DoubleFactorizedEncoding`` consume::
+
+        one_body, eri, core = from_fcidump(text)
+        hamiltonian = qubit_hamiltonian(one_body, eri, scalar_offset=core)
+
+    FCIDUMP indices are Fortran 1-based; a ``value i j k l`` record with all
+    of ``i,j,k,l`` nonzero is a two-electron integral, with ``k == l == 0``
+    a one-electron integral ``h_ij`` (its transpose is filled too), and with
+    all indices zero the core energy.
+
+    Only real (RHF/ROHF-style) FCIDUMP files are supported; complex/UHF
+    variants (``IUHF=1``) have a different index symmetry and are rejected
+    downstream by the ``validate_symmetry`` check in ``qubit_hamiltonian``.
+    """
+    header_lines: list[str] = []
+    body_lines: list[str] = []
+    state = "pre"
+    for raw in contents.splitlines():
+        line = raw.strip()
+        if state == "body":
+            if line and not line.startswith(("#", "!")):
+                body_lines.append(line)
+            continue
+        if not line:
+            continue
+        if state == "pre":
+            lowered = line.lower()
+            if not (lowered.startswith("&fci") or lowered.startswith("$fci")):
+                raise ValueError(
+                    "FCIDUMP contents must begin with an &FCI header namelist")
+            state = "header"
+            line = line[4:].strip()
+            if not line:
+                continue
+        # state == "header"
+        ended = bool(re.search(r"&end|\$end", line, re.IGNORECASE))
+        line = re.sub(r"&end|\$end", " ", line, flags=re.IGNORECASE)
+        if "/" in line:
+            line = line.split("/", 1)[0]
+            ended = True
+        header_lines.append(line)
+        if ended:
+            state = "body"
+    if state == "pre":
+        raise ValueError(
+            "FCIDUMP contents must begin with an &FCI header namelist")
+
+    header = " ".join(header_lines)
+    match = re.search(r"NORB\s*=\s*(\d+)", header, re.IGNORECASE)
+    if match is None:
+        raise ValueError("FCIDUMP header must specify NORB")
+    n = int(match.group(1))
+    if n <= 0:
+        raise ValueError("FCIDUMP NORB must be a positive integer")
+
+    one_body = np.zeros((n, n))
+    eri = np.zeros((n, n, n, n))
+    core_energy = 0.0
+    for line in body_lines:
+        tokens = line.split()
+        if len(tokens) != 5:
+            raise ValueError(
+                "FCIDUMP integral line must have 5 fields (value i j k l), "
+                f"got: {line!r}")
+        try:
+            # Some writers emit a Fortran 'D' exponent (1.0D-3).
+            value = float(tokens[0].replace("D", "E").replace("d", "e"))
+            i, j, k, l = (int(token) for token in tokens[1:])
+        except ValueError as error:
+            raise ValueError(
+                f"malformed FCIDUMP integral line: {line!r}") from error
+        if max(i, j, k, l) > n or min(i, j, k, l) < 0:
+            raise ValueError(
+                f"FCIDUMP orbital index out of range [0, {n}]: {line!r}")
+        if i and j and k and l:
+            for a, b, c, d in _eri_symmetry_orbit(i - 1, j - 1, k - 1, l - 1):
+                eri[a, b, c, d] = value
+        elif i and j and not k and not l:
+            one_body[i - 1, j - 1] = value
+            one_body[j - 1, i - 1] = value
+        elif not (i or j or k or l):
+            core_energy = value
+        else:
+            raise ValueError(
+                f"unexpected FCIDUMP index pattern (a one-electron record "
+                f"must have k = l = 0): {line!r}")
+    return (np.ascontiguousarray(one_body), np.ascontiguousarray(eri),
+            float(core_energy))
