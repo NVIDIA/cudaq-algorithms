@@ -73,62 +73,28 @@ if [[ "$cuda_major" != "12" && "$cuda_major" != "13" ]]; then
 fi
 
 python=python${python_version}
-arch=$(uname -m)
-plat_args=()
 
-if $devdeps; then
-    if [[ "$arch" == "x86_64" ]]; then
-        plat_args=(--plat manylinux_2_34_x86_64)
-    elif [[ "$arch" == "aarch64" ]]; then
-        plat_args=(--plat manylinux_2_34_aarch64)
-    fi
-fi
+# The package is pure Python: no compiler toolchain, CUDA-Q CMake
+# package, or auditwheel repair is needed; --devdeps and --cudaq-prefix
+# are accepted for interface compatibility but unused.
 
-if [[ -f /opt/rh/gcc-toolset-12/enable ]]; then
-    source /opt/rh/gcc-toolset-12/enable
-fi
-
-export CC=gcc
-export CXX=g++
 export SETUPTOOLS_SCM_PRETEND_VERSION=$wheels_version
-export CUDAQ_ALGORITHMS_VERSION=$wheels_version
-
-if [[ ! -d "$cudaq_prefix/lib/cmake/cudaq" ]]; then
-    echo "Error: CUDA-Q CMake package not found at $cudaq_prefix/lib/cmake/cudaq" >&2
-    exit 1
-fi
 
 if [[ ! -f "pyproject.toml.cu${cuda_major}" ]]; then
     echo "Error: pyproject.toml.cu${cuda_major} not found" >&2
     exit 1
 fi
 
-rm -rf dist _skbuild pyproject.toml
+# `build` is also removed: a stale setuptools staging directory would be
+# merged into the wheel.
+rm -rf dist build _skbuild pyproject.toml
 cp "pyproject.toml.cu${cuda_major}" pyproject.toml
 
-skbuild_args="-DCUDAQ_DIR=$cudaq_prefix/lib/cmake/cudaq;-DCMAKE_BUILD_TYPE=$build_type"
-toolchain_dir="/opt/rh/gcc-toolset-12/root/usr/lib/gcc/${arch}-redhat-linux/12/"
-if [[ -d "$toolchain_dir" ]]; then
-    skbuild_args="$skbuild_args;-DCMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN=$toolchain_dir"
-fi
-export SKBUILD_CMAKE_ARGS=$skbuild_args
-
-echo "Building cudaq-algorithms-cu${cuda_major} $wheels_version for Python $python_version"
-$python -m pip install --no-cache-dir build auditwheel
+echo "Building cudaq-algorithms-cu${cuda_major} $wheels_version (pure Python)"
+$python -m pip install --no-cache-dir build
 $python -m build --wheel
 
-exclude_args=()
-if [[ -d "$cudaq_prefix/lib" ]]; then
-    while IFS= read -r lib; do
-        exclude_args+=(--exclude "$lib")
-    done < <(find "$cudaq_prefix/lib" -name "*.so" -printf "%P\n" | sort)
-fi
-
 mkdir -p /wheels
-LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$(pwd)/_skbuild/lib" \
-$python -m auditwheel -v repair dist/*.whl \
-    "${exclude_args[@]}" \
-    --wheel-dir /wheels \
-    "${plat_args[@]}"
+cp dist/*.whl /wheels
 
 ls -la /wheels

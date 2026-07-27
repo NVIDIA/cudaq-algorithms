@@ -7,50 +7,35 @@
 # ============================================================================ #
 """CUDA-Q Algorithms.
 
-The package has two kinds of components:
-
-- Compiled bindings (``_pycudaq_algorithms``): C++-backed APIs such as the
-  fermion and state-preparation utilities. These require the native
-  extension built against CUDA-Q.
-- Pure-Python modules (:mod:`.pauli_lcu`, :mod:`.qubitization`, :mod:`.qsvt`,
-  :mod:`.trotter`, :mod:`.sim_utils`): quantum primitives implemented as
-  CUDA-Q Python kernels. These only require the ``cudaq`` Python package.
-- Pure-Python classical preprocessing (:mod:`.double_factorization`):
-  chemistry-oriented numerics on NumPy/SciPy with optional CuPy GPU
-  acceleration. The subpackage itself imports neither ``cudaq`` nor the
-  compiled extension, but it is reached through this package, whose
-  import does load ``cudaq`` alongside it.
-
-The native extension is optional: if it is not present (for example in a
-source checkout without a build), the pure-Python APIs below still import
-and work. Code that needs the compiled APIs will raise ``ImportError`` at
-the point of use instead of at package import.
+A pure-Python package: the fermion-to-qubit transforms
+(:mod:`.fermion`), the state-preparation kernels and operator pools
+(:mod:`.stateprep`), the quantum primitives (:mod:`.pauli_lcu`,
+:mod:`.qubitization`, :mod:`.qsvt`, :mod:`.trotter`,
+:mod:`.sim_utils`), and the classical double-factorization
+preprocessing (:mod:`.double_factorization`, NumPy/SciPy with optional
+CuPy GPU acceleration) are implemented as CUDA-Q Python kernels and
+host-side helpers. The only runtime requirements are the ``cudaq``
+Python package plus NumPy/SciPy.
 """
 
-# The absence of the compiled extension is tolerated (source checkouts
-# without a build); a PRESENT-but-broken extension is not — an extension
-# that fails to load (ABI mismatch, missing shared-library dependency)
-# re-raises with the loader's message instead of silently degrading.
-_NATIVE_IMPORT_ERROR = None
-try:
-    from ._pycudaq_algorithms import *
-    from ._pycudaq_algorithms import __version__
-except ModuleNotFoundError as exc:
-    if exc.name != __name__ + "._pycudaq_algorithms":
-        raise
-    _NATIVE_IMPORT_ERROR = exc
-    __version__ = "CUDA-Q Algorithms (compiled extension not built)"
 
-# Pure-Python classical preprocessing (no compiled-extension dependency).
-from . import double_factorization
+def _resolve_version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
 
-# Chemistry bridges (JW transform requires the compiled extension at
-# call time; importing the module itself does not).
-from . import chemistry
+    for distribution in ("cudaq-algorithms-cu12", "cudaq-algorithms-cu13"):
+        try:
+            return f"CUDA-Q Algorithms {version(distribution)}"
+        except PackageNotFoundError:
+            continue
+    return "CUDA-Q Algorithms (source)"
 
-# Pure-Python quantum primitives (no compiled-extension dependency).
-from . import (block_encoding, common_kernels, pauli_lcu, qsvt, qubitization,
-               sim_utils, trotter)
+
+__version__ = _resolve_version()
+del _resolve_version
+
+from . import (block_encoding, chemistry, common_kernels,
+               double_factorization, fermion, pauli_lcu, qsvt, qubitization,
+               sim_utils, stateprep, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
 from .pauli_lcu import PauliLCU, select_observable

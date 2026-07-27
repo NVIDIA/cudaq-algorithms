@@ -105,18 +105,13 @@ jobs:
       # Build CUDA-Q Algorithms
       # ========================================================================
 
-      - name: Install build requirements
+      - name: Install test requirements
         run: |
-          apt update
-          apt install -y --no-install-recommends build-essential
-          python3 -m pip install cmake ninja nanobind numpy pytest
+          python3 -m pip install numpy scipy pytest
 
-      - name: Build and run tests
+      - name: Run tests
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           export PATH=/cudaq-install/bin:$PATH
           export LD_LIBRARY_PATH=/cudaq-install/lib:${LD_LIBRARY_PATH:-}
-          bash scripts/test_algorithms_build.sh \
-            --build-dir build \
-            --cudaq-prefix /cudaq-install \
-            --cudaq-dir /cudaq-install/lib/cmake/cudaq
+          bash scripts/test_algorithms_build.sh --cudaq-prefix /cudaq-install
