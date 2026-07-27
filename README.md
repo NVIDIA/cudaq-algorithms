@@ -31,8 +31,10 @@ Simulation-only helpers (statevector access) are isolated in
 `cudaq_algorithms.sim_utils`; everything else is hardware-shaped. See
 [docs/pauli_lcu_qsvt.md](docs/pauli_lcu_qsvt.md),
 [docs/trotter.md](docs/trotter.md),
-[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/), and
-[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/).
+[docs/stateprep.md](docs/stateprep.md),
+[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/),
+[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/), and
+[examples/stateprep/](examples/stateprep/).
 
 Classical chemistry preprocessing ships as a peer pure-Python module:
 double factorization of two-electron integrals (X-DF and C-DF/RC-DF) on
