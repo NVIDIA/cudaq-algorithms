@@ -398,7 +398,12 @@ def test_dispatch_complex64_python_list_routes_complex():
                 [np.complex64(0.8), np.complex64(0.0)],
                 [np.complex64(0.0), np.complex64(1.0j)],
                 [np.complex64(0.0), np.complex64(0.0)]]
-    schedule = stateprep.make_givens_rotation_schedule(occupied)
+    # The [0.6, 0.8] column is only exactly normalized in float32 on some numpy
+    # builds; on others sum(abs(c)**2) lands ~1e-7 off, which trips the default
+    # normalization gate (100 * 1e-12 == 1e-10). This test deliberately feeds a
+    # float32 matrix to exercise dtype dispatch, so it takes a loose tolerance.
+    schedule = stateprep.make_givens_rotation_schedule(occupied,
+                                                       tolerance=1.0e-5)
     assert schedule.is_complex
 
     # Prepare from the list-built schedule (not through the complex128 helper,
