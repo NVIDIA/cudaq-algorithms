@@ -148,7 +148,7 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
     ``(n, n)`` core Hamiltonian, the dense ``(n, n, n, n)`` chemist-notation
     ``(pq|rs)`` two-electron tensor (all eight symmetry partners of each
     stored record populated), and the scalar core/constant energy -- the
-    same triple ``from_pyscf``/``from_psi4`` return and the exact convention
+    ``(one_body, eri, core_energy)`` triple, in the exact convention
     ``qubit_hamiltonian`` and ``DoubleFactorizedEncoding`` consume::
 
         one_body, eri, core = from_fcidump(text)
@@ -159,9 +159,10 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
     a one-electron integral ``h_ij`` (its transpose is filled too), and with
     all indices zero the core energy.
 
-    Only real (RHF/ROHF-style) FCIDUMP files are supported; complex/UHF
-    variants (``IUHF=1``) have a different index symmetry and are rejected
-    downstream by the ``validate_symmetry`` check in ``qubit_hamiltonian``.
+    Only real (RHF/ROHF-style) FCIDUMP files are supported; unrestricted
+    variants (Molpro's ``IUHF=1`` or Psi4's ``UHF=.TRUE.``) store a
+    spin-resolved integral set with a different index symmetry and are
+    rejected up front by a header guard.
     """
     header_lines: list[str] = []
     body_lines: list[str] = []
@@ -197,6 +198,16 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
             "FCIDUMP contents must begin with an &FCI header namelist")
 
     header = " ".join(header_lines)
+    # Unrestricted files store spin-resolved (alpha/beta/mixed) blocks whose
+    # spatial-slot records would silently overwrite one another here; reject
+    # them by header rather than return a wrong tensor. Molpro spells it
+    # IUHF=1; Psi4 spells it UHF=.TRUE.. The \b keeps UHF from matching the
+    # I(UHF) substring.
+    if (re.search(r"IUHF\s*=\s*[1-9]", header, re.IGNORECASE) or re.search(
+            r"\bUHF\s*=\s*\.?\s*(?:T|TRUE|1)", header, re.IGNORECASE)):
+        raise ValueError(
+            "unrestricted FCIDUMP files (IUHF=1 / UHF=.TRUE.) are not "
+            "supported; only real RHF/ROHF integrals are read")
     match = re.search(r"NORB\s*=\s*(\d+)", header, re.IGNORECASE)
     if match is None:
         raise ValueError("FCIDUMP header must specify NORB")
@@ -229,11 +240,15 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
         elif i and j and not k and not l:
             one_body[i - 1, j - 1] = value
             one_body[j - 1, i - 1] = value
+        elif i and not (j or k or l):
+            # Orbital-energy record (value i 0 0 0): a standard optional
+            # entry in the Knowles-Handy format (Psi4 emits these under
+            # oe_ints=['EIGENVALUES']). It carries no integral data we
+            # consume, so skip it.
+            continue
         elif not (i or j or k or l):
             core_energy = value
         else:
-            raise ValueError(
-                f"unexpected FCIDUMP index pattern (a one-electron record "
-                f"must have k = l = 0): {line!r}")
+            raise ValueError(f"unexpected FCIDUMP index pattern: {line!r}")
     return (np.ascontiguousarray(one_body), np.ascontiguousarray(eri),
             float(core_energy))

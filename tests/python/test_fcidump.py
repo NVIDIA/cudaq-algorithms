@@ -12,7 +12,8 @@ would read from a `.fcidump` file), so these tests need no external files.
 The parsed tensors are pinned against the same literature H2/STO-3G values
 `test_df_qsvt_bridge.py` uses, and the resulting qubit Hamiltonian is
 cross-checked by whole-spectrum equality against those integrals fed
-directly -- the convention-level check `docs/conventions.md` recommends.
+directly -- the convention-level check `docs/double_factorization.md`
+recommends.
 """
 
 import numpy as np
@@ -64,7 +65,8 @@ H2_STO3G_FCIDUMP = """\
 
 # The same integrals through the parser's tolerant path: lowercase `&fci`, a
 # `/` namelist terminator, no ORBSYM/ISYM, a Fortran `D` exponent, a lowercase
-# `e` exponent, blank and comment lines, and irregular spacing.
+# `e` exponent, blank and comment lines, irregular spacing, and two optional
+# orbital-energy records (`value i 0 0 0`) the parser must skip, not reject.
 H2_STO3G_FCIDUMP_VARIANT = """\
 &fci norb=2 nelec=2 ms2=0 /
 
@@ -76,6 +78,8 @@ H2_STO3G_FCIDUMP_VARIANT = """\
 
  -1.25246357        1  1  0  0
  -0.47594871        2  2  0  0
+ -0.57855300        1  0  0  0
+  0.66940115        2  0  0  0
   0.71375697        0  0  0  0
 """
 
@@ -144,6 +148,36 @@ def test_from_fcidump_rejects_malformed_line():
 def test_from_fcidump_rejects_out_of_range_index():
     with pytest.raises(ValueError, match="out of range"):
         chemistry.from_fcidump("&FCI NORB=2 &END\n 0.5 3 3 0 0\n")
+
+
+def test_from_fcidump_skips_orbital_energy_records():
+    # `value i 0 0 0` is a standard optional orbital-energy record; it must be
+    # skipped, leaving the integral tensors identical to a file without them.
+    one_body, eri, core_energy = chemistry.from_fcidump(
+        H2_STO3G_FCIDUMP_VARIANT)
+    strict = chemistry.from_fcidump(H2_STO3G_FCIDUMP)
+    np.testing.assert_allclose(one_body, strict[0], atol=1e-12)
+    np.testing.assert_allclose(eri, strict[1], atol=1e-12)
+    assert core_energy == pytest.approx(strict[2], abs=1e-12)
+
+
+def test_from_fcidump_rejects_unrestricted_iuhf():
+    with pytest.raises(ValueError, match="unrestricted"):
+        chemistry.from_fcidump(
+            "&FCI NORB=2,NELEC=2,IUHF=1,\n&END\n 0.5 1 1 1 1\n")
+
+
+def test_from_fcidump_rejects_psi4_uhf_true():
+    with pytest.raises(ValueError, match="unrestricted"):
+        chemistry.from_fcidump(
+            "&FCI NORB=2,NELEC=2,UHF=.TRUE.,\n&END\n 0.5 1 1 1 1\n")
+
+
+def test_from_fcidump_accepts_restricted_iuhf_zero():
+    # IUHF=0 is restricted and must not trip the unrestricted guard.
+    one_body, _, _ = chemistry.from_fcidump(
+        "&FCI NORB=2,NELEC=2,IUHF=0,\n&END\n -1.25246357 1 1 0 0\n")
+    assert one_body[0, 0] == pytest.approx(-1.25246357, abs=1e-12)
 
 
 @_needs_fermion

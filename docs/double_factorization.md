@@ -164,13 +164,13 @@ ground-state shift at each truncation.
 
 ### Loading integrals
 
-Integrals can come from a mean-field object (`chemistry.from_pyscf` /
-`chemistry.from_psi4`) or from an **FCIDUMP** file — the de-facto
-interchange format written by Molpro, PySCF, Psi4, and Block/DMRG codes.
+Integrals can come from an **FCIDUMP** file — the de-facto interchange
+format written by Molpro, PySCF, Psi4, and Block/DMRG codes.
 `chemistry.from_fcidump` parses the *text* of such a file (the caller does
-the file I/O, so the parse stays pure and testable) and returns the same
-`(one_body, eri, core_energy)` triple the other loaders do, already in
-chemist `(pq|rs)` notation over real spatial orbitals:
+the file I/O, so the parse stays pure and testable) and returns the
+`(one_body, eri, core_energy)` triple `qubit_hamiltonian` and
+`DoubleFactorizedEncoding` consume, already in chemist `(pq|rs)` notation
+over real spatial orbitals:
 
 ```python
 from pathlib import Path
@@ -184,6 +184,7 @@ h = chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=core)
 
 The reader has no third-party dependency (pure text + NumPy) and fills the
 eight-fold index symmetry from the symmetry-unique records FCIDUMP stores.
-Only real (RHF/ROHF) FCIDUMP files are supported; complex/UHF variants
-(`IUHF=1`) carry a different index symmetry and are rejected by the
-`validate_symmetry` check downstream.
+Only real (RHF/ROHF) FCIDUMP files are supported; unrestricted variants
+(Molpro's `IUHF=1` or Psi4's `UHF=.TRUE.`) carry a spin-resolved integral
+set with a different index symmetry and are rejected up front by a header
+guard.
