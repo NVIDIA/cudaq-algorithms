@@ -25,7 +25,9 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import ArrayLike
 
-__all__ = ["spin_orbital_tensors", "qubit_hamiltonian"]
+__all__ = [
+    "spin_orbital_tensors", "qubit_hamiltonian", "from_pyscf", "from_psi4"
+]
 
 
 def spin_orbital_tensors(
@@ -123,3 +125,68 @@ def qubit_hamiltonian(one_body: ArrayLike,
                                  two_body_so,
                                  scalar_offset=float(scalar_offset),
                                  tolerance=float(tolerance))
+
+
+def from_pyscf(mean_field) -> tuple[np.ndarray, np.ndarray, float]:
+    """Chemist ``(pq|rs)`` MO integrals + nuclear repulsion from PySCF.
+
+    ``mean_field`` is a converged restricted mean field (e.g. the result
+    of ``pyscf.scf.RHF(mol).run()``). Returns
+    ``(one_body, eri, nuclear_repulsion)`` in the molecular-orbital basis
+    and chemist notation -- exactly the arguments
+    :func:`qubit_hamiltonian` expects (pass ``nuclear_repulsion`` as its
+    ``scalar_offset``).
+
+    Restricted (single ``mo_coeff`` matrix) references only; the spin
+    expansion downstream assumes one spatial set shared by both spins.
+    """
+    from functools import reduce
+
+    from pyscf import ao2mo
+
+    mol = mean_field.mol
+    coefficients = np.asarray(mean_field.mo_coeff)
+    num_orbitals = coefficients.shape[1]
+
+    core_ao = mol.intor("int1e_kin") + mol.intor("int1e_nuc")
+    one_body = reduce(np.dot, (coefficients.T, core_ao, coefficients))
+
+    # ao2mo.full returns chemist-notation MO integrals; restore(1, ...)
+    # unpacks the 8-fold-symmetric storage to the dense (n, n, n, n) tensor.
+    eri = ao2mo.restore(1, ao2mo.full(mol, coefficients), num_orbitals)
+
+    return (np.ascontiguousarray(one_body), np.ascontiguousarray(eri),
+            float(mean_field.energy_nuc()))
+
+
+def from_psi4(wavefunction) -> tuple[np.ndarray, np.ndarray, float]:
+    """Chemist ``(pq|rs)`` MO integrals + nuclear repulsion from Psi4.
+
+    ``wavefunction`` is a converged restricted wavefunction, e.g. the
+    second return value of ``psi4.energy("scf", return_wfn=True)``. Returns
+    ``(one_body, eri, nuclear_repulsion)`` in the molecular-orbital basis
+    and chemist notation -- identical in meaning and convention to
+    :func:`from_pyscf`, so either drives :func:`qubit_hamiltonian`
+    unchanged.
+
+    Restricted references only (uses ``Ca``); ``mo_eri`` already returns
+    the chemist ``(pq|rs)`` ordering, matching the PySCF path.
+    """
+    import psi4
+
+    coefficients_matrix = wavefunction.Ca()
+    coefficients = np.asarray(coefficients_matrix)
+
+    # Core Hamiltonian (kinetic + potential) in the AO basis -> MO basis.
+    core_ao = np.asarray(wavefunction.H())
+    one_body = coefficients.T @ core_ao @ coefficients
+
+    mints = psi4.core.MintsHelper(wavefunction.basisset())
+    eri = np.asarray(
+        mints.mo_eri(coefficients_matrix, coefficients_matrix,
+                     coefficients_matrix, coefficients_matrix))
+
+    nuclear_repulsion = wavefunction.molecule().nuclear_repulsion_energy()
+
+    return (np.ascontiguousarray(one_body), np.ascontiguousarray(eri),
+            float(nuclear_repulsion))
