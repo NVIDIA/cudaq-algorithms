@@ -37,7 +37,10 @@ fi
 # Help the metapackage detect CUDA major version in CPU-only validation jobs.
 $python -m pip install --extra-index-url https://pypi.nvidia.com/ "cuda_toolkit[cudart]==${cuda_version}.*" || true
 
-$python -m pip install "${find_links[@]}" "cudaq-algorithms==${algorithms_version}"
+# --extra-index-url reaches pypi.nvidia.com so that in PyPI mode (cudaq_version
+# == SKIP, no /cudaq-wheels) the metapackage can resolve a released
+# cuda-quantum-cuNN; in Custom mode the from-source wheel is already installed.
+$python -m pip install "${find_links[@]}" --extra-index-url https://pypi.nvidia.com/ "cudaq-algorithms==${algorithms_version}"
 $python -c "import cudaq_algorithms"
 
 package_installed=$($python -m pip list | awk '/cudaq-algorithms-cu/ {print $1; exit}')

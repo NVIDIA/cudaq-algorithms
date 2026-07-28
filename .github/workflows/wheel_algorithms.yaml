@@ -22,8 +22,16 @@ on:
       version:
         type: string
         description: Version number to create wheels with.
-        default: 0.14.99
+        default: 0.15.99
         required: false
+      cudaq_wheels:
+        type: choice
+        required: true
+        description: 'CUDA-Q wheel source: Custom = built from the pinned .cudaq_version commit (unreleased); PyPI = released wheels from pypi.nvidia.com.'
+        default: 'Custom'
+        options:
+          - 'Custom'
+          - 'PyPI'
       cache_key_suffix:
         type: string
         description: Optional suffix to append to CUDA-Q wheel cache keys.
@@ -47,7 +55,11 @@ on:
         required: false
       version:
         type: string
-        default: 0.14.99
+        default: 0.15.99
+        required: false
+      cudaq_wheels:
+        type: string
+        default: 'Custom'
         required: false
       cache_key_suffix:
         type: string
@@ -74,8 +86,10 @@ jobs:
     name: Build CUDA-Q wheels
     # Building CUDA-Q from source needs the large self-hosted runners;
     # forks skip it (and the test job below) and still get the pure
-    # algorithms wheels + metapackages artifacts.
-    if: startsWith(github.repository, 'NVIDIA/cudaq-algorithms')
+    # algorithms wheels + metapackages artifacts. It is also skipped in
+    # PyPI mode, where the test installs a released CUDA-Q from pypi.nvidia.com
+    # instead of a from-source (unreleased) build.
+    if: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && inputs.cudaq_wheels == 'Custom' }}
     uses: ./.github/workflows/build_cudaq_wheels.yaml
     permissions:
       actions: write
@@ -124,7 +138,7 @@ jobs:
           bash scripts/ci/build_wheels.sh \
             --cuda-version ${{ steps.config.outputs.cuda_major }} \
             --python-version ${{ matrix.python }} \
-            --version ${{ inputs.version || '0.14.99' }}
+            --version ${{ inputs.version || '0.15.99' }}
 
       - name: Upload CUDA-Q Algorithms wheels
         uses: actions/upload-artifact@v4
@@ -164,7 +178,7 @@ jobs:
       - name: Build CUDA-Q Algorithms metapackages
         shell: bash
         run: |
-          bash scripts/ci/build_metapackages.sh ${{ inputs.version || '0.14.99' }}
+          bash scripts/ci/build_metapackages.sh ${{ inputs.version || '0.15.99' }}
           mkdir -p /metapackages
           mv python/metapackages/dist/* /metapackages/
 
@@ -270,6 +284,9 @@ jobs:
         run: nvidia-smi
 
       - name: Download CUDA-Q wheels
+        # Only built in Custom mode; PyPI mode installs a released CUDA-Q from
+        # pypi.nvidia.com via the metapackage instead.
+        if: ${{ inputs.cudaq_wheels == 'Custom' }}
         uses: actions/download-artifact@v4
         with:
           name: cudaq-wheels-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
@@ -292,10 +309,11 @@ jobs:
         env:
           CUDAQ_DEFAULT_SIMULATOR: ${{ matrix.simulator }}
         run: |
-          ls -la /cudaq-wheels /metapackages /wheels
+          ls -la /metapackages /wheels
+          ls -la /cudaq-wheels 2>/dev/null || true
           bash scripts/ci/test_wheels.sh \
             ${{ matrix.python }} \
             ${{ matrix.platform }} \
             ${{ matrix.cuda_version }} \
-            0.14.99 \
-            ${{ inputs.version || '0.14.99' }}
+            ${{ inputs.cudaq_wheels == 'Custom' && '0.15.99' || 'SKIP' }} \
+            ${{ inputs.version || '0.15.99' }}
