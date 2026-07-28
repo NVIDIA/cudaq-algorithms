@@ -212,32 +212,33 @@ jobs:
             simulator: qpp-cpu
             python: '3.12'
             cuda_version: '12.6'
-          # GPU legs: GPU statevector in double precision (nvidia-fp64) so the
-          # suite's 1e-10..1e-12 tolerances hold -- the default nvidia target
-          # is fp32 and fails them by design. --gpus all exposes the host GPU
-          # and driver to the container; the CUDA runtime itself arrives via
-          # the cuda-quantum-cuNN pip dependencies.
+          # GPU legs install the same wheel but run it in the CUDA-Q
+          # devcontainer (the image cudaqx uses for GPU jobs) rather than bare
+          # ubuntu: it ships the CUDA toolkit, which the optional CuPy
+          # acceleration in double_factorization needs to find a CUDA root --
+          # bare ubuntu has only the driver (via --gpus all), so CuPy fails to
+          # auto-detect CUDA. GPU statevector runs in double precision
+          # (nvidia-fp64); the default nvidia target is fp32 and fails the
+          # suite's 1e-10..1e-12 tolerances by design. GPU runners are CUDA 13
+          # hosts, so the metapackage resolves cudaq-algorithms-cu13 (built by
+          # the cu13 matrix leg).
           - platform: amd64
             device: gpu
             runner: linux-amd64-gpu-a100-latest-1
-            container_image: ubuntu:24.04
+            container_image: ghcr.io/nvidia/cuda-quantum-devcontainer:amd64-cu13.0-gcc12-main
             container_options: '--gpus all'
             simulator: nvidia-fp64
             python: '3.12'
-            # GPU runners are CUDA 13 hosts: the metapackage detects CUDA 13
-            # and resolves cudaq-algorithms-cu13, so this leg installs the
-            # cu13 wheels.
             cuda_version: '13.0'
           # arm64 GPU pool: this label was validated to schedule and expose a
           # GPU in run 30325140657 (the Verify-GPU step passed).
           - platform: arm64
             device: gpu
             runner: linux-arm64-gpu-a100-latest-1
-            container_image: ubuntu:24.04
+            container_image: ghcr.io/nvidia/cuda-quantum-devcontainer:arm64-cu13.0-gcc12-main
             container_options: '--gpus all'
             simulator: nvidia-fp64
             python: '3.12'
-            # GPU runners are CUDA 13 hosts (see amd64 gpu leg).
             cuda_version: '13.0'
     steps:
       - name: Checkout repository
