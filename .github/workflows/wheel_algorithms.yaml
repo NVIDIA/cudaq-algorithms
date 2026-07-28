@@ -97,7 +97,9 @@ jobs:
       matrix:
         python: ['3.12']
         platform: ['amd64']
-        cuda_version: ['12.6']
+        # One arch-independent wheel per CUDA major (cu12 + cu13); the CUDA
+        # version only selects the pyproject variant / cuda-quantum-cuNN pin.
+        cuda_version: ['12.6', '13.0']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu8', matrix.platform) || 'ubuntu-latest' }}
     # The wheels are pure Python (py3-none-any): no CUDA-Q toolchain, no
     # manylinux devdeps image — a stock python container is enough.
@@ -222,11 +224,12 @@ jobs:
             container_options: '--gpus all'
             simulator: nvidia-fp64
             python: '3.12'
-            cuda_version: '12.6'
-          # WARNING: this arm64 GPU runner label is a naming-convention guess,
-          # NOT a confirmed label. Replace it with the real arm64 GPU pool
-          # label (or drop this leg) before relying on it -- an unknown label
-          # leaves the job queued indefinitely.
+            # GPU runners are CUDA 13 hosts: the metapackage detects CUDA 13
+            # and resolves cudaq-algorithms-cu13, so this leg installs the
+            # cu13 wheels.
+            cuda_version: '13.0'
+          # arm64 GPU pool: this label was validated to schedule and expose a
+          # GPU in run 30325140657 (the Verify-GPU step passed).
           - platform: arm64
             device: gpu
             runner: linux-arm64-gpu-a100-latest-1
@@ -234,7 +237,8 @@ jobs:
             container_options: '--gpus all'
             simulator: nvidia-fp64
             python: '3.12'
-            cuda_version: '12.6'
+            # GPU runners are CUDA 13 hosts (see amd64 gpu leg).
+            cuda_version: '13.0'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
