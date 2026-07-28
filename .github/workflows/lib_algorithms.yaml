@@ -107,7 +107,7 @@ jobs:
 
       - name: Install test requirements
         run: |
-          python3 -m pip install numpy scipy pytest
+          python3 -m pip install numpy scipy pytest pyscf
 
       - name: Run tests
         run: |
