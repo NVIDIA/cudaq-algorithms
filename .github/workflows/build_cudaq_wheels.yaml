@@ -44,9 +44,9 @@ jobs:
         # CUDA-Q ships per-architecture wheels; build both so the arm64 and
         # x86 wheel-test legs each have a matching cuda-quantum-cuNN to install.
         platform: ['amd64', 'arm64']
-        # Build both CUDA majors: the GPU test runners are CUDA 13 hosts, so
-        # their metapackage resolves cudaq-algorithms-cu13 and needs a cu13
-        # wheel; CPU hosts fall back to cu12.
+        # Build both CUDA majors: the GPU test legs are CUDA 13 hosts, so their
+        # metapackage resolves cudaq-algorithms-cu13 and needs a cu13 wheel; the
+        # CPU test legs pin cuda_version 12.6 and use the cu12 wheel.
         cuda_version: ['12.6', '13.0']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
     permissions:

@@ -130,7 +130,6 @@ jobs:
       contents: read
       pull-requests: read
     with:
-      build_type: Release
       cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
