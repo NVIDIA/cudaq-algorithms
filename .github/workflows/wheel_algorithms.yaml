@@ -127,7 +127,9 @@ jobs:
       - name: Upload CUDA-Q Algorithms wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-py${{ matrix.python }}-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          # py3-none-any: architecture-independent, built once and consumed by
+          # every wheel-test leg, so the artifact name carries no platform.
+          name: algorithms-wheels-py${{ matrix.python }}-cu${{ steps.config.outputs.cuda_major }}
           path: /wheels/**
           retention-days: 14
           if-no-files-found: error
@@ -172,22 +174,67 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  test-wheels-cpu:
-    name: Test CUDA-Q Algorithms wheels (CPU)
+  test-wheels:
+    name: Test CUDA-Q Algorithms wheels (${{ matrix.platform }}, ${{ matrix.device }})
     needs: [build-cudaq-wheels, build-algorithms-wheels, build-metapackages]
     # Consumes the from-source CUDA-Q wheels, so it can only run where
     # build-cudaq-wheels ran (skipped on forks along with it).
     if: ${{ !failure() && !cancelled() && startsWith(github.repository, 'NVIDIA/cudaq-algorithms') }}
-    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu4', matrix.platform) || 'ubuntu-latest' }}
-    container: ubuntu:24.04
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.container_image }}
+      options: ${{ matrix.container_options }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.12']
-        platform: ['amd64']
-        cuda_version: ['12.6']
+        # Each leg is fully specified: the device only changes the runner and
+        # the simulator, never the artifacts (the cuda-quantum-cuNN wheel
+        # carries both the qpp-cpu and nvidia simulators).
+        include:
+          # CPU legs: CPU statevector (qpp-cpu, fp64) on the standard runners.
+          - platform: amd64
+            device: cpu
+            runner: linux-amd64-cpu4
+            container_image: ubuntu:24.04
+            container_options: ''
+            simulator: qpp-cpu
+            python: '3.12'
+            cuda_version: '12.6'
+          - platform: arm64
+            device: cpu
+            runner: linux-arm64-cpu4
+            container_image: ubuntu:24.04
+            container_options: ''
+            simulator: qpp-cpu
+            python: '3.12'
+            cuda_version: '12.6'
+          # GPU legs: GPU statevector in double precision (nvidia-fp64) so the
+          # suite's 1e-10..1e-12 tolerances hold -- the default nvidia target
+          # is fp32 and fails them by design. --gpus all exposes the host GPU
+          # and driver to the container; the CUDA runtime itself arrives via
+          # the cuda-quantum-cuNN pip dependencies.
+          - platform: amd64
+            device: gpu
+            runner: linux-amd64-gpu-a100-latest-1
+            container_image: ubuntu:24.04
+            container_options: '--gpus all'
+            simulator: nvidia-fp64
+            python: '3.12'
+            cuda_version: '12.6'
+          # WARNING: this arm64 GPU runner label is a naming-convention guess,
+          # NOT a confirmed label. Replace it with the real arm64 GPU pool
+          # label (or drop this leg) before relying on it -- an unknown label
+          # leaves the job queued indefinitely.
+          - platform: arm64
+            device: gpu
+            runner: linux-arm64-gpu-a100-latest-1
+            container_image: ubuntu:24.04
+            container_options: '--gpus all'
+            simulator: nvidia-fp64
+            python: '3.12'
+            cuda_version: '12.6'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -213,6 +260,10 @@ jobs:
             apt install -y --no-install-recommends libquadmath0
           fi
 
+      - name: Verify GPU is visible
+        if: ${{ matrix.device == 'gpu' }}
+        run: nvidia-smi
+
       - name: Download CUDA-Q wheels
         uses: actions/download-artifact@v4
         with:
@@ -228,10 +279,13 @@ jobs:
       - name: Download CUDA-Q Algorithms wheels
         uses: actions/download-artifact@v4
         with:
-          name: wheels-py${{ matrix.python }}-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
+          # Architecture-independent wheel, built once (see build-algorithms-wheels).
+          name: algorithms-wheels-py${{ matrix.python }}-cu${{ steps.config.outputs.cuda_major }}
           path: /wheels
 
       - name: Test wheels
+        env:
+          CUDAQ_DEFAULT_SIMULATOR: ${{ matrix.simulator }}
         run: |
           ls -la /cudaq-wheels /metapackages /wheels
           bash scripts/ci/test_wheels.sh \

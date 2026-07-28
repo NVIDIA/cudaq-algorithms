@@ -41,7 +41,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: ['amd64']
+        # CUDA-Q ships per-architecture wheels; build both so the arm64 and
+        # x86 wheel-test legs each have a matching cuda-quantum-cuNN to install.
+        platform: ['amd64', 'arm64']
         # cu13 packaging (pyproject.toml.cu13) is supported by the build
         # scripts but not yet exercised in CI; deferred until a cu13 devdeps
         # image is available. Add '13.x' here to enable.
