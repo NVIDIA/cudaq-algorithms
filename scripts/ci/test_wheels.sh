@@ -43,11 +43,14 @@ fi
 
 $python -c "import cudaq_algorithms"
 
-if ! $python -m pip list | grep -qi '^cudaq-algorithms\b'; then
+# Use `pip show` (exits 0/1) rather than piping `pip list` into grep -q: a
+# quitting grep closes the pipe, pip takes SIGPIPE, and pipefail would turn a
+# successful match into a false "not installed".
+if ! $python -m pip show cudaq-algorithms >/dev/null 2>&1; then
     echo "::error cudaq-algorithms is not installed." >&2
     exit 1
 fi
-if ! $python -m pip list | grep -qi "^cuda-quantum-cu${cuda_major}\b"; then
+if ! $python -m pip show "cuda-quantum-cu${cuda_major}" >/dev/null 2>&1; then
     echo "::error Expected cuda-quantum-cu${cuda_major} to be installed." >&2
     exit 1
 fi
