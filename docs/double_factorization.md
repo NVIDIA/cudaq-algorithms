@@ -161,3 +161,30 @@ factorization itself does not. See
 which sweeps X-DF leaf counts on H2/STO-3G (hardcoded integrals, no PySCF
 needed) and tabulates tensor error, `alpha`, term count, and the exact
 ground-state shift at each truncation.
+
+### Loading integrals
+
+Integrals can come from an **FCIDUMP** file — the de-facto interchange
+format written by Molpro, PySCF, Psi4, and Block/DMRG codes.
+`chemistry.from_fcidump` parses the *text* of such a file (the caller does
+the file I/O, so the parse stays pure and testable) and returns the
+`(one_body, eri, core_energy)` triple `qubit_hamiltonian` and
+`DoubleFactorizedEncoding` consume, already in chemist `(pq|rs)` notation
+over real spatial orbitals:
+
+```python
+from pathlib import Path
+from cudaq_algorithms import chemistry
+
+one_body, eri, core = chemistry.from_fcidump(
+    Path("molecule.fcidump").read_text())
+h = chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=core)
+# or hand the same tensors to DoubleFactorizedEncoding(one_body, eri, ...)
+```
+
+The reader has no third-party dependency (pure text + NumPy) and fills the
+eight-fold index symmetry from the symmetry-unique records FCIDUMP stores.
+Only real (RHF/ROHF) FCIDUMP files are supported; unrestricted variants
+(Molpro's `IUHF=1` or Psi4's `UHF=.TRUE.`) carry a spin-resolved integral
+set with a different index symmetry and are rejected up front by a header
+guard.
