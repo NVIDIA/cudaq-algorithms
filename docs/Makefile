@@ -7,10 +7,8 @@
 #   make -C docs html
 
 SPHINXBUILD ?= python3 -m sphinx
-# Target is `-W --keep-going` (warnings-as-errors, matching cudaqx). Kept at
-# --keep-going until the autodoc docstring nits (bare `|` ket notation) and
-# cross-references are cleaned up, then flip -W on.
-SPHINXOPTS  ?= --keep-going
+# Warnings-as-errors (nitpicky --keep-going surfaces them all), matching cudaqx.
+SPHINXOPTS  ?= -W --keep-going
 SOURCEDIR    = sphinx
 BUILDDIR     = sphinx/_build
 

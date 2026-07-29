@@ -221,7 +221,7 @@ def controlled_select(control_and_ancilla: cudaq.qview, system: cudaq.qview,
 
     Only the Z words and sign phases carry the external control; the
     Givens segments stay uncontrolled and telescope to the identity when
-    the control is |0> (nothing separates consecutive exit/entry pairs).
+    the control is ``|0>`` (nothing separates consecutive exit/entry pairs).
     """
     n_anc = control_and_ancilla.size() - 1
     rot_ptr = 0
@@ -423,22 +423,18 @@ def _leaf_pauli_expansion(
 class DoubleFactorizedEncoding:
     """Block encoding of the double-factorized electronic Hamiltonian.
 
-    Parameters
-    ----------
-    one_body
-        The ``(n, n)`` symmetric core-Hamiltonian matrix over real spatial
-        orbitals (chemist conventions, as in
+    :param one_body: The ``(n, n)`` symmetric core-Hamiltonian matrix over
+        real spatial orbitals (chemist conventions, as in
         ``cudaq_algorithms.chemistry``).
-    two_body
-        Either a ``DoubleFactorization`` (from
+    :param two_body: Either a ``DoubleFactorization`` (from
         ``double_factorization.explicit_double_factorization`` or
-        ``compressed_double_factorization`` — truncation happens there) or
+        ``compressed_double_factorization`` -- truncation happens there) or
         a raw ``(n, n, n, n)`` chemist-notation ERI tensor, which is
         factorized exactly (``threshold=0.0``).
-    scalar_offset
-        Constant added as an identity term (e.g. nuclear repulsion).
-    coefficient_threshold
-        Encoded terms with ``|coefficient|`` below this are dropped.
+    :param scalar_offset: Constant added as an identity term (e.g. nuclear
+        repulsion).
+    :param coefficient_threshold: Encoded terms with ``|coefficient|`` below
+        this are dropped.
 
     The encoded operator is ``H / alpha`` on the all-zero ancilla block,
     where ``H`` is the Hamiltonian *of the factorized (possibly
@@ -683,9 +679,9 @@ class DoubleFactorizedEncoding:
 
         Without ``state_prep``: a ``@cudaq.kernel(state)`` allocating the
         system register from ``state`` and the ancilla register (in
-        |0...0>) after it. With ``state_prep`` (a ``(qubits: qview)``
+        ``|0...0>``) after it. With ``state_prep`` (a ``(qubits: qview)``
         kernel): a zero-argument kernel that allocates the system register
-        in |0...0>, runs ``state_prep`` on it, then applies the encoding.
+        in ``|0...0>``, runs ``state_prep`` on it, then applies the encoding.
         """
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data

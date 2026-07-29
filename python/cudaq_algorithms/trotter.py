@@ -401,13 +401,13 @@ class Trotter:
         (``Any`` because CUDA-Q exposes no stable public Python type for
         compiled kernel objects.)
 
-        The kernel allocates ``num_qubits`` qubits in |0...0>, optionally
+        The kernel allocates ``num_qubits`` qubits in ``|0...0>``, optionally
         runs ``state_prep`` (a kernel with signature
         ``(qubits: cudaq.qview)``) on them, and applies the
         ``order``-order formula for ``time`` over ``steps`` steps — with
         or without ``state_prep`` the result takes no arguments and is
         directly sampleable. ``state_prep`` must act only on the register
-        it is handed (width ``num_qubits``, arriving in |0...0>). The
+        it is handed (width ``num_qubits``, arriving in ``|0...0>``). The
         identity phase is not included (it cannot be, in a circuit); track
         ``identity_coefficient`` when it matters.
         """
@@ -458,7 +458,7 @@ class Trotter:
         """Return a ``@cudaq.kernel(state)`` evolving an arbitrary state.
 
         Same validated product formula as :meth:`kernel`, but the register
-        is allocated from a ``cudaq.State`` argument instead of |0...0> —
+        is allocated from a ``cudaq.State`` argument instead of ``|0...0>`` —
         the input-loading path ``sim_utils.evolve`` uses. Both factories
         share validation and marshaling through ``_prepared_args``.
 
