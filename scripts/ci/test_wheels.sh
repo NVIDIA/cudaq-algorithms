@@ -24,7 +24,7 @@ fi
 python=python${python_version}
 cuda_major=$(echo "$cuda_version" | cut -d . -f 1)
 
-$python -m pip install --no-cache-dir pytest scipy numpy
+$python -m pip install --no-cache-dir pytest scipy numpy pyscf
 
 if [[ "$cudaq_version" != "SKIP" && -d /cudaq-wheels ]]; then
     # Custom mode tests the wheel against the from-source (unreleased)

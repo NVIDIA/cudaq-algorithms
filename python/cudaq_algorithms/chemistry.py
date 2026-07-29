@@ -27,7 +27,10 @@ import re
 import numpy as np
 from numpy.typing import ArrayLike
 
-__all__ = ["from_fcidump", "spin_orbital_tensors", "qubit_hamiltonian"]
+__all__ = [
+    "from_fcidump", "spin_orbital_tensors", "qubit_hamiltonian", "from_pyscf",
+    "from_psi4"
+]
 
 
 def spin_orbital_tensors(
@@ -125,6 +128,95 @@ def qubit_hamiltonian(one_body: ArrayLike,
                                  two_body_so,
                                  scalar_offset=float(scalar_offset),
                                  tolerance=float(tolerance))
+
+
+def from_pyscf(mean_field) -> tuple[np.ndarray, np.ndarray, float]:
+    """Chemist ``(pq|rs)`` MO integrals + nuclear repulsion from PySCF.
+
+    ``mean_field`` is a converged restricted mean field (e.g. the result
+    of ``pyscf.scf.RHF(mol).run()``). Returns
+    ``(one_body, eri, nuclear_repulsion)`` in the molecular-orbital basis
+    and chemist notation -- exactly the arguments
+    :func:`qubit_hamiltonian` expects (pass ``nuclear_repulsion`` as its
+    ``scalar_offset``).
+
+    Restricted (single ``mo_coeff`` matrix) references only; the spin
+    expansion downstream assumes one spatial set shared by both spins.
+    """
+    from functools import reduce
+
+    from pyscf import ao2mo
+
+    mol = mean_field.mol
+    coefficients = np.asarray(mean_field.mo_coeff)
+    if coefficients.ndim != 2:
+        raise ValueError(
+            "from_pyscf requires a restricted mean field (a single 2D "
+            f"mo_coeff matrix); got mo_coeff with ndim {coefficients.ndim} "
+            "(an unrestricted/UHF reference has a (2, nao, nmo) array).")
+    num_orbitals = coefficients.shape[1]
+
+    # get_hcore() is the AO-basis core Hamiltonian the mean field actually
+    # used: kinetic + nuclear plus any ECP (ECPscalar), X2C, or QM/MM
+    # contribution. Rebuilding it as int1e_kin + int1e_nuc silently drops
+    # those (e.g. the ECP term for effective-core-potential molecules).
+    core_ao = mean_field.get_hcore()
+    one_body = reduce(np.dot, (coefficients.T, core_ao, coefficients))
+
+    # ao2mo.full returns chemist-notation MO integrals in symmetry-packed
+    # (at most 4-fold) storage; restore(1, ...) expands them to the dense
+    # (n, n, n, n) tensor.
+    eri = ao2mo.restore(1, ao2mo.full(mol, coefficients), num_orbitals)
+
+    return (np.ascontiguousarray(one_body), np.ascontiguousarray(eri),
+            float(mean_field.energy_nuc()))
+
+
+def from_psi4(wavefunction) -> tuple[np.ndarray, np.ndarray, float]:
+    """Chemist ``(pq|rs)`` MO integrals + nuclear repulsion from Psi4.
+
+    ``wavefunction`` is a converged restricted wavefunction, e.g. the
+    second return value of ``psi4.energy("scf", return_wfn=True)``. Returns
+    ``(one_body, eri, nuclear_repulsion)`` in the molecular-orbital basis
+    and chemist notation -- identical in meaning and convention to
+    :func:`from_pyscf`, so either drives :func:`qubit_hamiltonian`
+    unchanged.
+
+    Restricted references only (uses ``Ca``); ``mo_eri`` already returns
+    the chemist ``(pq|rs)`` ordering, matching the PySCF path.
+
+    The wavefunction must be computed in C1 symmetry (``symmetry c1`` in
+    the Psi4 geometry). The extraction reads ``Ca`` as a single dense
+    block, so an irrep-blocked (higher-symmetry) wavefunction is rejected.
+    """
+    import psi4
+
+    if wavefunction.nirrep() != 1:
+        raise ValueError(
+            "from_psi4 requires a C1 (single-irrep) wavefunction; got "
+            f"{wavefunction.nirrep()} irreps. Recompute with 'symmetry c1' "
+            "in the Psi4 geometry.")
+    if not wavefunction.same_a_b_orbs():
+        raise ValueError(
+            "from_psi4 requires a restricted (RHF/RKS) wavefunction; the "
+            "alpha and beta orbitals differ (unrestricted reference).")
+
+    coefficients_matrix = wavefunction.Ca()
+    coefficients = np.asarray(coefficients_matrix)
+
+    # Core Hamiltonian (kinetic + potential) in the AO basis -> MO basis.
+    core_ao = np.asarray(wavefunction.H())
+    one_body = coefficients.T @ core_ao @ coefficients
+
+    mints = psi4.core.MintsHelper(wavefunction.basisset())
+    eri = np.asarray(
+        mints.mo_eri(coefficients_matrix, coefficients_matrix,
+                     coefficients_matrix, coefficients_matrix))
+
+    nuclear_repulsion = wavefunction.molecule().nuclear_repulsion_energy()
+
+    return (np.ascontiguousarray(one_body), np.ascontiguousarray(eri),
+            float(nuclear_repulsion))
 
 
 # The eight index tuples of the real-orbital chemist symmetry orbit of
