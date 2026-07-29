@@ -37,7 +37,7 @@ than encoded into the operator.
 FCIDUMP
 ~~~~~~~
 
-`from_fcidump` parses the *text* of an FCIDUMP file — the de-facto
+:func:`~cudaq_algorithms.chemistry.from_fcidump` parses the *text* of an FCIDUMP file — the de-facto
 interchange format written by Molpro, PySCF, Psi4, and Block/DMRG codes.
 The caller does the file I/O, so the parse stays pure and testable:
 
@@ -64,7 +64,7 @@ header guard.
 PySCF
 ~~~~~
 
-`chemistry.from_pyscf` extracts chemist-notation MO integrals plus the
+:func:`~cudaq_algorithms.chemistry.from_pyscf` extracts chemist-notation MO integrals plus the
 nuclear-repulsion energy from a converged **restricted** mean field:
 
 .. code-block:: python
@@ -90,7 +90,7 @@ matrix); an unrestricted/UHF reference is rejected.
 Psi4
 ~~~~
 
-`chemistry.from_psi4` is the Psi4 counterpart, taking a converged
+:func:`~cudaq_algorithms.chemistry.from_psi4` is the Psi4 counterpart, taking a converged
 restricted wavefunction — e.g. the second return value of
 ``psi4.energy("scf", return_wfn=True)`` — and returning the identical
 ``(one_body, eri, nuclear_repulsion)`` triple, so either loader drives
