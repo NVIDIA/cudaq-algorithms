@@ -73,10 +73,10 @@ jobs:
   build-cudaq-wheels:
     name: Build CUDA-Q wheels
     # Building CUDA-Q from source needs the large self-hosted runners;
-    # forks skip it (and the test job below) and still get the pure
-    # algorithms wheels + metapackages artifacts. It is also skipped in
-    # PyPI mode, where the test installs a released CUDA-Q from pypi.nvidia.com
-    # instead of a from-source (unreleased) build.
+    # forks skip it (and the test job below) and still get the pure algorithms
+    # wheel artifact. It is also skipped in PyPI mode, where the test installs a
+    # released CUDA-Q via the cudaq dependency instead of a from-source
+    # (unreleased) build.
     if: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && inputs.cudaq_wheels == 'Custom' }}
     uses: ./.github/workflows/build_cudaq_wheels.yaml
     permissions:
@@ -98,9 +98,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.12']
-        # One arch-independent wheel per CUDA major (cu12 + cu13); the CUDA
-        # version only selects the pyproject variant / cuda-quantum-cuNN pin.
-        cuda_version: ['12.6', '13.0']
+        platform: ['amd64']
     # The wheel is py3-none-any, so this job has no architecture axis. The
     # runner is hardcoded (rather than a platform-matrix'd label) so the job
     # structurally cannot grow a second arch leg that would upload to the same
@@ -118,74 +116,26 @@ jobs:
         with:
           set-safe-directory: true
 
-      - name: Configure
-        id: config
-        run: |
-          cuda_major=$(echo ${{ matrix.cuda_version }} | cut -d . -f1)
-          echo "cuda_major=$cuda_major" >> "$GITHUB_OUTPUT"
-
       - name: Build CUDA-Q Algorithms wheels
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           bash scripts/ci/build_wheels.sh \
-            --cuda-version ${{ steps.config.outputs.cuda_major }} \
             --python-version ${{ matrix.python }} \
             --version ${{ inputs.version || '0.15.99' }}
 
       - name: Upload CUDA-Q Algorithms wheels
         uses: actions/upload-artifact@v4
         with:
-          # py3-none-any: architecture-independent, built once per CUDA major
-          # and consumed by both same-CUDA test legs, so the name carries only
-          # the cuNN tag and no platform.
-          name: algorithms-wheels-py${{ matrix.python }}-cu${{ steps.config.outputs.cuda_major }}
+          # py3-none-any: architecture-independent, built once and consumed by
+          # every test leg, so the name carries no platform or CUDA tag.
+          name: algorithms-wheels-py${{ matrix.python }}
           path: /wheels/**
-          retention-days: 14
-          if-no-files-found: error
-
-  build-metapackages:
-    name: Build CUDA-Q Algorithms metapackages
-    runs-on: ubuntu-latest
-    container: ubuntu:24.04
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          set-safe-directory: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Install requirements
-        shell: bash
-        run: |
-          apt update
-          apt install -y --no-install-recommends ca-certificates
-          python3 -m pip install --upgrade pip
-          python3 -m pip install build
-
-      - name: Build CUDA-Q Algorithms metapackages
-        shell: bash
-        run: |
-          bash scripts/ci/build_metapackages.sh ${{ inputs.version || '0.15.99' }}
-          mkdir -p /metapackages
-          mv python/metapackages/dist/* /metapackages/
-
-      - name: Upload metapackages
-        uses: actions/upload-artifact@v4
-        with:
-          name: metapackages
-          path: /metapackages/**
           retention-days: 14
           if-no-files-found: error
 
   test-wheels:
     name: Test CUDA-Q Algorithms wheels (${{ matrix.platform }}, ${{ matrix.device }})
-    needs: [build-cudaq-wheels, build-algorithms-wheels, build-metapackages]
+    needs: [build-cudaq-wheels, build-algorithms-wheels]
     # In Custom mode this consumes the from-source CUDA-Q wheels from
     # build-cudaq-wheels, so both are skipped together on forks. In PyPI mode
     # build-cudaq-wheels is skipped and this leg instead installs a released
@@ -233,8 +183,8 @@ jobs:
           # auto-detect CUDA. GPU statevector runs in double precision
           # (nvidia-fp64); the default nvidia target is fp32 and fails the
           # suite's 1e-10..1e-12 tolerances by design. GPU runners are CUDA 13
-          # hosts, so the metapackage resolves cudaq-algorithms-cu13 (built by
-          # the cu13 matrix leg).
+          # hosts, so these legs install the cu13 cuda-quantum (from source in
+          # Custom mode, or resolved via cudaq in PyPI mode).
           - platform: amd64
             device: gpu
             runner: linux-amd64-gpu-a100-latest-1
@@ -283,32 +233,26 @@ jobs:
         run: nvidia-smi
 
       - name: Download CUDA-Q wheels
-        # Only built in Custom mode; PyPI mode installs a released CUDA-Q from
-        # pypi.nvidia.com via the metapackage instead.
+        # Only built in Custom mode; PyPI mode installs a released CUDA-Q via
+        # the cudaq dependency instead.
         if: ${{ inputs.cudaq_wheels == 'Custom' }}
         uses: actions/download-artifact@v4
         with:
           name: cudaq-wheels-${{ matrix.platform }}-cu${{ steps.config.outputs.cuda_major }}
           path: /cudaq-wheels
 
-      - name: Download CUDA-Q Algorithms metapackages
-        uses: actions/download-artifact@v4
-        with:
-          name: metapackages
-          path: /metapackages
-
       - name: Download CUDA-Q Algorithms wheels
         uses: actions/download-artifact@v4
         with:
           # Architecture-independent wheel, built once (see build-algorithms-wheels).
-          name: algorithms-wheels-py${{ matrix.python }}-cu${{ steps.config.outputs.cuda_major }}
+          name: algorithms-wheels-py${{ matrix.python }}
           path: /wheels
 
       - name: Test wheels
         env:
           CUDAQ_DEFAULT_SIMULATOR: ${{ matrix.simulator }}
         run: |
-          ls -la /metapackages /wheels
+          ls -la /wheels
           ls -la /cudaq-wheels 2>/dev/null || true
           bash scripts/ci/test_wheels.sh \
             ${{ matrix.python }} \

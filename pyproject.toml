@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cudaq-algorithms-cu12"
+name = "cudaq-algorithms"
 dynamic = ["version"]
 description = "Reusable quantum algorithm primitives built on CUDA-Q"
 authors = [{name = "NVIDIA Corporation & Affiliates"}]
@@ -12,7 +12,9 @@ requires-python = ">=3.11"
 readme = "README.md"
 license = "Apache-2.0"
 dependencies = [
-  "cuda-quantum-cu12 >= 0.15.0, < 0.16",
+  # `cudaq` is CUDA-agnostic and selects the right cuda-quantum-cuNN at
+  # install time, which lets us ship this single py3-none-any wheel.
+  "cudaq >= 0.15.0, < 0.16",
   "numpy",
   "scipy",
 ]
