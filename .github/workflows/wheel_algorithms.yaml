@@ -19,7 +19,7 @@ on:
       cudaq_wheels:
         type: choice
         required: true
-        description: 'CUDA-Q wheel source: Custom = built from the pinned .cudaq_version commit (unreleased); PyPI = released cuda-quantum wheels from the public indices (needs cuda-quantum >= 0.15.1, so this mode is usable once that release ships).'
+        description: 'CUDA-Q wheel source: Custom = built from the pinned .cudaq_version commit (unreleased); PyPI = released cuda-quantum wheels from the public indices (resolves against released cuda-quantum >= 0.15.0).'
         default: 'Custom'
         options:
           - 'Custom'
