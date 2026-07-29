@@ -66,12 +66,6 @@ while (( $# > 0 )); do
     esac
 done
 
-cuda_major=$(echo "$cuda_version" | cut -d . -f 1)
-if [[ "$cuda_major" != "12" && "$cuda_major" != "13" ]]; then
-    echo "Error: unsupported CUDA major version '$cuda_major'" >&2
-    exit 1
-fi
-
 python=python${python_version}
 
 # The package is pure Python: no compiler toolchain, CUDA-Q CMake
@@ -80,17 +74,11 @@ python=python${python_version}
 
 export SETUPTOOLS_SCM_PRETEND_VERSION=$wheels_version
 
-if [[ ! -f "pyproject.toml.cu${cuda_major}" ]]; then
-    echo "Error: pyproject.toml.cu${cuda_major} not found" >&2
-    exit 1
-fi
-
 # `build` is also removed: a stale setuptools staging directory would be
 # merged into the wheel.
-rm -rf dist build _skbuild pyproject.toml
-cp "pyproject.toml.cu${cuda_major}" pyproject.toml
+rm -rf dist build _skbuild
 
-echo "Building cudaq-algorithms-cu${cuda_major} $wheels_version (pure Python)"
+echo "Building cudaq-algorithms $wheels_version (pure Python)"
 $python -m pip install --no-cache-dir build
 $python -m build --wheel
 

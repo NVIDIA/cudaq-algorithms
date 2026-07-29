@@ -6,3 +6,4 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 compile_commands.json
+timer.dat

@@ -41,11 +41,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: ['amd64']
-        # cu13 packaging (pyproject.toml.cu13) is supported by the build
-        # scripts but not yet exercised in CI; deferred until a cu13 devdeps
-        # image is available. Add '13.x' here to enable.
-        cuda_version: ['12.6']
+        # CUDA-Q ships per-architecture wheels; build both so the arm64 and
+        # x86 wheel-test legs each have a matching cuda-quantum-cuNN to install.
+        platform: ['amd64', 'arm64']
+        # Build both CUDA majors: the GPU test legs are CUDA 13 hosts, so
+        # Custom mode installs a cu13 cuda-quantum there; the CPU test legs pin
+        # cuda_version 12.6 and install the cu12 cuda-quantum.
+        cuda_version: ['12.6', '13.0']
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && format('linux-{0}-cpu32', matrix.platform) || 'ubuntu-latest' }}
     permissions:
       actions: write
