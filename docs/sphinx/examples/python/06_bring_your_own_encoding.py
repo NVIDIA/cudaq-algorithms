@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [Begin Documentation]
 """Example 6 — Bring your own block encoding.
 
 `Walk` and `QSVT` are generic over the `BlockEncoding` protocol: any

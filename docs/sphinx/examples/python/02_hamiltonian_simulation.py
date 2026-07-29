@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [Begin Documentation]
 """Example 2 — Hamiltonian simulation, two independent ways.
 
 Compute exp(-i H t)|psi> with two different primitives and check both

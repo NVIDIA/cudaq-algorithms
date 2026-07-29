@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [Begin Documentation]
 """Example 4 — Double factorization and the BlockEncoding protocol.
 
 Three ideas, built on real molecules from PySCF:

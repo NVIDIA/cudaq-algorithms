@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#                                                                              #
+# [Begin Documentation]
 """Hartree-Fock + fixed-parameter UCCSD state preparation.
 
 Prepares a 4-qubit / 2-electron UCCSD ansatz state at fixed amplitudes

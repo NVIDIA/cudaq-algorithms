@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#                                                                              #
+# [Begin Documentation]
 """Suzuki-Trotter simulation of a chemistry-style Hamiltonian.
 
 The Hamiltonian is hard-coded as Pauli terms to keep the example focused

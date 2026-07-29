@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [Begin Documentation]
 """Example 5 — State preparation and injection.
 
 Every primitive factory (Walk, QSVT, Trotter) takes a `state_prep`

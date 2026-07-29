@@ -25,6 +25,16 @@ kernels.
    guide/qubitization_qsvt
 
 .. toctree::
+   :caption: Examples
+   :maxdepth: 2
+
+   examples_rst/getting_started
+   examples_rst/preprocessing
+   examples_rst/block_encodings
+   examples_rst/state_prep
+   examples_rst/hamiltonian_simulation
+
+.. toctree::
    :caption: Reference
    :maxdepth: 2
 

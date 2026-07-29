@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [Begin Documentation]
 """Example 3 — From a molecule to its ground-state energy.
 
 The full classical -> quantum -> classical loop, end to end:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [Begin Documentation]
 """Example 1 — Quickstart: block-encode a Hamiltonian and walk it.
 
 The five-minute tour of the core idea. A Hamiltonian H is not a circuit

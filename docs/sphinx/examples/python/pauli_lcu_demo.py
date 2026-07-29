@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#                                                                              #
+# [Begin Documentation]
 """Walkthrough of the PauliLCU block-encoding API.
 
 Run with:  python3 pauli_lcu_demo.py

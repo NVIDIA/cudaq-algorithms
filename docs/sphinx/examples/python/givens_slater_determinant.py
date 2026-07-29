@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#                                                                              #
+# [Begin Documentation]
 """Givens-rotation Slater determinant preparation.
 
 Prepares a real 4-orbital / 2-electron determinant and a complex

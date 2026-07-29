@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#                                                                              #
+# [Begin Documentation]
 """From double-factorized integrals to LCU/QSVT cost, end to end.
 
 Takes H2/STO-3G molecular integrals (hardcoded, so the example needs no

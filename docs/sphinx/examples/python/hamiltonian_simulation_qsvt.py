@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#                                                                              #
+# [Begin Documentation]
 """Hamiltonian simulation with the PauliLCU block encoding and QSVT.
 
 Evolves a 4-qubit Pauli Hamiltonian with QSPPACK-generated phases and checks
