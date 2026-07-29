@@ -1,4 +1,0 @@
-include _version.txt
-include pyproject.toml.cu12
-include pyproject.toml.cu13
-include README.md

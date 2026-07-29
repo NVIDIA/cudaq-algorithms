@@ -24,26 +24,34 @@ fi
 python=python${python_version}
 cuda_major=$(echo "$cuda_version" | cut -d . -f 1)
 
-$python -m pip install --no-cache-dir pytest scipy
+$python -m pip install --no-cache-dir pytest scipy numpy
 
-find_links=(--find-links /wheels --find-links /metapackages)
-if [[ -d /cudaq-wheels ]]; then
-    find_links+=(--find-links /cudaq-wheels)
-    if [[ "$cudaq_version" != "SKIP" ]]; then
-        $python -m pip install "${find_links[@]}" "cuda-quantum-cu${cuda_major}==${cudaq_version}"
-    fi
+if [[ "$cudaq_version" != "SKIP" && -d /cudaq-wheels ]]; then
+    # Custom mode tests the wheel against the from-source (unreleased)
+    # cuda-quantum; --no-deps bypasses the `cudaq` resolver (only needed for
+    # released installs) since cuda-quantum + numpy + scipy are already
+    # provided.
+    $python -m pip install --find-links /cudaq-wheels "cuda-quantum-cu${cuda_major}==${cudaq_version}"
+    $python -m pip install --no-deps --find-links /wheels "cudaq-algorithms==${algorithms_version}"
+else
+    # Help CUDA detection in CPU-only validation jobs.
+    $python -m pip install --extra-index-url https://pypi.nvidia.com/ "cuda_toolkit[cudart]==${cuda_version}.*" || true
+    # PyPI mode installs the wheel with full deps so `cudaq` resolves a
+    # released cuda-quantum.
+    $python -m pip install --find-links /wheels --extra-index-url https://pypi.nvidia.com/ "cudaq-algorithms==${algorithms_version}"
 fi
 
-# Help the metapackage detect CUDA major version in CPU-only validation jobs.
-$python -m pip install --extra-index-url https://pypi.nvidia.com/ "cuda_toolkit[cudart]==${cuda_version}.*" || true
-
-$python -m pip install "${find_links[@]}" "cudaq-algorithms==${algorithms_version}"
 $python -c "import cudaq_algorithms"
 
-package_installed=$($python -m pip list | awk '/cudaq-algorithms-cu/ {print $1; exit}')
-package_expected=cudaq-algorithms-cu${cuda_major}
-if [[ "$package_installed" != "$package_expected" ]]; then
-    echo "::error Expected installation of $package_expected package, but got $package_installed." >&2
+# Use `pip show` (exits 0/1) rather than piping `pip list` into grep -q: a
+# quitting grep closes the pipe, pip takes SIGPIPE, and pipefail would turn a
+# successful match into a false "not installed".
+if ! $python -m pip show cudaq-algorithms >/dev/null 2>&1; then
+    echo "::error cudaq-algorithms is not installed." >&2
+    exit 1
+fi
+if ! $python -m pip show "cuda-quantum-cu${cuda_major}" >/dev/null 2>&1; then
+    echo "::error Expected cuda-quantum-cu${cuda_major} to be installed." >&2
     exit 1
 fi
 
