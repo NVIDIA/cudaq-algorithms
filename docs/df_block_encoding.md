@@ -16,6 +16,8 @@ dense-reference test suite (`tests/python/test_df_encoding.py`) stays in
 CI, so the example is held to library-grade correctness.
 
 ```python
+import sys
+sys.path.insert(0, "examples/bring_your_own_encoding")  # from the repo root, or copy the file
 from df_encoding import DoubleFactorizedEncoding   # the example module
 from cudaq_algorithms import Walk, QSVT
 from cudaq_algorithms import double_factorization as df

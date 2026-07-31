@@ -19,6 +19,7 @@ of ``cudaq_algorithms.chemistry``), entirely in NumPy, so these tests
 need no compiled extension and no external chemistry package.
 """
 
+import math
 import pathlib
 import sys
 
@@ -504,3 +505,33 @@ def test_single_ancilla_negative_sign_select():
     ket = random_ket(1 << encoding.num_system)
     block = encoded_block(encoding, encoding.encode_kernel(), ket)
     np.testing.assert_allclose(block, -ket, atol=1e-10)  # constant/alpha = -1
+
+
+# ----------------------------------------------------------------------
+# Pins for the example's inlined helper copies (the package keeps private
+# twins; these mirror the package-side tests so the copies cannot silently
+# diverge on load-bearing behavior).
+# ----------------------------------------------------------------------
+
+
+def test_example_prepare_angles_keep_tiny_sibling_terms():
+    # Mirror of test_pauli_lcu.test_prepare_angles_keep_tiny_sibling_terms
+    # against the example's inlined copy: the zero-subtree guard must fire
+    # only for exact-zero (padded) subtrees; two retained sibling terms whose
+    # combined probability is below any threshold still split 50/50.
+    from df_encoding import _prepare_angles
+    kept = [2e-12, 2e-12, 1e6]
+    total = sum(kept)
+    probabilities = [c / total for c in kept] + [0.0]
+    angles = _prepare_angles(probabilities)
+    assert angles[1] == pytest.approx(2.0 * math.asin(math.sqrt(0.5)))
+    # Exact-zero padding subtrees still produce zero rotations.
+    assert _prepare_angles([0.5, 0.5, 0.0, 0.0])[2] == 0.0
+
+
+def test_walk_kernel_rejects_negative_power():
+    # Pins the example's inlined _validate_power (mirrors the package twin).
+    one_body, eri = random_system(7)
+    encoding = DoubleFactorizedEncoding(one_body, eri)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        encoding.walk_kernel(power=-1)
