@@ -7,11 +7,20 @@
 # ============================================================================ #
 """DoubleFactorizedEncoding: correctness against dense fermionic references.
 
+The encoding under test is the bring-your-own-encoding example
+(``examples/bring_your_own_encoding/df_encoding.py``) — a complete
+``BlockEncoding`` implemented outside the package against the public API.
+Keeping its dense-reference suite in CI both validates the example and
+pins the ``BlockEncoding`` protocol from a consumer's perspective.
+
 The reference Hamiltonian is built from dense Jordan-Wigner ladder
 operators (interleaved spins, qubit 0 least significant — the convention
 of ``cudaq_algorithms.chemistry``), entirely in NumPy, so these tests
 need no compiled extension and no external chemistry package.
 """
+
+import pathlib
+import sys
 
 import numpy as np
 import pytest
@@ -21,7 +30,13 @@ import cudaq
 import cudaq_algorithms as algorithms
 from cudaq_algorithms import BlockEncoding, PhaseSequence, QSVT, Walk
 from cudaq_algorithms.common_kernels import state_from
-from cudaq_algorithms.df_encoding import DoubleFactorizedEncoding
+
+# The encoding lives in the examples tree, not the package (CUDA-Q kernels
+# need real .py files, so a plain path-based import works).
+_EXAMPLE_DIR = (pathlib.Path(__file__).resolve().parents[2] / "examples" /
+                "bring_your_own_encoding")
+sys.path.insert(0, str(_EXAMPLE_DIR))
+from df_encoding import DoubleFactorizedEncoding
 
 df = algorithms.double_factorization
 

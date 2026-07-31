@@ -5,13 +5,20 @@
 # This source code and the accompanying materials are made available under     #
 # the terms of the Apache License 2.0 which accompanies this distribution.     #
 # ============================================================================ #
-"""The double-factorized block encoding, head to head with a flat PauliLCU.
+"""A user-written block encoding, head to head with the built-in PauliLCU.
+
+The point of this example pair: ``DoubleFactorizedEncoding`` is *not* part
+of the package — it lives next door in ``df_encoding.py``, implemented
+against the public ``BlockEncoding`` protocol only. Because the protocol is
+structural, the same ``Walk`` consumer drives the user-written encoding and
+the built-in ``PauliLCU`` identically.
 
 Builds a random two-orbital electronic-structure system (symmetric one-body
 matrix, positive-semidefinite chemist ERI), block-encodes it two ways —
 
-  * ``DoubleFactorizedEncoding``: frames of ancilla-controlled Z words
-    conjugated by uncontrolled Givens networks (von Burg construction),
+  * ``DoubleFactorizedEncoding`` (from ``df_encoding.py`` beside this
+    script): frames of ancilla-controlled Z words conjugated by
+    uncontrolled Givens networks (von Burg construction),
   * ``PauliLCU`` of the same Hamiltonian's flat Pauli expansion —
 
 and compares the normalization ``alpha``, term counts, and circuit
@@ -24,13 +31,20 @@ Runs on the CPU statevector simulator; no compiled extension needed.
 from __future__ import annotations
 
 import itertools
+import pathlib
+import sys
 
 import numpy as np
 
 import cudaq
 
-from cudaq_algorithms import DoubleFactorizedEncoding, PauliLCU, Walk
+from cudaq_algorithms import PauliLCU, Walk
 from cudaq_algorithms import double_factorization as df
+
+# The encoding under demonstration is a sibling example file, not a package
+# module (CUDA-Q kernels need real .py files, so a plain import is fine).
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from df_encoding import DoubleFactorizedEncoding
 
 cudaq.set_target("qpp-cpu")
 

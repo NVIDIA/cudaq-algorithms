@@ -1,14 +1,23 @@
-# Double-Factorized Block Encoding
+# Double-Factorized Block Encoding (bring-your-own-encoding example)
 
-`cudaq_algorithms.DoubleFactorizedEncoding` block-encodes the
+`DoubleFactorizedEncoding` block-encodes the
 electronic-structure Hamiltonian directly from its double-factorized
 integrals (von Burg et al., *PRX Quantum* **2**, 030305 (2021);
 [arXiv:2007.14460](https://arxiv.org/abs/2007.14460)), instead of first
 expanding it into Pauli words. It satisfies the same `BlockEncoding`
 protocol as `PauliLCU`, so `Walk` and `QSVT` consume it unchanged.
 
+It is intentionally **not part of the package**: it lives at
+[`examples/bring_your_own_encoding/df_encoding.py`](../examples/bring_your_own_encoding/df_encoding.py)
+as the worked, full-scale demonstration that the `BlockEncoding` protocol
+is structural — a complete encoding implemented outside the library,
+against the public API only, plugs into every consumer. Its
+dense-reference test suite (`tests/python/test_df_encoding.py`) stays in
+CI, so the example is held to library-grade correctness.
+
 ```python
-from cudaq_algorithms import DoubleFactorizedEncoding, Walk, QSVT
+from df_encoding import DoubleFactorizedEncoding   # the example module
+from cudaq_algorithms import Walk, QSVT
 from cudaq_algorithms import double_factorization as df
 
 factorization = df.compressed_double_factorization(eri, num_leaves=T)
@@ -92,7 +101,7 @@ where the qubits are Z positions *in that frame's rotated basis*).
 
 ## Example
 
-[`examples/double_factorization/df_block_encoding.py`](../examples/double_factorization/df_block_encoding.py)
+[`examples/bring_your_own_encoding/df_block_encoding.py`](../examples/bring_your_own_encoding/df_block_encoding.py)
 builds a small system, compares `DoubleFactorizedEncoding` with a
 `PauliLCU` of the same Hamiltonian (alpha, term count, structure), sweeps
 factorization truncation, and measures Chebyshev moments through the

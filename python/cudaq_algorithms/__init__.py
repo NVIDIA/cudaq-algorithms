@@ -33,12 +33,11 @@ def _resolve_version() -> str:
 __version__ = _resolve_version()
 del _resolve_version
 
-from . import (block_encoding, chemistry, common_kernels, df_encoding,
-               double_factorization, fermion, pauli_lcu, qsvt, qubitization,
-               sim_utils, stateprep, trotter)
+from . import (block_encoding, chemistry, common_kernels, double_factorization,
+               fermion, pauli_lcu, qsvt, qubitization, sim_utils, stateprep,
+               trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
-from .df_encoding import DoubleFactorizedEncoding
 from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
@@ -49,3 +48,8 @@ from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 # (cudaq_algorithms.pauli_lcu.prepare, .select, .apply_phase_sequence, ...;
 # cudaq_algorithms.common_kernels.reflect_about_zero, .signal_phase, ...):
 # their names are too generic to export from the package root.
+#
+# The double-factorized encoding (DoubleFactorizedEncoding) is not part of
+# the package: it lives in examples/bring_your_own_encoding/df_encoding.py
+# as the worked demonstration of implementing the BlockEncoding protocol
+# against the public API (dense-validated by tests/python/test_df_encoding.py).
