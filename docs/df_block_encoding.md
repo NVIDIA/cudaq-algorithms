@@ -7,12 +7,12 @@ integrals (von Burg et al., *PRX Quantum* **2**, 030305 (2021);
 expanding it into Pauli words. It satisfies the same `BlockEncoding`
 protocol as `PauliLCU`, so `Walk` and `QSVT` consume it unchanged.
 
-It is intentionally **not part of the package**: it lives at
+It ships as a runnable example —
 [`examples/bring_your_own_encoding/df_encoding.py`](../examples/bring_your_own_encoding/df_encoding.py)
-as the worked, full-scale demonstration that the `BlockEncoding` protocol
-is structural — a complete encoding implemented outside the library,
-against the public API only, plugs into every consumer. Its
-dense-reference test suite (`tests/python/test_df_encoding.py`) stays in
+— and doubles as the worked, full-scale demonstration that the
+`BlockEncoding` protocol is structural: implement the protocol's surface
+against the public API and every consumer accepts the encoding. Its
+dense-reference test suite (`tests/python/test_df_encoding.py`) runs in
 CI, so the example is held to library-grade correctness.
 
 ```python

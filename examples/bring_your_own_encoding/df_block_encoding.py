@@ -7,11 +7,11 @@
 # ============================================================================ #
 """A user-written block encoding, head to head with the built-in PauliLCU.
 
-The point of this example pair: ``DoubleFactorizedEncoding`` is *not* part
-of the package — it lives next door in ``df_encoding.py``, implemented
-against the public ``BlockEncoding`` protocol only. Because the protocol is
-structural, the same ``Walk`` consumer drives the user-written encoding and
-the built-in ``PauliLCU`` identically.
+The encoding here is user-level code: ``df_encoding.py`` next door
+implements ``DoubleFactorizedEncoding`` against the public
+``BlockEncoding`` protocol. Because the protocol is structural, the same
+``Walk`` consumer drives the user-written encoding and the built-in
+``PauliLCU`` identically.
 
 Builds a random two-orbital electronic-structure system (symmetric one-body
 matrix, positive-semidefinite chemist ERI), block-encodes it two ways —

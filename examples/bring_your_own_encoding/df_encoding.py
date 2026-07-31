@@ -14,8 +14,8 @@ the documented kernel factories (``prepare_kernel``, ``apply_kernel``,
 ``walk_step_kernel``, the controlled/adjoint variants, ...) plugs into
 qubitization and QSVT unchanged. This example is a full-scale
 demonstration: a *double-factorized* encoding of the electronic-structure
-Hamiltonian, implemented outside the package against the public API only,
-and validated against an independent dense reference by
+Hamiltonian, built entirely on the public ``cudaq_algorithms`` API and
+validated against an independent dense reference by
 ``tests/python/test_df_encoding.py``. Use it as the template for writing
 your own encoding; ``df_block_encoding.py`` in this directory drives it
 head to head with the built-in ``PauliLCU`` through the same ``Walk``.
@@ -92,9 +92,10 @@ __all__ = [
 ]
 
 # ----------------------------------------------------------------------
-# Small host-side helpers, inlined so the example depends only on the
-# public package surface (the library keeps private twins of these; the
-# dense-reference tests pin both to the same behavior).
+# Small host-side helpers (input guard + state-preparation angle tree),
+# kept local so this file is self-contained on the public
+# ``cudaq_algorithms`` surface and can be copied wholesale as the
+# starting point for a new encoding.
 # ----------------------------------------------------------------------
 
 

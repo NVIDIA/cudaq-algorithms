@@ -9,9 +9,9 @@
 
 The encoding under test is the bring-your-own-encoding example
 (``examples/bring_your_own_encoding/df_encoding.py``) — a complete
-``BlockEncoding`` implemented outside the package against the public API.
-Keeping its dense-reference suite in CI both validates the example and
-pins the ``BlockEncoding`` protocol from a consumer's perspective.
+``BlockEncoding`` built on the public API. Keeping its dense-reference
+suite in CI both validates the example and pins the ``BlockEncoding``
+protocol from a consumer's perspective.
 
 The reference Hamiltonian is built from dense Jordan-Wigner ladder
 operators (interleaved spins, qubit 0 least significant — the convention
@@ -32,8 +32,8 @@ import cudaq_algorithms as algorithms
 from cudaq_algorithms import BlockEncoding, PhaseSequence, QSVT, Walk
 from cudaq_algorithms.common_kernels import state_from
 
-# The encoding lives in the examples tree, not the package (CUDA-Q kernels
-# need real .py files, so a plain path-based import works).
+# The encoding under test is the bring-your-own-encoding example (CUDA-Q
+# kernels need real .py files, so a plain path-based import works).
 _EXAMPLE_DIR = (pathlib.Path(__file__).resolve().parents[2] / "examples" /
                 "bring_your_own_encoding")
 sys.path.insert(0, str(_EXAMPLE_DIR))

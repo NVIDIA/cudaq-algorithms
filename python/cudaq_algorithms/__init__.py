@@ -49,7 +49,7 @@ from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 # cudaq_algorithms.common_kernels.reflect_about_zero, .signal_phase, ...):
 # their names are too generic to export from the package root.
 #
-# The double-factorized encoding (DoubleFactorizedEncoding) is not part of
-# the package: it lives in examples/bring_your_own_encoding/df_encoding.py
-# as the worked demonstration of implementing the BlockEncoding protocol
-# against the public API (dense-validated by tests/python/test_df_encoding.py).
+# A worked, full-scale implementation of the BlockEncoding protocol — the
+# double-factorized encoding — ships as a runnable example at
+# examples/bring_your_own_encoding/df_encoding.py (dense-validated by
+# tests/python/test_df_encoding.py).
