@@ -104,7 +104,24 @@ where the qubits are Z positions *in that frame's rotated basis*).
 ## Example
 
 [`examples/bring_your_own_encoding/df_block_encoding.py`](../examples/bring_your_own_encoding/df_block_encoding.py)
-builds a small system, compares `DoubleFactorizedEncoding` with a
-`PauliLCU` of the same Hamiltonian (alpha, term count, structure), sweeps
-factorization truncation, and measures Chebyshev moments through the
-shared `Walk` consumer.
+runs the encoding on real molecules (integrals from PySCF —
+`pip install pyscf`), across a menu of configurations:
+
+```
+python3 df_block_encoding.py [config]
+
+h2         H2 / STO-3G           2 orbitals ->  4 system qubits  (default)
+h2o-cas44  H2O / STO-3G CAS(4,4) 4 orbitals ->  8 system qubits
+h4         linear H4 / STO-3G    4 orbitals ->  8 system qubits
+lih        LiH / STO-3G          6 orbitals -> 12 system qubits
+h2o        H2O / STO-3G          7 orbitals -> 14 system qubits
+h2o-631g   H2O / 6-31G          13 orbitals -> 26 system qubits
+```
+
+Every configuration compares `DoubleFactorizedEncoding` with a `PauliLCU`
+of the same Hamiltonian (alpha, term count, structure) and sweeps the
+factorization-truncation dial. Small configurations additionally verify
+the encoded block against a sparse Jordan-Wigner reference and measure
+Chebyshev moments through the shared `Walk` consumer; large ones report
+the statevector cost and tell the classical scaling story instead (at
+H2O/6-31G the DF alpha is ~32% below the flat expansion's).
