@@ -27,12 +27,15 @@ Integrals come from PySCF (``pip install pyscf``) via
 
 Every configuration tells the classical story: double-factorize the ERI,
 compare the DF encoding's normalization ``alpha`` and term count against
-the flat Pauli-expansion ``PauliLCU`` baseline, and sweep the truncation
-dial (fewer leaves -> smaller alpha; the knob the flat expansion does not
-have). Small configurations also run the circuits: the encoded block is
-checked against a sparse Jordan-Wigner reference Hamiltonian, and the same
-``Walk`` consumer measures Chebyshev moments through both encodings.
-Larger configurations skip circuit execution (statevector cost is printed)
+the flat Pauli-expansion ``PauliLCU`` baseline, sweep the truncation dial
+(fewer leaves -> smaller alpha; the knob the flat expansion does not
+have), and then re-optimize the kept leaves with RC-DF at the same
+budgets (``compressed_double_factorization`` with a small ridge) -- the
+second dial: optimize, don't just truncate. Small configurations also
+run the circuits: the encoded block is checked against a sparse
+Jordan-Wigner reference Hamiltonian, and the same ``Walk`` consumer
+measures Chebyshev moments through both encodings. Larger configurations
+skip circuit execution (statevector cost is printed)
 -- the classical preprocessing scales; the simulator is what does not.
 ``lih`` sits on the boundary: pass ``--circuits`` to run it anyway
 (hours on a typical CPU).
@@ -139,6 +142,7 @@ CONFIGS = {
         "label": "H2O / 6-31G (full space)",
         "build": lambda: _full_space(_H2O_GEOMETRY, "6-31g"),
         "mode": "classical",
+        "cdf": False,  # L-BFGS at 13 orbitals is a coffee break, not a demo
     },
 }
 
@@ -260,6 +264,60 @@ def run(key: str, force_circuits: bool):
     check("truncation error is non-increasing in leaves",
           all(a >= b - 1e-9 for a, b in zip(errors, errors[1:])))
     check("full-rank X-DF reconstructs the ERI exactly", errors[-1] < 1e-8)
+
+    # RC-DF: the other dial. X-DF truncation keeps the FIRST leaves of an
+    # exact factorization; C-DF re-optimizes the leaves you keep (L-BFGS
+    # over the rotations, closed-form cores) for the same budget. The small
+    # ridge (regularization=1e-4, i.e. RC-DF) matters: unregularized C-DF
+    # can exploit gauge freedom to fit better with ENORMOUS core entries --
+    # alpha blows up by orders of magnitude -- the pathology the
+    # regularized variant exists to prevent.
+    if config.get("cdf", True):
+        if n <= 4:
+            budgets = sorted(
+                {max(1, round(total * f))
+                 for f in (0.25, 0.5, 0.75)} - {total})
+        else:
+            budgets = [max(1, round(total / 3))]  # L-BFGS gets expensive
+        print("\n  RC-DF at the same leaf budgets (optimize the kept "
+              "leaves, don't just truncate):")
+        wins = []
+        for leaves in budgets:
+            truncated = df.explicit_double_factorization(eri,
+                                                         max_num_leaves=leaves)
+            xdf_error = df.factorization_error(eri, truncated)
+            compressed = df.compressed_double_factorization(
+                eri,
+                num_leaves=leaves,
+                regularization=1e-4,
+                max_iterations=300)
+            cdf_error = df.factorization_error(eri, compressed)
+            cdf_alpha = DoubleFactorizedEncoding(one_body, compressed).alpha
+            ratio = xdf_error / max(cdf_error, 1e-16)
+            if cdf_error < 1e-10:
+                better = "exact fit"
+            elif ratio >= 1.0:
+                better = f"{ratio:.1f}x better"
+            else:
+                # Near full rank the truncation error is already ~ the
+                # ridge scale, so the regularization bias dominates: the
+                # ridge trades a small fit penalty for bounded cores
+                # (sane alpha). The win to assert is at AGGRESSIVE budgets.
+                better = f"{1.0 / ratio:.1f}x worse (ridge bias; X-DF "\
+                         "already near-exact here)"
+            if xdf_error > 1e-2:
+                wins.append(cdf_error <= xdf_error * 1.001 + 1e-12)
+            print(f"    {leaves:3d} leaves: X-DF error {xdf_error:.2e}  "
+                  f"RC-DF error {cdf_error:.2e}  ({better}), "
+                  f"RC-DF alpha = {cdf_alpha:.4f}")
+        check(
+            "RC-DF fits at least as well wherever truncation error is "
+            "still significant",
+            bool(wins) and all(wins))
+    else:
+        print("\n  RC-DF comparison skipped at this size (the L-BFGS "
+              "optimization is the expensive path; see "
+              "examples/double_factorization/).")
 
     # --- circuit story (size-gated) ---------------------------------------
     mode = config["mode"]
