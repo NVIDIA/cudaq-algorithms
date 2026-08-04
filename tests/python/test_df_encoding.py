@@ -530,8 +530,12 @@ def test_example_prepare_angles_keep_tiny_sibling_terms():
 
 
 def test_walk_kernel_rejects_negative_power():
-    # Pins the example's inlined _validate_power (mirrors the package twin).
+    # Pins the example's inlined _validate_power (mirrors the package twin):
+    # both rejection branches, so a copy "simplified" to int(power) plus a
+    # negativity check cannot silently truncate fractional powers.
     one_body, eri = random_system(7)
     encoding = DoubleFactorizedEncoding(one_body, eri)
     with pytest.raises(ValueError, match="non-negative integer"):
         encoding.walk_kernel(power=-1)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        encoding.walk_kernel(power=1.5)

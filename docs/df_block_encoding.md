@@ -121,11 +121,11 @@ h2o-631g   H2O / 6-31G          13 orbitals -> 26 system qubits
 ```
 
 Every configuration compares `DoubleFactorizedEncoding` with a `PauliLCU`
-of the same Hamiltonian (alpha, term count, structure), sweeps the
-factorization-truncation dial, and re-optimizes the kept leaves with
-RC-DF at the same budgets (the second dial: optimize, don't just
-truncate -- with a small ridge so the optimizer cannot trade a huge
-one-norm for fit). Small configurations additionally verify
+of the same Hamiltonian (alpha, term count, structure) and sweeps the
+factorization-truncation dial; all but the largest also re-optimize the
+kept leaves with RC-DF at the same budgets (the second dial: optimize,
+don't just truncate -- with a small ridge so the optimizer cannot trade a
+huge one-norm for fit). Small configurations additionally verify
 the encoded block against a sparse Jordan-Wigner reference and measure
 Chebyshev moments through the shared `Walk` consumer; large ones report
 the statevector cost and tell the classical scaling story instead (at

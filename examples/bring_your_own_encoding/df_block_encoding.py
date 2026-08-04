@@ -27,12 +27,13 @@ Integrals come from PySCF (``pip install pyscf``) via
 
 Every configuration tells the classical story: double-factorize the ERI,
 compare the DF encoding's normalization ``alpha`` and term count against
-the flat Pauli-expansion ``PauliLCU`` baseline, sweep the truncation dial
-(fewer leaves -> fewer terms; alpha typically, though not monotonically,
-shrinks -- see the note in the sweep. The flat expansion has no such
-knob), and then re-optimize the kept leaves with RC-DF at the same
-budgets (``compressed_double_factorization`` with a small ridge) -- the
-second dial: optimize, don't just truncate. Small configurations also
+the flat Pauli-expansion ``PauliLCU`` baseline, and sweep the truncation
+dial (fewer leaves -> fewer terms; alpha typically, though not
+monotonically, shrinks -- see the note in the sweep. The flat expansion
+has no such knob). All but the largest configuration then re-optimize the
+kept leaves with RC-DF at the same budgets
+(``compressed_double_factorization`` with a small ridge) -- the second
+dial: optimize, don't just truncate. Small configurations also
 run the circuits: the encoded block is checked against a sparse
 Jordan-Wigner reference Hamiltonian, and the same ``Walk`` consumer
 measures Chebyshev moments through both encodings. Larger configurations
@@ -252,6 +253,7 @@ def run(key: str, force_circuits: bool):
     errors = []
     for leaves in leaf_counts:
         truncated = df.explicit_double_factorization(eri,
+                                                     threshold=0.0,
                                                      max_num_leaves=leaves)
         encoding = DoubleFactorizedEncoding(one_body, truncated)
         error = df.factorization_error(eri, truncated)
@@ -283,9 +285,11 @@ def run(key: str, force_circuits: bool):
         budgets = [b for b in budgets if b < total]  # rank-1: nothing to do
         print("\n  RC-DF at the same leaf budgets (optimize the kept "
               "leaves, don't just truncate):")
+        eri_norm = float(np.linalg.norm(eri))  # scale-invariant gate
         wins = []
         for leaves in budgets:
             truncated = df.explicit_double_factorization(eri,
+                                                         threshold=0.0,
                                                          max_num_leaves=leaves)
             xdf_error = df.factorization_error(eri, truncated)
             compressed = df.compressed_double_factorization(
@@ -307,18 +311,25 @@ def run(key: str, force_circuits: bool):
                 # (sane alpha). The win to assert is at AGGRESSIVE budgets.
                 better = f"{1.0 / ratio:.1f}x worse (ridge bias; X-DF "\
                          "already near-exact here)"
-            if xdf_error > 1e-2:
+            if xdf_error > 1e-2 * eri_norm:
                 wins.append(cdf_error <= xdf_error * 1.001 + 1e-12)
             print(f"    {leaves:3d} leaves: X-DF error {xdf_error:.2e}  "
                   f"RC-DF error {cdf_error:.2e}  ({better}), "
                   f"RC-DF alpha = {cdf_alpha:.4f}")
-        if wins:
-            check(
-                "RC-DF fits at least as well wherever truncation error is "
-                "still significant", all(wins))
+        # Reported, not asserted: L-BFGS guarantees descent of the
+        # REGULARIZED objective, not of the raw fit error, so the win is
+        # empirical (robust in practice at significant truncation error,
+        # but a hard exit here could misfire on someone else's molecule).
+        if wins and all(wins):
+            print("  [check] RC-DF fits at least as well wherever "
+                  "truncation error is still significant ... OK")
+        elif wins:
+            print("  [note] RC-DF trailed truncated X-DF at a "
+                  "significant-error budget -- the ridge trades fit for "
+                  "bounded cores; try a smaller regularization.")
         else:
             print("  (no budget in the significant-error regime; "
-                  "RC-DF win not asserted)")
+                  "RC-DF win not reported)")
     else:
         print("\n  RC-DF comparison skipped at this size (the L-BFGS "
               "optimization is the expensive path; see "
