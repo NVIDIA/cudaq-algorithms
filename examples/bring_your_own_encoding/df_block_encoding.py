@@ -28,8 +28,9 @@ Integrals come from PySCF (``pip install pyscf``) via
 Every configuration tells the classical story: double-factorize the ERI,
 compare the DF encoding's normalization ``alpha`` and term count against
 the flat Pauli-expansion ``PauliLCU`` baseline, sweep the truncation dial
-(fewer leaves -> smaller alpha; the knob the flat expansion does not
-have), and then re-optimize the kept leaves with RC-DF at the same
+(fewer leaves -> fewer terms; alpha typically, though not monotonically,
+shrinks -- see the note in the sweep. The flat expansion has no such
+knob), and then re-optimize the kept leaves with RC-DF at the same
 budgets (``compressed_double_factorization`` with a small ridge) -- the
 second dial: optimize, don't just truncate. Small configurations also
 run the circuits: the encoded block is checked against a sparse
@@ -279,6 +280,7 @@ def run(key: str, force_circuits: bool):
                  for f in (0.25, 0.5, 0.75)} - {total})
         else:
             budgets = [max(1, round(total / 3))]  # L-BFGS gets expensive
+        budgets = [b for b in budgets if b < total]  # rank-1: nothing to do
         print("\n  RC-DF at the same leaf budgets (optimize the kept "
               "leaves, don't just truncate):")
         wins = []
@@ -310,10 +312,13 @@ def run(key: str, force_circuits: bool):
             print(f"    {leaves:3d} leaves: X-DF error {xdf_error:.2e}  "
                   f"RC-DF error {cdf_error:.2e}  ({better}), "
                   f"RC-DF alpha = {cdf_alpha:.4f}")
-        check(
-            "RC-DF fits at least as well wherever truncation error is "
-            "still significant",
-            bool(wins) and all(wins))
+        if wins:
+            check(
+                "RC-DF fits at least as well wherever truncation error is "
+                "still significant", all(wins))
+        else:
+            print("  (no budget in the significant-error regime; "
+                  "RC-DF win not asserted)")
     else:
         print("\n  RC-DF comparison skipped at this size (the L-BFGS "
               "optimization is the expensive path; see "

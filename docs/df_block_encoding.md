@@ -78,8 +78,10 @@ construction it reproduces the LCU one-norm of
 alpha = |const| + sum_k |F_k| + sum_t ( sum_{k<l} |Z^t_kl| + 1/4 sum_k |Z^t_kk| )
 ```
 
-Compressing the factorization (fewer leaves) lowers `alpha` and the term
-count together — the knob a flat Pauli expansion does not have. Since
+Compressing the factorization (fewer leaves) shrinks the term count, and
+with it (typically, though not monotonically — dropping a leaf also
+reshapes the one-body singles absorbed into `kappa`) the `alpha` — the
+knob a flat Pauli expansion does not have. Since
 QSVT circuit depth for time evolution scales like `alpha * t`, the
 compression translates directly into shallower circuits, at the price of
 a spectrum shift bounded by the tensor reconstruction error.
@@ -108,7 +110,7 @@ runs the encoding on real molecules (integrals from PySCF —
 `pip install pyscf`), across a menu of configurations:
 
 ```
-python3 df_block_encoding.py [config]
+python3 df_block_encoding.py [config] [--circuits]
 
 h2         H2 / STO-3G           2 orbitals ->  4 system qubits  (default)
 h2o-cas44  H2O / STO-3G CAS(4,4) 4 orbitals ->  8 system qubits
