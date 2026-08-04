@@ -169,7 +169,8 @@ format written by Molpro, PySCF, Psi4, and Block/DMRG codes.
 `chemistry.from_fcidump` parses the *text* of such a file (the caller does
 the file I/O, so the parse stays pure and testable) and returns the
 `(one_body, eri, core_energy)` triple `qubit_hamiltonian` and
-`DoubleFactorizedEncoding` consume, already in chemist `(pq|rs)` notation
+the block encodings (including the `DoubleFactorizedEncoding` example)
+consume, already in chemist `(pq|rs)` notation
 over real spatial orbitals:
 
 ```python
@@ -179,7 +180,8 @@ from cudaq_algorithms import chemistry
 one_body, eri, core = chemistry.from_fcidump(
     Path("molecule.fcidump").read_text())
 h = chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=core)
-# or hand the same tensors to DoubleFactorizedEncoding(one_body, eri, ...)
+# or hand the same tensors to a block encoding, e.g. the
+# DoubleFactorizedEncoding example (examples/bring_your_own_encoding)
 ```
 
 The reader has no third-party dependency (pure text + NumPy) and fills the
