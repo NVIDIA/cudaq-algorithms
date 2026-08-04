@@ -236,7 +236,7 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
     ``(pq|rs)`` two-electron tensor (all eight symmetry partners of each
     stored record populated), and the scalar core/constant energy -- the
     ``(one_body, eri, core_energy)`` triple, in the exact convention
-    ``qubit_hamiltonian`` and ``DoubleFactorizedEncoding`` consume::
+    ``qubit_hamiltonian`` and the block encodings consume::
 
         one_body, eri, core = from_fcidump(text)
         hamiltonian = qubit_hamiltonian(one_body, eri, scalar_offset=core)

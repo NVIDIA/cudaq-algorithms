@@ -1,14 +1,25 @@
-# Double-Factorized Block Encoding
+# Double-Factorized Block Encoding (bring-your-own-encoding example)
 
-`cudaq_algorithms.DoubleFactorizedEncoding` block-encodes the
+`DoubleFactorizedEncoding` block-encodes the
 electronic-structure Hamiltonian directly from its double-factorized
 integrals (von Burg et al., *PRX Quantum* **2**, 030305 (2021);
 [arXiv:2007.14460](https://arxiv.org/abs/2007.14460)), instead of first
 expanding it into Pauli words. It satisfies the same `BlockEncoding`
 protocol as `PauliLCU`, so `Walk` and `QSVT` consume it unchanged.
 
+It ships as a runnable example —
+[`examples/bring_your_own_encoding/df_encoding.py`](../examples/bring_your_own_encoding/df_encoding.py)
+— and doubles as the worked, full-scale demonstration that the
+`BlockEncoding` protocol is structural: implement the protocol's surface
+against the public API and every consumer accepts the encoding. Its
+dense-reference test suite (`tests/python/test_df_encoding.py`) runs in
+CI, so the example is held to library-grade correctness.
+
 ```python
-from cudaq_algorithms import DoubleFactorizedEncoding, Walk, QSVT
+import sys
+sys.path.insert(0, "examples/bring_your_own_encoding")  # from the repo root, or copy the file
+from df_encoding import DoubleFactorizedEncoding   # the example module
+from cudaq_algorithms import Walk, QSVT
 from cudaq_algorithms import double_factorization as df
 
 factorization = df.compressed_double_factorization(eri, num_leaves=T)
@@ -67,8 +78,10 @@ construction it reproduces the LCU one-norm of
 alpha = |const| + sum_k |F_k| + sum_t ( sum_{k<l} |Z^t_kl| + 1/4 sum_k |Z^t_kk| )
 ```
 
-Compressing the factorization (fewer leaves) lowers `alpha` and the term
-count together — the knob a flat Pauli expansion does not have. Since
+Compressing the factorization (fewer leaves) shrinks the term count, and
+with it (typically, though not monotonically — dropping a leaf also
+reshapes the one-body singles absorbed into `kappa`) the `alpha` — the
+knob a flat Pauli expansion does not have. Since
 QSVT circuit depth for time evolution scales like `alpha * t`, the
 compression translates directly into shallower circuits, at the price of
 a spectrum shift bounded by the tensor reconstruction error.
@@ -92,8 +105,28 @@ where the qubits are Z positions *in that frame's rotated basis*).
 
 ## Example
 
-[`examples/double_factorization/df_block_encoding.py`](../examples/double_factorization/df_block_encoding.py)
-builds a small system, compares `DoubleFactorizedEncoding` with a
-`PauliLCU` of the same Hamiltonian (alpha, term count, structure), sweeps
-factorization truncation, and measures Chebyshev moments through the
-shared `Walk` consumer.
+[`examples/bring_your_own_encoding/df_block_encoding.py`](../examples/bring_your_own_encoding/df_block_encoding.py)
+runs the encoding on real molecules (integrals from PySCF —
+`pip install pyscf`), across a menu of configurations:
+
+```
+python3 df_block_encoding.py [config] [--circuits]
+
+h2         H2 / STO-3G           2 orbitals ->  4 system qubits  (default)
+h2o-cas44  H2O / STO-3G CAS(4,4) 4 orbitals ->  8 system qubits
+h4         linear H4 / STO-3G    4 orbitals ->  8 system qubits
+lih        LiH / STO-3G          6 orbitals -> 12 system qubits
+h2o        H2O / STO-3G          7 orbitals -> 14 system qubits
+h2o-631g   H2O / 6-31G          13 orbitals -> 26 system qubits
+```
+
+Every configuration compares `DoubleFactorizedEncoding` with a `PauliLCU`
+of the same Hamiltonian (alpha, term count, structure) and sweeps the
+factorization-truncation dial; all but the largest also re-optimize the
+kept leaves with RC-DF at the same budgets (the second dial: optimize,
+don't just truncate -- with a small ridge so the optimizer cannot trade a
+huge one-norm for fit). Small configurations additionally verify
+the encoded block against a sparse Jordan-Wigner reference and measure
+Chebyshev moments through the shared `Walk` consumer; large ones report
+the statevector cost and tell the classical scaling story instead (at
+H2O/6-31G the DF alpha is ~32% below the flat expansion's).

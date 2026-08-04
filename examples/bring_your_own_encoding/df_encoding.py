@@ -1,6 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Double-factorized block encoding: a ``BlockEncoding`` built from integrals.
+"""Bring your own block encoding: a complete, worked ``BlockEncoding``.
+
+``cudaq_algorithms`` consumers (``Walk``, ``QSVT``) are generic over the
+structural ``BlockEncoding`` protocol — no inheritance, no registration.
+Any object that exposes ``num_system`` / ``num_ancilla`` / ``alpha`` and
+the documented kernel factories (``prepare_kernel``, ``apply_kernel``,
+``walk_step_kernel``, the controlled/adjoint variants, ...) plugs into
+qubitization and QSVT unchanged. This example is a full-scale
+demonstration: a *double-factorized* encoding of the electronic-structure
+Hamiltonian, built entirely on the public ``cudaq_algorithms`` API and
+validated against an independent dense reference by
+``tests/python/test_df_encoding.py``. Use it as the template for writing
+your own encoding; ``df_block_encoding.py`` in this directory drives it
+head to head with the built-in ``PauliLCU`` through the same ``Walk``.
 
 Encodes the electronic-structure Hamiltonian directly from its
 double-factorized form (von Burg et al., PRX Quantum 2, 030305 (2021);
@@ -53,12 +66,13 @@ from numpy.typing import ArrayLike
 
 import cudaq
 
-from .block_encoding import Kernel
-from .common_kernels import _validate_power, reflect_about_zero
-from .double_factorization import (DoubleFactorization,
-                                   explicit_double_factorization)
-from .pauli_lcu import (_prepare_angles, controlled_reflect_about_prepare,
-                        prepare, reflect_about_prepare, unprepare)
+from cudaq_algorithms.block_encoding import Kernel
+from cudaq_algorithms.common_kernels import reflect_about_zero
+from cudaq_algorithms.double_factorization import (
+    DoubleFactorization, explicit_double_factorization)
+from cudaq_algorithms.pauli_lcu import (controlled_reflect_about_prepare,
+                                        prepare, reflect_about_prepare,
+                                        unprepare)
 
 __all__ = [
     "DoubleFactorizedEncoding",
@@ -71,6 +85,48 @@ __all__ = [
     "controlled_walk",
     "controlled_adjoint_walk",
 ]
+
+# ----------------------------------------------------------------------
+# Small host-side helpers (input guard + state-preparation angle tree),
+# kept local so this file is self-contained on the public
+# ``cudaq_algorithms`` surface and can be copied wholesale as the
+# starting point for a new encoding.
+# ----------------------------------------------------------------------
+
+
+def _validate_power(power: int) -> int:
+    """Require a non-negative integral walk power (no silent truncation)."""
+    steps = int(power)
+    if steps != power or steps < 0:
+        raise ValueError("power must be a non-negative integer")
+    return steps
+
+
+def _prepare_angles(probabilities) -> list[float]:
+    """Rotation angles for the binary state-preparation tree."""
+    n_leaves = len(probabilities)
+    if n_leaves & (n_leaves - 1):
+        raise ValueError("probability vector size must be a power of 2")
+    n_qubits = n_leaves.bit_length() - 1
+
+    angles = []
+    for layer in range(n_qubits):
+        step = n_leaves >> (layer + 1)
+        for node in range(1 << layer):
+            start = node * step * 2
+            total = sum(probabilities[start:start + 2 * step])
+            if total == 0.0:
+                # Exactly-zero subtree: only power-of-two padding, since
+                # every retained term contributes strictly positive
+                # probability. (A threshold here would zero the split of
+                # genuinely tiny sibling terms and silently encode a
+                # different operator.)
+                angles.append(0.0)
+            else:
+                right = sum(probabilities[start + step:start + 2 * step])
+                angles.append(2.0 * math.asin(math.sqrt(right / total)))
+    return angles
+
 
 # ============================================================================
 # Device kernels (module level, composable from user kernels)
