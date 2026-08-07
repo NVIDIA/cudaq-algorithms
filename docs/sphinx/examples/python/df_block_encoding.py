@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# [Begin Documentation]
 """A user-written block encoding on real molecules, vs the built-in PauliLCU.
 
 The encoding here is user-level code: ``df_encoding.py`` next door

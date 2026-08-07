@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# [Begin Documentation]
 """Bring your own block encoding: a complete, worked ``BlockEncoding``.
 
 ``cudaq_algorithms`` consumers (``Walk``, ``QSVT``) are generic over the

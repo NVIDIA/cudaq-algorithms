@@ -19,10 +19,11 @@ kernels (`pauli_lcu.prepare`, the select, and the walk) it exposes.
 The double-factorized block encoding vs a flat PauliLCU
 -------------------------------------------------------
 
-Builds a random two-orbital electronic-structure system, block-encodes it both
-with the structured double-factorized encoding and with a flat `PauliLCU`, and
-compares them on ancilla count and normalization `alpha` -- showing where the
-DF structure pays off.
+Runs the worked double-factorized encoding (the bring-your-own-encoding
+example ``df_encoding.py``, next to this script) head to head with a flat
+`PauliLCU` on real molecules from PySCF -- comparing alpha and term counts,
+sweeping the truncation dial, re-optimizing kept leaves with RC-DF, and
+verifying the encoded blocks against a sparse Jordan-Wigner reference.
 
 .. literalinclude:: ../examples/python/df_block_encoding.py
    :language: python

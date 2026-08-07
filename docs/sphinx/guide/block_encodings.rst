@@ -81,13 +81,22 @@ package root because their names are too generic to re-export.
 Hamiltonian directly from its double-factorized integrals (von Burg et al.,
 *PRX Quantum* **2**, 030305 (2021);
 `arXiv:2007.14460 <https://arxiv.org/abs/2007.14460>`_), instead of first
-expanding it into Pauli words. It satisfies the same
-:class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol as
-`PauliLCU`, so `Walk` and `QSVT` consume it unchanged:
+expanding it into Pauli words. It ships as a runnable example --
+``docs/sphinx/examples/python/df_encoding.py`` -- and doubles as the
+worked, full-scale demonstration that the
+:class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol is
+structural: implement the protocol's surface against the public API and
+every consumer accepts the encoding. Its dense-reference test suite
+(``tests/python/test_df_encoding.py``) runs in CI, so the example is held
+to library-grade correctness. `Walk` and `QSVT` consume it unchanged:
 
 .. code-block:: python
 
-   from cudaq_algorithms import DoubleFactorizedEncoding, Walk, QSVT
+   import sys
+   sys.path.insert(0, "docs/sphinx/examples/python")  # or copy the file
+   from df_encoding import DoubleFactorizedEncoding   # the example module
+
+   from cudaq_algorithms import Walk, QSVT
    from cudaq_algorithms import double_factorization as df
 
    factorization = df.compressed_double_factorization(eri, num_leaves=T)
@@ -175,11 +184,33 @@ Limitations
 Example
 ~~~~~~~
 
-`docs/sphinx/examples/python/df_block_encoding.py` builds a small system,
-compares `DoubleFactorizedEncoding` with a `PauliLCU` of the same
-Hamiltonian (alpha, term count, structure), sweeps factorization
-truncation, and measures Chebyshev moments through the shared `Walk`
-consumer.
+`docs/sphinx/examples/python/df_block_encoding.py` runs the encoding on
+real molecules (integrals from PySCF -- ``pip install pyscf``), across a
+menu of configurations::
+
+   python3 df_block_encoding.py [config] [--circuits]
+
+   h2         H2 / STO-3G           2 orbitals ->  4 system qubits  (default)
+   h2o-cas44  H2O / STO-3G CAS(4,4) 4 orbitals ->  8 system qubits
+   h4         linear H4 / STO-3G    4 orbitals ->  8 system qubits
+   lih        LiH / STO-3G          6 orbitals -> 12 system qubits
+   h2o        H2O / STO-3G          7 orbitals -> 14 system qubits
+   h2o-631g   H2O / 6-31G          13 orbitals -> 26 system qubits
+
+Every configuration compares `DoubleFactorizedEncoding` with a `PauliLCU`
+of the same Hamiltonian (alpha, term count, structure) and sweeps the
+factorization-truncation dial; all but the largest also re-optimize the
+kept leaves with RC-DF at the same budgets (the second dial: optimize,
+don't just truncate -- with a small ridge so the optimizer cannot trade a
+huge one-norm for fit). Small configurations additionally verify the
+encoded block against a sparse Jordan-Wigner reference and measure
+Chebyshev moments through the shared `Walk` consumer; large ones report
+the statevector cost and tell the classical scaling story instead (at
+H2O/6-31G the DF alpha is ~32% below the flat expansion's).
+
+Note that alpha is *not* guaranteed monotone in the leaf count -- dropping
+a leaf also reshapes the one-body singles absorbed into ``kappa`` -- while
+the tensor reconstruction error is (nested pivoted-Cholesky truncation).
 
 The ``BlockEncoding`` protocol
 ------------------------------

@@ -59,7 +59,7 @@ jobs:
               # The bring-your-own-encoding example is imported by
               # tests/python/test_df_encoding.py, so edits to it must run
               # the test suite like package source.
-              - 'examples/bring_your_own_encoding/**'
+              - 'docs/sphinx/examples/python/**'
               - 'scripts/test_algorithms_build.sh'
               - 'scripts/validation/**'
               - 'pyproject.toml'
@@ -69,7 +69,7 @@ jobs:
               - 'python/**'
               # The wheel test lane runs the same pytest suite from the
               # checkout, which imports the CI-tested example.
-              - 'examples/bring_your_own_encoding/**'
+              - 'docs/sphinx/examples/python/**'
               - '.github/actions/get-cudaq-wheels/**'
               - '.github/workflows/build_cudaq_wheels.yaml'
               - '.github/workflows/wheel_algorithms.yaml'

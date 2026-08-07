@@ -2,8 +2,8 @@
 Python API Reference
 ********************
 
-The object surface (``PauliLCU``, ``Walk``, ``QSVT``, ``Trotter``,
-``DoubleFactorizedEncoding``, ...) is re-exported from the package root
+The object surface (``PauliLCU``, ``Walk``, ``QSVT``, ``Trotter``, ...)
+is re-exported from the package root
 (``cudaq_algorithms.PauliLCU``); the composable device kernels stay in their
 module namespaces. Symbols are documented below at their defining module.
 
@@ -11,9 +11,6 @@ Block encodings
 ===============
 
 .. autoclass:: cudaq_algorithms.pauli_lcu.PauliLCU
-   :members:
-
-.. autoclass:: cudaq_algorithms.df_encoding.DoubleFactorizedEncoding
    :members:
 
 .. autoclass:: cudaq_algorithms.block_encoding.BlockEncoding

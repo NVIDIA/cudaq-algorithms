@@ -27,12 +27,19 @@ FCI reference is the slow part). Run: python3 04_double_factorization_and_the_pr
 from __future__ import annotations
 
 import os
+import pathlib
+import sys
 
 import cudaq
 
-from cudaq_algorithms import (BlockEncoding, DoubleFactorizedEncoding,
-                              PauliLCU, QSVT, Walk, chemistry)
+from cudaq_algorithms import (BlockEncoding, PauliLCU, QSVT, Walk, chemistry)
 from cudaq_algorithms import double_factorization as df
+
+# The double-factorized encoding is the worked BlockEncoding example that
+# lives beside this script (CUDA-Q kernels need real .py files, so a plain
+# path-based import works).
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from df_encoding import DoubleFactorizedEncoding
 
 
 def mean_field(atom: str, basis: str = "sto-3g"):

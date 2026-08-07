@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#                                                                              #
 # [Begin Documentation]
 """Explicit (X-DF) and compressed (C-DF) double factorization of the two-electron
 integrals, following Cohn, Motta, and Parrish, PRX Quantum 2, 040352 (2021).

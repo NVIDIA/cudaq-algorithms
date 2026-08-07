@@ -3,7 +3,7 @@
 """DoubleFactorizedEncoding: correctness against dense fermionic references.
 
 The encoding under test is the bring-your-own-encoding example
-(``examples/bring_your_own_encoding/df_encoding.py``) — a complete
+(``docs/sphinx/examples/python/df_encoding.py``) — a complete
 ``BlockEncoding`` built on the public API. Keeping its dense-reference
 suite in CI both validates the example and pins the ``BlockEncoding``
 protocol from a consumer's perspective.
@@ -29,8 +29,8 @@ from cudaq_algorithms.common_kernels import state_from
 
 # The encoding under test is the bring-your-own-encoding example (CUDA-Q
 # kernels need real .py files, so a plain path-based import works).
-_EXAMPLE_DIR = (pathlib.Path(__file__).resolve().parents[2] / "examples" /
-                "bring_your_own_encoding")
+_EXAMPLE_DIR = (pathlib.Path(__file__).resolve().parents[2] / "docs" /
+                "sphinx" / "examples" / "python")
 sys.path.insert(0, str(_EXAMPLE_DIR))
 from df_encoding import DoubleFactorizedEncoding
 

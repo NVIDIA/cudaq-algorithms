@@ -49,7 +49,8 @@ The caller does the file I/O, so the parse stays pure and testable:
     one_body, eri, core = chemistry.from_fcidump(
         Path("molecule.fcidump").read_text())
     h = chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=core)
-    # or hand the same tensors to DoubleFactorizedEncoding(one_body, eri, ...)
+    # or hand the same tensors to a block encoding, e.g. the
+    # DoubleFactorizedEncoding example (docs/sphinx/examples/python)
 
 The reader has no third-party dependency (pure text + NumPy) and fills the
 eight-fold index symmetry from the symmetry-unique records FCIDUMP stores.
@@ -242,8 +243,8 @@ Inserted before the transform, it is an **optional compression** of the
 `eri` tensor: reconstruct a truncated tensor with `reconstruct_eri` and
 feed it to `qubit_hamiltonian` in place of the exact one (see the chemistry
 bridge below). The double-factorized *block encoding* that consumes a
-factorization directly, `DoubleFactorizedEncoding`, lives on
-:doc:`block_encodings`.
+factorization directly -- the worked `DoubleFactorizedEncoding` example --
+is described on :doc:`block_encodings`.
 
 Convention
 ~~~~~~~~~~
@@ -426,8 +427,8 @@ ground-state shift at each truncation.
 
 .. seealso::
 
-   - :doc:`block_encodings` — the `DoubleFactorizedEncoding` block encoding
-     that consumes a factorization directly.
+   - :doc:`block_encodings` — the worked `DoubleFactorizedEncoding`
+     example encoding that consumes a factorization directly.
    - :doc:`state_prep` — references injected into the algorithm factories.
    - :doc:`../conventions` — integral-tensor conventions (qubit ordering,
      chemist notation, spin expansion).
