@@ -7,9 +7,10 @@ acting on a system register plus one or more ancilla (signal) qubits such
 that projecting the ancillas onto their zero state recovers the target
 operator up to a scalar:
 
-.. code-block:: text
+.. math::
 
-   <0|_anc U_A |0>_anc = H / alpha
+   \langle 0 |_{\mathrm{anc}} \, U_A \, | 0 \rangle_{\mathrm{anc}}
+   \;=\; H / \alpha
 
 Here ``alpha`` is the *subnormalization* (the encoding normalization): the
 flagged block implements ``H / alpha``, so ``alpha`` must be at least the
@@ -20,10 +21,11 @@ produced it. Everything below is pure-Python CUDA-Q kernels requiring only
 `cudaq` and numpy; qubit ordering, integral-tensor, and normalization
 conventions are collected in :doc:`../conventions`.
 
-Two encodings ship in the package — `PauliLCU` (from a Pauli sum) and
-`DoubleFactorizedEncoding` (from electronic-structure integrals) — and any
-object satisfying the structural :class:`cudaq_algorithms.block_encoding.BlockEncoding`
-protocol plugs into the same consumers.
+One encoding ships in the package — `PauliLCU` (from a Pauli sum) — and
+any object satisfying the structural
+:class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol plugs into
+the same consumers. A complete worked encoding (the double-factorized
+example, below) demonstrates the protocol at full scale.
 
 The block-encoding idea and ``PauliLCU``
 ----------------------------------------
@@ -73,144 +75,6 @@ These stages are available as composable, module-level device kernels
 inside user kernels, with ``enc.kernel_args`` supplying the flattened arrays
 they take as arguments. They live in the module namespace rather than the
 package root because their names are too generic to re-export.
-
-``DoubleFactorizedEncoding``
-----------------------------
-
-`DoubleFactorizedEncoding` block-encodes the electronic-structure
-Hamiltonian directly from its double-factorized integrals (von Burg et al.,
-*PRX Quantum* **2**, 030305 (2021);
-`arXiv:2007.14460 <https://arxiv.org/abs/2007.14460>`_), instead of first
-expanding it into Pauli words. It ships as a runnable example --
-``docs/sphinx/examples/python/df_encoding.py`` -- and doubles as the
-worked, full-scale demonstration that the
-:class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol is
-structural: implement the protocol's surface against the public API and
-every consumer accepts the encoding. Its dense-reference test suite
-(``tests/python/test_df_encoding.py``) runs in CI, so the example is held
-to library-grade correctness. `Walk` and `QSVT` consume it unchanged:
-
-.. code-block:: python
-
-   import sys
-   sys.path.insert(0, "docs/sphinx/examples/python")  # or copy the file
-   from df_encoding import DoubleFactorizedEncoding   # the example module
-
-   from cudaq_algorithms import Walk, QSVT
-   from cudaq_algorithms import double_factorization as df
-
-   factorization = df.compressed_double_factorization(eri, num_leaves=T)
-   encoding = DoubleFactorizedEncoding(one_body, factorization,
-                                       scalar_offset=nuclear_repulsion)
-
-   walk = Walk(encoding)                       # same consumers as PauliLCU
-   kernel = QSVT(encoding).kernel(sequence)
-
-``one_body`` is the ``(n, n)`` symmetric core-Hamiltonian matrix and the
-second argument is either a ``DoubleFactorization`` (truncation happens
-there — ``explicit_double_factorization`` /
-``compressed_double_factorization``) or a raw chemist-notation ``(pq|rs)``
-tensor, which is factorized exactly. Conventions (spatial orbitals,
-interleaved spins ``2p`` up / ``2p + 1`` down, Jordan-Wigner) match
-`cudaq_algorithms.chemistry`.
-
-Construction
-~~~~~~~~~~~~
-
-The factorized Hamiltonian is regrouped so that every term is *diagonal in
-some rotated orbital basis*:
-
-.. code-block:: text
-
-   H = const + sum_k F_k N_k  +  1/2 sum_t sum_kl Z^t_kl (N^t_k - 1)(N^t_l - 1)
-
-- **Frame 0** — the eigenbasis of the corrected one-body matrix ``kappa``
-  (raw integrals + the exchange correction ``-1/2 sum_r (pr|rq)`` + the
-  one-body remainder from centering the leaf number operators, all
-  evaluated on the *factorized* tensor, so a truncated factorization
-  encodes exactly its truncated Hamiltonian). Terms: one Z per spin
-  orbital, coefficient ``-F_k / 2``.
-- **Frames 1..T** — one per factorization leaf, in the leaf's eigenbasis
-  ``U^t``. Centering makes each leaf *pure ZZ*: coefficient ``Z_kl / 4`` per
-  spin pair for ``k < l``, plus one cross-spin ZZ of ``Z_kk / 4`` per
-  diagonal.
-
-SELECT walks through the frames: an **uncontrolled** Givens network rotates
-the system into the frame's basis, the frame's Z words execute
-**ancilla-controlled**, and the next segment rotates onward — with no
-control active the segments telescope to the identity, which is what makes
-the controlled variants cheap (only Z words and sign phases carry the
-control). Each spatial Givens rotation lifts to two three-qubit `exp_pauli`
-pairs (``XZY`` / ``YZX`` on contiguous slices), one per spin. PREPARE and
-the walk/QSVT composites are the same machinery `PauliLCU` uses.
-
-alpha and the published one-norm
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The subnormalization is the 1-norm of the encoded coefficients, and by
-construction it reproduces the LCU one-norm of
-``double_factorization.double_factorization_one_norm(..., "lcu")``
-(arXiv:2212.07957, Eq. 13) exactly, up to the identity term:
-
-.. code-block:: text
-
-   alpha = |const| + sum_k |F_k| + sum_t ( sum_{k<l} |Z^t_kl| + 1/4 sum_k |Z^t_kk| )
-
-Compressing the factorization (fewer leaves) lowers ``alpha`` and the term
-count together — the knob a flat Pauli expansion does not have. Since QSVT
-circuit depth for time evolution scales like ``alpha * t``, the compression
-translates directly into shallower circuits, at the price of a spectrum
-shift bounded by the tensor reconstruction error.
-
-Inspection
-~~~~~~~~~~
-
-`num_frames`, `num_givens_rotations`, `num_terms`, `constant_term`,
-`factorization`, and `terms` (as ``(coefficient, z_qubits, frame_index)``,
-where the qubits are Z positions *in that frame's rotated basis*).
-
-Limitations
-~~~~~~~~~~~
-
-- `select_observable` raises `NotImplementedError`: the odd-Chebyshev-moment
-  observable is LCU-specific (it needs computational-frame Pauli words).
-  Even moments (`Walk.moment` with even order) and every kernel factory work
-  unchanged. See :doc:`qubitization_qsvt` for the moment conventions.
-- The Givens networks are emitted sequentially (one rotation at a time);
-  merging adjacent exit/entry networks into a single relative rotation, and
-  parallel-scheduling commuting rotations, are documented future
-  circuit-level optimizations.
-
-Example
-~~~~~~~
-
-`docs/sphinx/examples/python/df_block_encoding.py` runs the encoding on
-real molecules (integrals from PySCF -- ``pip install pyscf``), across a
-menu of configurations::
-
-   python3 df_block_encoding.py [config] [--circuits]
-
-   h2         H2 / STO-3G           2 orbitals ->  4 system qubits  (default)
-   h2o-cas44  H2O / STO-3G CAS(4,4) 4 orbitals ->  8 system qubits
-   h4         linear H4 / STO-3G    4 orbitals ->  8 system qubits
-   lih        LiH / STO-3G          6 orbitals -> 12 system qubits
-   h2o        H2O / STO-3G          7 orbitals -> 14 system qubits
-   h2o-631g   H2O / 6-31G          13 orbitals -> 26 system qubits
-
-Every configuration compares `DoubleFactorizedEncoding` with a `PauliLCU`
-of the same Hamiltonian (alpha, term count, structure) and sweeps the
-factorization-truncation dial; all but the largest also re-optimize the
-kept leaves with RC-DF at the same budgets (the second dial: optimize,
-don't just truncate -- with a small ridge so the optimizer cannot trade a
-huge one-norm for fit). Small configurations additionally verify the
-encoded block against a sparse Jordan-Wigner reference and measure
-Chebyshev moments through the shared `Walk` consumer; large ones report
-the statevector cost and tell the classical scaling story instead (at
-H2O/6-31G the DF alpha is ~32% below the flat expansion's).
-
-Note that alpha is *not* guaranteed monotone in the leaf count -- dropping
-a leaf also reshapes the one-body singles absorbed into ``kappa`` -- while
-the tensor reconstruction error is (nested pivoted-Cholesky truncation).
 
 The ``BlockEncoding`` protocol
 ------------------------------
@@ -290,3 +154,36 @@ surface above — no base class, no registration. The worked example
 `docs/sphinx/examples/python/06_bring_your_own_encoding.py` implements a
 minimal `BlockEncoding` from scratch and runs it through the shared
 consumers, validating it against a dense reference.
+
+Bring your own encoding: the double-factorized example
+------------------------------------------------------
+
+The protocol's worked, full-scale demonstration is a *double-factorized*
+encoding of the electronic-structure Hamiltonian (von Burg et al., *PRX
+Quantum* **2**, 030305 (2021);
+`arXiv:2007.14460 <https://arxiv.org/abs/2007.14460>`_), implemented
+entirely against the public API as a runnable example --
+``docs/sphinx/examples/python/df_encoding.py``. Its dense-reference test
+suite (``tests/python/test_df_encoding.py``) runs in CI, so the example is
+held to library-grade correctness, and `Walk`/`QSVT` consume it unchanged:
+
+.. code-block:: python
+
+   import sys
+   sys.path.insert(0, "docs/sphinx/examples/python")  # or copy the file
+   from df_encoding import DoubleFactorizedEncoding   # the example module
+
+   from cudaq_algorithms import Walk, QSVT
+   from cudaq_algorithms import double_factorization as df
+
+   factorization = df.compressed_double_factorization(eri, num_leaves=T)
+   encoding = DoubleFactorizedEncoding(one_body, factorization,
+                                       scalar_offset=nuclear_repulsion)
+
+   walk = Walk(encoding)                       # same consumers as PauliLCU
+   kernel = QSVT(encoding).kernel(sequence)
+
+Use the example file as the template for writing your own encoding; the
+construction, its normalization, and a six-molecule benchmark against
+`PauliLCU` are documented with the example itself (see
+:doc:`../examples_rst/block_encodings`).

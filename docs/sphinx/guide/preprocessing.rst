@@ -131,61 +131,16 @@ Both accept an ``(n, n)`` one-body tensor, optionally with an
 the coefficients of ``adag_i a_j`` and ``adag_i adag_j a_k a_l`` over ``n``
 spin orbitals:
 
-.. code-block:: text
+.. math::
 
-    H = scalar_offset * I + sum h[i, j] adag_i a_j
-                          + sum V[i, j, k, l] adag_i adag_j a_k a_l
+   H \;=\; \texttt{scalar\_offset} \cdot I
+   \;+\; \sum_{ij} h_{ij} \, a_i^\dagger a_j
+   \;+\; \sum_{ijkl} V_{ijkl} \, a_i^\dagger a_j^\dagger a_k a_l
 
 `scalar_offset` is added as an identity term (e.g. nuclear repulsion);
 input entries and compiled terms below `tolerance` (default ``1e-15``) are
 dropped. The result is a `cudaq.SpinOperator`, ready for
 `PauliLCU`/`Walk`/`QSVT` or `Trotter`.
-
-One construction, two transforms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A fermion-to-qubit encoding is treated as a linear map over GF(2): an
-invertible binary matrix ``A`` stores the occupation vector ``n`` as qubit
-bits ``x = A n (mod 2)``. Jordan-Wigner is ``A = I``; Bravyi-Kitaev is the
-Fenwick (binary-indexed-tree) partial-sum matrix. Everything a ladder
-operator needs is derived from ``A`` and its GF(2) inverse as three qubit
-masks per mode — update (the X part), parity (the Z string carrying the
-anticommutation sign), and flip (the number-operator Z word) — and the
-Hamiltonian is compiled term by term in a symplectic (bitmask) Pauli
-algebra. The Bravyi-Kitaev words touch ``O(log n)`` qubits where
-Jordan-Wigner strings touch ``O(n)``.
-
-Semantics: tensors are compiled exactly as given
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Both transforms compile arbitrary coefficient tensors — no hermiticity or
-index-ordering symmetry is assumed, and the two transforms are guaranteed
-to encode the same fermionic operator (isospectral, pinned by tests). This
-is a deliberate difference from the retired C++ `bravyi_kitaev` this module
-replaced, which enumerated restricted index patterns and silently assumed a
-chemistry-canonical tensor ordering; tensors outside that form produced a
-wrong operator. The pure transforms have Jordan-Wigner's generic semantics
-for every input.
-
-Validation
-~~~~~~~~~~
-
-The test suite pins: Jordan-Wigner against dense ladder-operator matrices
-(including non-hermitian tensors); Bravyi-Kitaev against the exact
-per-pair operators and the H2 operator inherited from the retired C++
-implementation's unit tests; three-way spectral agreement (exact
-Fock-space diagonalization via sparse ladder operators vs. both transforms)
-on random Hamiltonians with physical symmetries at 4-10 qubits;
-isospectrality between the two encodings on unstructured tensors; and the
-``O(log n)`` word-weight advantage.
-
-Notes
-~~~~~
-
-- Cost scales with the number of nonzero tensor entries (16 Pauli-word
-  products each for two-body entries); a fully dense 14-spin-orbital tensor
-  compiles in seconds. Vectorizing the inner accumulation is documented
-  future work if larger dense tensors become routine.
 
 The chemistry bridge (spatial integrals to a qubit Hamiltonian)
 ---------------------------------------------------------------
@@ -252,9 +207,10 @@ over real spatial orbitals (8-fold symmetric), as an ``(n, n, n, n)`` array
 `eri` with ``eri[p, q, r, s] == (pq|rs)`` (e.g. from
 ``pyscf.ao2mo.restore("s1", ...)``). Double factorization writes
 
-.. code-block:: text
+.. math::
 
-    (pq|rs)  ~=  sum_t sum_{k,l} U^t_pk U^t_qk  Z^t_kl  U^t_rl U^t_sl
+   (pq|rs) \;\approx\; \sum_t \sum_{k,l}
+   U^t_{pk} U^t_{qk} \, Z^t_{kl} \, U^t_{rl} U^t_{sl}
 
 with orthogonal **leaf rotations** ``U^t`` (which compile into a
 Givens-rotation fabric) and symmetric **core** matrices ``Z^t``.

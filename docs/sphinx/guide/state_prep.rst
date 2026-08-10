@@ -287,17 +287,3 @@ Package conventions
 
 See :doc:`../conventions` for the library-wide qubit-ordering, Pauli-word,
 and integral-tensor conventions these build on.
-
-Testing
--------
-
-`tests/python/test_stateprep.py`, `test_stateprep_kernels.py`, and
-`test_operator_pools.py` pin the ansatz kernels and pools against the
-former compiled implementation (bit-identical circuits and operator
-coefficients). `test_stateprep_hf_ucc.py` validates the Hartree-Fock and
-fixed-parameter UCC surface against dense matrix exponentials of the
-operator pools, including open-shell occupations and input guards
-(injection through the primitives is covered by
-`test_state_prep_injection.py`); `test_stateprep_givens.py` (on
-the Givens branch) does the same for Slater determinants against dense
-`det(Q[S, :])` amplitudes.

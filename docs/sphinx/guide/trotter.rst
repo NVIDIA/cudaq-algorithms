@@ -52,14 +52,14 @@ primitives (`Walk.kernel(power=...)`, `QSVT.kernel(sequence)`).
 Product-formula orders
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-- `order=1` — first-order Trotter: one `exp(-i c_i t/steps P_i)` sweep per
-  step; error O(t^2 / steps).
+- `order=1` — first-order Trotter: one :math:`\exp(-i c_i (t/\mathrm{steps}) P_i)` sweep per
+  step; error :math:`O(t^2/\mathrm{steps})`.
 - `order=2` (default) — symmetric second-order (Strang) splitting: a
   half-angle forward sweep followed by a half-angle reverse sweep; error
-  O(t^3 / steps^2).
+  :math:`O(t^3/\mathrm{steps}^2)`.
 - `order=4` — Forest-Ruth fourth-order formula: three symmetric
   second-order sub-steps with time fractions `w1`, `w0`, `w1`; error
-  O(t^5 / steps^4).
+  :math:`O(t^5/\mathrm{steps}^4)`.
 
 The Forest-Ruth weights (`w1 = 1/(2 - 2^(1/3))`, `w0 = 1 - 2*w1`) are
 precomputed private module constants: CUDA-Q kernels cannot call host-only

@@ -48,11 +48,11 @@ Fermionic integral tensors
 `n` spin orbitals; tensors are coefficient arrays for normal-ordered
 ladder products, with **no implicit symmetry factors**:
 
-.. code-block:: text
+.. math::
 
-   H = scalar_offset * I
-       + sum_pq   h[p, q]       adag_p a_q
-       + sum_pqrs V[p, q, r, s] adag_p adag_q a_r a_s
+   H \;=\; \texttt{scalar\_offset} \cdot I
+   \;+\; \sum_{pq} h_{pq} \, a_p^\dagger a_q
+   \;+\; \sum_{pqrs} V_{pqrs} \, a_p^\dagger a_q^\dagger a_r a_s
 
 Any 1/2 factors from a chemist-notation source must already be folded
 into `V`. From a chemist `(pq|rs)` spatial tensor, the standard
@@ -73,10 +73,11 @@ tensors.
 Jordan-Wigner ladder operators
 -------------------------------
 
-.. code-block:: text
+.. math::
 
-   adag_j = 1/2 * Z_0 ... Z_{j-1} (X_j - i Y_j)
-   a_j    = 1/2 * Z_0 ... Z_{j-1} (X_j + i Y_j)
+   a_j^\dagger = \tfrac{1}{2} \, Z_0 \cdots Z_{j-1} \, (X_j - i Y_j),
+   \qquad
+   a_j = \tfrac{1}{2} \, Z_0 \cdots Z_{j-1} \, (X_j + i Y_j)
 
 Dense reference (with the qubit-0-least-significant kron ordering):
 annihilator `a_j` = ``Z^{⊗j} ⊗ [[0, 1], [0, 0]] ⊗ I^{⊗(m-j-1)}``,
@@ -85,7 +86,7 @@ Kronecker-multiplied right-to-left.
 Block encodings
 ---------------
 
-For any `BlockEncoding` (e.g. `PauliLCU`, `DoubleFactorizedEncoding`):
+For any `BlockEncoding` (e.g. `PauliLCU`, or the worked double-factorized example encoding):
 
 - The encoded block is ``<0|_anc U_A |0>_anc = H / alpha``, with `alpha`
   the 1-norm of the encoded coefficients.
