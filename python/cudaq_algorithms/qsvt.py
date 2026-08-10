@@ -9,7 +9,7 @@ composable sequence kernels live in ``pauli_lcu``.)
 
 Each walk step is the full block encoding (PREPARE, SELECT, PREPARE dagger)
 composed with a reflection about the all-zero signal state, and projector
-phases ``diag(e^{i phi}, 1)`` act on the same |0...0> signal subspace. The
+phases ``diag(e^{i phi}, 1)`` act on the same ``|0...0>`` signal subspace. The
 signal register starts at ``|0...0>``.
 
 The walk block encodes ``-H/alpha``; the circuits fold the sign in, so on an

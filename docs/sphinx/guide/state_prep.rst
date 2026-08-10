@@ -33,7 +33,7 @@ package.
      test_stateprep.py, test_stateprep_kernels.py, test_operator_pools.py,
      test_stateprep_hf_ucc.py, test_stateprep_givens.py
 
-The relocated, runnable examples are
+The runnable examples are
 `docs/sphinx/examples/python/hartree_fock_ucc.py` (fixed-parameter UCCSD vs.
 dense matrix exponentials) and
 `docs/sphinx/examples/python/givens_slater_determinant.py` (Slater
@@ -43,8 +43,7 @@ Ansatz kernels and operator pools
 ---------------------------------
 
 The `uccsd`, `uccgsd`, `upccgsd`, and `ceo` device kernels are
-`@cudaq.kernel` functions with the same API as the former compiled
-bindings, composable from user kernels:
+`@cudaq.kernel` functions, composable from user kernels, composable from user kernels:
 
 .. code-block:: python
 
@@ -276,13 +275,13 @@ Package conventions
   `n_alpha = num_electrons - n_beta`. `spin == 0` selects the
   closed-shell forms; `spin > 0` requires an even `num_qubits` and
   produces the interleaved open-shell occupations and excitations.
-- **Error types**: the two error cases the compiled bindings defined keep
-  their historical `RuntimeError` (odd qubit count and
+- **Error types**: two error cases raise `RuntimeError` (odd qubit count
+  and
   odd-electrons-at-spin-0 in `get_uccsd_excitations`); every guard added
   in the pure implementation raises `ValueError`.
 - **CEO orbital counts**: the CEO helpers (`make_ceo_operator_pool`,
   `get_ceo_pauli_lists`) take `num_orbitals` in *spatial* orbitals — the
-  pool acts on `2 * num_orbitals` qubits — matching the compiled API.
+  pool acts on `2 * num_orbitals` qubits.
   Everything else in the package counts qubits (spin orbitals).
 
 See :doc:`../conventions` for the library-wide qubit-ordering, Pauli-word,

@@ -20,7 +20,7 @@ a polynomial approximation, at the cost of an ancilla register).
                                           (evolve lives here)
    tests/python/test_trotter.py           dense-reference test suite
 
-The relocated, runnable end-to-end example is
+The runnable end-to-end example is
 `docs/sphinx/examples/python/trotter_chemistry.py` (a chemistry-style
 walkthrough of the primitive).
 
@@ -146,18 +146,6 @@ full `exp(-i H t)|ket>`.
 `@cudaq.kernel(state)` factory sharing the same validation and marshaling
 as `Trotter.kernel` — and raises `ValueError` for invalid parameters
 (including a ket whose dimension does not match `num_qubits`).
-
-Testing
--------
-
-`tests/python/test_trotter.py` pins correctness against independent dense
-references: exact matrix exponentials via diagonalization, and an explicit
-Pauli-rotation simulator for per-order product formulas. Coverage includes
-kernel interop with flattened arguments, invalid-input handling, per-order
-error thresholds, asymptotic error-scaling slope fits (order-p error ~
-dt^p), exactness for commuting Hamiltonians, a 14-term 4-qubit
-chemistry-style Hamiltonian, identity/global-phase handling, and every
-accepted input form of the term-extraction front end.
 
 Known CUDA-Q Python constraints
 --------------------------------

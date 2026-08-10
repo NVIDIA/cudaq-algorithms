@@ -65,7 +65,8 @@ Where to go next
 
 - :doc:`../guide/preprocessing` — molecule / integrals to a qubit Hamiltonian.
 - :doc:`../guide/state_prep` — Hartree-Fock, UCC, and Givens state preparation.
-- :doc:`../guide/block_encodings` — ``PauliLCU``, double factorization, the protocol.
+- :doc:`../guide/block_encodings` — ``PauliLCU``, the ``BlockEncoding``
+  protocol, and a worked double-factorized example encoding.
 - :doc:`../guide/trotter` and :doc:`../guide/qubitization_qsvt` — the two
   Hamiltonian-simulation routes.
 - :doc:`../conventions` — qubit ordering, integral tensors, and normalization

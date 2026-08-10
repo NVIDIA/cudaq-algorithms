@@ -145,8 +145,8 @@ Register conventions shared by all implementations:
   the walk construction); `Walk.moment` and the QSVT response conventions
   rely on this.
 
-Bring your own encoding
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Implementing the protocol
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Because conformance is structural, a sparse-oracle, block-diagonal, or any
 custom encoding plugs into `Walk` and `QSVT` simply by implementing the

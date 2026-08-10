@@ -195,7 +195,7 @@ Quantum **2**, 040352 (2021)
 Inserted before the transform, it is an **optional compression** of the
 `eri` tensor: reconstruct a truncated tensor with `reconstruct_eri` and
 feed it to `qubit_hamiltonian` in place of the exact one (see the chemistry
-bridge below). The double-factorized *block encoding* that consumes a
+bridge above). The double-factorized *block encoding* that consumes a
 factorization directly -- the worked `DoubleFactorizedEncoding` example --
 is described on :doc:`block_encodings`.
 
