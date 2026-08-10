@@ -77,3 +77,20 @@ measure correct Chebyshev moments on it.
 .. literalinclude:: ../examples/python/06_bring_your_own_encoding.py
    :language: python
    :start-after: [Begin Documentation]
+
+Solve a linear system with QSVT
+-------------------------------
+
+The payoff of QSVT's "pick a polynomial" design: example 2 approximated
+``exp(-ixt)`` for time evolution; swap the phase sequence for one
+approximating ``1/x`` and the *same* `PauliLCU` + `QSVT` machinery becomes a
+quantum linear solver -- the QSVT reading of HHL. A 5x5 symmetric
+positive-definite system is padded to three qubits, block-encoded, and
+inverted with a Childs-Kothari-Somma polynomial (degree set by the condition
+number); the good-subspace state is proportional to ``A^-1 b``, with the
+scale recovered classically. Verified against ``numpy.linalg.solve``.
+Requires ``qsppack`` for the phase factors, like example 2.
+
+.. literalinclude:: ../examples/python/07_matrix_inversion_qsvt.py
+   :language: python
+   :start-after: [Begin Documentation]

@@ -8,7 +8,7 @@ inside a bigger unitary on a few ancilla qubits. The qubitization Walk
 then turns powers of that unitary into Chebyshev polynomials of H --
 measured as expectation values, the raw data spectral algorithms consume.
 
-Everything downstream (examples 2-6) is built on these three objects:
+Everything downstream (examples 2-7) is built on these three objects:
 PauliLCU (the block encoding), Walk (qubitization), and the observable
 `moment` path. Here we build them and check the moments against a dense
 matrix, in the house style: every claim verified against an independent
