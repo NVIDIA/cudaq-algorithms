@@ -13,6 +13,8 @@ Block encodings
 .. autoclass:: cudaq_algorithms.pauli_lcu.PauliLCU
    :members:
 
+.. autofunction:: cudaq_algorithms.pauli_lcu.select_observable
+
 .. autoclass:: cudaq_algorithms.block_encoding.BlockEncoding
    :members:
 
@@ -31,6 +33,10 @@ Qubitization and QSVT
    :members:
 
 .. autofunction:: cudaq_algorithms.qsvt.recover_real_time_evolution
+
+.. autodata:: cudaq_algorithms.qsvt.FORWARD
+
+.. autodata:: cudaq_algorithms.qsvt.ADJOINT
 
 Trotter
 =======
@@ -61,3 +67,5 @@ Simulation utilities
 
 .. automodule:: cudaq_algorithms.sim_utils
    :members:
+
+.. autofunction:: cudaq_algorithms.common_kernels.state_from

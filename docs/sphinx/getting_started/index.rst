@@ -18,6 +18,12 @@ your platform):
 
    $ pip install cudaq-algorithms
 
+.. note::
+
+   Until the first PyPI release, install from a release wheel with
+   ``pip install cudaq-algorithms --find-links <wheel directory>`` or build
+   from source (below).
+
 Building from source
 --------------------
 

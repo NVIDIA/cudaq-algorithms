@@ -7,7 +7,7 @@ would read from a `.fcidump` file), so these tests need no external files.
 The parsed tensors are pinned against the same literature H2/STO-3G values
 `test_df_qsvt_bridge.py` uses, and the resulting qubit Hamiltonian is
 cross-checked by whole-spectrum equality against those integrals fed
-directly -- the convention-level check `docs/double_factorization.md`
+directly -- the convention-level check `the preprocessing guide`
 recommends.
 """
 

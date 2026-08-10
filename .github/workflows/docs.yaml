@@ -12,6 +12,7 @@ on:
   push:
     branches:
       - main
+      - 'releases/v*'
     paths:
       - '.github/workflows/docs.yaml'
       - 'docs/**'

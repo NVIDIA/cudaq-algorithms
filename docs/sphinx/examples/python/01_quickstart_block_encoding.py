@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                        #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
 # [Begin Documentation]
 """Example 1 — Quickstart: block-encode a Hamiltonian and walk it.
 
@@ -26,7 +33,7 @@ import numpy as np
 
 from cudaq_algorithms import PauliLCU, Walk
 
-# The convention: read docs/conventions.md. The walk returns +<T_k(H/alpha)>.
+# The convention: read docs/sphinx/conventions.rst. The walk returns +<T_k(H/alpha)>.
 _PAULIS = {
     "I": np.eye(2, dtype=complex),
     "X": np.array([[0, 1], [1, 0]], dtype=complex),

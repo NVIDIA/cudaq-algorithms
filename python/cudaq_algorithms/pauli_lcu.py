@@ -419,7 +419,7 @@ def _prepare_angles(probabilities: Sequence[float]) -> list[float]:
 
 
 def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
-    """The SELECT operator sum_i sign_i |i><i|_anc x P_i as an observable.
+    """The SELECT operator ``sum_i sign_i |i><i|_anc x P_i`` as an observable.
 
     LCU-specific: built from the encoding's signed Pauli terms. Its
     expectation after PREPARE and p walk steps is the odd Chebyshev moment

@@ -28,18 +28,15 @@ kernels and host-side helpers (the only runtime requirement is the
 - Suzuki-Trotter product formulas (`trotter.Trotter`, orders 1/2/4)
 
 Simulation-only helpers (statevector access) are isolated in
-`cudaq_algorithms.sim_utils`; everything else is hardware-shaped. See
-[docs/pauli_lcu_qsvt.md](docs/pauli_lcu_qsvt.md),
-[docs/trotter.md](docs/trotter.md),
-[docs/stateprep.md](docs/stateprep.md),
-[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/),
-[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/), and
-[examples/stateprep/](examples/stateprep/).
+`cudaq_algorithms.sim_utils`; everything else is hardware-shaped. The
+documentation is a Sphinx site under [docs/](docs/) (build instructions in
+[docs/README.md](docs/README.md)); the runnable, self-verifying examples
+live in [docs/sphinx/examples/python/](docs/sphinx/examples/python/).
 
 Classical chemistry preprocessing ships as a peer pure-Python module:
 double factorization of two-electron integrals (X-DF and C-DF/RC-DF) on
-NumPy/SciPy with optional CuPy GPU acceleration — see
-[docs/double_factorization.md](docs/double_factorization.md).
+NumPy/SciPy with optional CuPy GPU acceleration — see the preprocessing
+guide in the Sphinx docs.
 
 ## Chemistry Inputs
 

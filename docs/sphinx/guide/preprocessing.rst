@@ -186,8 +186,6 @@ Notes
   products each for two-body entries); a fully dense 14-spin-orbital tensor
   compiles in seconds. Vectorizing the inner accumulation is documented
   future work if larger dense tensors become routine.
-- The state-preparation utilities remain in the compiled extension for now;
-  migrating them is planned separately (see :doc:`state_prep`).
 
 The chemistry bridge (spatial integrals to a qubit Hamiltonian)
 ---------------------------------------------------------------
