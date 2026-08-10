@@ -29,16 +29,15 @@ package.
                        conversion, hartree_fock_ucc_kernel factory,
                        resource estimators
      _givens.py        Givens-rotation Slater determinants
-                       (lands with the Givens branch, see below)
    tests/python/
      test_stateprep.py, test_stateprep_kernels.py, test_operator_pools.py,
-     test_stateprep_hf_ucc.py, test_stateprep_givens.py (Givens branch)
+     test_stateprep_hf_ucc.py, test_stateprep_givens.py
 
 The relocated, runnable examples are
 `docs/sphinx/examples/python/hartree_fock_ucc.py` (fixed-parameter UCCSD vs.
 dense matrix exponentials) and
 `docs/sphinx/examples/python/givens_slater_determinant.py` (Slater
-determinants, on the Givens branch).
+determinants).
 
 Ansatz kernels and operator pools
 ---------------------------------
@@ -167,19 +166,18 @@ Resource estimation
 Like `TrotterResourceEstimate`, these are frozen dataclasses counting
 logical operations before transpilation, not hardware gate counts.
 
-Givens-rotation Slater determinants (on the Givens branch)
-----------------------------------------------------------
-
-.. note::
-
-   This section documents the API landing with the sibling branch
-   `features/add_givens_rotation_state_prep_python`; none of it is
-   available until that branch merges.
+Givens-rotation Slater determinants
+-----------------------------------
 
 Prepares the Slater determinant of an orthonormal occupied-orbital
 matrix `Q` (`num_spin_orbitals x num_electrons`) on the Jordan-Wigner /
 little-endian layout: the amplitude of basis state ``|S>`` with occupied
-set `S` is `det(Q[S, :])`, up to a global phase.
+set `S` is `det(Q[S, :])`, up to a global phase. The construction is
+that of Jiang et al., *Phys. Rev. Applied* **9**, 044036 (2018)
+(`arXiv:1711.05395 <https://arxiv.org/abs/1711.05395>`_, Sec. III), with
+the strictly adjacent, linear-depth rotation scheduling of Kivlichan et
+al., *Phys. Rev. Lett.* **120**, 110501 (2018)
+(`arXiv:1711.04789 <https://arxiv.org/abs/1711.04789>`_).
 
 .. code-block:: python
 

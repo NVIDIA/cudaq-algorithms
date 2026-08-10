@@ -8,6 +8,15 @@ Jordan-Wigner / little-endian qubit layout: the amplitude of basis state
 ``|S>`` with occupied set ``S`` is ``det(Q[S, :])``, up to a global
 phase.
 
+The construction follows Jiang et al., Phys. Rev. Applied 9, 044036
+(2018) (arXiv:1711.05395, Sec. III): apply the Givens network that
+reduces ``Q`` to the computational-basis determinant, inverted, to
+``|1...10...0>``. The strictly adjacent (nearest-neighbor) rotation
+scheduling is the linear-depth arrangement of Kivlichan et al., Phys.
+Rev. Lett. 120, 110501 (2018) (arXiv:1711.04789) -- and is also what
+lets every rotation map onto a contiguous two-qubit ``exp_pauli`` slice
+(see the kernel-language constraints below).
+
 Host side, ``make_givens_rotation_schedule`` reduces ``Q`` to the
 computational-basis determinant with adjacent (nearest-neighbor) Givens
 row rotations, bottom-up per column; the state-preparation kernels then
