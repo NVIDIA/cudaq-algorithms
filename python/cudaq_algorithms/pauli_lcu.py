@@ -356,10 +356,15 @@ def _terms_from_input(
         # normalize to a one-term operator.
         return _terms_from_input(cudaq.SpinOperator(hamiltonian), num_qubits)
     elif isinstance(hamiltonian, cudaq.SpinOperator):
-        width = num_qubits if num_qubits is not None else int(
-            hamiltonian.qubit_count)
+        terms = list(hamiltonian)
+        extent = max((int(term.max_degree) + 1 for term in terms), default=0)
+        width = extent if num_qubits is None else num_qubits
+        if width < extent:
+            raise ValueError(
+                f"num_qubits={num_qubits} is smaller than Hamiltonian "
+                f"extent {extent}")
         pairs = [(_real_coefficient(term.evaluate_coefficient()),
-                  str(term.get_pauli_word(width))) for term in hamiltonian]
+                  str(term.get_pauli_word(width))) for term in terms]
     elif isinstance(hamiltonian, Iterable) and not isinstance(
             hamiltonian, (str, bytes, bytearray, memoryview)):
         pairs = [(_real_coefficient(c), str(w)) for c, w in hamiltonian]
