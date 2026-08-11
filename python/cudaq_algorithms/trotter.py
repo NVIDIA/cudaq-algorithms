@@ -369,6 +369,7 @@ class Trotter:
 
     @property
     def num_qubits(self) -> int:
+        """Register width the evolution kernels act on."""
         return self._num_qubits
 
     @property
@@ -378,6 +379,7 @@ class Trotter:
 
     @property
     def ordering(self) -> TrotterOrdering:
+        """Term-ordering strategy fixed at construction."""
         return self._ordering
 
     def __repr__(self) -> str:

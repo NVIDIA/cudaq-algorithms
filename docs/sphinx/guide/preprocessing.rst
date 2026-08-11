@@ -133,11 +133,11 @@ spin orbitals:
 
 .. math::
 
-   H \;=\; \texttt{scalar\_offset} \cdot I
+   H \;=\; c \cdot I
    \;+\; \sum_{ij} h_{ij} \, a_i^\dagger a_j
    \;+\; \sum_{ijkl} V_{ijkl} \, a_i^\dagger a_j^\dagger a_k a_l
 
-`scalar_offset` is added as an identity term (e.g. nuclear repulsion);
+The constant ``c`` is `scalar_offset`, added as an identity term (e.g. nuclear repulsion);
 input entries and compiled terms below `tolerance` (default ``1e-15``) are
 dropped. The result is a `cudaq.SpinOperator`, ready for
 `PauliLCU`/`Walk`/`QSVT` or `Trotter`.
@@ -317,32 +317,35 @@ accuracy:
 API
 ~~~
 
-All functions return or operate on a `DoubleFactorization` dataclass with
-`num_orbitals`, `leaf_rotations` (``U^t``), `leaf_cores` (``Z^t``),
-`num_leaves`, and a `reconstruct_eri` method.
+All functions return or operate on a
+:class:`~cudaq_algorithms.double_factorization.DoubleFactorization`
+dataclass with `num_orbitals`, `leaf_rotations` (:math:`U^t`),
+`leaf_cores` (:math:`Z^t`), `num_leaves`, and a `reconstruct_eri` method.
+Full signatures and parameter documentation live in the
+:doc:`Python API reference <../api/python_api>`.
 
-`explicit_double_factorization(eri, threshold=1e-8, max_num_leaves=None, second_factor_threshold=0.0, first_factorization="cholesky", backend="auto")`
+:func:`~cudaq_algorithms.double_factorization.explicit_double_factorization`
     X-DF (rank-one cores). First factorization defaults to **pivoted
     Cholesky**; pass ``first_factorization="eigendecomposition"`` for the
     eigendecomposition variant.
 
-`compressed_double_factorization(eri, num_leaves, max_iterations=2000, tolerance=1e-10, regularization=0.0, inner_solver="lstsq", cg_tolerance=1e-10, cg_max_iterations=None, cg_warm_start=True, cg_optimization_tolerance=None, backend="auto")`
+:func:`~cudaq_algorithms.double_factorization.compressed_double_factorization`
     C-DF by least-squares optimization (warm-started from X-DF).
-    ``regularization=rho>0`` enables **RC-DF** (see above).
-    ``inner_solver="cg"`` selects the matrix-free inner core solve, with
-    ``cg_warm_start`` / ``cg_optimization_tolerance`` accelerators.
+    ``regularization=rho>0`` enables **RC-DF** (see above);
+    ``inner_solver="cg"`` selects the matrix-free inner core solve.
 
-`reconstruct_eri(factorization)`
+:func:`~cudaq_algorithms.double_factorization.reconstruct_eri`
     Rebuild the ``(pq|rs)`` tensor from a factorization.
 
-`factorization_error(eri, factorization)`
+:func:`~cudaq_algorithms.double_factorization.factorization_error`
     Frobenius norm of the reconstruction residual.
 
-`modified_one_body_integrals(one_body, eri)`
-    The DF one-body correction ``kappa_pq = h_pq - 1/2 sum_r (pr|qr)``.
+:func:`~cudaq_algorithms.double_factorization.modified_one_body_integrals`
+    The DF one-body correction :math:`\kappa_{pq} = h_{pq} -
+    \tfrac{1}{2} \sum_r (pr|qr)`.
 
-`double_factorization_one_norm(factorization, one_body_eigenvalues, convention="lcu")`
-    One-norm ``lambda`` of the DF Hamiltonian; ``convention="lcu"``
+:func:`~cudaq_algorithms.double_factorization.double_factorization_one_norm`
+    One-norm :math:`\lambda` of the DF Hamiltonian; ``convention="lcu"``
     (Pauli-rotation) or ``"burg"`` (qubitization).
 
 Feeding a compressed tensor to the transform

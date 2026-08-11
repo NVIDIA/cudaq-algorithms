@@ -146,16 +146,3 @@ full `exp(-i H t)|ket>`.
 `@cudaq.kernel(state)` factory sharing the same validation and marshaling
 as `Trotter.kernel` — and raises `ValueError` for invalid parameters
 (including a ket whose dimension does not match `num_qubits`).
-
-Known CUDA-Q Python constraints
---------------------------------
-
-Two upstream compiler behaviors shape the implementation:
-
-- `return` inside a Python kernel is silently ignored
-  (`cuda-quantum#4845 <https://github.com/NVIDIA/cuda-quantum/issues/4845>`_);
-  the `apply_trotter` body is a single positively-guarded block instead of
-  early-return guards.
-- Captured empty lists cannot be marshaled
-  (`cuda-quantum#4847 <https://github.com/NVIDIA/cuda-quantum/issues/4847>`_);
-  identity-only Hamiltonians special-case the kernel factories.

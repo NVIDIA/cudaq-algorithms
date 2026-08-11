@@ -145,8 +145,7 @@ register in ``|0...0>``. Validation runs at factory time; the grouped data
 is flattened into per-rotation angles before capture (nested lists
 marshal as kernel *arguments* but cannot be closure-*captured*), and
 empty occupation/rotation lists select a kernel shape with no empty
-captures (empty list captures fail to launch,
-`cuda-quantum#4847 <https://github.com/NVIDIA/cuda-quantum/issues/4847>`_).
+captures (an empty list cannot cross the kernel boundary).
 
 Resource estimation
 ~~~~~~~~~~~~~~~~~~~~~

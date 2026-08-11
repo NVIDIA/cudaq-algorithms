@@ -50,11 +50,11 @@ ladder products, with **no implicit symmetry factors**:
 
 .. math::
 
-   H \;=\; \texttt{scalar\_offset} \cdot I
+   H \;=\; c \cdot I
    \;+\; \sum_{pq} h_{pq} \, a_p^\dagger a_q
    \;+\; \sum_{pqrs} V_{pqrs} \, a_p^\dagger a_q^\dagger a_r a_s
 
-Any 1/2 factors from a chemist-notation source must already be folded
+The constant ``c`` is the ``scalar_offset`` argument. Any 1/2 factors from a chemist-notation source must already be folded
 into `V`. From a chemist `(pq|rs)` spatial tensor, the standard
 spin-orbital expansion is: reorder with `eri.transpose(0, 2, 3, 1)`
 (chemist -> coefficients of `adag adag a a`), scale by `1/2`, and
