@@ -275,3 +275,54 @@ def test_string_hamiltonian_rejected_with_type_error():
     # TypeError, not a misleading unpack error from the pair branch.
     with pytest.raises(TypeError, match="SpinOperator"):
         PauliLCU("XZ")
+
+
+@pytest.mark.parametrize(
+    "hamiltonian,expected_width,expected_words",
+    [(0.5 * spin.x(1), 2, ["IX"]),
+     (0.3 * spin.x(0) + 0.2 * spin.z(3), 4, ["IIIZ", "XIII"])])
+def test_spin_operator_infers_register_extent(hamiltonian, expected_width,
+                                              expected_words):
+    # Off-zero and gapped indices require max_degree + 1 qubits, not the
+    # number of distinct indices. The width and padded words pin both facts.
+    encoding = PauliLCU(hamiltonian)
+    assert encoding.num_system == expected_width
+    assert sorted(word for _, word in encoding.terms) == expected_words
+
+
+def test_spin_operator_rejects_explicit_width_below_extent():
+    # Validate the requested width before CUDA-Q renders a Pauli word, so the
+    # error identifies the bad argument and the required register extent.
+    with pytest.raises(ValueError, match=r"num_qubits=1.*extent 2"):
+        PauliLCU(0.5 * spin.x(1), num_qubits=1)
+
+
+def test_spin_operator_off_zero_dense_reference():
+    # Beyond the width and padded words: the encoded block must be the
+    # dense operator itself, not just constructible.
+    off_zero = PauliLCU(0.5 * spin.x(1))
+    assert off_zero.alpha == pytest.approx(0.5)
+    ket = random_ket(2, seed=3)
+    expected = dense_matrix([(0.5, "IX")], 2) @ ket / off_zero.alpha
+    state = np.array(cudaq.get_state(off_zero.encode_kernel(),
+                                     state_from(ket)))
+    np.testing.assert_allclose(state[:4], expected, atol=1e-12)
+
+
+def test_spin_operator_wider_explicit_width_pads():
+    # An explicit num_qubits wider than the extent is legal padding.
+    wider = PauliLCU(spin.x(0) + spin.z(3), num_qubits=6)
+    assert wider.num_system == 6
+
+
+def test_spin_operator_identity_term_extent():
+    # Scalar/arithmetic identity terms act on NO degrees, and CUDA-Q's
+    # max_degree raises on them rather than returning a sentinel; they
+    # must not constrain or crash the register-extent inference. Note
+    # spin.i(0) does NOT exercise this path (it explicitly targets degree
+    # 0) -- only the scalar form does, which is exactly what the chemistry
+    # bridge produces via scalar_offset.
+    op = 0.5 * spin.x(1) + 0.25
+    encoding = PauliLCU(op)
+    assert encoding.num_system == 2
+    assert {word for _, word in encoding.terms} == {"II", "IX"}

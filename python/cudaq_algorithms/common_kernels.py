@@ -34,6 +34,29 @@ def state_from(ket) -> cudaq.State:
     return cudaq.State.from_data(np.asarray(ket, dtype=cudaq.complex()))
 
 
+def _maybe_call(value):
+    """Return ``value()`` if callable (property-vs-method API tolerance)."""
+    return value() if callable(value) else value
+
+
+def _term_qubit_extent(term) -> int:
+    """Register extent a spin term needs: largest targeted qubit + 1.
+
+    Not ``qubit_count``: CUDA-Q's ``qubit_count`` is the number of
+    *distinct* targeted indices, which undercounts whenever the targets
+    are off-zero or gapped (``0.5 * spin.x(1)`` targets one qubit but
+    needs a two-qubit word). One helper for every input path (PauliLCU
+    and Trotter both route through it).
+    """
+    try:
+        max_degree = _maybe_call(getattr(term, "max_degree", -1))
+    except RuntimeError:
+        # An identity term acts on no degrees; CUDA-Q raises rather than
+        # returning a sentinel. It constrains no register extent.
+        return 0
+    return max_degree + 1 if max_degree >= 0 else 0
+
+
 def _real_coefficient(value) -> float:
     """Coerce a Hamiltonian coefficient to float, rejecting complex values.
 

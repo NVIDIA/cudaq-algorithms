@@ -36,7 +36,8 @@ from typing import Any, Union
 
 import cudaq
 
-from .common_kernels import _real_coefficient
+from .common_kernels import (_maybe_call, _real_coefficient,
+                             _term_qubit_extent)
 
 #: Supported product-formula orders.
 FIRST_ORDER_TROTTER: int = 1
@@ -121,17 +122,6 @@ def apply_trotter(coefficients: list[float], words: list[cudaq.pauli_word],
 # ============================================================================
 # Host-side term extraction
 # ============================================================================
-
-
-def _maybe_call(value: Any) -> Any:
-    """Return ``value()`` if callable (property-vs-method API tolerance)."""
-    return value() if callable(value) else value
-
-
-def _term_qubit_extent(term: Any) -> int:
-    """Number of qubits a spin term touches (max degree + 1)."""
-    max_degree = _maybe_call(getattr(term, "max_degree", -1))
-    return max_degree + 1 if max_degree >= 0 else 0
 
 
 def _word_pairs_from_input(

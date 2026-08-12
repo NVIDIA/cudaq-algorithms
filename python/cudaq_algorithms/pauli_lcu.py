@@ -32,7 +32,8 @@ from typing import TYPE_CHECKING, TypeAlias, Union
 import cudaq
 
 from .common_kernels import (_bit_projector, _real_coefficient,
-                             _validate_power, controlled_reflect_about_zero,
+                             _term_qubit_extent, _validate_power,
+                             controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
                              signal_phase, state_from)
 
@@ -356,8 +357,16 @@ def _terms_from_input(
         # normalize to a one-term operator.
         return _terms_from_input(cudaq.SpinOperator(hamiltonian), num_qubits)
     elif isinstance(hamiltonian, cudaq.SpinOperator):
-        width = num_qubits if num_qubits is not None else int(
-            hamiltonian.qubit_count)
+        # The register extent is the largest targeted qubit + 1 -- NOT
+        # ``qubit_count``, which counts *distinct* targets and undercounts
+        # off-zero or gapped operators (0.5 * spin.x(1) needs "IX").
+        required = max((_term_qubit_extent(term) for term in hamiltonian),
+                       default=0)
+        if num_qubits is not None and num_qubits < required:
+            raise ValueError(
+                f"num_qubits={num_qubits} is smaller than the operator's "
+                f"register extent {required} (largest targeted qubit + 1)")
+        width = num_qubits if num_qubits is not None else required
         pairs = [(_real_coefficient(term.evaluate_coefficient()),
                   str(term.get_pauli_word(width))) for term in hamiltonian]
     elif isinstance(hamiltonian, Iterable) and not isinstance(
