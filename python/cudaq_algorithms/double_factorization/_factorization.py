@@ -144,8 +144,9 @@ def _second_factorization(leaf: DeviceArray, scale: ArrayLike,
     gamma, rotation = xp.linalg.eigh(leaf)
     if second_factor_threshold > 0.0:
         importance = xp.sum(xp.abs(gamma))
-        gamma = xp.where(importance * xp.abs(gamma) > second_factor_threshold,
-                         gamma, 0.0)
+        gamma = xp.where(
+            xp.abs(scale) * importance * xp.abs(gamma)
+            > second_factor_threshold, gamma, 0.0)
     core = scale * xp.outer(gamma, gamma)
     return to_numpy(rotation), to_numpy(core)
 
