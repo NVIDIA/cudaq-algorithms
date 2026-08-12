@@ -2,8 +2,7 @@ CUDA-Q Algorithms
 
 Apache License Version 2.0
 
-Copyright (c) 2024 - 2026 NVIDIA Corporation & Affiliates
-All rights reserved.
+Copyright (c) 2024 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,32 +16,86 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-This product is built on and depends on NVIDIA CUDA-Q
-(<https://github.com/NVIDIA/cuda-quantum>), released under the Apache License
-2.0.
-
-This product includes software developed by NVIDIA Corporation and affiliates
-and includes material from third parties. It includes work released under the
-following licenses:
+This project depends on, optionally integrates with, or uses in its shipped
+examples and tests the external software projects listed below. This software
+is not vendored in this repository and remains subject to its own license
+terms.
 
 ----------------------------------------------------------------
 
-nanobind - BSD-3-Clause License
-<https://github.com/wjakob/nanobind>
+CUDA-Q - Apache-2.0
+<https://github.com/NVIDIA/cuda-quantum>
 
-Used to build the Python bindings.
-License at <https://github.com/wjakob/nanobind/blob/master/LICENSE>
-
-Copyright (c) 2022 Wenzel Jakob
+Copyright (c) 2023 - 2026 NVIDIA Corporation & Affiliates
+License at <https://github.com/NVIDIA/cuda-quantum/blob/main/LICENSE>
+NOTICE at <https://github.com/NVIDIA/cuda-quantum/blob/main/NOTICE>
 
 ----------------------------------------------------------------
 
-GoogleTest - BSD-3-Clause License
-<https://github.com/google/googletest>
+NumPy - BSD-3-Clause
+<https://github.com/numpy/numpy>
 
-Used by the C++ unit tests only; not distributed with the library.
-License at <https://github.com/google/googletest/blob/main/LICENSE>
+Copyright (c) 2005-2025, NumPy Developers
+License at <https://github.com/numpy/numpy/blob/main/LICENSE.txt>
 
-Copyright 2008, Google Inc.
+----------------------------------------------------------------
+
+SciPy - BSD-3-Clause
+<https://github.com/scipy/scipy>
+
+Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers
+License at <https://github.com/scipy/scipy/blob/main/LICENSE.txt>
+
+----------------------------------------------------------------
+
+CuPy - MIT
+<https://github.com/cupy/cupy>
+
+Copyright (c) 2015 Preferred Infrastructure, Inc.
+Copyright (c) 2015 Preferred Networks, Inc.
+License at <https://github.com/cupy/cupy/blob/main/LICENSE>
+
+----------------------------------------------------------------
+
+PySCF - Apache-2.0
+<https://github.com/pyscf/pyscf>
+
+Copyright 2014-2024 The PySCF Developers
+License at <https://github.com/pyscf/pyscf/blob/master/LICENSE>
+NOTICE at <https://github.com/pyscf/pyscf/blob/master/NOTICE>
+
+----------------------------------------------------------------
+
+Psi4 - LGPL-3.0-only
+<https://github.com/psi4/psi4>
+
+Copyright (c) 2007-2026 The Psi4 Developers
+License at <https://github.com/psi4/psi4/blob/master/COPYING.LESSER>
+
+----------------------------------------------------------------
+
+pytest - MIT
+<https://github.com/pytest-dev/pytest>
+
+Copyright (c) 2004 Holger Krekel and others
+License at <https://github.com/pytest-dev/pytest/blob/main/LICENSE>
+
+----------------------------------------------------------------
+
+OpenFermion - Apache-2.0
+<https://github.com/quantumlib/OpenFermion>
+
+Copyright 2017 The OpenFermion Developers
+License at <https://github.com/quantumlib/OpenFermion/blob/main/LICENSE>
+NOTICE at <https://github.com/quantumlib/OpenFermion/blob/main/NOTICE>
+
+----------------------------------------------------------------
+
+QSPPACK (qsppack) - MIT, per published package metadata
+<https://github.com/beevus77/qsppack>
+
+Author: James Larsen. Upstream does not publish a copyright year or a LICENSE
+file in its source repository. License metadata is available at
+<https://pypi.org/project/qsppack/>.
 
 ----------------------------------------------------------------

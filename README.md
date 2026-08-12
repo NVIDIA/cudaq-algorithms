@@ -51,3 +51,10 @@ dependency stays at the test/example boundary.
 The library APIs operate on reusable algorithmic inputs, such as one- and
 two-body tensors, qubit Hamiltonians, Pauli words, and state-preparation
 operator pools.
+
+## License
+
+The code in this repository is licensed under the [Apache License 2.0](./LICENSE). Dependency license references and attributions are listed in [NOTICE](./NOTICE).
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution requirements,
+including Developer Certificate of Origin (DCO) sign-off.
