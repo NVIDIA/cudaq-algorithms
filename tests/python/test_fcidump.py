@@ -191,3 +191,10 @@ def test_from_fcidump_interops_with_pyscf_writer(tmp_path):
     np.testing.assert_allclose(_spectrum(one_body, eri, core_energy),
                                _spectrum(H1, ERI, E_NUCLEAR),
                                atol=1e-10)
+
+
+def test_from_fcidump_rejects_unterminated_header():
+    # Integral records after a missing &END must not be returned as H = 0.
+    unterminated = H2_STO3G_FCIDUMP.replace("&END\n", "")
+    with pytest.raises(ValueError, match="never terminated"):
+        chemistry.from_fcidump(unterminated)

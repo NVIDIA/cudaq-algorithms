@@ -283,6 +283,9 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
     if state == "pre":
         raise ValueError(
             "FCIDUMP contents must begin with an &FCI header namelist")
+    if state == "header":
+        raise ValueError(
+            "FCIDUMP header namelist was never terminated (&END, $END, or /)")
 
     header = " ".join(header_lines)
     # Unrestricted files store spin-resolved (alpha/beta/mixed) blocks whose
