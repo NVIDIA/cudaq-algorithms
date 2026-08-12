@@ -3,12 +3,14 @@
 """State-preparation device kernels (pure Python, composable).
 
 Ports of the ``__qpu__`` kernels in ``lib/stateprep/device/``. The
-``uccsd`` kernel reproduces the C++ excitation enumeration with direct
-index arithmetic (the interleaved-layout orbital indices are affine in the
-loop counters, so no in-kernel lists are needed); gate sequences and the
-parameter order match the C++ exactly. ``uccgsd``, ``upccgsd``, and
-``ceo`` consume the grouped Pauli words and coefficients produced by the
-``get_*_pauli_lists`` helpers, one parameter per group.
+``uccsd`` reproduces the C++ excitation enumeration with direct index
+arithmetic (the interleaved-layout orbital indices are affine in the loop
+counters, so no in-kernel lists are needed). Its parameter order and
+non-interleaved gate sequences match the C++; interleaved doubles use sparse
+Pauli rotations so overlapping Jordan-Wigner strings remain correct.
+``uccgsd``, ``upccgsd``, and ``ceo`` consume the grouped Pauli words and
+coefficients produced by the ``get_*_pauli_lists`` helpers, one parameter per
+group.
 
 ``hartree_fock`` and ``hartree_fock_occupation`` prepare the reference
 determinant those ansatz kernels are applied to, and
@@ -90,9 +92,9 @@ def single_excitation(qubits: cudaq.qview, theta: float, p_occ: int,
 
 
 @cudaq.kernel
-def double_excitation(qubits: cudaq.qview, theta: float, p_occ: int,
-                      q_occ: int, r_virt: int, s_virt: int):
-    """The 8-term double-excitation circuit (C++ gate-for-gate port)."""
+def _ordered_double_excitation(qubits: cudaq.qview, theta: float, p_occ: int,
+                               q_occ: int, r_virt: int, s_virt: int):
+    """The original ladder circuit for occupied indices below virtual ones."""
     i_occ = 0
     j_occ = 0
     a_virt = 0
@@ -280,6 +282,164 @@ def double_excitation(qubits: cudaq.qview, theta: float, p_occ: int,
     rx(-M_PI_2, qubits[a_virt])
     rx(-M_PI_2, qubits[j_occ])
     rx(-M_PI_2, qubits[i_occ])
+
+
+@cudaq.kernel
+def _double_pauli_rotation(qubits: cudaq.qview, angle: float, i_occ: int,
+                           j_occ: int, a_virt: int, b_virt: int, op_i: int,
+                           op_j: int, op_a: int, op_b: int):
+    """Rotate one double-excitation Pauli term.
+
+    ``op_*`` is 0 for X and 1 for Y. Overlapping Jordan-Wigner parity
+    intervals change endpoint operators and can contribute a minus sign.
+    """
+    local_i = op_i
+    local_j = op_j
+    local_a = op_a
+    local_b = op_b
+    phase_exponent = 0
+
+    # Occupied endpoint operator precedes the virtual parity string.
+    if (a_virt < i_occ) and (i_occ < b_virt):
+        local_i = 1 - local_i
+        if op_i == 0:
+            phase_exponent += 3  # XZ = -iY
+        else:
+            phase_exponent += 1  # YZ = iX
+    if (a_virt < j_occ) and (j_occ < b_virt):
+        local_j = 1 - local_j
+        if op_j == 0:
+            phase_exponent += 3
+        else:
+            phase_exponent += 1
+
+    # Occupied parity string precedes the virtual endpoint operator.
+    if (i_occ < a_virt) and (a_virt < j_occ):
+        local_a = 1 - local_a
+        if op_a == 0:
+            phase_exponent += 1  # ZX = iY
+        else:
+            phase_exponent += 3  # ZY = -iX
+    if (i_occ < b_virt) and (b_virt < j_occ):
+        local_b = 1 - local_b
+        if op_b == 0:
+            phase_exponent += 1
+        else:
+            phase_exponent += 3
+
+    phase_sign = 1.0
+    if phase_exponent % 4 == 2:
+        phase_sign = -1.0
+
+    if local_i == 0:
+        h(qubits[i_occ])
+    else:
+        rx(M_PI_2, qubits[i_occ])
+    if local_j == 0:
+        h(qubits[j_occ])
+    else:
+        rx(M_PI_2, qubits[j_occ])
+    if local_a == 0:
+        h(qubits[a_virt])
+    else:
+        rx(M_PI_2, qubits[a_virt])
+    if local_b == 0:
+        h(qubits[b_virt])
+    else:
+        rx(M_PI_2, qubits[b_virt])
+
+    # Accumulate the sparse Pauli parity directly on b_virt. The two
+    # Jordan-Wigner strings cancel where their interiors overlap.
+    for index in range(qubits.size()):
+        is_endpoint = ((index == i_occ) or (index == j_occ)
+                       or (index == a_virt) or (index == b_virt))
+        in_occ_parity = (i_occ < index) and (index < j_occ)
+        in_virt_parity = (a_virt < index) and (index < b_virt)
+        in_one_parity = in_occ_parity != in_virt_parity
+        if (index != b_virt) and (is_endpoint or in_one_parity):
+            x.ctrl(qubits[index], qubits[b_virt])
+
+    rz(phase_sign * angle, qubits[b_virt])
+
+    for index in range(qubits.size()):
+        is_endpoint = ((index == i_occ) or (index == j_occ)
+                       or (index == a_virt) or (index == b_virt))
+        in_occ_parity = (i_occ < index) and (index < j_occ)
+        in_virt_parity = (a_virt < index) and (index < b_virt)
+        in_one_parity = in_occ_parity != in_virt_parity
+        if (index != b_virt) and (is_endpoint or in_one_parity):
+            x.ctrl(qubits[index], qubits[b_virt])
+
+    if local_b == 0:
+        h(qubits[b_virt])
+    else:
+        rx(-M_PI_2, qubits[b_virt])
+    if local_a == 0:
+        h(qubits[a_virt])
+    else:
+        rx(-M_PI_2, qubits[a_virt])
+    if local_j == 0:
+        h(qubits[j_occ])
+    else:
+        rx(-M_PI_2, qubits[j_occ])
+    if local_i == 0:
+        h(qubits[i_occ])
+    else:
+        rx(-M_PI_2, qubits[i_occ])
+
+
+@cudaq.kernel
+def double_excitation(qubits: cudaq.qview, theta: float, p_occ: int,
+                      q_occ: int, r_virt: int, s_virt: int):
+    """Apply a double excitation for any ordering of four distinct indices."""
+    i_occ = 0
+    j_occ = 0
+    a_virt = 0
+    b_virt = 0
+    t = theta
+    if (p_occ < q_occ) and (r_virt < s_virt):
+        i_occ = p_occ
+        j_occ = q_occ
+        a_virt = r_virt
+        b_virt = s_virt
+    elif (p_occ > q_occ) and (r_virt > s_virt):
+        i_occ = q_occ
+        j_occ = p_occ
+        a_virt = s_virt
+        b_virt = r_virt
+    elif (p_occ < q_occ) and (r_virt > s_virt):
+        i_occ = p_occ
+        j_occ = q_occ
+        a_virt = s_virt
+        b_virt = r_virt
+        t = -theta
+    elif (p_occ > q_occ) and (r_virt < s_virt):
+        i_occ = q_occ
+        j_occ = p_occ
+        a_virt = r_virt
+        b_virt = s_virt
+        t = -theta
+
+    if j_occ < a_virt:
+        _ordered_double_excitation(qubits, t, i_occ, j_occ, a_virt, b_virt)
+    else:
+        scale = 0.125 * t
+        _double_pauli_rotation(qubits, scale, i_occ, j_occ, a_virt, b_virt, 0,
+                               0, 0, 1)
+        _double_pauli_rotation(qubits, scale, i_occ, j_occ, a_virt, b_virt, 0,
+                               0, 1, 0)
+        _double_pauli_rotation(qubits, scale, i_occ, j_occ, a_virt, b_virt, 0,
+                               1, 1, 1)
+        _double_pauli_rotation(qubits, scale, i_occ, j_occ, a_virt, b_virt, 1,
+                               0, 1, 1)
+        _double_pauli_rotation(qubits, -scale, i_occ, j_occ, a_virt, b_virt, 0,
+                               1, 0, 0)
+        _double_pauli_rotation(qubits, -scale, i_occ, j_occ, a_virt, b_virt, 1,
+                               0, 0, 0)
+        _double_pauli_rotation(qubits, -scale, i_occ, j_occ, a_virt, b_virt, 1,
+                               1, 0, 1)
+        _double_pauli_rotation(qubits, -scale, i_occ, j_occ, a_virt, b_virt, 1,
+                               1, 1, 0)
 
 
 @cudaq.kernel

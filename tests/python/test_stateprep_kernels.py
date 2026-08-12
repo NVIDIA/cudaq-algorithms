@@ -160,7 +160,9 @@ def _uccsd_circuit_signs(num_qubits, num_electrons, spin):
     # (10, 5, 1) is open-shell (spin>0) and large enough to emit same-spin
     # alpha *and* beta doubles (3 each) -- the occupancy split the smaller
     # (6, 3, 1) case leaves empty.
-    [(4, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1)])
+    # (8, 4, 2) interleaves the occupied alpha and virtual beta indices; the
+    # assertion below checks that the direct circuit still matches the pool.
+    [(4, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1), (8, 4, 2)])
 def test_uccsd_kernel_matches_dense_exponential(num_qubits, num_electrons,
                                                 spin):
     pool = algorithms.stateprep.make_uccsd_operator_pool(
@@ -177,6 +179,32 @@ def test_uccsd_kernel_matches_dense_exponential(num_qubits, num_electrons,
         num_qubits,
         _hf_ket(num_qubits, occupation),
         scale=-0.5)
+    _assert_close(actual, reference)
+
+
+def test_uccsd_interleaved_mixed_double_matches_dense_exponential():
+    num_qubits, num_electrons, spin = 8, 4, 2
+    excitations = algorithms.stateprep.get_uccsd_excitations(
+        num_qubits, num_electrons, spin)
+    pool = algorithms.stateprep.make_uccsd_operator_pool(
+        num_qubits, num_electrons, spin)
+    mixed_offset = len(excitations[0]) + len(excitations[1])
+    parameter_index = mixed_offset + excitations[2].index([4, 1, 3, 6])
+    thetas = [0.0] * len(pool)
+    thetas[parameter_index] = 0.4
+    occupation = _hf_occupation(num_electrons, spin)
+
+    actual = _state(_uccsd_entry, num_qubits, occupation, thetas,
+                    num_electrons, spin)
+    reference = _dense_product_reference(_pool_term_groups(pool, num_qubits), [
+        t * s for t, s in zip(
+            thetas, _uccsd_circuit_signs(num_qubits, num_electrons, spin))
+    ],
+                                         num_qubits,
+                                         _hf_ket(num_qubits, occupation),
+                                         scale=-0.5)
+    # Only the [4, 1] -> [3, 6] amplitude is non-zero, so this assertion
+    # isolates the mixed double whose occupied and virtual ranges overlap.
     _assert_close(actual, reference)
 
 

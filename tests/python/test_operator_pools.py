@@ -271,3 +271,21 @@ def test_ceo_operator_pool_correctness():
          ("YYXY", -0.25 + 0j)],
     ]
     assert generated == [sorted(terms) for terms in expected]
+
+
+def test_uccsd_spin_two_pool_matches_fermionic_generators():
+    num_qubits, num_electrons, spin = 8, 4, 2
+    excitations = algorithms.stateprep.get_uccsd_excitations(
+        num_qubits, num_electrons, spin)
+    single, double = _fermionic_generators(num_qubits)
+    singles = [single(q, p) for group in excitations[:2] for p, q in group]
+    doubles = [
+        double(s, r, q, p) for group in excitations[2:] for p, q, r, s in group
+    ]
+
+    # A full bijection proves every spin-2 pool term has one independent
+    # fermionic generator, including all interleaved mixed doubles.
+    _assert_bijection_up_to_global_phase(
+        algorithms.stateprep.make_uccsd_operator_pool(num_qubits,
+                                                      num_electrons, spin),
+        singles + doubles, num_qubits)
