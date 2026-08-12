@@ -195,7 +195,11 @@ def explicit_double_factorization(
     leaf is eigendecomposed, ``L^t = U^t diag(gamma^t) (U^t)^T``, giving the
     rank-one core ``Z^t = outer(gamma^t, gamma^t)`` (scaled by ``lambda_t`` in the
     eigendecomposition case). ``second_factor_threshold`` optionally zeros small
-    ``gamma^t_k`` (importance-weighted, matching OpenFermion's convention).
+    ``gamma^t_k`` (importance-weighted, matching OpenFermion's convention). On
+    the eigendecomposition path the importance includes ``|lambda_t|``, so both
+    paths compare the same absolute quantity -- the mode's contribution to the
+    core one-norm; on the Cholesky path the pivot scale is already carried by
+    the leaf vector's norm.
 
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
