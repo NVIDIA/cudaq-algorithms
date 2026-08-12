@@ -5,6 +5,11 @@ Realizing time evolution ``exp(-iHt)`` with two contrasting primitives: the
 ancilla-based `QSVT` path and the ancilla-free `Trotter` product formula. Both
 are checked against exact diagonalization.
 
+.. seealso::
+
+   :doc:`../guide/trotter` and :doc:`../guide/qubitization_qsvt` — the two
+   primitives these examples contrast.
+
 Hamiltonian simulation with PauliLCU and QSVT
 ---------------------------------------------
 

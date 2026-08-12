@@ -7,6 +7,32 @@ algorithms built on `CUDA-Q <https://nvidia.github.io/cuda-quantum/>`_. It is
 pure Python: quantum primitives are ``@cudaq.kernel`` device functions, and the
 classical preprocessing is NumPy/SciPy.
 
+What's in the library
+=====================
+
+The library is a small set of layers that feed each other:
+
+- **Chemistry preprocessing** (classical) turns a molecule — via PySCF, Psi4,
+  or an FCIDUMP file — into integral tensors and a qubit Hamiltonian, and can
+  compress that Hamiltonian by double factorization before anything quantum
+  happens.
+- **Block encodings** embed a Hamiltonian into a unitary circuit so that
+  quantum algorithms can consume it. ``PauliLCU`` ships with the library, and
+  a structural protocol lets you plug in an encoding of your own.
+- **Algorithm primitives** build circuits from those inputs: qubitization
+  walks (``Walk``), the quantum singular value transformation (``QSVT``),
+  and Suzuki–Trotter product formulas (``Trotter``).
+- **State preparation** produces the initial states those circuits act on:
+  Hartree–Fock references, unitary-coupled-cluster ansätze, and
+  Givens-rotation Slater determinants.
+
+The goal is to provide the fault-tolerant era's standard circuit building
+blocks as small, hardware-shaped, independently validated kernels that
+compose — with each other and with your own kernels — rather than as
+end-to-end application workflows. A typical path through the library reads
+left to right: molecule → qubit Hamiltonian → block encoding → walk/QSVT
+circuit → expectation values or spectra.
+
 Installation
 ============
 
@@ -41,8 +67,11 @@ selects ``qpp-cpu`` by default (override with ``CUDAQ_DEFAULT_SIMULATOR``).
 The primitive-first philosophy
 ==============================
 
-Every algorithm is exposed as a **factory that emits a CUDA-Q kernel**: the
-constructor holds the problem, and a method call holds the choices.
+Every algorithm is exposed as a **factory that emits a CUDA-Q kernel** — a
+quantum device function, compiled and run by CUDA-Q (see the
+`CUDA-Q kernel basics <https://nvidia.github.io/cuda-quantum/latest/using/basics/kernel_intro.html>`_
+if the term is new). The constructor holds the problem, and a method call
+holds the choices.
 
 .. code-block:: python
 
@@ -63,11 +92,11 @@ required. See :doc:`../guide/block_encodings` for the protocol and a
 Where to go next
 ================
 
-- :doc:`../guide/preprocessing` — molecule / integrals to a qubit Hamiltonian.
-- :doc:`../guide/state_prep` — Hartree-Fock, UCC, and Givens state preparation.
 - :doc:`../guide/block_encodings` — ``PauliLCU``, the ``BlockEncoding``
   protocol, and a worked double-factorized example encoding.
 - :doc:`../guide/trotter` and :doc:`../guide/qubitization_qsvt` — the two
   Hamiltonian-simulation routes.
+- :doc:`../guide/preprocessing` — molecule / integrals to a qubit Hamiltonian.
+- :doc:`../guide/state_prep` — Hartree-Fock, UCC, and Givens state preparation.
 - :doc:`../conventions` — qubit ordering, integral tensors, and normalization
   conventions (read this before validating any numerics).

@@ -151,9 +151,9 @@ Implementing the protocol
 Because conformance is structural, a sparse-oracle, block-diagonal, or any
 custom encoding plugs into `Walk` and `QSVT` simply by implementing the
 surface above — no base class, no registration. The worked example
-`docs/sphinx/examples/python/06_bring_your_own_encoding.py` implements a
-minimal `BlockEncoding` from scratch and runs it through the shared
-consumers, validating it against a dense reference.
+``06_bring_your_own_encoding.py`` (:doc:`../examples_rst/getting_started`)
+implements a minimal `BlockEncoding` from scratch and runs it through the
+shared consumers, validating it against a dense reference.
 
 Bring your own encoding: the double-factorized example
 ------------------------------------------------------
@@ -162,8 +162,8 @@ The protocol's worked, full-scale demonstration is a *double-factorized*
 encoding of the electronic-structure Hamiltonian (von Burg et al., *PRX
 Quantum* **2**, 030305 (2021);
 `arXiv:2007.14460 <https://arxiv.org/abs/2007.14460>`_), implemented
-entirely against the public API as a runnable example --
-``docs/sphinx/examples/python/df_encoding.py``. Its dense-reference test
+entirely against the public API as a runnable example — ``df_encoding.py``
+on the :doc:`block-encodings examples page <../examples_rst/block_encodings>`. Its dense-reference test
 suite (``tests/python/test_df_encoding.py``) runs in CI, so the example is
 held to library-grade correctness, and `Walk`/`QSVT` consume it unchanged:
 

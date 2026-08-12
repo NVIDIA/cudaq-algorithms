@@ -7,6 +7,12 @@ before it, from the single core idea -- block-encode a Hamiltonian and walk it
 against an independent dense reference, so each script runs to completion or
 fails loudly.
 
+.. seealso::
+
+   The :doc:`user guide <../guide/block_encodings>` pages cover each
+   primitive in depth; :doc:`../getting_started/index` sets up the
+   installation these scripts assume.
+
 Quickstart: block-encode a Hamiltonian and walk it
 ---------------------------------------------------
 
@@ -59,7 +65,7 @@ State preparation and injection
 
 Every primitive factory (`Walk`, `QSVT`, `Trotter`) accepts a `state_prep`
 kernel argument. Pass one and the factory returns a zero-argument, hardware-shaped
-circuit with no statevector anywhere -- the seam that makes the primitives
+circuit with no statevector crossing the API boundary -- the seam that makes the primitives
 hardware-ready and the seam a tensor-network state-prep compiler would plug into.
 
 .. literalinclude:: ../examples/python/05_state_prep_and_injection.py

@@ -20,9 +20,10 @@ a polynomial approximation, at the cost of an ancilla register).
                                           (evolve lives here)
    tests/python/test_trotter.py           dense-reference test suite
 
-The runnable end-to-end example is
-`docs/sphinx/examples/python/trotter_chemistry.py` (a chemistry-style
-walkthrough of the primitive).
+The runnable end-to-end example is ``trotter_chemistry.py`` on the
+:doc:`Hamiltonian-simulation examples page
+<../examples_rst/hamiltonian_simulation>` (a chemistry-style walkthrough
+of the primitive).
 
 Using the primitive
 -------------------
@@ -61,7 +62,7 @@ Product-formula orders
   second-order sub-steps with time fractions `w1`, `w0`, `w1`; error
   :math:`O(t^5/\mathrm{steps}^4)`.
 
-The Forest-Ruth weights (`w1 = 1/(2 - 2^(1/3))`, `w0 = 1 - 2*w1`) are
+The Forest-Ruth weights (:math:`w_1 = 1/(2 - 2^{1/3})`, :math:`w_0 = 1 - 2 w_1`) are
 precomputed private module constants: CUDA-Q kernels cannot call host-only
 math such as cube roots, so the kernel consumes the constants directly.
 
@@ -76,7 +77,7 @@ State preparation injection
 `kernel()` takes an optional `state_prep` kernel with signature
 `(qubits: cudaq.qview)`: the returned circuit allocates the register in
 ``|0...0>``, runs `state_prep` on it, then evolves — still zero-argument and
-directly sampleable, with no statevector anywhere:
+directly sampleable, with the statevector abstracted away from the caller:
 
 .. code-block:: python
 
@@ -118,7 +119,7 @@ Identity terms and the global phase
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For `H = c I + H'`, the circuit applies the product formula for `H'` only;
-`exp(-i c t)` cannot be realized as a circuit on the evolved register. The
+:math:`\exp(-i c t)` cannot be realized as a circuit on the evolved register. The
 phase is an unobservable global phase for a single unconditioned evolution
 but a real relative phase for controlled or interference-based algorithms —
 `identity_coefficient` is reported on the `Trotter` object so callers
@@ -140,7 +141,7 @@ hardware targets). The Trotter-specific helper is `evolve`:
 
 Unlike the circuit primitive, `evolve` reintroduces the identity phase by
 default (`include_identity_phase=True`), so the result approximates the
-full `exp(-i H t)|ket>`.
+full :math:`\exp(-i H t)\lvert\psi\rangle`.
 
 `evolve` delegates to `Trotter.state_kernel(time, steps, order)` — a
 `@cudaq.kernel(state)` factory sharing the same validation and marshaling

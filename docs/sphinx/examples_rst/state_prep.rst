@@ -5,6 +5,11 @@ Preparing the input register a primitive will consume. These examples build
 chemistry-style states with the composable `stateprep` device kernels, each one
 checked against a dense reference.
 
+.. seealso::
+
+   :doc:`../guide/state_prep` — the ansatz kernels, operator pools, and
+   injection contract behind these examples.
+
 Hartree-Fock and fixed-parameter UCCSD state preparation
 --------------------------------------------------------
 

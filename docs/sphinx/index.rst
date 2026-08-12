@@ -19,10 +19,10 @@ kernels.
    :maxdepth: 2
 
    guide/preprocessing
-   guide/state_prep
    guide/block_encodings
    guide/trotter
    guide/qubitization_qsvt
+   guide/state_prep
 
 .. toctree::
    :caption: Examples

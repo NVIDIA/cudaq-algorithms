@@ -177,8 +177,8 @@ transform.
     encoding = PauliLCU(h)      # block encoding of h / alpha -> Walk / QSVT
 
 The end-to-end path — mean field to block-encoded ground-state estimation —
-is worked in the ``03_chemistry_to_ground_state.py`` example script under
-``docs/sphinx/examples/python/``.
+is worked in the ``03_chemistry_to_ground_state.py`` example on the
+:doc:`getting-started examples page <../examples_rst/getting_started>`.
 
 Classical double factorization (optional compression)
 ------------------------------------------------------
@@ -375,8 +375,9 @@ shift controlled by the tensor reconstruction error.
 `chemistry.qubit_hamiltonian` uses `fermion.jordan_wigner`; the classical
 factorization itself does not.
 
-The ``double_factorization.py`` example script under
-``docs/sphinx/examples/python/`` factorizes H2O/STO-3G integrals from PySCF
+The ``double_factorization.py`` example on the :doc:`preprocessing
+examples page <../examples_rst/preprocessing>` factorizes
+H2O/STO-3G integrals from PySCF
 and compares X-DF and C-DF reconstruction errors at equal leaf counts; the
 ``df_compression_to_qsvt.py`` script sweeps X-DF leaf counts on H2/STO-3G
 and tabulates tensor error, ``alpha``, term count, and the exact

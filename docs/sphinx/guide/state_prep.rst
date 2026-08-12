@@ -3,47 +3,31 @@ State preparation
 
 State preparation is an **input** to the library's algorithms, not an
 algorithm in itself: every preparation here is (or can be packaged as) a
-`(qubits: cudaq.qview)` kernel, which makes it directly injectable into the
+CUDA-Q kernel taking the qubit register as its only argument
+(`qubits: cudaq.qview`), which makes it directly injectable into the
 algorithm factories via their `state_prep=` parameter — the block-encoding
 factories (:doc:`block_encodings`), the Trotter primitive (:doc:`trotter`),
 and qubitization / QSVT (:doc:`qubitization_qsvt`) all accept it. See
 `State preparation injection`_ below for the shared contract.
 
-Chemistry-style state-preparation kernels and their host-side helpers are
-implemented as a pure-Python peer of the LCU/QSVT and Trotter primitives:
-UCC-family ansatz kernels, operator pools and Pauli-list converters,
-Hartree-Fock reference determinants, fixed-parameter UCC products, and
-Givens-rotation Slater determinants. Requires only the `cudaq` Python
-package.
+Everything is exposed through the ``cudaq_algorithms.stateprep`` namespace:
+unitary-coupled-cluster (UCC) ansatz kernels, operator pools and Pauli-list
+converters, Hartree-Fock reference determinants, fixed-parameter UCC
+products, and Givens-rotation Slater determinants — all pure Python,
+requiring only the `cudaq` package.
 
-.. code-block:: text
-
-   python/cudaq_algorithms/stateprep/
-     __init__.py       the public surface (everything re-exported here)
-     _kernels.py       device kernels: uccsd, uccgsd, upccgsd, ceo,
-                       single/double excitations, hartree_fock,
-                       hartree_fock_occupation, fixed_parameter_ucc
-     _pools.py         host side: excitation enumeration, operator pools,
-                       grouped Pauli-list converters
-     _hartree_fock.py  host side: occupation builders, pool-to-Pauli-list
-                       conversion, hartree_fock_ucc_kernel factory,
-                       resource estimators
-     _givens.py        Givens-rotation Slater determinants
-   tests/python/
-     test_stateprep.py, test_stateprep_kernels.py, test_operator_pools.py,
-     test_stateprep_hf_ucc.py, test_stateprep_givens.py
-
-The runnable examples are
-`docs/sphinx/examples/python/hartree_fock_ucc.py` (fixed-parameter UCCSD vs.
-dense matrix exponentials) and
-`docs/sphinx/examples/python/givens_slater_determinant.py` (Slater
-determinants).
+The runnable examples are ``hartree_fock_ucc.py`` (fixed-parameter UCCSD
+vs. dense matrix exponentials) and ``givens_slater_determinant.py`` (Slater
+determinants) on the :doc:`state-preparation examples page
+<../examples_rst/state_prep>`.
 
 Ansatz kernels and operator pools
 ---------------------------------
 
-The `uccsd`, `uccgsd`, `upccgsd`, and `ceo` device kernels are
-`@cudaq.kernel` functions, composable from user kernels, composable from user kernels:
+The `uccsd` (unitary coupled cluster with singles and doubles), `uccgsd`
+(generalized singles and doubles), `upccgsd` (paired generalized doubles),
+and `ceo` (coupled exchange operator) device kernels are `@cudaq.kernel`
+functions, composable from user kernels:
 
 .. code-block:: python
 
@@ -224,7 +208,7 @@ Every kernel factory in the package family — `PauliLCU.encode_kernel`,
 `(qubits: cudaq.qview)`. The returned circuit is then **zero-argument**:
 the system register is allocated in ``|0...0>``, `state_prep` runs on it,
 and the operation follows — directly sampleable and fully synthesizable,
-with no statevector anywhere.
+with the statevector abstracted away from the caller (a simulator still uses one internally).
 
 Any `(qubits: cudaq.qview)` preparation qualifies, including the
 factory outputs of this package — `hartree_fock_ucc_kernel(...)` and

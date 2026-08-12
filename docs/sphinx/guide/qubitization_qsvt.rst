@@ -113,9 +113,15 @@ consume whatever `PhaseSequence` they are handed, so any source of angles
 works — you can supply your own. `QSPPACK <https://github.com/qsppack/QSPPACK>`_
 is *one* optional, example-only way to compute angles for a target function;
 it is **not** a runtime dependency of `cudaq_algorithms`. The worked example
-`docs/sphinx/examples/python/hamiltonian_simulation_qsvt.py` uses QSPPACK
+``hamiltonian_simulation_qsvt.py`` on the :doc:`Hamiltonian-simulation
+examples page <../examples_rst/hamiltonian_simulation>` uses QSPPACK
 (and scipy) to generate the cosine/sine phases, runs QSVT time evolution,
 and compares against exact diagonalization, reaching ~1e-15 state error.
+The getting-started series applies the same machinery to a different
+function: ``07_matrix_inversion_qsvt.py`` (:doc:`../examples_rst/getting_started`)
+inverts a linear system through a polynomial approximation of
+:math:`1/x` — the QSVT reading of HHL — changing nothing but the phase
+sequence.
 
 State preparation injection
 ---------------------------
@@ -126,7 +132,7 @@ factories return `@cudaq.kernel(state)` circuits that load the input state
 as data (the simulation-friendly form). With it, they return
 **zero-argument** circuits — the system register is allocated in ``|0...0>``,
 ``state_prep`` runs on it, and the operation follows — directly sampleable
-and fully synthesizable, with no statevector anywhere:
+and fully synthesizable, with the statevector abstracted away from the caller:
 
 .. code-block:: python
 

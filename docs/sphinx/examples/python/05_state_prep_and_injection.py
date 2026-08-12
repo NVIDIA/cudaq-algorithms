@@ -12,7 +12,8 @@
 Every primitive factory (Walk, QSVT, Trotter) takes a `state_prep`
 argument: a `(qubits: qview)` CUDA-Q kernel that prepares the register.
 Pass one and the factory returns a *zero-argument* circuit -- no
-`cudaq.State`, no statevector anywhere -- that you can sample directly
+`cudaq.State` argument, no statevector crossing the API boundary -- that
+you can sample directly
 and hand to synthesis. This is the seam that makes the primitives
 hardware-ready, and the seam an MPS/tensor-network state-prep compiler
 would plug into.

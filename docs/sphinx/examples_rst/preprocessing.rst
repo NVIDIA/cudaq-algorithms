@@ -5,6 +5,11 @@ Classical preprocessing that shapes an electronic-structure Hamiltonian before
 it ever reaches a quantum circuit. These examples double-factorize the
 two-electron integrals and trace the result through to block-encoding cost.
 
+.. seealso::
+
+   :doc:`../guide/preprocessing` — the chemistry bridges and double
+   factorization these examples build on.
+
 Double factorization of the two-electron integrals
 --------------------------------------------------
 

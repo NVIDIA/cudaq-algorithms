@@ -5,6 +5,11 @@ Two ways to hide a Hamiltonian inside a larger unitary. These examples walk the
 flat `PauliLCU` API and put the structured double-factorized encoding head to
 head with it.
 
+.. seealso::
+
+   :doc:`../guide/block_encodings` — the ``PauliLCU`` API and the
+   ``BlockEncoding`` protocol these examples exercise.
+
 Walkthrough of the PauliLCU block-encoding API
 ----------------------------------------------
 
