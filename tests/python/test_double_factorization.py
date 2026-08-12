@@ -495,3 +495,22 @@ def test_pair_swap_asymmetry_rejected():
     eri[0, 0, 1, 1] += 0.05  # breaks (pq|rs) == (rs|pq) only
     with pytest.raises(ValueError, match="chemist symmetries"):
         df.explicit_double_factorization(eri)
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_second_factor_threshold_includes_first_factor_eigenvalue(backend):
+    # The small second-factor mode has scaled importance
+    # 100 * (sqrt(0.99) + 0.1) * 0.1 > 0.2, so it must not be truncated.
+    leaf = np.diag([0.1, np.sqrt(0.99)])
+    eri = 100.0 * np.einsum("pq,rs->pqrs", leaf, leaf)
+    factorization = df.explicit_double_factorization(
+        eri,
+        threshold=0.0,
+        second_factor_threshold=0.2,
+        first_factorization="eigendecomposition",
+        backend=backend)
+
+    # Both modes must remain because both scaled importance values exceed 0.2.
+    assert np.all(np.abs(np.diag(factorization.leaf_cores[0])) > 0.0)
+    # Retaining both modes must reconstruct this rank-one ERI to round-off.
+    assert df.factorization_error(eri, factorization) < 1.0e-12
