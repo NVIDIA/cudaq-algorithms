@@ -198,3 +198,11 @@ def test_from_fcidump_rejects_unterminated_header():
     unterminated = H2_STO3G_FCIDUMP.replace("&END\n", "")
     with pytest.raises(ValueError, match="never terminated"):
         chemistry.from_fcidump(unterminated)
+
+
+def test_from_fcidump_rejects_empty_body():
+    # The sibling silent-zero path: a *terminated* header with no integral
+    # records at all must also raise, not return H = 0.
+    header_only = "&FCI NORB=2,NELEC=2,MS2=0,\n&END\n"
+    with pytest.raises(ValueError, match="no integral records"):
+        chemistry.from_fcidump(header_only)
