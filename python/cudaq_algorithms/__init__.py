@@ -17,7 +17,9 @@ Python package plus NumPy/SciPy.
 def _resolve_version() -> str:
     from importlib.metadata import PackageNotFoundError, version
 
-    for distribution in ("cudaq-algorithms-cu12", "cudaq-algorithms-cu13"):
+    # The shipped wheel is CUDA-agnostic; the -cuNN names are fallbacks.
+    for distribution in ("cudaq-algorithms", "cudaq-algorithms-cu12",
+                         "cudaq-algorithms-cu13"):
         try:
             return f"CUDA-Q Algorithms {version(distribution)}"
         except PackageNotFoundError:
