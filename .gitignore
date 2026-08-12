@@ -7,3 +7,4 @@ __pycache__/
 .pytest_cache/
 compile_commands.json
 timer.dat
+docs/sphinx/_build/

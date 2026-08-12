@@ -64,7 +64,7 @@ _PAULI_CODES = {"X": 1, "Y": 2, "Z": 3}
 
 @cudaq.kernel
 def prepare(ancilla: cudaq.qview, angles: list[float]):
-    """PREPARE: encode sqrt(|c_i| / alpha) amplitudes on the ancilla register.
+    """PREPARE: encode sqrt(``|c_i|`` / alpha) amplitudes on the ancilla register.
 
     Positive guard, not early return: kernel ``return`` is silently
     ignored (cuda-quantum#4845).
@@ -121,7 +121,7 @@ def unprepare(ancilla: cudaq.qview, angles: list[float]):
 def select(ancilla: cudaq.qview, system: cudaq.qview, term_controls: list[int],
            term_ops: list[int], term_lengths: list[int],
            term_signs: list[int]):
-    """SELECT: apply Pauli term i, controlled on ancilla state |i>.
+    """SELECT: apply Pauli term i, controlled on ancilla state ``|i>``.
 
     Requires a non-empty ancilla register (PauliLCU always provides at
     least one ancilla).
@@ -285,7 +285,7 @@ def apply_phase_sequence(signal: cudaq.qview, system: cudaq.qview,
                          term_signs: list[int]):
     """Projector-phase QSVT sequence: phase, then (walk step, phase) repeats.
 
-    The signal register must start in |0...0>. A forward step is the full
+    The signal register must start in ``|0...0>``. A forward step is the full
     block encoding followed by the zero-state reflection; an adjoint step is
     the reverse (both factors are self-adjoint).
 
@@ -419,7 +419,7 @@ def _prepare_angles(probabilities: Sequence[float]) -> list[float]:
 
 
 def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
-    """The SELECT operator sum_i sign_i |i><i|_anc x P_i as an observable.
+    """The SELECT operator ``sum_i sign_i |i><i|_anc x P_i`` as an observable.
 
     LCU-specific: built from the encoding's signed Pauli terms. Its
     expectation after PREPARE and p walk steps is the odd Chebyshev moment
@@ -594,9 +594,9 @@ class PauliLCU:
 
         Without ``state_prep``: a ``@cudaq.kernel(state)`` allocating the
         system register from ``state`` and the ancilla register (in
-        |0...0>) after it. With ``state_prep`` (a ``(qubits: qview)``
+        ``|0...0>``) after it. With ``state_prep`` (a ``(qubits: qview)``
         kernel): a zero-argument kernel that allocates the system register
-        in |0...0>, runs ``state_prep`` on it, then applies the encoding.
+        in ``|0...0>``, runs ``state_prep`` on it, then applies the encoding.
         """
         angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
@@ -706,7 +706,7 @@ class PauliLCU:
         """``(control_and_ancilla, system)``: U_A controlled by qubit 0.
 
         Uncontrolled PREPARE pairs wrap the controlled SELECT, so the
-        circuit is the identity at control |0>.
+        circuit is the identity at control ``|0>``.
         """
         angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla

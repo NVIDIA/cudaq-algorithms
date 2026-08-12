@@ -9,8 +9,8 @@ composable sequence kernels live in ``pauli_lcu``.)
 
 Each walk step is the full block encoding (PREPARE, SELECT, PREPARE dagger)
 composed with a reflection about the all-zero signal state, and projector
-phases ``diag(e^{i phi}, 1)`` act on the same |0...0> signal subspace. The
-signal register starts at |0...0>.
+phases ``diag(e^{i phi}, 1)`` act on the same ``|0...0>`` signal subspace. The
+signal register starts at ``|0...0>``.
 
 The walk block encodes ``-H/alpha``; the circuits fold the sign in, so on an
 eigenstate of H with eigenvalue lambda the good-subspace block implements
@@ -192,7 +192,7 @@ class QSVT:
         the returned kernel takes one ``cudaq.State`` argument; with
         ``state_prep`` — a ``(qubits: cudaq.qview)`` kernel — it takes
         no arguments and prepares the system register itself. The signal
-        register is allocated in |0...0> after the system register.
+        register is allocated in ``|0...0>`` after the system register.
         """
         seq = _as_sequence(sequence, convention)
         phases = seq.projector_phases
@@ -250,7 +250,7 @@ class QSVT:
         prep runs on the system register only, uncontrolled). Either way
         the system register is followed by one register holding
         [control, signal] (a CUDA-Q Python control set cannot mix a bare
-        qubit with a separate register). With control |0> the sequence is
+        qubit with a separate register). With control ``|0>`` the sequence is
         the identity.
         """
         seq = _as_sequence(sequence, convention)
@@ -305,7 +305,7 @@ def recover_real_time_evolution(
         cos_state: ArrayLike, sin_state: ArrayLike,
         cos_phases: Sequence[float],
         sin_phases: Sequence[float]) -> NDArray[np.complex128]:
-    """Combine cosine/sine QSP components into exp(-i H t)|psi>.
+    """Combine cosine/sine QSP components into ``exp(-i H t)|psi>``.
 
     ``cos_state`` and ``sin_state`` are good-subspace statevectors produced
     by running qsp-convention sequences through the QSVT circuit (which

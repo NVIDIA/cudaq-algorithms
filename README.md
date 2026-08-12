@@ -1,17 +1,13 @@
 # CUDA-Q Algorithms
 
 CUDA-Q Algorithms is a primitive-first algorithms library built on CUDA-Q,
-focused on fault-tolerant quantum computing (FTQC) primitives.
+focused on fault-tolerant quantum computing (FTQC) primitives: block
+encodings, qubitization, quantum singular value transformation, product
+formulas, and the state-preparation and fermion-to-qubit building blocks
+they compose with.
 
-It imports selected reusable functionality from `cudaqx/libs/solvers`:
-
-- fermion-to-qubit transforms
-- state-preparation circuits
-- state-preparation excitation/operator-pool helpers
-
-NISQ-era application workflows such as VQE, ADAPT-VQE, QAOA, GQE, PySCF drivers,
-and optimizer loops are intentionally out of scope for this library and will not
-be ported; they remain available in `cudaqx/libs/solvers`.
+NISQ-era application workflows such as VQE, ADAPT-VQE, QAOA, GQE, and
+optimizer loops are intentionally out of scope.
 
 ## Python primitives
 
@@ -26,31 +22,31 @@ kernels and host-side helpers (the only runtime requirement is the
 - qubitization walks and Chebyshev moment measurement (`Walk`)
 - QSVT phase sequences (`QSVT`, `PhaseSequence`)
 - Suzuki-Trotter product formulas (`trotter.Trotter`, orders 1/2/4)
+- chemistry input bridges (`chemistry.from_pyscf`, `chemistry.from_psi4`,
+  `chemistry.from_fcidump`)
 
 Simulation-only helpers (statevector access) are isolated in
-`cudaq_algorithms.sim_utils`; everything else is hardware-shaped. See
-[docs/pauli_lcu_qsvt.md](docs/pauli_lcu_qsvt.md),
-[docs/trotter.md](docs/trotter.md),
-[docs/stateprep.md](docs/stateprep.md),
-[examples/pauli_lcu_qsvt/](examples/pauli_lcu_qsvt/),
-[examples/hamiltonian_simulation/](examples/hamiltonian_simulation/), and
-[examples/stateprep/](examples/stateprep/).
+`cudaq_algorithms.sim_utils`; everything else is hardware-shaped. The
+documentation is a Sphinx site under [docs/](docs/) (build instructions in
+[docs/README.md](docs/README.md)); the runnable, self-verifying examples
+live in [docs/sphinx/examples/python/](docs/sphinx/examples/python/).
 
 Classical chemistry preprocessing ships as a peer pure-Python module:
 double factorization of two-electron integrals (X-DF and C-DF/RC-DF) on
-NumPy/SciPy with optional CuPy GPU acceleration — see
-[docs/double_factorization.md](docs/double_factorization.md).
+NumPy/SciPy with optional CuPy GPU acceleration — see the preprocessing
+guide in the Sphinx docs.
 
 ## Chemistry Inputs
 
-CUDA-Q Algorithms does not provide an official bridge to PySCF or any other
-electronic-structure package. Chemistry-facing tests and examples may use PySCF
-to generate reference data, such as one- and two-electron integrals, but that
-dependency stays at the test/example boundary.
-
-The library APIs operate on reusable algorithmic inputs, such as one- and
-two-body tensors, qubit Hamiltonians, Pauli words, and state-preparation
-operator pools.
+The library APIs operate on reusable algorithmic inputs: one- and two-body
+tensors, qubit Hamiltonians, Pauli words, and state-preparation operator
+pools. The `chemistry` module provides bridges that produce those inputs
+from electronic-structure packages — `from_pyscf` and `from_psi4` extract
+molecular-orbital integrals from a converged mean-field calculation, and
+`from_fcidump` parses the standard FCIDUMP interchange format. The
+electronic-structure packages themselves are optional and never imported
+at package-import time; everything downstream of the integrals runs
+without them.
 
 ## License
 

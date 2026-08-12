@@ -1,0 +1,9 @@
+# Documentation build dependencies for cudaq-algorithms (Sphinx).
+# Mirrors the cudaqx docs stack, minus the C++ (breathe/doxygen) and
+# GPU (cuquantum) pieces this pure-Python library does not need.
+# The build also needs `cudaq` (+ numpy/scipy) importable for autodoc.
+sphinx<9
+sphinx_rtd_theme
+myst_parser
+sphinx_copybutton
+sphinx_inline_tabs

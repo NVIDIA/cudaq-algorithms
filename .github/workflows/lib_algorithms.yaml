@@ -99,7 +99,7 @@ jobs:
 
       - name: Install test requirements
         run: |
-          python3 -m pip install numpy scipy pytest pyscf
+          python3 -m pip install numpy scipy pytest pyscf qsppack
 
       - name: Run tests
         run: |

@@ -249,7 +249,7 @@ def hartree_fock_ucc_kernel(num_qubits,
 
     Provide exactly one of ``num_electrons`` (with optional ``spin`` for
     an open-shell reference) or explicit ``occupied_orbitals``. The
-    returned kernel expects a ``num_qubits``-wide register in |0...0> and
+    returned kernel expects a ``num_qubits``-wide register in ``|0...0>`` and
     is directly injectable as a ``state_prep`` kernel (e.g. into
     ``PauliLCU.encode_kernel``). The grouped data is flattened into
     per-rotation angles before capture — nested lists cannot be captured

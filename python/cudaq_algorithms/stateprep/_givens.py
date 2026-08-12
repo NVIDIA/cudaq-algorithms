@@ -8,6 +8,15 @@ Jordan-Wigner / little-endian qubit layout: the amplitude of basis state
 ``|S>`` with occupied set ``S`` is ``det(Q[S, :])``, up to a global
 phase.
 
+The construction follows Jiang et al., Phys. Rev. Applied 9, 044036
+(2018) (arXiv:1711.05395, Sec. III): apply the Givens network that
+reduces ``Q`` to the computational-basis determinant, inverted, to
+``|1...10...0>``. The strictly adjacent (nearest-neighbor) rotation
+scheduling is the linear-depth arrangement of Kivlichan et al., Phys.
+Rev. Lett. 120, 110501 (2018) (arXiv:1711.04789) -- and is also what
+lets every rotation map onto a contiguous two-qubit ``exp_pauli`` slice
+(see the kernel-language constraints below).
+
 Host side, ``make_givens_rotation_schedule`` reduces ``Q`` to the
 computational-basis determinant with adjacent (nearest-neighbor) Givens
 row rotations, bottom-up per column; the state-preparation kernels then
@@ -60,8 +69,8 @@ def givens_rotation(qubits: cudaq.qview, theta: float, first_orbital: int,
                     second_orbital: int):
     """Apply an adjacent real fermionic Givens rotation.
 
-    CUDA-Q's built-in Givens convention maps |10> to
-    cos(theta)|10> - sin(theta)|01>; the state-preparation convention
+    CUDA-Q's built-in Givens convention maps ``|10>`` to
+    ``cos(theta)|10> - sin(theta)|01>``; the state-preparation convention
     here uses the opposite sign, so this inlines the built-in rotation
     at -theta. Non-adjacent orbital pairs are a no-op, matching the
     host-side adjacency validation.
@@ -359,7 +368,7 @@ def slater_determinant_kernel(schedule: GivensRotationSchedule):
     """A ``(qubits: qview)`` kernel preparing the schedule's determinant.
 
     The returned kernel expects a ``schedule.num_spin_orbitals``-wide
-    register in |0...0> and is directly injectable as a ``state_prep``
+    register in ``|0...0>`` and is directly injectable as a ``state_prep``
     kernel (e.g. into ``PauliLCU.encode_kernel``). It dispatches on
     ``schedule.is_complex`` to the ``slater_determinant`` /
     ``complex_slater_determinant`` kernel path. The schedule is flattened
@@ -405,7 +414,7 @@ def slater_determinant_kernel(schedule: GivensRotationSchedule):
 
         return real_prep
 
-    # Rotation-free real schedule: the basis determinant |1...10...0>.
+    # Rotation-free real schedule: the basis determinant ``|1...10...0>``.
     @cudaq.kernel
     def basis_prep(qubits: cudaq.qview):
         for i in range(num_electrons):

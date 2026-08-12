@@ -48,5 +48,5 @@ from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 #
 # A worked, full-scale implementation of the BlockEncoding protocol — the
 # double-factorized encoding — ships as a runnable example at
-# examples/bring_your_own_encoding/df_encoding.py (dense-validated by
+# docs/sphinx/examples/python/df_encoding.py (dense-validated by
 # tests/python/test_df_encoding.py).

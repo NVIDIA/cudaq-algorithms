@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 
 def reflection_observable(encoding: BlockEncoding) -> cudaq.SpinOperator:
-    """R = 2|0...0><0...0| - I on the ancilla register."""
+    """R = ``2|0...0><0...0| - I`` on the ancilla register."""
     if encoding.num_ancilla == 0:
         raise ValueError("reflection observable needs at least one ancilla")
     offset = encoding.num_system
@@ -172,7 +172,7 @@ class Walk:
         ``cudaq.State`` argument (the input state as data — the
         simulation-friendly form). With ``state_prep`` — a kernel with
         signature ``(qubits: cudaq.qview)`` — the returned kernel takes
-        no arguments: it allocates the system register in |0...0>, runs
+        no arguments: it allocates the system register in ``|0...0>``, runs
         ``state_prep`` on it, and applies the walks. ``state_prep`` must
         act only on that register, whose width is ``num_system`` (a
         documented contract; not verifiable at factory time).
@@ -247,7 +247,7 @@ class Walk:
         system register is followed by one register holding
         [control, ancillas] (the control cannot share a control set with
         a separate register in CUDA-Q Python). The control qubit is
-        initialized to ``control_state``; with control |0> the circuit is
+        initialized to ``control_state``; with control ``|0>`` the circuit is
         the identity up to the (cancelling) PREPARE pair.
         """
         n_anc = self._encoding.num_ancilla

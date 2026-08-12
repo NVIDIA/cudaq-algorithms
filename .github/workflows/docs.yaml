@@ -1,0 +1,77 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+      - 'releases/v*'
+    paths:
+      - '.github/workflows/docs.yaml'
+      - 'docs/**'
+      - 'python/**/*.py'
+  pull_request:
+    paths:
+      - '.github/workflows/docs.yaml'
+      - 'docs/**'
+      - 'python/**/*.py'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          # autodoc imports the package, which imports cudaq.
+          python3 -m pip install cudaq numpy scipy
+          python3 -m pip install -r docs/requirements.txt
+
+      - name: Build documentation
+        # Warnings-as-errors (-W) is the Makefile default.
+        run: PYTHONPATH="$PWD/python" make -C docs html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/sphinx/_build/html
+
+  # Publish to GitHub Pages only from release branches, mirroring cudaqx.
+  deploy:
+    name: Deploy
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/heads/releases/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
