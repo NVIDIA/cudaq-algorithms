@@ -27,9 +27,9 @@ kernels and host-side helpers (the only runtime requirement is the
 
 Simulation-only helpers (statevector access) are isolated in
 `cudaq_algorithms.sim_utils`; everything else is hardware-shaped. The
-documentation is a Sphinx site under [docs/](docs/) (build instructions in
-[docs/README.md](docs/README.md)); the runnable, self-verifying examples
-live in [docs/sphinx/examples/python/](docs/sphinx/examples/python/).
+documentation is a Sphinx site under [docs/](https://github.com/NVIDIA/cudaq-algorithms/tree/main/docs) (build instructions in
+[docs/README.md](https://github.com/NVIDIA/cudaq-algorithms/blob/main/docs/README.md)); the runnable, self-verifying examples
+live in [docs/sphinx/examples/python/](https://github.com/NVIDIA/cudaq-algorithms/tree/main/docs/sphinx/examples/python).
 
 Classical chemistry preprocessing ships as a peer pure-Python module:
 double factorization of two-electron integrals (X-DF and C-DF/RC-DF) on
@@ -50,7 +50,7 @@ without them.
 
 ## License
 
-The code in this repository is licensed under the [Apache License 2.0](./LICENSE). Dependency license references and attributions are listed in [NOTICE](./NOTICE).
+The code in this repository is licensed under the [Apache License 2.0](https://github.com/NVIDIA/cudaq-algorithms/blob/main/LICENSE). Dependency license references and attributions are listed in [NOTICE](https://github.com/NVIDIA/cudaq-algorithms/blob/main/NOTICE).
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution requirements,
+See [CONTRIBUTING.md](https://github.com/NVIDIA/cudaq-algorithms/blob/main/CONTRIBUTING.md) for contribution requirements,
 including Developer Certificate of Origin (DCO) sign-off.
