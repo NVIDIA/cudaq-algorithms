@@ -286,6 +286,8 @@ def from_fcidump(contents: str) -> tuple[np.ndarray, np.ndarray, float]:
     if state == "header":
         raise ValueError(
             "FCIDUMP header namelist was never terminated (&END, $END, or /)")
+    if not body_lines:
+        raise ValueError("FCIDUMP contains no integral records")
 
     header = " ".join(header_lines)
     # Unrestricted files store spin-resolved (alpha/beta/mixed) blocks whose

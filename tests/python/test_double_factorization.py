@@ -510,6 +510,12 @@ def test_second_factor_threshold_includes_first_factor_eigenvalue(backend):
         first_factorization="eigendecomposition",
         backend=backend)
 
+    # The threshold separates the two criteria: the scale-free importance
+    # of the small mode sits below 0.2 while the scaled one sits above, so
+    # this test fails loudly if the |lambda_t| factor is ever dropped again.
+    small_mode_importance = (0.1 + np.sqrt(0.99)) * 0.1
+    assert small_mode_importance < 0.2 < 100.0 * small_mode_importance
+
     # Both modes must remain because both scaled importance values exceed 0.2.
     assert np.all(np.abs(np.diag(factorization.leaf_cores[0])) > 0.0)
     # Retaining both modes must reconstruct this rank-one ERI to round-off.
