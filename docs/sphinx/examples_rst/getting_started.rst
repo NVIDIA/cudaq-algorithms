@@ -100,3 +100,61 @@ Requires ``qsppack`` for the phase factors, like example 2.
 .. literalinclude:: ../examples/python/07_matrix_inversion_qsvt.py
    :language: python
    :start-after: [Begin Documentation]
+
+Quantum phase estimation with three energy oracles
+--------------------------------------------------
+
+Quantum phase estimation reads the eigenphases of a unitary into a counting
+register: for :math:`U|E_j\rangle = e^{2\pi i \phi_j}|E_j\rangle`, an
+:math:`m`-qubit register and the controlled powers :math:`U^{2^k}` build a
+phase gradient that the inverse QFT converts into a peak near the integer
+:math:`y = 2^m \phi_j`. On a superposed input QPE samples eigenvalues with the
+input state's spectral weights -- it does *not* choose the ground state.
+H\ :sub:`2` works well because Hartree-Fock has dominant ground-state overlap.
+
+This example wraps one QPE shell -- the same Hartree-Fock preparation, the
+same six-qubit counting register, the same hand-written inverse QFT -- around
+three different constructions of the unitary whose phase reveals energy:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Method
+     - Unitary measured by QPE
+     - Energy decoder
+   * - Exact matrix
+     - :math:`U_t = e^{-iHt}` (dense, simulator-only reference)
+     - :math:`E = -\operatorname{wrap}(2\pi y/M)/t`
+   * - Product formula
+     - :math:`U_{\mathrm{Trot}}(t) \approx e^{-iHt}` via `trotter.apply_trotter`
+     - same linear decoder
+   * - Qubitization walk
+     - :math:`W` from the `PauliLCU` block encoding
+     - :math:`E = -\alpha\cos\theta`
+
+The product-formula oracle shows a subtlety of composing library evolution
+under control: `Trotter` evolves the nonidentity part of the Hamiltonian, so
+its omitted identity coefficient -- a global phase for free evolution -- must
+be restored as a controlled relative phase inside the QPE loop.
+
+The walk oracle decodes through the qubitization convention
+:math:`\cos\theta_j = -E_j/\alpha`, so each energy appears at mirror phases
+:math:`\pm\theta_j`; the decoder folds conjugate bins before taking the mode.
+Its controlled-power schedule is the centered form of Berry et al.,
+`PRX Quantum 6, 020327 (2025) <https://doi.org/10.1103/PRXQuantum.6.020327>`_,
+which replaces :math:`W^n` by :math:`W^{n - M/2}`: one unconditional
+:math:`W^\dagger`, a controlled :math:`W` for bit zero, and a coherent choice
+of :math:`W^{\pm 2^{k-1}}` for every upper bit.
+
+A four-qubit problem does not need qubitization -- the dense reference is
+cheaper classically. The walk is here because fault-tolerant algorithms
+commonly assume structured PREPARE/SELECT access, and this shell is exactly
+how such an oracle drops into QPE. Six counting qubits keep the script fast
+on the CPU simulator; every modal estimate is asserted to land within one
+phase cell (about 34 mHa here) of the exact ground energy. Resolution scales
+with the register: at 12 counting qubits the same circuits reach roughly
+0.1--0.5 mHa.
+
+.. literalinclude:: ../examples/python/08_quantum_phase_estimation.py
+   :language: python
+   :start-after: [Begin Documentation]
