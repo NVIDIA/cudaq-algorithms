@@ -251,4 +251,5 @@ jobs:
             ${{ matrix.platform }} \
             ${{ matrix.cuda_version }} \
             ${{ inputs.cudaq_wheels == 'Custom' && '0.15.99' || 'SKIP' }} \
-            ${{ inputs.version || '0.15.99' }}
+            ${{ inputs.version || '0.15.99' }} \
+            ${{ matrix.device }}
