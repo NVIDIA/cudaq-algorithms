@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for explicit (X-DF) and compressed (C-DF) double factorization."""
 import os
+import warnings
 
 import numpy as np
 import pytest
@@ -520,3 +521,94 @@ def test_second_factor_threshold_includes_first_factor_eigenvalue(backend):
     assert np.all(np.abs(np.diag(factorization.leaf_cores[0])) > 0.0)
     # Retaining both modes must reconstruct this rank-one ERI to round-off.
     assert df.factorization_error(eri, factorization) < 1.0e-12
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cdf_reports_when_optimizer_hits_iteration_limit(backend):
+    # max_iterations=1 cannot finish a truncated C-DF; the result must still
+    # be returned, but it must be marked unsuccessful and warn. Silent
+    # success here is the product bug: callers cannot tell a cap-hit from
+    # a stationary point.
+    eri = _synthetic_eri(4, 3, seed=7)
+    with pytest.warns(RuntimeWarning, match="did not converge"):
+        factorization = df.compressed_double_factorization(eri,
+                                                           num_leaves=2,
+                                                           max_iterations=1,
+                                                           backend=backend)
+    assert factorization.method == "C-DF"
+    assert factorization.optimizer_success is False
+    assert factorization.optimizer_nit == 1
+    assert factorization.optimizer_grad_norm is not None
+    assert factorization.optimizer_grad_norm > 0.0
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cdf_exact_rank_is_marked_converged(backend):
+    # At the true leaf rank the X-DF warm start is already a minimizer, so
+    # L-BFGS must report success and must not warn.
+    eri = _synthetic_eri(4, 3, seed=11)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        factorization = df.compressed_double_factorization(eri,
+                                                           num_leaves=3,
+                                                           max_iterations=1500,
+                                                           backend=backend)
+    assert factorization.optimizer_success is True
+    assert factorization.optimizer_nit == 0
+    assert df.factorization_error(eri, factorization) < 1.0e-4
+
+
+def test_xdf_leaves_optimizer_status_unset():
+    # optimizer_* is a C-DF field; X-DF does not run L-BFGS.
+    eri = _synthetic_eri(4, 2, seed=3)
+    factorization = df.explicit_double_factorization(eri, threshold=0.0)
+    assert factorization.optimizer_success is None
+    assert factorization.optimizer_nit is None
+    assert factorization.optimizer_grad_norm is None
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+@pytest.mark.parametrize("inner_solver", ["lstsq", "cg"])
+def test_cdf_objective_is_a_function_of_x(backend, inner_solver):
+    # Replay an L-BFGS line-search backtrack through the real objective:
+    # evaluate at x, at a rejected trial x+dx, then at x again. SciPy
+    # requires the same x to yield the same (f, g). The default CG warm
+    # start used to seed the second f(x) from the trial's cores.
+    # H2O/STO-3G at 4 leaves is rank-deficient in Z, so a wrong seed
+    # changes (f, g) by a visible amount; the synthetic full-rank case
+    # would not expose it.
+    import cudaq_algorithms.double_factorization._factorization as F
+    eri = _h2o_eri()
+    orig = F.scipy.optimize.minimize
+    replay = {}
+
+    def wrapped(fun, x0, **kwargs):
+        x0 = np.asarray(x0, dtype=float)
+        dx = 1.0e-3 * np.random.default_rng(7).standard_normal(x0.shape)
+        f0, g0 = fun(x0)
+        fun(x0 + dx)
+        f1, g1 = fun(x0)
+        replay["df"] = abs(f0 - f1)
+        replay["dg"] = float(np.linalg.norm(np.asarray(g0) - np.asarray(g1)))
+        options = dict(kwargs.get("options") or {})
+        options["maxiter"] = 1
+        kwargs = dict(kwargs)
+        kwargs["options"] = options
+        return orig(fun, x0, **kwargs)
+
+    F.scipy.optimize.minimize = wrapped
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            df.compressed_double_factorization(eri,
+                                               num_leaves=4,
+                                               max_iterations=1,
+                                               inner_solver=inner_solver,
+                                               backend=backend)
+    finally:
+        F.scipy.optimize.minimize = orig
+    assert replay, "minimize wrapper did not run"
+    # lstsq is stateless, so this is a tight identity. CG must match it
+    # once the warm start is keyed by x rather than by call order.
+    assert replay["df"] < 1.0e-12
+    assert replay["dg"] < 1.0e-9

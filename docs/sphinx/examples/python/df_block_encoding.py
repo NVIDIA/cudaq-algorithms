@@ -289,10 +289,7 @@ def run(key: str, force_circuits: bool):
                                                          max_num_leaves=leaves)
             xdf_error = df.factorization_error(eri, truncated)
             compressed = df.compressed_double_factorization(
-                eri,
-                num_leaves=leaves,
-                regularization=1e-4,
-                max_iterations=300)
+                eri, num_leaves=leaves, regularization=1e-4)
             cdf_error = df.factorization_error(eri, compressed)
             cdf_alpha = DoubleFactorizedEncoding(one_body, compressed).alpha
             ratio = xdf_error / max(cdf_error, 1e-16)

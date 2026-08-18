@@ -255,7 +255,10 @@ X-DF vs C-DF
   ``X^t``) and optimized with L-BFGS, while the symmetric cores are solved
   in closed form at each step (the two-step scheme of the paper,
   warm-started from X-DF). C-DF reaches a target accuracy with substantially
-  fewer leaves than X-DF.
+  fewer leaves than X-DF. The L-BFGS status is stored on the result
+  (``optimizer_success``, ``optimizer_nit``, ``optimizer_grad_norm``); a
+  ``RuntimeWarning`` is issued if the run hits ``max_iterations`` or otherwise
+  fails to converge, and the best factorization found is still returned.
 
 RC-DF regularization
 ~~~~~~~~~~~~~~~~~~~~~
@@ -304,9 +307,11 @@ the conditioning, not by the matvec. Two accelerators (active only for
 ``inner_solver="cg"``) cut the per-step cost without changing the final
 accuracy:
 
-- **`cg_warm_start=True`** seeds each L-BFGS step's CG from the previous
-  step's cores. The cores move slowly between steps, so the warm start
-  collapses the iteration count.
+- **`cg_warm_start=True`** seeds each *new* L-BFGS evaluation's CG from the
+  previous evaluation's cores. The cores move slowly between steps, so the
+  warm start collapses the iteration count. A re-evaluation of the same
+  parameters (a rejected line-search point) reuses the cached cores, so
+  the objective stays a function of the parameters.
 - **`cg_optimization_tolerance`** (default ``max(cg_tolerance, 1e-6)``)
   solves the *in-loop* systems only loosely — an inexact inner solve, which
   is sound here because the envelope theorem only needs an approximate
@@ -321,6 +326,8 @@ All functions return or operate on a
 :class:`~cudaq_algorithms.double_factorization.DoubleFactorization`
 dataclass with `num_orbitals`, `leaf_rotations` (:math:`U^t`),
 `leaf_cores` (:math:`Z^t`), `num_leaves`, and a `reconstruct_eri` method.
+C-DF also fills `optimizer_success`, `optimizer_nit`, and
+`optimizer_grad_norm` from L-BFGS-B.
 Full signatures and parameter documentation live in the
 :doc:`Python API reference <../api/python_api>`.
 

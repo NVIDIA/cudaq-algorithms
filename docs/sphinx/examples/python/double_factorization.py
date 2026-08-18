@@ -64,14 +64,18 @@ def main():
                                                     threshold=0.0,
                                                     max_num_leaves=num_leaves,
                                                     backend=backend)
+        # Truncated molecular C-DF can need a few thousand L-BFGS steps;
+        # the library default (2000) sometimes hits the cap. Status is
+        # still reported if this budget is not enough.
         compressed = df.compressed_double_factorization(eri,
                                                         num_leaves=num_leaves,
-                                                        max_iterations=600,
+                                                        max_iterations=5000,
                                                         backend=backend)
         x_rel = df.factorization_error(eri, explicit) / norm
         c_rel = df.factorization_error(eri, compressed) / norm
+        status = "" if compressed.optimizer_success else "  (not converged)"
         print(f"  leaves={num_leaves:2d}:  X-DF rel error={x_rel:.3e}   "
-              f"C-DF rel error={c_rel:.3e}")
+              f"C-DF rel error={c_rel:.3e}{status}")
         assert c_rel <= x_rel + 1.0e-6
 
 
