@@ -213,6 +213,32 @@ _WORK_OPERANDS = {
     _OP_BODY_Z_W: (1, ),
 }
 
+# Human-readable templates for describe(); {a}/{b}/{c} are the operands.
+_OP_DESCRIPTIONS = {
+    _OP_X_ADDR: "x(address[{a}])",
+    _OP_X_LADDER: "x(ladder[{a}])",
+    _OP_CX_ADDR_LADDER: "cx(address[{a}] -> ladder[{b}])",
+    _OP_CX_LADDER_LADDER: "cx(ladder[{a}] -> ladder[{b}])",
+    _OP_CCX: "ccx(ladder[{a}], address[{b}] -> ladder[{c}])  # Toffoli",
+    _OP_BODY_X: "x(target[{b}]) ctrl ladder[{a}]",
+    _OP_BODY_Y: "y(target[{b}]) ctrl ladder[{a}]",
+    _OP_BODY_Z: "z(target[{b}]) ctrl ladder[{a}]",
+    _OP_CX_CTRL_LADDER: "cx(control[0] -> ladder[{b}])",
+    _OP_CCX_CTRL: "ccx(control[0], address[{b}] -> ladder[{c}])  # Toffoli",
+    _OP_FREE_X: "x(target[{a}])",
+    _OP_FREE_CX: "cx(target[{a}] -> target[{b}])",
+    _OP_AND_TT: "ccx(target[{a}], target[{b}] -> work[{c}])  # Toffoli",
+    _OP_AND_WT: "ccx(work[{a}], target[{b}] -> work[{c}])  # Toffoli",
+    _OP_COPY_TW: "cx(target[{a}] -> work[{b}])",
+    _OP_BODY_X_W: "x(target[{c}]) ctrl ladder[{a}], work[{b}]  # Toffoli",
+    _OP_BODY_Z_W: "z(work[{b}]) ctrl ladder[{a}]",
+    _OP_Z_LADDER: "z(ladder[{a}])",
+    _OP_CX_ADDR_ADDR: "cx(address[{a}] -> address[{b}])",
+    _OP_CCX_ADDR_ADDR:
+    "ccx(address[{a}], address[{b}] -> ladder[{c}])  # Toffoli",
+    _OP_CX_LADDER_TARGET: "cx(ladder[{a}] -> target[{b}])",
+}
+
 
 @dataclass(frozen=True)
 class UnaryIterationKernels:
@@ -243,6 +269,26 @@ class UnaryIterationKernels:
     controlled: bool
     toffoli_count: int
     num_work: int = 0
+    ops: Any = None
+
+    def describe(self) -> str:
+        """Decode the instruction tape into a human-readable gate listing.
+
+        One line per gate, in execution order — exactly what the
+        interpreter kernel replays. Lines tagged ``# Toffoli`` are the
+        gates ``toffoli_count`` counts. This is the intended way to
+        *read* a minted walk; the kernel source itself is a generic
+        interpreter and shows nothing about any particular circuit.
+        """
+        control = ", controlled" if self.controlled else ""
+        header = (f"unary-iteration walk: {self.num_items} addresses over "
+                  f"{self.num_address} bits{control}; "
+                  f"{self.toffoli_count} Toffolis")
+        lines = [
+            _OP_DESCRIPTIONS[op].format(a=a, b=b, c=c)
+            for op, a, b, c in self.ops
+        ]
+        return "\n".join([header] + lines)
 
 
 def _trailing_ones(k: int) -> int:
@@ -487,7 +533,8 @@ def unary_iteration_kernels(
                                  num_items=num_items,
                                  controlled=bool(controlled),
                                  toffoli_count=toffolis,
-                                 num_work=num_work)
+                                 num_work=num_work,
+                                 ops=tuple(ops))
 
 
 def _mint_interpreter(ops: list, controlled: bool, has_work: bool):

@@ -319,3 +319,16 @@ def test_unary_iteration_validation_raises():
         unary_iteration_kernels(2, 4, lambda k: [("q", 0)])
     with pytest.raises(ValueError, match="invalid target qubit index"):
         unary_iteration_kernels(2, 4, lambda k: [("x", -1)])
+
+
+def test_describe_decodes_the_tape():
+    # describe() is the human-readable form of the minted circuit: its
+    # Toffoli-tagged lines must agree with toffoli_count, and the body
+    # gates must appear once per address, in address order.
+    walk = unary_iteration_kernels(2, 4, lambda k: [("x", 0)])
+    text = walk.describe()
+    lines = text.splitlines()
+    assert lines[0].startswith("unary-iteration walk: 4 addresses")
+    assert sum("# Toffoli" in line for line in lines) == walk.toffoli_count
+    body_lines = [line for line in lines if line.startswith("x(target[0])")]
+    assert len(body_lines) == 4
