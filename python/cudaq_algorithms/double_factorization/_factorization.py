@@ -43,6 +43,9 @@ class DoubleFactorization:
     ``leaf_rotations[t]`` is the orthogonal matrix ``U^t`` (shape
     ``(num_orbitals, num_orbitals)``) and ``leaf_cores[t]`` is the symmetric
     core ``Z^t`` for leaf ``t``. ``method`` is ``"X-DF"`` or ``"C-DF"``.
+
+    C-DF fills ``optimizer_success``, ``optimizer_nit``, and
+    ``optimizer_grad_norm`` from the L-BFGS-B result (``None`` on X-DF).
     """
 
     num_orbitals: int
@@ -53,6 +56,9 @@ class DoubleFactorization:
         str] = None  # "cholesky" or "eigendecomposition"
     leaf_weights: Optional[
         np.ndarray] = None  # first-factor pivots/eigenvalues
+    optimizer_success: Optional[bool] = None
+    optimizer_nit: Optional[int] = None
+    optimizer_grad_norm: Optional[float] = None
 
     @property
     def num_leaves(self) -> int:
@@ -539,11 +545,20 @@ def compressed_double_factorization(
 
     For ``inner_solver="cg"`` two accelerators cut the per-step CG cost without
     changing the final accuracy: ``cg_warm_start`` (default ``True``) seeds each
-    step's CG from the previous step's cores -- which move slowly between L-BFGS
-    steps -- and ``cg_optimization_tolerance`` (default ``max(cg_tolerance,
-    1e-6)``) solves the *in-loop* systems only loosely (an inexact inner solve;
-    the gradient need only be approximate by the envelope theorem) while the
-    single final solve is tightened to ``cg_tolerance``.
+    *new* L-BFGS evaluation's CG from the previous evaluation's cores -- which
+    move slowly between steps -- while a re-evaluation of the same parameters
+    (a rejected line-search point) reuses cores from a short LRU of recent
+    solves so ``(f, g)`` stays a function of ``x``. ``cg_optimization_tolerance``
+    (default ``max(cg_tolerance, 1e-6)``) solves the *in-loop* systems only
+    loosely (an inexact inner solve; the gradient need only be approximate by
+    the envelope theorem) while the single final solve is tightened to
+    ``cg_tolerance``.
+
+    L-BFGS-B status is stored on the returned :class:`DoubleFactorization`
+    (``optimizer_success``, ``optimizer_nit``, ``optimizer_grad_norm``). A
+    ``RuntimeWarning`` is issued if the optimizer does not converge, including
+    when it hits ``max_iterations``; the best factorization found is still
+    returned.
 
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
@@ -567,10 +582,14 @@ def compressed_double_factorization(
     lower = np.tril_indices(n, k=-1)
 
     # Inexact in-loop CG (forcing sequence) + warm start across L-BFGS steps.
+    # recent is a 3-slot LRU of (parameter-vector, cores) so a line-search
+    # backtrack to the same x does not reuse a rejected trial's Z, without
+    # pinning a cores-stack per distinct x (device memory at production n).
     use_warm = inner_solver == "cg" and cg_warm_start
     loop_tolerance = (cg_optimization_tolerance if cg_optimization_tolerance
                       is not None else max(cg_tolerance, 1.0e-6))
-    warm_state = {"z": None}
+    warm_state = {"z": None, "recent": []}
+    warm_lru = 3
 
     def unpack(parameter_vector):
         # Build all leaf generators, then exponentiate them in one batched
@@ -592,12 +611,29 @@ def compressed_double_factorization(
         # any regularization. dO/dU^t_ak = -4 sum_qrsl Delta_aqrs U_qk Z_kl U_rl
         # U_sl (Eq. 17 of arXiv:2104.08957).
         skews, rotations = unpack(parameter_vector)
-        cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
-                                   inner_solver, loop_tolerance,
-                                   cg_max_iterations,
-                                   warm_state["z"] if use_warm else None)
         if use_warm:
-            warm_state["z"] = xp.stack(cores)
+            key = np.asarray(parameter_vector, dtype=float).tobytes()
+            cores = None
+            for index, (cached_key,
+                        cached_cores) in enumerate(warm_state["recent"]):
+                if cached_key == key:
+                    cores = cached_cores
+                    warm_state["recent"].append(
+                        warm_state["recent"].pop(index))
+                    break
+            if cores is None:
+                cores = _solve_inner_cores(eri_dev, rotations, xp,
+                                           regularization, inner_solver,
+                                           loop_tolerance, cg_max_iterations,
+                                           warm_state["z"])
+                warm_state["z"] = xp.stack(cores)
+                warm_state["recent"].append((key, cores))
+                if len(warm_state["recent"]) > warm_lru:
+                    del warm_state["recent"][0]
+        else:
+            cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
+                                       inner_solver, loop_tolerance,
+                                       cg_max_iterations, None)
         residual = eri_dev - _reconstruct_dev(rotations, cores, xp)
         loss = 0.5 * xp.sum(residual * residual)
         if regularization > 0.0:
@@ -638,6 +674,16 @@ def compressed_double_factorization(
                                          "gtol": tolerance,
                                      })
 
+    grad_norm = (float(np.linalg.norm(np.asarray(result.jac))) if getattr(
+        result, "jac", None) is not None else None)
+    if not result.success:
+        extra = (f", ||g||={grad_norm:.3e}" if grad_norm is not None else "")
+        warnings.warn(
+            "double_factorization: compressed_double_factorization did not "
+            f"converge (status={result.status}, nit={result.nit}/"
+            f"{max_iterations}, nfev={result.nfev}{extra}): {result.message}",
+            RuntimeWarning)
+
     # Final cores at the tight cg_tolerance (warm-started from the last step).
     _, rotations = unpack(result.x)
     cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
@@ -646,7 +692,10 @@ def compressed_double_factorization(
     return DoubleFactorization(num_orbitals=n,
                                leaf_rotations=[to_numpy(r) for r in rotations],
                                leaf_cores=[to_numpy(c) for c in cores],
-                               method="C-DF")
+                               method="C-DF",
+                               optimizer_success=bool(result.success),
+                               optimizer_nit=int(result.nit),
+                               optimizer_grad_norm=grad_norm)
 
 
 def reconstruct_eri(factorization: DoubleFactorization) -> np.ndarray:
