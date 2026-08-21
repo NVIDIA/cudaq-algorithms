@@ -554,7 +554,8 @@ def test_cdf_exact_rank_is_marked_converged(backend):
                                                            max_iterations=1500,
                                                            backend=backend)
     assert factorization.optimizer_success is True
-    assert factorization.optimizer_nit == 0
+    assert factorization.optimizer_grad_norm is not None
+    assert factorization.optimizer_grad_norm < 1.0e-8
     assert df.factorization_error(eri, factorization) < 1.0e-4
 
 
@@ -569,7 +570,7 @@ def test_xdf_leaves_optimizer_status_unset():
 
 @pytest.mark.parametrize("backend", _BACKENDS)
 @pytest.mark.parametrize("inner_solver", ["lstsq", "cg"])
-def test_cdf_objective_is_a_function_of_x(backend, inner_solver):
+def test_cdf_objective_is_a_function_of_x(backend, inner_solver, monkeypatch):
     # Replay an L-BFGS line-search backtrack through the real objective:
     # evaluate at x, at a rejected trial x+dx, then at x again. SciPy
     # requires the same x to yield the same (f, g). The default CG warm
@@ -596,17 +597,14 @@ def test_cdf_objective_is_a_function_of_x(backend, inner_solver):
         kwargs["options"] = options
         return orig(fun, x0, **kwargs)
 
-    F.scipy.optimize.minimize = wrapped
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            df.compressed_double_factorization(eri,
-                                               num_leaves=4,
-                                               max_iterations=1,
-                                               inner_solver=inner_solver,
-                                               backend=backend)
-    finally:
-        F.scipy.optimize.minimize = orig
+    monkeypatch.setattr(F.scipy.optimize, "minimize", wrapped)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        df.compressed_double_factorization(eri,
+                                           num_leaves=4,
+                                           max_iterations=1,
+                                           inner_solver=inner_solver,
+                                           backend=backend)
     assert replay, "minimize wrapper did not run"
     # lstsq is stateless, so this is a tight identity. CG must match it
     # once the warm start is keyed by x rather than by call order.

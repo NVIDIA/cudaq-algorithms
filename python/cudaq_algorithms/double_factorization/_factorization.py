@@ -547,11 +547,12 @@ def compressed_double_factorization(
     changing the final accuracy: ``cg_warm_start`` (default ``True``) seeds each
     *new* L-BFGS evaluation's CG from the previous evaluation's cores -- which
     move slowly between steps -- while a re-evaluation of the same parameters
-    (a rejected line-search point) reuses the cached cores so ``(f, g)`` stays
-    a function of ``x``. ``cg_optimization_tolerance`` (default
-    ``max(cg_tolerance, 1e-6)``) solves the *in-loop* systems only loosely (an
-    inexact inner solve; the gradient need only be approximate by the envelope
-    theorem) while the single final solve is tightened to ``cg_tolerance``.
+    (a rejected line-search point) reuses cores from a short LRU of recent
+    solves so ``(f, g)`` stays a function of ``x``. ``cg_optimization_tolerance``
+    (default ``max(cg_tolerance, 1e-6)``) solves the *in-loop* systems only
+    loosely (an inexact inner solve; the gradient need only be approximate by
+    the envelope theorem) while the single final solve is tightened to
+    ``cg_tolerance``.
 
     L-BFGS-B status is stored on the returned :class:`DoubleFactorization`
     (``optimizer_success``, ``optimizer_nit``, ``optimizer_grad_norm``). A
@@ -581,12 +582,14 @@ def compressed_double_factorization(
     lower = np.tril_indices(n, k=-1)
 
     # Inexact in-loop CG (forcing sequence) + warm start across L-BFGS steps.
-    # by_x caches cores for a given parameter vector so a line-search
-    # backtrack to the same x does not reuse a rejected trial's Z.
+    # recent is a 3-slot LRU of (parameter-vector, cores) so a line-search
+    # backtrack to the same x does not reuse a rejected trial's Z, without
+    # pinning a cores-stack per distinct x (device memory at production n).
     use_warm = inner_solver == "cg" and cg_warm_start
     loop_tolerance = (cg_optimization_tolerance if cg_optimization_tolerance
                       is not None else max(cg_tolerance, 1.0e-6))
-    warm_state = {"z": None, "by_x": {}}
+    warm_state = {"z": None, "recent": []}
+    warm_lru = 3
 
     def unpack(parameter_vector):
         # Build all leaf generators, then exponentiate them in one batched
@@ -610,14 +613,23 @@ def compressed_double_factorization(
         skews, rotations = unpack(parameter_vector)
         if use_warm:
             key = np.asarray(parameter_vector, dtype=float).tobytes()
-            cores = warm_state["by_x"].get(key)
+            cores = None
+            for index, (cached_key,
+                        cached_cores) in enumerate(warm_state["recent"]):
+                if cached_key == key:
+                    cores = cached_cores
+                    warm_state["recent"].append(
+                        warm_state["recent"].pop(index))
+                    break
             if cores is None:
                 cores = _solve_inner_cores(eri_dev, rotations, xp,
                                            regularization, inner_solver,
                                            loop_tolerance, cg_max_iterations,
                                            warm_state["z"])
                 warm_state["z"] = xp.stack(cores)
-                warm_state["by_x"][key] = cores
+                warm_state["recent"].append((key, cores))
+                if len(warm_state["recent"]) > warm_lru:
+                    del warm_state["recent"][0]
         else:
             cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
                                        inner_solver, loop_tolerance,

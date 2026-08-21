@@ -310,8 +310,8 @@ accuracy:
 - **`cg_warm_start=True`** seeds each *new* L-BFGS evaluation's CG from the
   previous evaluation's cores. The cores move slowly between steps, so the
   warm start collapses the iteration count. A re-evaluation of the same
-  parameters (a rejected line-search point) reuses the cached cores, so
-  the objective stays a function of the parameters.
+  parameters (a rejected line-search point) reuses cores from a short LRU
+  of recent solves, so the objective stays a function of the parameters.
 - **`cg_optimization_tolerance`** (default ``max(cg_tolerance, 1e-6)``)
   solves the *in-loop* systems only loosely — an inexact inner solve, which
   is sound here because the envelope theorem only needs an approximate
