@@ -30,10 +30,18 @@ QFT family (``qft`` / ``iqft``, ``add_constant_qft`` /
 ``cmp_ge_constant_qft_adj`` pair). Every inverse is hand-written and the
 gate prices are compiler-pinned by the resource tests.
 
+``AliasSamplingPrepare`` composes both: the coherent alias-sampling
+PREPARE-with-garbage of Babbush et al. (`arXiv:1805.03662`, Sec. III.D)
+— integer Vose preprocessing, a QROM lookup of the (alias, keep) table
+priced by ``variant="auto"``, and the CDKM comparator — realizing a
+weighted index-register marginal exactly, up to a derived ``mu``-bit
+discretization bound.
+
 Import the subpackage directly (``from cudaq_algorithms.primitives
 import QROM``); nothing here is re-exported from the package root.
 """
 
+from ._alias_sampling import AliasSamplingPrepare
 from ._arithmetic import (add_constant, add_constant_qft, add_register,
                           cmp_ge_constant, cmp_ge_constant_qft,
                           cmp_ge_constant_qft_adj, cmp_ge_register,
@@ -44,6 +52,7 @@ from ._qrom import QROM
 from ._unary_iteration import UnaryIterationKernels, unary_iteration_kernels
 
 __all__ = [
+    "AliasSamplingPrepare",
     "QROM",
     "UnaryIterationKernels",
     "add_constant",
