@@ -113,6 +113,10 @@ jobs:
       pull-requests: read
     with:
       cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      # PRs test against the released cudaq the wheel declares support
+      # for; the from-source path is a manual dispatch (forward-compat
+      # probing), not a PR gate.
+      cudaq_source: pip
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
@@ -129,6 +133,8 @@ jobs:
       pull-requests: read
     with:
       cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      # Same policy: PR wheels are tested in PyPI mode (released cudaq).
+      cudaq_wheels: PyPI
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
