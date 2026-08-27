@@ -119,7 +119,7 @@ jobs:
           python3 -m pip install numpy scipy pytest pyscf qsppack
 
       - name: Install released cudaq
-        if: inputs.cudaq_source != 'source'
+        if: inputs.cudaq_source == 'pip'
         # The range mirrors pyproject's declared dependency; patch
         # releases inside it are tested automatically. The cudaq
         # resolver picks its own cuda-quantum-cuNN on these CPU-only
