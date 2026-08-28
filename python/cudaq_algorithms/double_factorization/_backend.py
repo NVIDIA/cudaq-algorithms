@@ -39,12 +39,20 @@ AUTO_GPU_MIN_ORBITALS_EXPLICIT = 56
 
 
 def cupy_gpu_available() -> bool:
-    """Return True when CuPy is importable and at least one GPU is visible."""
+    """Return True when CuPy can run a kernel on a visible GPU.
+
+    ``getDeviceCount`` only talks to the driver, so a driver-only install
+    (no NVRTC / CUDA toolkit) would otherwise look usable and then fail on
+    the first compiled kernel. The tiny ``arange`` forces that compile.
+    """
     if _cupy is None:
         return False
     try:
-        return _cupy.cuda.runtime.getDeviceCount() > 0
-    except Exception:  # pragma: no cover - driver/runtime issues
+        if _cupy.cuda.runtime.getDeviceCount() <= 0:
+            return False
+        _cupy.arange(1) + 1
+        return True
+    except Exception:  # pragma: no cover - driver/runtime/NVRTC issues
         return False
 
 

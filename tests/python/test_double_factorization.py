@@ -13,10 +13,23 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 df = algorithms.double_factorization
 
-# Run every test on the NumPy backend, plus the CuPy (GPU) backend when present.
+# NumPy always. CuPy only on the GPU simulator leg (nvidia*), never under
+# qpp-cpu: these tests are classical linear algebra, and a dead GPU must not
+# be reported as a CPU-simulator failure.
 _BACKENDS = ["numpy"]
-if df.cupy_gpu_available():
+if os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu").startswith("nvidia"):
     _BACKENDS.append("cupy")
+
+
+@pytest.fixture(autouse=True)
+def _skip_cupy_if_unusable(request):
+    # Call-time skip so a device that disappears after collection is a skip
+    # with a reason, not a failure.
+    params = getattr(getattr(request.node, "callspec", None), "params", None)
+    if not params or params.get("backend") != "cupy":
+        return
+    if not df.cupy_gpu_available():
+        pytest.skip("CuPy/GPU is not usable")
 
 
 def _synthetic_eri(n, num_vectors, seed):
@@ -610,3 +623,63 @@ def test_cdf_objective_is_a_function_of_x(backend, inner_solver, monkeypatch):
     # once the warm start is keyed by x rather than by call order.
     assert replay["df"] < 1.0e-12
     assert replay["dg"] < 1.0e-9
+
+
+def _enumerating_but_dead_cupy(monkeypatch):
+    # QA-6 / RT-A: getDeviceCount is fine, the first compiled kernel is not.
+    import cudaq_algorithms.double_factorization._backend as B
+    import cudaq_algorithms.double_factorization._factorization as F
+
+    class _DeadCuPy:
+        ndarray = type("_DeadCuPyNdArray", (), {})
+
+        class cuda:
+
+            class runtime:
+
+                @staticmethod
+                def getDeviceCount():
+                    return 2
+
+        @staticmethod
+        def arange(*args, **kwargs):
+            raise RuntimeError("cudaErrorDevicesUnavailable: CUDA-capable "
+                               "device(s) is/are busy or unavailable")
+
+    monkeypatch.setattr(B, "_cupy", _DeadCuPy)
+    # n=4 is below both real crossovers; drop them so auto would pick CuPy
+    # if the probe still trusted getDeviceCount alone.
+    monkeypatch.setattr(F, "AUTO_GPU_MIN_ORBITALS_EXPLICIT", 0)
+    monkeypatch.setattr(F, "AUTO_GPU_MIN_ORBITALS_COMPRESSED", 0)
+
+
+def test_cupy_gpu_available_requires_a_working_kernel(monkeypatch):
+    # Enumeration is not enough: a kernel must run.
+    import cudaq_algorithms.double_factorization._backend as B
+    _enumerating_but_dead_cupy(monkeypatch)
+    assert B.cupy_gpu_available() is False
+
+
+@pytest.mark.parametrize("kind", ["xdf", "cdf"])
+def test_auto_uses_numpy_when_cupy_kernel_probe_fails(kind, monkeypatch):
+    # backend="auto" must stay on NumPy when the GPU is visible but unusable.
+    _enumerating_but_dead_cupy(monkeypatch)
+    eri = _synthetic_eri(n=4, num_vectors=2, seed=0)
+    if kind == "xdf":
+        factorization = df.explicit_double_factorization(eri,
+                                                         threshold=0.0,
+                                                         backend="auto")
+    else:
+        factorization = df.compressed_double_factorization(eri,
+                                                           num_leaves=1,
+                                                           backend="auto")
+    assert factorization.method == ("X-DF" if kind == "xdf" else "C-DF")
+    assert factorization.num_leaves >= 1
+
+
+def test_explicit_cupy_backend_errors_when_kernel_probe_fails(monkeypatch):
+    # backend="cupy" is a hard request: a dead GPU must still raise.
+    _enumerating_but_dead_cupy(monkeypatch)
+    eri = _synthetic_eri(n=4, num_vectors=2, seed=0)
+    with pytest.raises(RuntimeError, match="no CuPy/GPU is available"):
+        df.explicit_double_factorization(eri, threshold=0.0, backend="cupy")
