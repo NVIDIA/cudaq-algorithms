@@ -76,7 +76,6 @@ jobs:
               - '.github/workflows/scripts/**'
               - 'scripts/ci/**'
               - 'pyproject.toml'
-              - '.cudaq_version'
 
   build-cudaq:
     name: Build CUDA-Q
@@ -96,16 +95,10 @@ jobs:
 
   build-algorithms:
     name: Algorithms
-    needs: [check-changes, build-cudaq]
+    needs: [check-changes]
     if: |
-      always() &&
-      !cancelled() &&
-      needs.check-changes.result == 'success' &&
-      (needs.build-cudaq.result == 'success' || needs.build-cudaq.result == 'skipped') &&
-      (
-        needs.check-changes.outputs.build-algorithms == 'true' ||
-        needs.check-changes.outputs.build-cudaq == 'true'
-      )
+      !failure() && !cancelled() &&
+      needs.check-changes.outputs.build-algorithms == 'true'
     uses: ./.github/workflows/lib_algorithms.yaml
     permissions:
       actions: write
@@ -113,6 +106,50 @@ jobs:
       pull-requests: read
     with:
       cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      # PRs test against the released cudaq the wheel declares support
+      # for; the from-source path runs only when the pin changes (the
+      # build-algorithms-source job below) or by manual dispatch.
+      cudaq_source: pip
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  # A change to .cudaq_version (or the cudaq build plumbing) must be
+  # tested against the pinned source build it introduces — the pip
+  # lanes above cannot see it. These two jobs run only on such changes.
+  build-algorithms-source:
+    name: Algorithms (pinned cudaq, from source)
+    needs: [check-changes, build-cudaq]
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.check-changes.outputs.build-cudaq == 'true' &&
+      needs.build-cudaq.result == 'success'
+    uses: ./.github/workflows/lib_algorithms.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      cudaq_source: source
+    secrets:
+      CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
+
+  build-wheels-source:
+    name: Wheels (pinned cudaq, from source)
+    needs: [check-changes]
+    if: |
+      !failure() && !cancelled() &&
+      needs.check-changes.outputs.build-cudaq == 'true'
+    uses: ./.github/workflows/wheel_algorithms.yaml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    with:
+      cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      # Custom mode builds the CUDA-Q wheels from the pinned commit.
+      cudaq_wheels: Custom
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
@@ -129,6 +166,8 @@ jobs:
       pull-requests: read
     with:
       cache_key_suffix: pr${{ needs.check-changes.outputs.pr-number }}
+      # Same policy: PR wheels are tested in PyPI mode (released cudaq).
+      cudaq_wheels: PyPI
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
@@ -139,7 +178,9 @@ jobs:
       - check-changes
       - build-cudaq
       - build-algorithms
+      - build-algorithms-source
       - build-wheels
+      - build-wheels-source
     runs-on: ubuntu-latest
     steps:
       - name: Check results
@@ -157,10 +198,12 @@ jobs:
             fi
           }
 
-          check_result "check-changes"    "${{ needs.check-changes.result }}"
-          check_result "build-cudaq"      "${{ needs.build-cudaq.result }}"
-          check_result "build-algorithms" "${{ needs.build-algorithms.result }}"
-          check_result "build-wheels"     "${{ needs.build-wheels.result }}"
+          check_result "check-changes"           "${{ needs.check-changes.result }}"
+          check_result "build-cudaq"             "${{ needs.build-cudaq.result }}"
+          check_result "build-algorithms"        "${{ needs.build-algorithms.result }}"
+          check_result "build-algorithms-source" "${{ needs.build-algorithms-source.result }}"
+          check_result "build-wheels"            "${{ needs.build-wheels.result }}"
+          check_result "build-wheels-source"     "${{ needs.build-wheels-source.result }}"
 
           if [[ "$status" != "success" ]]; then
             exit 1

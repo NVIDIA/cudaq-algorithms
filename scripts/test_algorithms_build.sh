@@ -15,6 +15,9 @@ show_help() {
     echo "  -h, --help           Show this help message"
     echo "  --cudaq-prefix PATH  CUDA-Q install prefix"
     echo "                       Defaults to /usr/local/cudaq when present, otherwise \$HOME/.cudaq"
+    echo "  --pip-cudaq          Use the pip-installed cudaq package (no install"
+    echo "                       prefix on PYTHONPATH; a container-baked /usr/local/cudaq"
+    echo "                       would otherwise shadow it)"
 }
 
 if [[ -d /usr/local/cudaq ]]; then
@@ -28,6 +31,10 @@ while (( $# > 0 )); do
         -h|--help)
             show_help
             exit 0
+            ;;
+        --pip-cudaq)
+            cudaq_prefix=""
+            shift
             ;;
         --cudaq-prefix)
             if [[ -n "${2:-}" && "$2" != -* ]]; then
@@ -51,5 +58,10 @@ cd "$repo_root"
 
 python=${PYTHON:-python3}
 
-PYTHONPATH="$repo_root/python:$cudaq_prefix:${PYTHONPATH:-}" \
-  "$python" -m pytest -q tests/python
+if [[ -n "$cudaq_prefix" ]]; then
+    pythonpath="$repo_root/python:$cudaq_prefix:${PYTHONPATH:-}"
+else
+    pythonpath="$repo_root/python:${PYTHONPATH:-}"
+fi
+
+PYTHONPATH="$pythonpath" "$python" -m pytest -q tests/python

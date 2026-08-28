@@ -3,6 +3,17 @@ name: Algorithms lib
 on:
   workflow_dispatch:
     inputs:
+      cudaq_source:
+        type: choice
+        description: >
+          cudaq to test against: pip = the released cudaq the wheel
+          declares support for; source = build the pinned .cudaq_version
+          from source (forward-compatibility probing).
+        options:
+          - pip
+          - source
+        default: pip
+        required: false
       cache_key_suffix:
         type: string
         description: Optional suffix to append to CUDA-Q cache keys.
@@ -20,6 +31,10 @@ on:
         required: false
   workflow_call:
     inputs:
+      cudaq_source:
+        type: string
+        default: pip
+        required: false
       cache_key_suffix:
         type: string
         default: ''
@@ -76,6 +91,7 @@ jobs:
       # ========================================================================
 
       - name: Get required CUDAQ version
+        if: inputs.cudaq_source == 'source'
         id: get-cudaq-version
         uses: ./.github/actions/get-cudaq-version
         with:
@@ -83,6 +99,7 @@ jobs:
           ref: ${{ inputs.cudaq_ref }}
 
       - name: Get CUDAQ build
+        if: inputs.cudaq_source == 'source'
         uses: ./.github/actions/get-cudaq-build
         with:
           repo: ${{ steps.get-cudaq-version.outputs.repo }}
@@ -101,9 +118,23 @@ jobs:
         run: |
           python3 -m pip install numpy scipy pytest pyscf qsppack
 
+      - name: Install released cudaq
+        if: inputs.cudaq_source == 'pip'
+        # The range mirrors pyproject's declared dependency; patch
+        # releases inside it are tested automatically. The cudaq
+        # resolver picks its own cuda-quantum-cuNN on these CPU-only
+        # runners (see scripts/ci/test_wheels.sh for why the variant is
+        # the resolver's business, not ours).
+        run: |
+          python3 -m pip install "cudaq>=0.15.0,<0.16"
+
       - name: Run tests
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          export PATH=/cudaq-install/bin:$PATH
-          export LD_LIBRARY_PATH=/cudaq-install/lib:${LD_LIBRARY_PATH:-}
-          bash scripts/test_algorithms_build.sh --cudaq-prefix /cudaq-install
+          if [[ "${{ inputs.cudaq_source }}" == "source" ]]; then
+            export PATH=/cudaq-install/bin:$PATH
+            export LD_LIBRARY_PATH=/cudaq-install/lib:${LD_LIBRARY_PATH:-}
+            bash scripts/test_algorithms_build.sh --cudaq-prefix /cudaq-install
+          else
+            bash scripts/test_algorithms_build.sh --pip-cudaq
+          fi
