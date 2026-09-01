@@ -17,10 +17,6 @@ of the ``ladder=0`` block.
 The Toffoli contract rides along: Pauli payloads are leaf-controlled
 two-qubit gates, so the walk's Toffoli count must NOT grow with payload
 size — the structural formula holds and the compiler agrees.
-
-The file parametrizes over every walker importable on the current
-branch: the coherent fused walk always, the measured (MBU) walk when its
-module is present. One file, both branches, no rebase conflict.
 """
 
 import functools
@@ -33,11 +29,6 @@ import cudaq
 from cudaq_algorithms.primitives import unary_iteration_kernels
 
 _WALKERS = [("coherent", unary_iteration_kernels)]
-try:
-    from cudaq_algorithms.primitives import measured_unary_iteration_kernels
-    _WALKERS.append(("measured", measured_unary_iteration_kernels))
-except ImportError:
-    pass
 
 _NUM_TARGET = 6
 _PAULI = {

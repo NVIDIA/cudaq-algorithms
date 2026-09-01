@@ -34,7 +34,7 @@ def _basis(index: int, num_qubits: int) -> np.ndarray:
 
 
 def _qrom_readout_state(qrom: QROM, address: int) -> np.ndarray:
-    lookup = qrom.kernel()
+    lookup = qrom.kernel
     num_address = qrom.num_address
     num_ladder = qrom.num_ladder
     num_output = qrom.num_output
@@ -111,7 +111,7 @@ def test_qrom_is_self_inverse(variant, block_size):
                 output_bits=3,
                 variant=variant,
                 block_size=block_size)
-    lookup = qrom.kernel()
+    lookup = qrom.kernel
     num_ladder = qrom.num_ladder
     initial = 0b101
 
@@ -142,7 +142,7 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
     address_bits, output_bits = 3, 3
 
     def joint_amplitudes(qrom: QROM) -> np.ndarray:
-        lookup = qrom.kernel()
+        lookup = qrom.kernel
         num_ladder = qrom.num_ladder
 
         @cudaq.kernel
@@ -231,6 +231,15 @@ def test_qrom_validation_raises():
         QROM([1], address_bits=1, output_bits=0)
     with pytest.raises(ValueError, match="entries must be integers"):
         QROM([1.5], address_bits=1, output_bits=2)
+    # A single-pass iterable must get the same float rejection as a list
+    # (regression: the check once ran on an already-exhausted iterator).
+    with pytest.raises(ValueError, match="entries must be integers"):
+        QROM((v for v in [1.5, 2]), address_bits=1, output_bits=2)
+    with pytest.raises(ValueError, match="requires address_bits >= 2"):
+        QROM([1, 2], address_bits=1, output_bits=2, variant="select_swap")
+    # ... and a valid single-pass iterable must load fully.
+    assert QROM((v for v in [1, 2]), address_bits=1,
+                output_bits=2).data == (1, 2)
     with pytest.raises(ValueError, match="variant must be one of"):
         QROM([1, 2], address_bits=1, output_bits=2, variant="qroam")
     with pytest.raises(ValueError, match="only valid with variant="):

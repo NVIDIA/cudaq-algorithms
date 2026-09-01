@@ -38,8 +38,7 @@ while a compute-from-|0> AND costs 4 T (Gidney, arXiv:1709.06648).
 In T gates the fused walk is therefore ~7.5 N against the naive
 unitary walk's ~8 N — a ~6% advantage, not the 25% the Toffoli count
 suggests. Both numbers beat nothing measured: the literature's
-measured walk is 4 N T. A ``t_count`` attribute reporting this
-per-instance is planned alongside ``toffoli_count``.
+measured walk is 4 N T.
 
 The callback pattern (READ THIS — it is the template for QROM and for
 factory-composed SELECTs)

@@ -133,11 +133,14 @@ class QROM:
             raise ValueError("output_bits must be a positive integer")
         address_bits = int(address_bits)
         output_bits = int(output_bits)
-        entries = [int(v) for v in data]
-        if len(entries) == 0:
+        # Materialize first: a single-pass iterable must not be consumed
+        # by one check and leave the others looking at an empty iterator.
+        raw = list(data)
+        if len(raw) == 0:
             raise ValueError("data must be non-empty")
-        if any(int(v) != v for v in data):
+        if any(int(v) != v for v in raw):
             raise ValueError("data entries must be integers")
+        entries = [int(v) for v in raw]
         if len(entries) > (1 << address_bits):
             raise ValueError(
                 f"data has {len(entries)} entries but address_bits="
@@ -152,6 +155,11 @@ class QROM:
         if variant not in _VARIANTS:
             raise ValueError(
                 f"variant must be one of {_VARIANTS}, got {variant!r}")
+        if variant == "select_swap" and address_bits < 2:
+            raise ValueError(
+                "variant='select_swap' requires address_bits >= 2 (no "
+                "block-index bit exists at address_bits=1); use "
+                "variant='select' or 'auto'")
         if block_size is not None:
             if variant != "select_swap":
                 raise ValueError(
@@ -313,6 +321,7 @@ class QROM:
     def toffoli_count(self) -> int:
         return self._toffoli_count
 
+    @property
     def kernel(self):
         """The lookup kernel ``(address, ladder, output)`` — self-inverse."""
         return self._kernel

@@ -152,7 +152,7 @@ def test_qrom_compiled_toffolis_match_emitter_count(variant, block_size):
                 output_bits=3,
                 variant=variant,
                 block_size=block_size)
-    compiled = _compiled_toffolis_of(qrom.kernel(), qrom.num_address,
+    compiled = _compiled_toffolis_of(qrom.kernel, qrom.num_address,
                                      qrom.num_ladder, qrom.num_output)
     assert compiled == qrom.toffoli_count
 
@@ -174,7 +174,7 @@ def test_qrom_select_swap_cost_matches_documented_formula():
         expected = (2 * _walk_toffoli_count(5 - low_bits, num_blocks) + 2 * 1 *
                     (block_size - 1))
         assert qrom.toffoli_count == expected
-        compiled = _compiled_toffolis_of(qrom.kernel(), qrom.num_address,
+        compiled = _compiled_toffolis_of(qrom.kernel, qrom.num_address,
                                          qrom.num_ladder, qrom.num_output)
         assert compiled == expected
 
