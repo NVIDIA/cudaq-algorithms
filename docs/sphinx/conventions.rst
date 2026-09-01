@@ -154,6 +154,29 @@ error. All library tests pin `qpp-cpu` (fp64, via `conftest.py`) and
 assert at 1e-10..1e-12. When a probe shows ~1e-7 residuals, suspect the
 target precision before suspecting the code.
 
+BLAS threading and C-DF reproducibility
+----------------------------------------
+
+Compressed double factorization runs an iterative optimization whose
+objective is evaluated through multithreaded BLAS. Thread scheduling
+changes floating-point reduction order, and over a few thousand
+optimizer steps that noise compounds into **different local minima**:
+two runs of *identical* code on identical input can return visibly
+different factorizations (reconstruction errors differing in the second
+digit). This is expected behavior of non-convex optimization on
+non-deterministic arithmetic, not a bug.
+
+Before comparing C-DF outputs across code versions — bisecting a
+regression, validating a refactor, A/B-testing a change — pin the BLAS
+thread count::
+
+   OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+       python your_comparison.py
+
+Under pinned threads, runs of the same code are bit-for-bit
+reproducible, and any remaining difference is attributable to the code
+change. Unpinned comparisons of C-DF results are noise.
+
 Hermiticity
 -----------
 
