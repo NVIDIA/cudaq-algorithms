@@ -6,7 +6,7 @@
 ``|k>|y> -> |k>|y XOR data[k]>`` behind one kernel signature
 ``(address: qview, ladder: qview, output: qview)`` — all little-endian
 (qubit 0 = LSB, ``docs/conventions.md``), ``ladder`` being ``num_ladder``
-clean ancillas (|0> in, |0> out). Addresses ``k >= len(data)`` read as
+clean ancillas (``|0>`` in, ``|0>`` out). Addresses ``k >= len(data)`` read as
 zero. Two constructions sit behind ``variant=``:
 
 - ``"select"`` — the plain unary-iteration QROM (Babbush et al.,
@@ -295,7 +295,7 @@ class QROM:
 
     @property
     def num_ladder(self) -> int:
-        """Clean ancillas the kernel needs (|0> in, |0> out).
+        """Clean ancillas the kernel needs (``|0>`` in, ``|0>`` out).
 
         ``address_bits`` walk lines for ``"select"``; walk lines plus the
         ``block_size * output_bits`` block registers for

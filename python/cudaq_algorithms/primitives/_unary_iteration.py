@@ -34,7 +34,7 @@ compute/uncompute walk costs ``2 N - 4``.
 T-count caveat (so the comparison stays honest under either metric):
 roughly a third of this walk's Toffolis are the fused ones, whose
 target is a *dirty* ladder line and therefore cost the generic 7 T,
-while a compute-from-|0> AND costs 4 T (Gidney, arXiv:1709.06648).
+while a compute-from-``|0>`` AND costs 4 T (Gidney, arXiv:1709.06648).
 In T gates the fused walk is therefore ~7.5 N against the naive
 unitary walk's ~8 N — a ~6% advantage, not the 25% the Toffoli count
 suggests. Both numbers beat nothing measured: the literature's
@@ -95,10 +95,10 @@ Kernel signatures (all registers little-endian, qubit 0 = LSB, per
   appears only when ``num_work > 0``).
 - with ``controlled=True``: the same signatures with a leading
   ``control: qview``, a one-qubit view rooting the tree — the whole walk
-  acts as the identity when the control is |0>. (A separate one-qubit
+  acts as the identity when the control is ``|0>``. (A separate one-qubit
   view, not a leading qubit of a combined register, so callers never mix
   a qview with a bare qubit in one control set. Free body gates still
-  execute at control |0>, but their conjugation pairing cancels them.)
+  execute at control ``|0>``, but their conjugation pairing cancels them.)
 
 ``kernel_adj`` is the hand-written inverse (``cudaq.adjoint`` is
 off-limits, cuda-quantum#4897/#4898): every emitted gate is self-inverse
@@ -376,7 +376,7 @@ def _emit_walk(num_address_bits: int, num_items: int, controlled: bool,
     def set_line(level: int, bit_is_one: bool) -> None:
         """ladder[level-1] ^= parent AND (address bit == value).
 
-        Self-inverse: emitted both to compute a line (from |0>) and to
+        Self-inverse: emitted both to compute a line (from ``|0>``) and to
         clear it (against the same parent value); the descent, the
         unclamp/reclamp halves of deep transitions and the final unwind
         are all built from this one gadget.
