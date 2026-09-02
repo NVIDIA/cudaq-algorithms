@@ -261,14 +261,21 @@ def test_cg_accelerators_preserve_accuracy(backend):
             df.factorization_error(eri, plain)) < 1.0e-4
 
 
-def test_auto_backend_is_size_aware():
+def test_auto_backend_is_size_aware(monkeypatch):
     from cudaq_algorithms.double_factorization._backend import resolve_backend
+    import cudaq_algorithms.double_factorization._backend as B
     # Explicit choices are honored regardless of size.
     assert resolve_backend("numpy")[1] == "numpy"
-    # A tiny problem under the GPU threshold always resolves to NumPy (whether or
-    # not a GPU is present): below the crossover the GPU loses.
+
+    # A tiny problem under the GPU threshold always resolves to NumPy, and
+    # must not run the kernel probe (that would pin a CUDA context).
+    def _must_not_probe():
+        raise AssertionError("kernel probe ran for a below-threshold auto")
+
+    monkeypatch.setattr(B, "cupy_gpu_available", _must_not_probe)
     assert resolve_backend("auto", problem_size=4, gpu_min_size=1000)[1] \
         == "numpy"
+    monkeypatch.undo()
     # A large problem resolves to CuPy when a GPU is present, else NumPy.
     expected = "cupy" if df.cupy_gpu_available() else "numpy"
     assert resolve_backend("auto", problem_size=10000, gpu_min_size=1)[1] \

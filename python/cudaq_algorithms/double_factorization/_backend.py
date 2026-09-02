@@ -61,11 +61,13 @@ def resolve_backend(backend: str = "auto",
                     gpu_min_size: int = 0) -> tuple[ArrayModule, str]:
     """Return ``(array_module, name)`` for the requested backend.
 
-    ``"auto"`` selects CuPy when a GPU is available *and* the problem is large
-    enough to amortize GPU launch/sync overhead -- i.e. ``problem_size`` (the
-    orbital count ``n``) is at least ``gpu_min_size`` -- otherwise NumPy. With no
-    ``problem_size`` hint it keeps the legacy behavior: CuPy whenever a GPU is
-    present. ``"cupy"`` / ``"numpy"`` force the backend regardless of size.
+    ``"auto"`` selects CuPy when the problem is large enough to amortize GPU
+    launch/sync overhead -- i.e. ``problem_size`` (the orbital count ``n``) is
+    at least ``gpu_min_size`` -- *and* a GPU is available; otherwise NumPy. The
+    size check is evaluated first so a below-threshold problem does not create
+    a CUDA context. With no ``problem_size`` hint it keeps the legacy behavior:
+    CuPy whenever a GPU is present. ``"cupy"`` / ``"numpy"`` force the backend
+    regardless of size.
     """
     if backend == "numpy":
         return np, "numpy"
@@ -75,8 +77,8 @@ def resolve_backend(backend: str = "auto",
                                "CuPy/GPU is available.")
         return _cupy, "cupy"
     if backend == "auto":
-        if cupy_gpu_available() and (problem_size is None
-                                     or problem_size >= gpu_min_size):
+        if ((problem_size is None or problem_size >= gpu_min_size)
+                and cupy_gpu_available()):
             return _cupy, "cupy"
         return np, "numpy"
     raise ValueError(f"unknown backend '{backend}'; expected 'auto', 'cupy', "
