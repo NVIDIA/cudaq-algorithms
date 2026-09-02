@@ -59,7 +59,7 @@ def hartree_fock_occupation(qubits: cudaq.qview, occupied_orbitals: list[int]):
 @cudaq.kernel
 def single_excitation(qubits: cudaq.qview, theta: float, p_occ: int,
                       q_virt: int):
-    """exp(0.5i * theta * (Y_p Z... X_q - X_p Z... Y_q)) via CNOT ladders."""
+    """exp(-0.25i * theta * (Y_p Z... X_q - X_p Z... Y_q)) via CNOT ladders."""
     # Y_p X_q
     rx(M_PI_2, qubits[p_occ])
     h(qubits[q_virt])
