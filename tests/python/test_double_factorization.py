@@ -13,11 +13,14 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 df = algorithms.double_factorization
 
-# NumPy always. CuPy only on the GPU simulator leg (nvidia*), never under
-# qpp-cpu: these tests are classical linear algebra, and a dead GPU must not
-# be reported as a CPU-simulator failure.
+# NumPy always. CuPy when the GPU simulator leg is nvidia*, or when the
+# kernel probe passes: these tests are classical linear algebra, so a
+# working GPU must still be covered on a qpp-cpu / unset dev box. A dead
+# GPU on nvidia* is collected then skipped at call time (visible skip);
+# a dead GPU on qpp-cpu fails the probe and is not collected.
 _BACKENDS = ["numpy"]
-if os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu").startswith("nvidia"):
+if (os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu").startswith("nvidia")
+        or df.cupy_gpu_available()):
     _BACKENDS.append("cupy")
 
 
