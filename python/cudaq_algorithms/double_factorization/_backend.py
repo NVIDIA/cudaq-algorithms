@@ -43,14 +43,16 @@ def cupy_gpu_available() -> bool:
 
     ``getDeviceCount`` only talks to the driver, so a driver-only install
     (no NVRTC / CUDA toolkit) would otherwise look usable and then fail on
-    the first compiled kernel. The tiny ``arange`` forces that compile.
+    the first compiled kernel. The tiny ``arange`` forces that compile, and
+    ``.sum()`` into a host ``float`` waits for the device so a fault that
+    only appears at synchronization is not missed.
     """
     if _cupy is None:
         return False
     try:
         if _cupy.cuda.runtime.getDeviceCount() <= 0:
             return False
-        _cupy.arange(1) + 1
+        float((_cupy.arange(1) + 1).sum())
         return True
     except Exception:  # pragma: no cover - driver/runtime/NVRTC issues
         return False
