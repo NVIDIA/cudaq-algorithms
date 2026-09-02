@@ -688,5 +688,8 @@ def test_explicit_cupy_backend_errors_when_kernel_probe_fails(monkeypatch):
     # backend="cupy" is a hard request: a dead GPU must still raise.
     _enumerating_but_dead_cupy(monkeypatch)
     eri = _synthetic_eri(n=4, num_vectors=2, seed=0)
-    with pytest.raises(RuntimeError, match="no CuPy/GPU is available"):
+    with pytest.raises(
+            RuntimeError,
+            match=r"not usable \(not installed, no device, or the kernel "
+            r"probe failed\)"):
         df.explicit_double_factorization(eri, threshold=0.0, backend="cupy")

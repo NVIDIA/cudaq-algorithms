@@ -75,8 +75,10 @@ def resolve_backend(backend: str = "auto",
         return np, "numpy"
     if backend == "cupy":
         if not cupy_gpu_available():
-            raise RuntimeError("the 'cupy' backend was requested but no "
-                               "CuPy/GPU is available.")
+            raise RuntimeError(
+                "the 'cupy' backend was requested but CuPy/GPU is not "
+                "usable (not installed, no device, or the kernel probe "
+                "failed).")
         return _cupy, "cupy"
     if backend == "auto":
         if ((problem_size is None or problem_size >= gpu_min_size)
