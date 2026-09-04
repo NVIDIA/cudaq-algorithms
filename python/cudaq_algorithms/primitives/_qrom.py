@@ -55,6 +55,68 @@ so the ``"select"`` walk XORs the same table twice, and the
 (``W`` and ``C`` are involutions and the copy commutes with itself
 through the routing). Apply ``kernel()`` again to uncompute; the
 property is pinned by ``tests/python/test_primitives_qrom.py``.
+
+Implementation notes: register layout and the ``ladder`` view
+------------------------------------------------------------------------
+
+Every minted kernel has the same signature, ``(address, ladder,
+output)``, and ``ladder`` is simply **the clean-ancilla register** —
+its contents differ per variant, and for ``select_swap`` the name is
+looser than the physics:
+
+- ``"select"``: ``ladder`` really is the walk's ladder —
+  ``address_bits`` lines, one per tree level.
+- ``"select_swap"``: ``ladder`` bundles two conceptually different
+  things, walk lines first, block registers after::
+
+      ladder[0 .. h)                 the block-index walk's ladder lines
+                                     (h = address_bits - log2(B))
+      ladder[h + i*b .. h + (i+1)*b) block register i, i = 0 .. B-1
+                                     (the "cache line" slots)
+
+  ``num_ladder = h + B * b``. Both groups are clean (|0> in, |0> out),
+  which is why they share one register; the price is that ``ladder``
+  qubits above ``h`` are cache-line storage, not ladder lines.
+
+The address register is likewise split by convention, low bits first:
+``address[0 .. low)`` are the routing bits (low = log2(B)),
+``address[low ..)`` the block index the walk iterates. The block-index
+walk is emitted by ``_emit_walk`` as if its address register started at
+wire 0, then *rebased*: every address operand is shifted up by ``low``
+(the ``_ADDRESS_OPERANDS`` table names which operand slots to shift).
+
+**Why "ladder-to-ladder CNOTs" appear** (``_OP_CX_LADDER_LADDER``):
+the interpreter's opcodes name *registers*, not roles, so this one
+opcode serves three distinct jobs:
+
+1. In the plain walk: parent-line -> child-line CNOTs (sibling
+   crossings) — genuinely ladder-to-ladder.
+2. In the ``select_swap`` write stage: ``_emit_walk`` emits the block
+   writes as leaf-controlled body X's onto its *target* register, but
+   here the write destination is the block registers, which live in
+   the ``ladder`` view — so each ``_OP_BODY_X`` is rewritten to a
+   ladder-to-ladder CNOT from the word line onto a block-register
+   qubit (the rebase loop in ``_build_select_swap``).
+3. In the routing network: each controlled register swap is ``b``
+   Fredkins, decomposed ``cswap(c; u, v) = cx(v,u) ccx(u,c,v)
+   cx(v,u)`` — the outer CNOTs connect two block-register qubits,
+   again both inside ``ladder``. The middle Toffoli reuses the walk's
+   ``_OP_CCX`` shape with a low address bit as its second control.
+
+End-to-end, ``select_swap`` is the five-step program (with
+``h + low = address_bits``, ``B = 2^low`` entries per block):
+
+1. walk the block index (high bits) on ``ladder[0..h)``, writing each
+   visited block's ``B`` entries into the block registers;
+2. route: ``low`` rounds of Fredkins controlled on the low address
+   bits bring the selected entry's register into block slot 0;
+3. copy block slot 0 into ``output`` (plain CNOTs);
+4. un-route (the same Fredkins, reversed order);
+5. un-write (the X-only walk again — XOR is self-inverse).
+
+Steps 1/2/4/5 touch only ``address`` + ``ladder``; step 3 is the only
+place ``output`` is written, which is what makes the sandwich exactly
+self-inverse and the ancillas exactly clean.
 """
 
 from __future__ import annotations
