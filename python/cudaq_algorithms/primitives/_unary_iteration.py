@@ -202,6 +202,22 @@ _EXTENDED_BODY_GATES = {
 _TOFFOLI_OPCODES = (_OP_CCX, _OP_CCX_CTRL, _OP_AND_TT, _OP_AND_WT,
                     _OP_BODY_X_W, _OP_CCX_ADDR_ADDR)
 
+# Dispatch coverage of the four interpreter variants (_mint_interpreter):
+# every variant handles the base set; the control/work bundles are
+# handled only by kernels whose signature carries that register view.
+# An opcode outside the minted variant's set would be SILENTLY SKIPPED
+# by the dispatch loop, so _mint_interpreter rejects such tapes at mint
+# time; test_primitives_interpreter.py pins each opcode's action under
+# every variant that supports it.
+_BASE_OPS = frozenset({
+    _OP_X_ADDR, _OP_X_LADDER, _OP_CX_ADDR_LADDER, _OP_CX_LADDER_LADDER,
+    _OP_CCX, _OP_BODY_X, _OP_BODY_Y, _OP_BODY_Z, _OP_FREE_X, _OP_FREE_CX,
+    _OP_Z_LADDER, _OP_CX_ADDR_ADDR, _OP_CCX_ADDR_ADDR, _OP_CX_LADDER_TARGET
+})
+_CONTROL_OPS = frozenset({_OP_CX_CTRL_LADDER, _OP_CCX_CTRL})
+_WORK_OPS = frozenset(
+    {_OP_AND_TT, _OP_AND_WT, _OP_COPY_TW, _OP_BODY_X_W, _OP_BODY_Z_W})
+
 # Opcode -> operand positions (within (a, b, c)) that index the work
 # register, used to infer the required work width from the emitted ops.
 _WORK_OPERANDS = {
@@ -541,7 +557,24 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
 
     Every emitted gate is self-inverse, so the inverse walk is this same
     interpreter over the reversed list — how ``kernel_adj`` is minted.
+
+    The tape is validated against the variant's supported opcode set
+    (``_BASE_OPS`` plus the control/work bundles the signature carries):
+    the dispatch loop would silently skip an unknown opcode — the worst
+    failure mode available — so an out-of-set tape is a mint-time error.
     """
+    supported = _BASE_OPS
+    if controlled:
+        supported = supported | _CONTROL_OPS
+    if has_work:
+        supported = supported | _WORK_OPS
+    unsupported = sorted({op[0] for op in ops} - supported)
+    if unsupported:
+        raise ValueError(
+            f"instruction tape contains opcodes {unsupported} outside the "
+            f"interpreter variant's dispatch set (controlled={controlled}, "
+            f"has_work={has_work}); the dispatch loop would silently skip "
+            "them")
     num_ops = len(ops)
     opcodes = [op[0] for op in ops]
     ops_a = [op[1] for op in ops]

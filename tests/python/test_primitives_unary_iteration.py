@@ -21,9 +21,10 @@ import pytest
 import cudaq
 
 from cudaq_algorithms.primitives import unary_iteration_kernels
-from cudaq_algorithms.primitives._unary_iteration import (_TOFFOLI_OPCODES,
-                                                          _emit_walk,
-                                                          _walk_toffoli_count)
+from cudaq_algorithms.primitives._unary_iteration import (
+    _OP_BODY_X, _OP_CCX, _OP_CCX_ADDR_ADDR, _OP_CCX_CTRL, _OP_CX_ADDR_ADDR,
+    _OP_CX_ADDR_LADDER, _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER, _OP_X_ADDR,
+    _OP_X_LADDER, _TOFFOLI_OPCODES, _emit_walk, _walk_toffoli_count)
 
 
 def _basis(index: int, num_qubits: int) -> np.ndarray:
@@ -60,17 +61,18 @@ def _verify_tape(num_bits: int, num_items: int, controlled: bool):
     original = list(address)
     bodies_seen = 0
     for opcode, a, b, c in ops:
-        if opcode == 0:
+        if opcode == _OP_X_ADDR:
             address[a] ^= full
-        elif opcode == 1:
+        elif opcode == _OP_X_LADDER:
             ladder[a] ^= full
-        elif opcode == 2:
+        elif opcode == _OP_CX_ADDR_LADDER:
             ladder[b] ^= address[a]
-        elif opcode == 3:
+        elif opcode == _OP_CX_LADDER_LADDER:
             ladder[b] ^= ladder[a]
-        elif opcode == 4:
+        elif opcode == _OP_CCX:
             ladder[c] ^= ladder[a] & address[b]
-        elif opcode == 5:  # the body marker: leaf line must be [addr == k]
+        elif opcode == _OP_BODY_X:
+            # The body marker: leaf line must be [addr == k].
             expected = 0
             for point in range(npoints):
                 active = (point & ((1 << num_bits) - 1)) == bodies_seen
@@ -83,13 +85,13 @@ def _verify_tape(num_bits: int, num_items: int, controlled: bool):
                 f"indicator (bits={num_bits}, items={num_items}, "
                 f"controlled={controlled})")
             bodies_seen += 1
-        elif opcode == 8:
+        elif opcode == _OP_CX_CTRL_LADDER:
             ladder[b] ^= control
-        elif opcode == 9:
+        elif opcode == _OP_CCX_CTRL:
             ladder[c] ^= control & address[b]
-        elif opcode == 18:
+        elif opcode == _OP_CX_ADDR_ADDR:
             address[b] ^= address[a]
-        elif opcode == 19:
+        elif opcode == _OP_CCX_ADDR_ADDR:
             ladder[c] ^= address[a] & address[b]
         else:
             raise AssertionError(f"unexpected opcode {opcode} in walk tape")
