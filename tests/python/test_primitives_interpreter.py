@@ -20,12 +20,12 @@ import pytest
 import cudaq
 
 from cudaq_algorithms.primitives._unary_iteration import (
-    _BASE_OPS, _CONTROL_OPS, _OP_AND_TT, _OP_AND_WT, _OP_BODY_X,
-    _OP_BODY_X_W, _OP_BODY_Y, _OP_BODY_Z, _OP_BODY_Z_W, _OP_CCX,
-    _OP_CCX_ADDR_ADDR, _OP_CCX_CTRL, _OP_COPY_TW, _OP_CX_ADDR_ADDR,
-    _OP_CX_ADDR_LADDER, _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER,
-    _OP_CX_LADDER_TARGET, _OP_FREE_CX, _OP_FREE_X, _OP_X_ADDR, _OP_X_LADDER,
-    _OP_Z_LADDER, _WORK_OPS, _mint_interpreter)
+    _BASE_OPS, _CONTROL_OPS, _OP_AND_TT, _OP_AND_WT, _OP_BODY_X, _OP_BODY_X_W,
+    _OP_BODY_Y, _OP_BODY_Z, _OP_BODY_Z_W, _OP_CCX, _OP_CCX_ADDR_ADDR,
+    _OP_CCX_CTRL, _OP_COPY_TW, _OP_CX_ADDR_ADDR, _OP_CX_ADDR_LADDER,
+    _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER, _OP_CX_LADDER_TARGET,
+    _OP_FREE_CX, _OP_FREE_X, _OP_X_ADDR, _OP_X_LADDER, _OP_Z_LADDER, _WORK_OPS,
+    _mint_interpreter)
 
 # Register widths in the harness: control 1, address 2, ladder 2,
 # target 2, work 2 — enough for two distinct operand indices per
@@ -61,8 +61,7 @@ _SPECS = {
     "body_z_w": (_OP_BODY_Z_W, (0, 1, 0), "cz", [("l", 0), ("w", 1)]),
     "z_ladder": (_OP_Z_LADDER, (1, 0, 0), "z", [("l", 1)]),
     "cx_addr_addr": (_OP_CX_ADDR_ADDR, (0, 1, 0), "cx", [("a", 0), ("a", 1)]),
-    "ccx_addr_addr": (_OP_CCX_ADDR_ADDR, (0, 1, 1), "ccx", [("a", 0),
-                                                            ("a", 1),
+    "ccx_addr_addr": (_OP_CCX_ADDR_ADDR, (0, 1, 1), "ccx", [("a", 0), ("a", 1),
                                                             ("l", 1)]),
     "cx_ladder_target": (_OP_CX_LADDER_TARGET, (0, 1, 0), "cx", [("l", 0),
                                                                  ("t", 1)]),
@@ -261,7 +260,9 @@ def test_opcode_semantics(opcode, operands, kind, refs, controlled, has_work):
         index = sum(out[reg] << off for reg, off in offsets.items())
         expected[index] = phase
         np.testing.assert_allclose(
-            state, expected, atol=1e-12,
+            state,
+            expected,
+            atol=1e-12,
             err_msg=(f"opcode {opcode} (ctrl={controlled}, work={has_work}) "
                      f"wrong on input {regs}"))
 
