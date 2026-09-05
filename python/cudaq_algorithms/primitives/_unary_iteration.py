@@ -2,34 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unary iteration: apply a per-address body once for each address value.
 
-``unary_iteration_kernels`` mints a flat device kernel that walks a binary
-tree over the address register (Babbush et al., `arXiv:1805.03662`,
-Fig. 7): one clean ladder ancilla per address bit carries the "this
-subtree is active" line, and the caller's body gates for address ``k``
-fire controlled on the leaf line — i.e. exactly when the address register
-equals ``k``. The walk descends once, iterates the leaves in address
-order, and retraces once; sibling transitions reuse the parent line with
-a CNOT, and deeper transitions fuse the uncompute of the old path with
-the compute of the new one through a single guard Toffoli on
-CNOT-conjugated address wires.
+Implements unary iteration (Babbush et al., arXiv:1805.03662, Fig. 7)
+without measurement-based uncomputation of the temporary logical ANDs —
+this corresponds to the strictly unitary select(V) walk of Childs et
+al., arXiv:1711.10980, Appendix G.4 (Lemma G.7): a binary-tree walk with
+one clean ladder ancilla per address bit, whose sibling and deeper
+transitions are fused into in-place rewrites of the active line. The
+caller's body gates for address ``k`` fire controlled on the leaf line,
+exactly when the address register equals ``k``, so the minted kernel
+implements ``sum_k |k><k| (x) U_k``.
 
-Toffoli cost (unitary-uncompute accounting — see below): a full tree of
-``N = 2^num_address_bits`` addresses costs exactly ``3 N / 2 - 5``
-Toffolis uncontrolled (``N >= 8``; 2 at ``N = 4``, 0 at ``N = 2``) and
-``3 N / 2 - 1`` controlled. Partial trees (``num_items < N``) cost less;
-the emitter reports the exact number as ``toffoli_count``. The paper's
-headline count for unary iteration is ``N - 1`` Toffolis, but that
-figure prices the AND-ancilla *uncomputation* at zero via
-measurement-and-fixup. This library keeps every primitive strictly
-unitary (statevector-testable, inverse-composable, no mid-circuit
-measurement), and with unitary uncomputation the fused walk's
-``3 N / 2 + O(1)`` is the best we found: an exhaustive search over
-CNOT/Toffoli circuits (arbitrary CNOT-conjugated controls, dirty address
-wires, extra ancillas) proves 2 Toffolis minimal for the controlled
-two-address walk, 5 for the controlled four-address walk and 2 for the
-uncontrolled four-address walk — all matched by this construction, and
-all above the measurement-assisted ``N - 1``. The naive
-compute/uncompute walk costs ``2 N - 4``.
+Toffoli cost: exactly ``3 N / 2 - 5`` uncontrolled for a full tree of
+``N = 2^num_address_bits`` addresses (``N >= 8``; 2 at ``N = 4``, 0 at
+``N = 2``) and ``3 N / 2 - 1`` controlled; partial trees
+(``num_items < N``) cost less, and the emitter reports the exact number
+as ``toffoli_count``. Babbush et al. reach ``N - 1`` Toffolis by pricing
+the AND uncomputation at zero via measurement-and-fixup (Gidney,
+arXiv:1709.06648); this library keeps every primitive strictly unitary
+(statevector-testable, inverse-composable, ``cudaq.control``-safe), and
+under that constraint the fused walk is the standard construction. The
+naive compute/uncompute walk costs ``2 N - 4``.
 
 T-count caveat (so the comparison stays honest under either metric):
 roughly a third of this walk's Toffolis are the fused ones, whose
@@ -37,8 +29,8 @@ target is a *dirty* ladder line and therefore cost the generic 7 T,
 while a compute-from-``|0>`` AND costs 4 T (Gidney, arXiv:1709.06648).
 In T gates the fused walk is therefore ~7.5 N against the naive
 unitary walk's ~8 N — a ~6% advantage, not the 25% the Toffoli count
-suggests. Both numbers beat nothing measured: the literature's
-measured walk is 4 N T.
+suggests. Both numbers beat nothing measured: the measured walk of
+Babbush et al. is 4 N T.
 
 The callback pattern (READ THIS — it is the template for QROM and for
 factory-composed SELECTs)
@@ -417,6 +409,39 @@ def _emit_walk(num_address_bits: int, num_items: int, controlled: bool,
         else:
             emit(_OP_X_LADDER, 0)
 
+    def sibling_flip(level: int) -> None:
+        """Move the level line to its sibling: left XOR right = parent.
+
+        Exactly one of the two sibling indicators is active given the
+        parent, so one CNOT from the parent line retargets the child
+        line in place. ``level == n`` is the leaf/word-line transition
+        between even and odd addresses; ``level == 1`` has no parent
+        line and degenerates to ``root_flip``.
+        """
+        if level == 1:
+            root_flip()
+        else:
+            emit(_OP_CX_LADDER_LADDER, level - 2, level - 1)
+
+    def unguarded_root_crossing() -> None:
+        """Rewrite levels 1-3 across an uncontrolled root, Toffoli-free
+        at levels 1-2.
+
+        With no guard line above the root, the fused differences at
+        levels 2 and 3 are (b1^b2) and (b1^b2)(b1^b3) of the top address
+        bits: level 2 moves by two free CNOTs, level 3 by one Toffoli on
+        two CNOT-conjugated address wires, and level 1 by ``root_flip``.
+        """
+        w1, w2, w3 = wire(1), wire(2), wire(3)
+        emit(_OP_CX_ADDR_ADDR, w1, w2)
+        emit(_OP_CX_ADDR_ADDR, w1, w3)
+        emit(_OP_CCX_ADDR_ADDR, w2, w3, 2)
+        emit(_OP_CX_ADDR_ADDR, w1, w3)
+        emit(_OP_CX_ADDR_ADDR, w1, w2)
+        emit(_OP_CX_ADDR_LADDER, w1, 1)
+        emit(_OP_CX_ADDR_LADDER, w2, 1)
+        root_flip()
+
     # Descent to leaf 0 (all address bits 0).
     for level in range(1, n + 1):
         set_line(level, False)
@@ -425,26 +450,11 @@ def _emit_walk(num_address_bits: int, num_items: int, controlled: bool,
     for k in range(num_items - 1):
         t = _trailing_ones(k)
         if t == 0:
-            # Sibling flip at the deepest level: left XOR right = parent.
-            if n == 1:
-                root_flip()
-            else:
-                emit(_OP_CX_LADDER_LADDER, n - 2, n - 1)
+            sibling_flip(n)
         elif n - t == 1 and not controlled and t >= 2:
-            # Unguarded root crossing: the fused differences at levels 2
-            # and 3 are (b1^b2) and (b1^b2)(b1^b3) of the top address
-            # bits — free CNOTs and one two-conjugated-wire Toffoli.
             for level in range(n, 3, -1):
                 set_line(level, True)  # unclamp against old parents
-            w1, w2, w3 = wire(1), wire(2), wire(3)
-            emit(_OP_CX_ADDR_ADDR, w1, w2)
-            emit(_OP_CX_ADDR_ADDR, w1, w3)
-            emit(_OP_CCX_ADDR_ADDR, w2, w3, 2)
-            emit(_OP_CX_ADDR_ADDR, w1, w3)
-            emit(_OP_CX_ADDR_ADDR, w1, w2)
-            emit(_OP_CX_ADDR_LADDER, w1, 1)
-            emit(_OP_CX_ADDR_LADDER, w2, 1)
-            root_flip()
+            unguarded_root_crossing()
             for level in range(4, n + 1):
                 set_line(level, False)  # reclamp against new parents
         else:
@@ -463,11 +473,7 @@ def _emit_walk(num_address_bits: int, num_items: int, controlled: bool,
                 else:
                     emit(_OP_CCX, d - 2, wd1, d)
                 emit(_OP_CX_ADDR_ADDR, wd, wd1)
-            # Flip level d to the sibling subtree.
-            if d == 1:
-                root_flip()
-            else:
-                emit(_OP_CX_LADDER_LADDER, d - 2, d - 1)
+            sibling_flip(d)
             for level in range(d + 2, n + 1):
                 set_line(level, False)  # reclamp against new parents
         emit_body(n - 1, k + 1)
@@ -498,9 +504,16 @@ def unary_iteration_kernels(
         2^num_address_bits``); addresses ``k >= num_items`` are never
         entered and the walk acts as the identity on them.
     body
-        Factory-time callback ``k -> sequence of (gate, target)`` (see
-        the module docstring). Called exactly once per address, in
-        address order, during this factory call.
+        The payload table of the SELECT: a factory-time callback mapping
+        each address ``k`` to the gate list ``U_k`` that the walk applies
+        when the address register holds ``k`` — i.e. the minted kernel
+        implements ``sum_k |k><k| (x) U_k``. Each entry is an opcode
+        tuple such as ``("x", t)`` / ``("y", t)`` / ``("z", t)``
+        (leaf-controlled Pauli on ``target[t]``) or one of the extended
+        gates in the module docstring; an empty list means ``U_k = I``.
+        Called exactly once per address, in address order, during this
+        factory call — the gates are baked into the kernel, so ``body``
+        itself never runs at circuit time.
     controlled
         Mint the externally controlled walk (leading one-qubit view).
     include_adjoint

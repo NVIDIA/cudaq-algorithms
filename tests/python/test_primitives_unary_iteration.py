@@ -247,7 +247,11 @@ def test_unary_iteration_matches_dense_select_reference():
 def test_unary_iteration_adjoint_composes_to_identity():
     # Non-commuting multi-gate bodies (X, Z, Y mixed) so the walk is NOT
     # an involution; only the hand-written reversed-instruction inverse
-    # restores the state.
+    # restores the state. With U_odd = Y1 Z0 X0, (Z X)^2 = -I, so a
+    # kernel_adj that secretly replayed the FORWARD tape would leave a
+    # -1 phase on the odd addresses — visible against the superposed
+    # address register. The involution=False premise is asserted first,
+    # so this test cannot silently degrade into a self-inverse check.
     def body(k):
         if k % 2 == 1:
             return [("x", 0), ("z", 0), ("y", 1)]
@@ -258,7 +262,7 @@ def test_unary_iteration_adjoint_composes_to_identity():
     kernel_adj = walk.kernel_adj
 
     @cudaq.kernel
-    def run():
+    def run(use_adjoint: bool):
         address_reg = cudaq.qvector(3)
         ladder = cudaq.qvector(3)
         target = cudaq.qvector(2)
@@ -266,17 +270,30 @@ def test_unary_iteration_adjoint_composes_to_identity():
         for b in range(3):
             h(address_reg[b])
         kernel(address_reg, ladder, target)
-        kernel_adj(address_reg, ladder, target)
+        if use_adjoint:
+            kernel_adj(address_reg, ladder, target)
+        else:
+            kernel(address_reg, ladder, target)
 
-    state = np.array(cudaq.get_state(run))
     expected = np.zeros(1 << 8, dtype=np.complex128)
     for address in range(8):
         expected[address + (1 << 6)] = 1.0 / np.sqrt(8.0)
+
+    # Premise: forward-forward is NOT the identity (the walk is not an
+    # involution for this body), so the identity below is non-vacuous.
+    twice = np.array(cudaq.get_state(run, False))
+    assert np.abs(twice - expected).max() > 0.5
+
+    state = np.array(cudaq.get_state(run, True))
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
-@pytest.mark.parametrize("control_value", [0, 1])
-def test_unary_iteration_controlled_variant(control_value):
+# theta = 0 and pi pin the classical branches; 0.7 puts the control in
+# genuine superposition, where a phase error between the branches (the
+# failure mode measurement-based uncomputation would introduce) is
+# invisible to the classical cases but breaks the amplitude comparison.
+@pytest.mark.parametrize("theta", [0.0, np.pi, 0.7])
+def test_unary_iteration_controlled_variant(theta):
     marked = (1, 2)
     walk = unary_iteration_kernels(2,
                                    4,
@@ -286,26 +303,27 @@ def test_unary_iteration_controlled_variant(control_value):
     assert walk.controlled
 
     @cudaq.kernel
-    def run():
+    def run(angle: float):
         control = cudaq.qvector(1)
         address_reg = cudaq.qvector(2)
         ladder = cudaq.qvector(2)
         target = cudaq.qvector(1)
-        if control_value == 1:
-            x(control[0])
+        ry(angle, control[0])
         x(target[0])
         for b in range(2):
             h(address_reg[b])
         kernel(control, address_reg, ladder, target)
 
-    state = np.array(cudaq.get_state(run))
+    state = np.array(cudaq.get_state(run, theta))
+    amp = (np.cos(theta / 2), np.sin(theta / 2))
     expected = np.zeros(1 << 6, dtype=np.complex128)
-    for address in range(4):
-        kicked = control_value == 1 and address in marked
-        sign = -1.0 if kicked else 1.0
-        # Layout: control at 0, address at [1, 3), ladder [3, 5), target 5.
-        expected[control_value + (address << 1) + (1 << 5)] = \
-            sign / 2.0
+    for control_bit in range(2):
+        for address in range(4):
+            kicked = control_bit == 1 and address in marked
+            sign = -1.0 if kicked else 1.0
+            # Layout: control at 0, address [1, 3), ladder [3, 5), target 5.
+            expected[control_bit + (address << 1) + (1 << 5)] = \
+                sign * amp[control_bit] / 2.0
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
