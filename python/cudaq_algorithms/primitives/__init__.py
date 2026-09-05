@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Fault-tolerant circuit primitives: unary iteration and QROM.
 
-``unary_iteration_kernels`` mints the fused tree walk of Babbush et al.
-(`arXiv:1805.03662`, Fig. 7) — apply a per-address body exactly when the
-address register equals ``k`` — and ``QROM`` builds coherent
+``unary_iteration_kernels`` mints unary iteration (Babbush et al.,
+`arXiv:1805.03662`, Fig. 7) in its strictly unitary form — no
+measurement-based uncomputation, i.e. the fused select(V) walk of
+Childs et al. (`arXiv:1711.10980`, Appendix G.4) — applying a
+per-address body exactly when the address register equals ``k``.
+``QROM`` builds coherent
 classical-table lookups on top of it, either as the plain
 unary-iteration SELECT or as the SELECT-SWAP / QROAM construction of
 Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`).

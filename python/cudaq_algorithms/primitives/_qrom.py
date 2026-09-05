@@ -293,7 +293,7 @@ class QROM:
         size = self._block_size
         low_bits = size.bit_length() - 1
         high_bits = self._num_address - low_bits
-        num_blocks = -(-len(entries) // size)
+        num_blocks = (len(entries) + size - 1) // size  # ceil division
 
         def block_write(j: int) -> list[tuple[str, int]]:
             gates = []
@@ -305,11 +305,18 @@ class QROM:
             return gates
 
         walk_ops = _emit_walk(high_bits, num_blocks, False, block_write)
-        # Rebase the walk onto the combined kernel: block-index address
-        # wires sit above the low routing bits, and the walk's "target"
-        # (the block registers) lives in the ladder view after the walk
-        # lines, so the leaf-controlled body X becomes a ladder-to-ladder
-        # CNOT.
+        # This IS the textbook SELECT-SWAP: a unary-iteration walk over
+        # the high (block-index) bits whose leaf action writes each
+        # block, then a low-bit-controlled swap network routes the
+        # selected entry. We reuse the walk EMITTER rather than a minted
+        # walk kernel because CUDA-Q kernels cannot call kernels: the
+        # whole lookup must be one flat tape, so the walk's instructions
+        # are rebased into the combined kernel's wire layout here.
+        # In that layout (see "select_swap register layout" in
+        # _unary_iteration's docstring) the block registers ride in the
+        # ladder VIEW after the walk lines — "ladder" names the wire
+        # bundle, not a role — so the walk's leaf-controlled block-write
+        # X lands as a CNOT between two ladder-view wires.
         ops = []
         for op in walk_ops:
             opcode, a, bb, c = op
@@ -327,6 +334,10 @@ class QROM:
         # at low-address offset (i + a_s 2^s + ... + a_0); slot 0 ends
         # holding the selected entry. Each controlled register swap is b
         # Fredkins: cswap(c; u, v) = cx(v, u) ccx(c, u, v) cx(v, u).
+        # u and v are block-register wires (which live in the ladder
+        # view — see the rebase note above), so the outer CNOTs of each
+        # Fredkin appear as _OP_CX_LADDER_LADDER: CNOTs purely between
+        # the data blocks, exactly the routing network's own gates.
         swap_ops = []
         for s in range(low_bits):
             for i in range(0, size, 1 << (s + 1)):
