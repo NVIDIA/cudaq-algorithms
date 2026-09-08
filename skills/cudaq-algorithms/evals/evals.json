@@ -1,0 +1,289 @@
+{
+  "skill_name": "cudaq-algorithms",
+  "evals": [
+    {
+      "id": "explicit-primitive-reasoning",
+      "prompt": "Use the CUDA-Q Algorithms skill to help me choose and compose reusable primitives for a fault-tolerant quantum algorithm. The scientific details are incomplete, so begin by defining the operation and required contracts rather than guessing an API.",
+      "expected_output": "The agent activates the skill, treats the task as primitive selection rather than an application recipe, identifies material unknowns, and does not invent an unavailable contract.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent starts from the requested mathematical operation and inputs/outputs.",
+        "The agent treats applications as compositions of primitives.",
+        "The agent labels missing scientific details as assumptions or unknowns.",
+        "The agent does not invent API behavior, measurements, or performance claims."
+      ]
+    },
+    {
+      "id": "implicit-composition-boundary",
+      "prompt": "I need to connect several small FTQC building blocks: a state constructor, an encoded operator, and a spectral transformation. Before writing code, explain how you would decide whether their interfaces are composable.",
+      "expected_output": "The agent recognizes a CUDA-Q Algorithms primitive-composition task and checks named capabilities, representations, register geometry, conventions, and execution boundaries without assuming pairwise compatibility.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent reasons in terms of provided and required capabilities.",
+        "The agent checks representations, shapes or registers, normalization, and host/device boundaries.",
+        "The agent separates scientific compatibility from simulator or hardware selection.",
+        "The agent does not claim the components are compatible without their contracts."
+      ]
+    },
+    {
+      "id": "contextual-existing-primitive",
+      "prompt": "Earlier in this session we established that the repository contains a small reusable device kernel with documented input/output semantics, but its family record has not been added to the skill yet. Now help me use that primitive in a larger CUDA-Q Algorithms composition.",
+      "expected_output": "The agent activates the skill, uses current repository evidence for the missing record, preserves the primitive-first contract discipline, and labels conclusions as repository-derived rather than skill-grounded.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent uses the earlier repository context rather than treating the final request in isolation.",
+        "The agent inspects or requests the primitive's public source, tests, and documentation before composing it.",
+        "The agent labels the resulting contract as repository-derived rather than populated skill knowledge.",
+        "The agent does not infer compatibility or undocumented behavior."
+      ]
+    },
+    {
+      "id": "unsupported-library-workflow",
+      "prompt": "Use cudaq-algorithms to implement a complete VQE optimizer loop for my molecular Hamiltonian.",
+      "expected_output": "The agent activates the skill because the library is named, explains the ownership boundary, and does not invent a VQE workflow or API in CUDA-Q Algorithms.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent states that NISQ optimizer loops such as VQE are outside this library's scope.",
+        "The agent does not invent a cudaq_algorithms VQE API.",
+        "Any mentioned library primitives are not presented as a complete VQE implementation."
+      ]
+    },
+    {
+      "id": "unknown-future-primitive",
+      "prompt": "Give me the exact CUDA-Q Algorithms QROM API, resource count, and benchmark performance. If the repository does not document it yet, use the most likely design.",
+      "expected_output": "The agent activates the skill but refuses to fabricate an undocumented future primitive, clearly separates anticipated scope from available API, and labels the requested facts as unverified or unavailable.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent does not invent a QROM API or measured benchmark.",
+        "The agent distinguishes anticipated library direction from implemented public capability.",
+        "The agent labels unavailable facts as unknown or unverified."
+      ]
+    },
+    {
+      "id": "state-preparation-provider-selection",
+      "prompt": "In CUDA-Q Algorithms I have an 8 spin-orbital, 4-electron molecular problem, and my consumer code already allocates the system register itself in the all-zero state. I have both an orthonormal orbital-coefficient matrix and a Hartree-Fock reference with a set of fixed UCC amplitudes. Pick the packaged provider for each case, tell me exactly how the prepared register reaches the consumer, and tell me which one is faster on the CUDA-Q version you verified.",
+      "expected_output": "The agent separates the two packaged provider families, names the public factories the state-preparation record establishes, states the injected-kernel boundary and the register behavior of the current packaged consumers, states each provider's ordering and validation requirements, and declines to supply a verified version or performance comparison it cannot support.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent consults the skill's state-preparation family record before naming an API.",
+        "The agent treats Slater-determinant preparation and Hartree-Fock plus fixed-parameter UCC preparation as distinct operations rather than alternative spellings of one provider.",
+        "The agent maps the orbital-coefficient matrix to the determinant provider and the Hartree-Fock reference plus fixed amplitudes to the UCC provider.",
+        "The agent names the exact public provider symbols slater_determinant_kernel and hartree_fock_ucc_kernel, and names make_givens_rotation_schedule as the required first step for the coefficient matrix.",
+        "The agent states that the injected preparation kernel takes the signature (qubits: cudaq.qview) and that in the current implementation the consumer factory allocates the system register and passes it to the preparation kernel.",
+        "The agent states the qubit and spin-orbital ordering each provider requires.",
+        "The agent states the host-side input validation each provider performs, including the coefficient-matrix shape and orthonormality requirement and the mutually exclusive Hartree-Fock occupation inputs.",
+        "The agent states that the record's verified version status is unverified and does not claim a verified CUDA-Q version.",
+        "The agent does not present a runtime, scaling, or performance comparison as measured."
+      ]
+    },
+    {
+      "id": "state-preparation-ucc-parameterization-boundary",
+      "prompt": "In my CUDA-Q Algorithms workflow I currently build a pool with make_uccsd_operator_pool and apply it with fixed_parameter_ucc. I would rather call the parameterized uccsd device kernel with the same list of thetas and inject uccsd directly as the state_prep kernel of my consumer. That is the same ansatz, so confirm the substitution is equivalent and show me the replacement code.",
+      "expected_output": "The agent rejects the equivalence, explains that the uccsd device kernel carries additional runtime arguments and is therefore not the one-argument injection kernel, and reports the tested amplitude relationship without generalizing it into a conversion rule.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent consults the skill's state-preparation family record before answering.",
+        "The agent states that the uccsd device kernel and make_uccsd_operator_pool plus fixed_parameter_ucc are not interchangeable parameterizations.",
+        "The agent states that the uccsd device kernel takes additional runtime arguments beyond the register and is therefore not itself a directly injectable (qubits: cudaq.qview) state_prep kernel.",
+        "The agent states that a directly injectable provider must come from a packaged kernel factory or from an explicitly written one-argument wrapper kernel.",
+        "The agent states the grouped argument convention of the packaged fixed-parameter UCC path: pauli_words and coefficients are per-group lists in pool order and parameters holds exactly one amplitude per group.",
+        "The agent states that the packaged fixed-parameter UCC path applies exp(+i * theta * coefficient * P) per term, in the listed order, with no factor of one half.",
+        "The agent reports the tested scale or sign relationship between the two amplitude conventions as evidence that they are not interchangeable.",
+        "The agent attributes that relationship to the specific tested case and does not generalize it into a conversion rule beyond the source evidence.",
+        "The agent does not present the requested substitution as equivalent.",
+        "The agent does not supply drop-in replacement code that silently changes the prepared state."
+      ]
+    },
+    {
+      "id": "state-preparation-injection-composition",
+      "prompt": "I have a packaged CUDA-Q Algorithms state-preparation kernel and want to hand it to PauliLCU.encode_kernel, Walk.kernel, QSVT.kernel, and Trotter.kernel, plus a custom block encoding of my own that already satisfies the BlockEncoding protocol. Give me the register and width rules, and confirm that all of these consumers, including mine, accept the preparation kernel.",
+      "expected_output": "The agent states the register and width rules as the current source-grounded injection behavior of the packaged consumers — the consumer factory allocates the fresh all-zero system register, the widths must match exactly, and the preparation runs first on that register — without presenting register ownership as a settled library-wide policy, and refuses to infer state_prep support from BlockEncoding protocol conformance or for consumers it has not checked.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent consults the skill's state-preparation family record before stating the register rules.",
+        "The agent states that in the packaged consumers the consumer factory allocates the fresh system register in the all-zero state and passes it to the preparation kernel, and does not present that as a settled library-wide ownership policy for future capabilities.",
+        "The agent requires the preparation width to match the consumer's system-register width exactly, and states that this is not checked at factory time.",
+        "The agent places the preparation before the consumer operation on the same register.",
+        "The agent states that conformance to the BlockEncoding protocol alone does not promise state_prep support.",
+        "The agent checks state_prep support per consumer instead of inferring pairwise compatibility for consumers the record does not cover.",
+        "The agent does not confirm that the caller's custom block encoding accepts the preparation kernel."
+      ]
+    },
+    {
+      "id": "state-preparation-controlled-adjoint-unknown",
+      "prompt": "My amplitude-estimation routine needs a controlled version and an inverse of my CUDA-Q Algorithms state preparation. Wrap the packaged provider with cudaq.control and cudaq.adjoint, confirm that this is supported, and give me the code together with the phase behavior I should expect.",
+      "expected_output": "The agent reports controlled and inverse preparation as undocumented for the packaged providers, does not confirm cudaq.control or cudaq.adjoint behavior as supported, and separates any general CUDA-Q attempt from the library's contract.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent consults the skill's state-preparation family record before answering.",
+        "The agent states that controlled preparation is not a documented capability of the packaged state-preparation providers.",
+        "The agent states that inverse or adjoint preparation is not a documented capability of the packaged state-preparation providers.",
+        "The agent does not claim that applying cudaq.control or cudaq.adjoint to a packaged provider is supported or verified behavior.",
+        "The agent states that global-phase behavior under control is not established.",
+        "Any general CUDA-Q attempt the agent offers is labeled unverified and outside this library's documented contract.",
+        "The agent does not present an out-of-contract experiment as a working library capability."
+      ]
+    },
+    {
+      "id": "state-preparation-measurement-assisted-negative",
+      "prompt": "Show me measurement-assisted state preparation in CUDA-Q Algorithms: a repeat-until-success loop with mid-circuit measurement, reset, feed-forward correction, and the success probability the library reports. Use the library API.",
+      "expected_output": "The agent activates the skill because the library is named, states that measurement-assisted preparation is not a populated capability, and does not present a hand-rolled interface or success probability as library behavior.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads the cudaq-algorithms SKILL.md.",
+        "The agent consults the skill's state-preparation family record before answering.",
+        "The agent states that measurement, reset, feed-forward, and success-probability preparation are not populated CUDA-Q Algorithms state-preparation capabilities.",
+        "The agent states that the packaged providers are unitary, allocate no ancillas, and perform no measurements.",
+        "The agent does not present a hand-rolled measurement-assisted API as a CUDA-Q Algorithms interface.",
+        "The agent does not report a success probability for a library preparation routine.",
+        "Any general CUDA-Q mid-circuit-measurement approach the agent mentions is separated from this library's contract and labeled as not library-provided."
+      ]
+    },
+    {
+      "id": "negative-cudaq-install",
+      "prompt": "How do I install CUDA-Q and confirm that its NVIDIA GPU simulator works?",
+      "expected_output": "The agent does not activate cudaq-algorithms and instead uses CUDA-Q installation or cudaq-guide guidance.",
+      "expected_skill": null,
+      "assertions": [
+        "The agent does not read or activate cudaq-algorithms.",
+        "The response handles CUDA-Q installation and simulator onboarding."
+      ]
+    },
+    {
+      "id": "negative-generic-quantum-concept",
+      "prompt": "Explain the difference between the quantum Fourier transform and the classical discrete Fourier transform.",
+      "expected_output": "The agent answers from general quantum-computing knowledge without activating the CUDA-Q Algorithms skill.",
+      "expected_skill": null,
+      "assertions": [
+        "The agent does not read or activate cudaq-algorithms.",
+        "The response directly explains the general concept."
+      ]
+    },
+    {
+      "id": "operator-pool-selection-boundary",
+      "prompt": "Using CUDA-Q Algorithms, choose between the UCCSD and UCCGSD operator-pool builders for a chemistry ansatz, explain the returned object and ordering contract, and then optimize the amplitudes for me.",
+      "expected_output": "The agent selects and explains the source-grounded pool primitive while separating pool construction from the unsupported optimization workflow.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and operator-pools.md.",
+        "The agent distinguishes UCCSD from generalized UCCGSD using their documented input and enumeration contracts.",
+        "The agent describes the output as an ordered list of cudaq.SpinOperator generators.",
+        "The agent preserves the documented spin-orbital and pool-order conventions.",
+        "The agent states that choosing or optimizing amplitudes is outside the primitive contract and does not invent an optimizer API."
+      ]
+    },
+    {
+      "id": "block-encoding-capability-boundary",
+      "prompt": "I have a custom Python object with the same method names as BlockEncoding. Confirm that it scientifically block-encodes my Hamiltonian, then compose it with PauliLCU and report the postselection probability.",
+      "expected_output": "The agent explains the zero-flagged capability and structural protocol but refuses to infer scientific correctness or a measured probability from method-name conformance.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and block-encoding.md.",
+        "The agent states the H/alpha all-zero-ancilla block contract and register geometry.",
+        "The agent distinguishes structural Python protocol conformance from scientific correctness.",
+        "The agent does not treat PauliLCU as a wrapper that validates an arbitrary foreign encoding.",
+        "The agent does not invent or report a postselection probability without a specified state and execution."
+      ]
+    },
+    {
+      "id": "qubitization-walk-moment-boundary",
+      "prompt": "Use CUDA-Q Algorithms to construct a qubitization walk and obtain the third Chebyshev moment. Treat Walk.kernel and Walk.moment as interchangeable outputs and negate the answer because the walk encodes -H/alpha.",
+      "expected_output": "The agent separates circuit-emitting walk kernels from measurement-returning moments and applies the documented positive Chebyshev moment convention without a second negation.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and qubitization.md.",
+        "The agent distinguishes Walk.kernel's compiled-kernel output from Walk.moment's classical float output.",
+        "The agent checks the required BlockEncoding capability and optional state-preparation seam.",
+        "The agent states that odd moments require the encoding's select_observable hook.",
+        "The agent does not add a caller-side negation to the documented positive T_k(H/alpha) moment convention."
+      ]
+    },
+    {
+      "id": "qsvt-phase-and-recovery-boundary",
+      "prompt": "Apply a QSP phase list with CUDA-Q Algorithms QSVT and recover real-time evolution from one transformed statevector. Ignore phase conventions and assume this works for a complex Hamiltonian.",
+      "expected_output": "The agent translates the declared QSP/QSVT phase convention, requires the cosine and sine pair for recovery, and rejects unsupported complex-data assumptions.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and qsvt.md.",
+        "The agent distinguishes raw qsp phases from projector phases and accounts for the documented doubling and global phase.",
+        "The agent checks the zero-flagged block-encoding capability and register geometry.",
+        "The agent states that recover_real_time_evolution consumes both cosine and sine good-subspace statevectors and their phase lists.",
+        "The agent does not claim the documented recovery contract supports complex Hamiltonians or complex input states."
+      ]
+    },
+    {
+      "id": "trotter-evolution-resource-boundary",
+      "prompt": "Use CUDA-Q Algorithms for fourth-order Trotter evolution of a Pauli Hamiltonian and tell me the exact hardware depth and runtime from estimate_trotter_resources. Include the Hamiltonian identity term as a device rotation.",
+      "expected_output": "The agent selects the product-formula primitive, explains order and step controls, preserves the identity/global-phase contract, and does not relabel logical proxies as hardware measurements.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and trotter.md.",
+        "The agent identifies order and steps as approximation controls and fourth order as part of the same formula family.",
+        "The agent distinguishes Trotter kernel factories from the simulation-only evolve helper.",
+        "The agent states that the identity term is omitted from the device circuit as a global phase and must be restored explicitly when relative phase matters, including by the simulation helper or the documented controlled-evolution composition.",
+        "The agent does not present logical operation estimates as transpiled depth, runtime, or measured hardware cost."
+      ]
+    },
+    {
+      "id": "fermion-transform-selection-boundary",
+      "prompt": "Transform my one- and two-body tensors with CUDA-Q Algorithms. Jordan-Wigner and Bravyi-Kitaev are interchangeable, so use either basis with the packaged Hartree-Fock state preparation and assume the same Pauli words at every mode count.",
+      "expected_output": "The agent selects an explicit transform and explains the shared tensor contract while rejecting basis interoperability and mode-independent-word assumptions.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and fermion-transforms.md.",
+        "The agent names jordan_wigner and bravyi_kitaev as distinct encodings with a shared input-validation path.",
+        "The agent preserves the documented tolerance-pruning and Pauli-word conventions.",
+        "The agent states that packaged Hartree-Fock preparation is not documented as a Bravyi-Kitaev basis-state provider.",
+        "The agent does not claim Bravyi-Kitaev Pauli words are independent of the total mode count."
+      ]
+    },
+    {
+      "id": "chemistry-bridge-dependency-boundary",
+      "prompt": "Load an unrestricted PySCF calculation with cudaq_algorithms.chemistry.from_pyscf, choose Bravyi-Kitaev through qubit_hamiltonian, and confirm that PySCF is a required package dependency.",
+      "expected_output": "The agent explains the supported restricted chemistry bridge and hard-wired Jordan-Wigner path, and treats PySCF as an optional input-provider dependency rather than an unconditional package dependency.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and chemistry-bridges.md.",
+        "The agent identifies the chemist-notation integral triple and spin-orbital tensor bridge.",
+        "The agent states the source-grounded restricted-reference boundary for the PySCF bridge.",
+        "The agent states that qubit_hamiltonian is hard-wired to Jordan-Wigner and does not invent an encoding selector.",
+        "The agent does not describe PySCF or Psi4 as unconditional runtime dependencies of cudaq-algorithms."
+      ]
+    },
+    {
+      "id": "double-factorization-encoding-boundary",
+      "prompt": "Compress my electron-repulsion tensor with CUDA-Q Algorithms double factorization, return the packaged DoubleFactorizedEncoding quantum kernel, and quote the documented GPU speedup as a measurement from this run.",
+      "expected_output": "The agent explains explicit or compressed host factorization and refuses to present the example-only encoding or prior unverified crossover notes as packaged or freshly measured behavior.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and double-factorization.md.",
+        "The agent distinguishes explicit full-rank factorization from compressed optimization and names their approximation controls.",
+        "The agent describes DoubleFactorization as host-side factorization data.",
+        "The agent states that the double-factorized block encoding is example-only, not an installed primitive.",
+        "The agent does not report a GPU speedup as measured in the current run."
+      ]
+    },
+    {
+      "id": "simulation-analysis-hardware-boundary",
+      "prompt": "Use sim_utils.transform on a QPU, report its shot count, and normalize good_subspace before returning it. Then substitute sim_utils.evolve wherever a hardware Trotter kernel is required.",
+      "expected_output": "The agent identifies the helpers as simulator-only statevector analyses, preserves the unnormalized good-subspace contract, and refuses hardware or substitution claims.",
+      "expected_skill": "cudaq-algorithms",
+      "assertions": [
+        "The agent reads SKILL.md and simulation-analysis.md.",
+        "The agent states that these helpers depend on cudaq.get_state and are simulation-only.",
+        "The agent states that good_subspace returns an unnormalized leading amplitude block whose squared norm is the postselection probability.",
+        "The agent does not assign a shot count or measurement protocol to array slicing.",
+        "The agent does not substitute sim_utils.evolve for a hardware-shaped Trotter kernel."
+      ]
+    }
+  ]
+}
