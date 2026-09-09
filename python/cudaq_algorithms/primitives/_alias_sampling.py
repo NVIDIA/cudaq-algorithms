@@ -54,9 +54,9 @@ ref(mu) | ref_pad | flag | ladder(qrom.num_ladder) | carry]`` — i.e.
 ``2 num_index + 2 mu + 4`` whenever the priced lookup is the plain
 ``"select"`` walk (``num_ladder = num_index``; always the case for the
 small tables where select wins ``"auto"``'s pricing). Both registers
-must be |0...0> on entry to ``kernel()``; ``adjoint_kernel()`` is the
+must be ``|0...0>`` on entry to ``kernel()``; ``adjoint_kernel()`` is the
 literal gate-reversal (no ``cudaq.adjoint``, cuda-quantum#4897/#4898) and
-returns them to |0...0>. The QROM lookup uncomputes itself on the clean
+returns them to ``|0...0>``. The QROM lookup uncomputes itself on the clean
 ladder sector the adjoint provides, whatever the variant (the ladder is
 restored by the compute pass and untouched in between, so re-applying
 the lookup XORs the table back out). These kernels call the QROM and
@@ -172,9 +172,9 @@ class AliasSamplingPrepare:
     mutually orthogonal (measured off-diagonal overlaps reach ~0.19), so
     the reduced state on the index register is not ``diag(p_k)``; only
     the amplitude *magnitudes* on the index register are guaranteed.
-    That is exactly what qubitization's ``<0| PREP^dagger SELECT PREP
-    |0>`` contract needs — index orthogonality kills the cross terms —
-    but consumers must not assume orthonormal garbage.
+    That is exactly what qubitization's ``<0|PREP^dagger SELECT PREP|0>``
+    contract needs — index orthogonality kills the cross terms — but
+    consumers must not assume orthonormal garbage.
     """
 
     def __init__(self,
@@ -334,7 +334,7 @@ class AliasSamplingPrepare:
         """Offset of the ``qrom.num_ladder``-wide QROM ladder inside
         garbage.
 
-        The ladder qubits are clean (|0>) between ``kernel()`` and
+        The ladder qubits are clean (``|0>``) between ``kernel()`` and
         ``adjoint_kernel()`` — unlike the rest of the garbage — so a
         SELECT sandwiched between them may reuse
         ``garbage[ladder_offset : ladder_offset + qrom.num_ladder]`` as
@@ -363,7 +363,7 @@ class AliasSamplingPrepare:
 
     @property
     def discretization_bound(self) -> float:
-        """Per-bin bound on |table - ideal| probability (see module doc)."""
+        """Per-bin bound on ``|table - ideal|`` probability (see module doc)."""
         return 1.5 / (self._num_bins * (1 << self._mu))
 
     def __repr__(self) -> str:
@@ -377,7 +377,7 @@ class AliasSamplingPrepare:
     # ------------------------------------------------------------------
 
     def kernel(self):
-        """PREPARE ``(index, garbage)`` — both |0...0> on entry."""
+        """PREPARE ``(index, garbage)`` — both ``|0...0>`` on entry."""
         return self._prepare
 
     def adjoint_kernel(self):
