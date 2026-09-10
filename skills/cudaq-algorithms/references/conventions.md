@@ -2,8 +2,9 @@
 
 Cross-source comparisons are valid only after their conventions are aligned.
 The repository's `docs/sphinx/conventions.rst`, public source, and tests remain
-authoritative. The records below are populated from those sources at commit
-`61ac072d7823481ad0d303dac84d8ee29a9a8cd0` (2026-09-03). Nothing here was
+authoritative. The records below were inspected during the historical review
+anchored in [source-provenance.md](source-provenance.md); recheck the selected
+sources in the current checkout when freshness matters. Nothing here was
 executed in this session; every claim is `derived` from the cited path unless
 labeled otherwise.
 
@@ -18,7 +19,7 @@ Each populated convention must state:
 - invariants unaffected by representation;
 - observable symptom of a mismatch;
 - minimal independent verification;
-- source paths, tests, version range, and last verification.
+- source paths, tests, applicable package requirements, and validation evidence.
 
 ## Qubit ordering: qubit 0 is least significant
 
@@ -88,10 +89,12 @@ Each populated convention must state:
   receives only that register, runs before the consumer operation, and the
   consumer allocates ancilla, signal, or control registers afterwards. The
   preparation width must equal the consumer's system width exactly; this is
-  documented as not verifiable at factory time, so a mismatch fails at launch
-  rather than raising from the factory.
-- **Scope limit.** This is a `derived` description of the current injection
-  seam at the cited commit. It is **not** a decided capability-level policy.
+  not verifiable at factory time. Exact width remains required, but a mismatch
+  may fail or silently act on an unintended register; runtime behavior is
+  provider/consumer-dependent and unverified rather than a factory-time error.
+- **Scope limit.** This is a `derived` description of the injection seam found
+  during the last source review. Recheck the cited call sites in the current
+  checkout before relying on it. It is **not** a decided capability-level policy.
   Whether the caller or the primitive should own system and ancilla registers
   in general, and the exact input-state, width, ancilla, inverse, control, and
   failure semantics of state preparation, remain **open** questions in the
@@ -109,10 +112,12 @@ Each populated convention must state:
 
 ## Validation happens on the host, before device kernels
 
-- **Convention.** Device kernels have no error channel: an invalid argument is
-  a silent no-op rather than an exception, and a kernel `return` is ignored by
-  the compiler. Input validation therefore runs on the host at factory time,
-  and the library exposes callable `validate_*` helpers for hand-built inputs.
+- **Convention.** Device kernels have no uniform host-validation or error
+  contract, and a kernel `return` is ignored by the compiler. Specific positive
+  guards can make malformed input a silent no-op; unchecked list shortages,
+  indices, and geometry can instead fail at launch or produce a wrong unitary.
+  Input validation therefore runs on the host before launch, and the library
+  exposes callable `validate_*` helpers for supported hand-built inputs.
 - **Rule.** An illegal argument must never silently produce a result. Where a
   device kernel is a silent no-op on invalid input, record it as a known
   implementation limitation, not as established semantics.
@@ -158,13 +163,14 @@ Each populated convention must state:
   `(<0|_anc x I) U_A (|0>_anc x I) = H / alpha`. Packaged circuits allocate
   the system register first and ancillas after it, so the all-zero-ancilla
   amplitude block is the leading `2**num_system` entries.
-- **Normalization.** Simulation helpers return that block unnormalized; its
-  squared norm is the postselection probability. They do not implement a
-  measurement or hardware postselection protocol.
+- **Normalization.** Simulation helpers return that block unnormalized. Its
+  squared norm is the postselection probability only when the full input
+  state is normalized; otherwise it is merely the block weight. The helpers
+  do not implement a measurement or hardware postselection protocol.
 - **Mismatch symptom.** A result has the right norm but wrong amplitudes,
   or a postselection probability is mistaken for a normalization factor.
 - **Source.** `python/cudaq_algorithms/block_encoding.py`,
-  `python/cudaq_algorithms/sim_utils.py`; [block-encoding.md](block-encoding.md).
+  `python/cudaq_algorithms/sim_utils.py`; [block-encoding.md](block-encoding/block-encoding.md).
 
 ## Qubitization walk sign and moment convention
 
@@ -175,7 +181,7 @@ Each populated convention must state:
 - **Mismatch symptom.** Odd moments have the opposite sign while even moments
   still agree.
 - **Source.** `python/cudaq_algorithms/pauli_lcu.py`,
-  `python/cudaq_algorithms/qubitization.py`; [qubitization.md](qubitization.md).
+  `python/cudaq_algorithms/qubitization.py`; [qubitization.md](qubitization/qubitization.md).
 
 ## QSP and QSVT phases
 
@@ -188,7 +194,7 @@ Each populated convention must state:
 - **Mismatch symptom.** A uniformly phase-rotated response, or a polynomial
   response produced with doubled/halved phase angles.
 - **Source.** `python/cudaq_algorithms/qsvt.py`;
-  [qsvt.md](qsvt.md).
+  [qsvt.md](qsvt/qsvt.md).
 
 ## Reflection gate versus reflection observable
 
@@ -199,7 +205,7 @@ Each populated convention must state:
 - **Mismatch symptom.** Passing an observable where a kernel factory is
   required, or describing an expectation value as a circuit application.
 - **Source.** `python/cudaq_algorithms/common_kernels.py`,
-  `python/cudaq_algorithms/qubitization.py`; [qubitization.md](qubitization.md).
+  `python/cudaq_algorithms/qubitization.py`; [qubitization.md](qubitization/qubitization.md).
 
 ## Precision, Hermiticity, and tolerances
 

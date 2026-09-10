@@ -1,302 +1,124 @@
 # Primitive catalog
 
-This is a lightweight discovery index. It must not become a database of full
-contracts or an application cookbook.
+Route first by operation plus mathematical object, then open the linked record
+to check inputs, outputs, signatures, capabilities, conventions, error behavior,
+resources, and evidence. This is a discovery index, not a second contract.
 
-## Catalog policy
+All populated records have lifecycle `draft` and were historically
+source-reviewed at the last-review anchor in
+[source-provenance.md](source-provenance.md). Current public source and tests
+remain authoritative. No record has a freshly executed package/CUDA-Q version
+or SkillEvaluator result unless it says otherwise.
 
-Route by the primary two-key identity — scientific operation plus mathematical
-object — and only then check representation, capability, and signature
-constraints. See `architecture.md` before changing this structure.
+## State preparation and operator pools
 
-Add an entry only when its family reference contains source-grounded,
-reviewable scientific content. Do not list anticipated work as an available
-primitive.
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| preprocess / orbital-coefficient matrix into a Givens schedule | `cudaq_algorithms.stateprep.make_givens_rotation_schedule` | classical transformation; host | none | [Givens schedule](state-preparation/state-preparation-givens-schedule.md) |
+| prepare / Slater-determinant state from a Givens schedule | `cudaq_algorithms.stateprep.slater_determinant_kernel` | quantum operation; host validation + kernel factory/device kernel | provides `cudaq-algorithms.state-preparation.unitary.v1` | [injectable Slater determinant](state-preparation/state-preparation-slater-determinant-kernel.md) |
+| prepare / Hartree–Fock state with optional fixed-parameter UCC product | `cudaq_algorithms.stateprep.hartree_fock_ucc_kernel` | quantum operation; host validation + kernel factory/device kernel | provides `cudaq-algorithms.state-preparation.unitary.v1` | [HF + fixed UCC](state-preparation/state-preparation-hf-ucc.md) |
+| prepare / contiguous Hartree–Fock occupation on a live register | `cudaq_algorithms.stateprep.hartree_fock` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [canonical HF device kernel](state-preparation/state-preparation-kernel-hartree-fock.md) |
+| prepare / explicit occupation on a live register | `cudaq_algorithms.stateprep.hartree_fock_occupation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [occupation HF device kernel](state-preparation/state-preparation-kernel-hartree-fock-occupation.md) |
+| apply / one UCCSD single excitation to a live register | `cudaq_algorithms.stateprep.single_excitation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [single-excitation device kernel](state-preparation/state-preparation-kernel-single-excitation.md) |
+| apply / one UCCSD double excitation to a live register | `cudaq_algorithms.stateprep.double_excitation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [double-excitation device kernel](state-preparation/state-preparation-kernel-double-excitation.md) |
+| apply / occupied-to-virtual UCCSD product to a live register | `cudaq_algorithms.stateprep.uccsd` | quantum operation; device kernel | runtime amplitudes and concrete caller-owned `cudaq.qview`; no capability ID | [UCCSD device kernel](state-preparation/state-preparation-kernel-uccsd.md) |
+| apply / generalized UCCGSD product to a live register | `cudaq_algorithms.stateprep.uccgsd` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [UCCGSD device kernel](state-preparation/state-preparation-kernel-uccgsd.md) |
+| apply / paired UpCCGSD product to a live register | `cudaq_algorithms.stateprep.upccgsd` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [UpCCGSD device kernel](state-preparation/state-preparation-kernel-upccgsd.md) |
+| apply / coupled-exchange product to a live register | `cudaq_algorithms.stateprep.ceo` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [CEO device kernel](state-preparation/state-preparation-kernel-ceo.md) |
+| apply / arbitrary fixed-parameter UCC product to a live register | `cudaq_algorithms.stateprep.fixed_parameter_ucc` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [fixed-UCC device kernel](state-preparation/state-preparation-kernel-fixed-parameter-ucc.md) |
+| apply / adjacent real fermionic Givens rotation | `cudaq_algorithms.stateprep.givens_rotation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [Givens-rotation device kernel](state-preparation/state-preparation-kernel-givens-rotation.md) |
+| apply / adjacent phase-aware fermionic Givens rotation | `cudaq_algorithms.stateprep.phase_givens_rotation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [phase-Givens device kernel](state-preparation/state-preparation-kernel-phase-givens-rotation.md) |
+| prepare / real Slater determinant from flattened arrays | `cudaq_algorithms.stateprep.slater_determinant` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [real Slater device kernel](state-preparation/state-preparation-kernel-slater-determinant.md) |
+| prepare / complex Slater determinant from flattened arrays | `cudaq_algorithms.stateprep.complex_slater_determinant` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [complex Slater device kernel](state-preparation/state-preparation-kernel-complex-slater-determinant.md) |
+| preprocess / occupied-to-virtual UCCSD excitation pool | `cudaq_algorithms.stateprep.make_uccsd_operator_pool` | classical transformation; host | none | [UCCSD operator pool](state-preparation/operator-pool-uccsd.md) |
+| preprocess / generalized UCCGSD excitation pool | `cudaq_algorithms.stateprep.make_uccgsd_operator_pool` | classical transformation; host | none | [UCCGSD operator pool](state-preparation/operator-pool-uccgsd.md) |
+| preprocess / paired UpCCGSD excitation pool | `cudaq_algorithms.stateprep.make_upccgsd_operator_pool` | classical transformation; host | none | [UpCCGSD operator pool](state-preparation/operator-pool-upccgsd.md) |
+| preprocess / coupled-exchange operator pool | `cudaq_algorithms.stateprep.make_ceo_operator_pool` | classical transformation; host | none | [CEO operator pool](state-preparation/operator-pool-ceo.md) |
+| estimate / Givens determinant logical operations | `cudaq_algorithms.stateprep.estimate_givens_resources` | formula-level resource estimator; host | consumes a Givens schedule | [Givens resources](state-preparation/state-preparation-resources-givens.md) |
+| estimate / canonical Hartree–Fock logical operations | `cudaq_algorithms.stateprep.estimate_hartree_fock_resources` | formula-level resource estimator; host | consumes qubit/electron counts | [canonical HF resources](state-preparation/state-preparation-resources-hartree-fock.md) |
+| estimate / occupation-list Hartree–Fock logical operations | `cudaq_algorithms.stateprep.estimate_hartree_fock_occupation_resources` | formula-level resource estimator; host | consumes an occupation list | [occupation HF resources](state-preparation/state-preparation-resources-hartree-fock-occupation.md) |
+| estimate / fixed-parameter UCC logical operations | `cudaq_algorithms.stateprep.estimate_fixed_parameter_ucc_resources` | formula-level resource estimator; host | consumes grouped Pauli words (structural counts only) | [fixed-UCC resources](state-preparation/state-preparation-resources-fixed-parameter-ucc.md) |
 
-**An entry is a lightweight summary projection of its family record, not a
-second contract schema.** Where an entry's field name also exists in
-`assets/primitive-record-template.md`, it carries the template's spelling and
-meaning, so the two cannot say different things about the same field. Three
-entry fields exist only in the catalog, because they compress several template
-fields onto one line:
+The shared injection representation, exact one-register signature, consumer
+table, and unsupported boundaries live in the
+[state-preparation front door](state-preparation/state-preparation.md). Shared operator-pool
+representation and provider routing live in the
+[operator-pool front door](state-preparation/operator-pools.md); state-preparation estimator
+routing lives in the [resource front door](state-preparation/state-preparation-resources.md), and
+live-register kernels are collected by the
+[device-kernel front door](state-preparation/state-preparation-device-kernels.md).
 
-| Catalog-only field | What it projects |
-| --- | --- |
-| `Reference` | the family file to read; navigation only, no template counterpart |
-| `Provides capability IDs` / `Requires capability IDs` | the template's `Stable ID` plus `Direction` from Capabilities and composition |
-| `Provenance` | the template's `Source paths` plus `Commit/date last verified` |
+## Block encoding and spectral processing
 
-An entry also deliberately omits every template field that does not compress
-into one line — the scientific contract, inputs, outputs, dependencies,
-accuracy, resources, and validation. The record owns those. The catalog is
-never the authority for a contract; it only says which record to open.
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| encode / Pauli-sum operator as a zero-flagged unitary block | `PauliLCU` | quantum operation; host construction + kernel factory/device kernel | provides `cudaq-algorithms.block-encoding.zero-flagged.v1`; optionally requires `cudaq-algorithms.state-preparation.unitary.v1` | [Pauli LCU](block-encoding/pauli-lcu.md) |
+| evolve / state by a qubitization walk | `Walk.kernel`, adjoint/controlled variants | quantum operation; kernel factory/device kernel | requires `cudaq-algorithms.block-encoding.zero-flagged.v1`; optional state preparation | [walk kernels](qubitization/qubitization-walk.md) |
+| measure / Chebyshev moment | `Walk.moment`, `Walk.moments` | measurement/readout; kernel + observable + `cudaq.observe` | requires `cudaq-algorithms.block-encoding.zero-flagged.v1`; odd orders also require `select_observable` | [moments](qubitization/qubitization-moments.md) |
+| transform / encoded spectrum with a phase sequence | `PhaseSequence`, `QSVT.kernel`, `QSVT.controlled_kernel` | quantum driver; host validation + kernel factory/device kernel | requires `cudaq-algorithms.block-encoding.zero-flagged.v1`; optional state preparation | [QSVT sequence](qsvt/qsvt-sequence.md) |
+| reconstruct / real-time state from cosine and sine QSVT blocks | `recover_real_time_evolution` | classical transformation; host | concrete QSVT/good-block inputs | [QSVT recovery](qsvt/qsvt-recovery.md) |
 
-Vocabularies are shared, not parallel: `Lifecycle` uses the single
-`draft | verified | deprecated | removed` maturity vocabulary of
-`architecture.md`, and a capability's own
-`candidate | provisional | stable taxonomy contract` status is stated in its
-capability record, never in this file.
+The shared structural protocol and zero-flagged capability are in the
+[block-encoding front door](block-encoding/block-encoding.md). QSVT phase generation and
+degree selection are not populated capabilities.
 
-## Populated family records
+## Product-formula evolution
 
-### State preparation
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| preprocess / Pauli Hamiltonian into ordered product-formula terms | `make_trotter_terms`, `TrotterOrdering` | classical transformation; host | none | [Trotter planning](trotter/trotter-planning.md) |
+| evolve / newly allocated all-zero or injected-preparation state by a stored Suzuki–Trotter plan | `cudaq_algorithms.Trotter.kernel` | quantum operation; kernel factory/device kernel | optionally consumes `cudaq-algorithms.state-preparation.unitary.v1` | [zero-argument Trotter factory](trotter/trotter-kernel-factory.md) |
+| evolve / caller-supplied `cudaq.State` by a stored Suzuki–Trotter plan | `cudaq_algorithms.Trotter.state_kernel` | quantum operation; kernel factory/device kernel | concrete state input; no state-preparation capability | [state-input Trotter factory](trotter/trotter-state-kernel-factory.md) |
+| apply / Suzuki–Trotter formula to a live qubit register | `cudaq_algorithms.trotter.apply_trotter` | quantum operation; device kernel | concrete flattened lists and caller-owned `cudaq.qview`; no capability ID | [low-level Trotter apply kernel](trotter/trotter-apply-kernel.md) |
+| estimate / logical resources for a validated, pruned Trotter plan | `Trotter.resources` | resource estimator; host | consumes stored `Trotter` plan | [planned Trotter resources](trotter/trotter-resources-planned.md) |
+| estimate / logical resources from caller-supplied flattened lists | `trotter.estimate_trotter_resources` | resource estimator; host | raw lists; no Hamiltonian capability inferred | [raw Trotter resources](trotter/trotter-resources-raw.md) |
 
-- Reference: [state-preparation.md](state-preparation.md)
-- Operation + mathematical object (primary identity): prepare / quantum state
-- Kind: quantum operation (packaged kernel factories) with host classical
-  planning, validation, and resource-estimator helpers in the same family — a
-  provisional compound of the template's `Kind` vocabulary
-- Routine role: computational
-- Abstraction level: leaf operation
-- Parameterization: construction-time (both packaged factories bake their
-  data and width in at factory time); runtime-parameterized device kernels
-  exist in the same namespace but are not the injection seam
-- Input representations: orbital-coefficient matrix; Givens rotation
-  schedule; Hartree-Fock occupation; grouped fixed-parameter UCC Pauli words
-  and coefficients; the system register
-- Output representations: one-argument `(qubits: cudaq.qview)` preparation
-  kernel
-- Provides capability IDs: `cudaq-algorithms.state-preparation.unitary.v1`
-  (provisional documentation/taxonomy contract, not a Python protocol)
-- Requires capability IDs: none
-- Execution layers: host preprocessing and validation, kernel factory,
-  device kernel
-- Domain: domain-independent seam; both packaged providers are tagged
-  `domain: quantum-chemistry`
-- Exactness: exact for the emitted circuit contract, subject to numerical
-  synthesis and host input tolerances
-- Uncertainty: deterministic
-- Method: direct, plus a fixed-parameter ansatz form — `ansatz` is a
-  provisional extension of the `direct | variational | heuristic` vocabulary
-- Lifecycle: draft
-- Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d7823481ad0d303dac84d8ee29a9a8cd0` (2026-09-03),
-  `python/cudaq_algorithms/stateprep/`, `docs/sphinx/guide/state_prep.rst`
+Shared routing and provenance are summarized in the
+[Trotter family front door](trotter/trotter.md); the two stored-plan factories are
+compared by the [evolution front door](trotter/trotter-evolution.md), and the estimator
+choices are collected by the [resource front door](trotter/trotter-resources.md).
 
-### Excitation enumeration and operator pools
+## Fermion transforms and chemistry bridges
 
-- Reference: [operator-pools.md](operator-pools.md)
-- Operation + mathematical object (primary identity): preprocess /
-  fermionic-excitation operator pool
-- Kind: classical transformation
-- Routine role: computational
-- Abstraction level: leaf operation
-- Parameterization: none
-- Input representations: orbital and electron counts, spin, subset switches
-- Output representations: ordered `list[cudaq.SpinOperator]`; grouped Pauli data
-- Provides capability IDs: none
-- Requires capability IDs: none
-- Execution layers: host preprocessing
-- Domain: quantum-chemistry
-- Exactness: exact; Uncertainty: deterministic; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/stateprep/_pools.py`
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| transform / ladder tensors to Jordan–Wigner Pauli operator | `fermion.jordan_wigner` | classical transformation; host | none | [Jordan–Wigner](fermion-transforms/jordan-wigner.md) |
+| transform / ladder tensors to Bravyi–Kitaev Pauli operator | `fermion.bravyi_kitaev` | classical transformation; host | none | [Bravyi–Kitaev](fermion-transforms/bravyi-kitaev.md) |
+| load / FCIDUMP text to chemist spatial integral triple | `chemistry.from_fcidump` | classical transformation; host parser | provides `cudaq-algorithms.chemistry-integrals.v1` | [FCIDUMP loader](chemistry/chemistry-from-fcidump.md) |
+| load / restricted PySCF mean field to chemist spatial integral triple | `chemistry.from_pyscf` | classical transformation; host/provider bridge; PySCF at call time | provides `cudaq-algorithms.chemistry-integrals.v1` | [PySCF loader](chemistry/chemistry-from-pyscf.md) |
+| load / restricted C1 Psi4 wavefunction to chemist spatial integral triple | `chemistry.from_psi4` | classical transformation; host/provider bridge; Psi4 at call time | provides `cudaq-algorithms.chemistry-integrals.v1` | [Psi4 loader](chemistry/chemistry-from-psi4.md) |
+| transform / spatial integrals to spin-orbital tensors | `chemistry.spin_orbital_tensors` | classical transformation; host | requires `cudaq-algorithms.chemistry-integrals.v1` | [spin expansion](chemistry/chemistry-spin-orbital-tensors.md) |
+| transform / spatial integrals to Jordan–Wigner qubit Hamiltonian | `chemistry.qubit_hamiltonian` | classical driver; host | requires `cudaq-algorithms.chemistry-integrals.v1` | [qubit Hamiltonian bridge](chemistry/chemistry-qubit-hamiltonian.md) |
 
-### Block encoding
+The shared provider choice is collected in the
+[integral-loader front door](chemistry/chemistry-integral-loaders.md). The chemistry
+integral representation and capability are in the
+[chemistry family front door](chemistry/chemistry-bridges.md).
 
-- Reference: [block-encoding.md](block-encoding.md)
-- Operation + mathematical object (primary identity): encode / operator as a
-  zero-flagged block of a unitary
-- Kind: quantum operation (`PauliLCU`); adjacent representation and capability
-  records define its composition boundary but are not primitive kinds
-- Routine role: computational
-- Abstraction level: leaf operation (`PauliLCU`)
-- Parameterization: construction-time
-- Input representations: `BlockEncoding` protocol; Pauli-sum Hamiltonian
-- Output representations: protocol-conforming encoding and composable kernels
-- Provides capability IDs: `cudaq-algorithms.block-encoding.zero-flagged.v1`
-  (provisional documentation/taxonomy contract)
-- Requires capability IDs: optionally
-  `cudaq-algorithms.state-preparation.unitary.v1`
-- Execution layers: host construction, kernel factory, device kernel
-- Domain: domain-independent
-- Exactness: exact encoding contract subject to coefficient pruning;
-  Uncertainty: deterministic; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `block_encoding.py`, `pauli_lcu.py`
+## Double factorization
 
-### Qubitization
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| factorize / chemist ERI tensor by X-DF | `double_factorization.explicit_double_factorization` | classical transformation; host NumPy/optional CuPy | consumes chemist-integral representation | [explicit DF](double-factorization/double-factorization-explicit.md) |
+| compress / chemist ERI tensor by C-DF or RC-DF | `double_factorization.compressed_double_factorization` | classical optimization; host NumPy/optional CuPy | consumes chemist-integral representation | [compressed DF](double-factorization/double-factorization-compressed.md) |
+| reconstruct / dense chemist ERI tensor | `double_factorization.reconstruct_eri` | classical transformation; host | consumes `double_factorization.DoubleFactorization` | [DF reconstruction](double-factorization/double-factorization-reconstruction.md) |
+| compare / ERI tensor with a factorization | `double_factorization.factorization_error` | classical reduction; host | consumes chemist ERI plus `double_factorization.DoubleFactorization` | [DF residual error](double-factorization/double-factorization-error.md) |
+| transform / one-body and ERI tensors to corrected one-body matrix | `double_factorization.modified_one_body_integrals` | classical transformation; host | consumes two dense chemist-basis tensors, not `DoubleFactorization` | [modified one-body integrals](double-factorization/double-factorization-modified-one-body.md) |
+| estimate / double-factorized Hamiltonian one-norm | `double_factorization.double_factorization_one_norm` | formula-level estimator; host | consumes `double_factorization.DoubleFactorization` plus Fock-like eigenvalues | [DF one-norm](double-factorization/double-factorization-one-norm.md) |
 
-- Reference: [qubitization.md](qubitization.md)
-- Operation + mathematical object (primary identity): evolve / quantum state
-  by a qubitization walk; measure / Chebyshev spectral moments
-- Kind: quantum operation and measurement/readout protocol
-- Routine role: computational
-- Abstraction level: composite protocol
-- Parameterization: construction-time
-- Input representations: `BlockEncoding`; optional preparation kernel or state
-- Output representations: compiled kernels; classical moment values
-- Provides capability IDs: none
-- Requires capability IDs:
-  `cudaq-algorithms.block-encoding.zero-flagged.v1`; optionally
-  `cudaq-algorithms.state-preparation.unitary.v1`
-- Execution layers: host orchestration, kernel factory, device kernel,
-  `cudaq.observe`
-- Domain: domain-independent
-- Exactness: exact walk circuit and estimator semantics; Uncertainty:
-  deterministic circuit or shot/statistics dependent; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/qubitization.py`
+The shared `DoubleFactorization` representation and example-only quantum
+encoding boundary are in the [family front door](double-factorization/double-factorization.md);
+the four helper choices are also collected by the
+[analysis front door](double-factorization/double-factorization-analysis.md).
 
-### QSP and QSVT
+## Simulation-only analysis
 
-- Reference: [qsvt.md](qsvt.md)
-- Operation + mathematical object (primary identity): transform / encoded
-  spectrum by a polynomial; reconstruct / good-subspace statevector pair
-- Kind: quantum operation and host classical transformation
-- Routine role: driver and computational
-- Abstraction level: composite protocol and leaf companions
-- Parameterization: construction-time and runtime, by provider
-- Input representations: `PhaseSequence`; `BlockEncoding`; optional preparation
-- Output representations: compiled kernels; `numpy.ndarray`
-- Provides capability IDs: none
-- Requires capability IDs:
-  `cudaq-algorithms.block-encoding.zero-flagged.v1`; optionally
-  `cudaq-algorithms.state-preparation.unitary.v1`
-- Execution layers: host validation, kernel factory, device kernel,
-  host post-processing
-- Domain: domain-independent
-- Exactness: exact for supplied phases; polynomial approximation is
-  caller-owned; Uncertainty: deterministic; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/qsvt.py`
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| extract / zero-ancilla amplitude block | `sim_utils.good_subspace` | simulation analysis; host array slicing | concrete geometry | [good subspace](simulation/simulation-good-subspace.md) |
+| analyze / `(H/alpha)|ket>` | `sim_utils.action` | simulation analysis; `cudaq.get_state` | concrete `PauliLCU.encode_kernel` | [action](simulation/simulation-action.md) |
+| analyze / QSVT good-subspace vector | `sim_utils.transform` | simulation analysis; `cudaq.get_state` | concrete QSVT | [transform](simulation/simulation-transform.md) |
+| evolve / Trotter statevector | `sim_utils.evolve` | simulation analysis; `cudaq.get_state` | concrete Trotter | [evolve](simulation/simulation-evolve.md) |
 
-### Suzuki-Trotter evolution
-
-- Reference: [trotter.md](trotter.md)
-- Operation + mathematical object (primary identity): evolve / quantum state
-  under a Pauli-sum Hamiltonian
-- Kind: classical transformation, quantum operation, resource estimator, and
-  simulation-only companion
-- Routine role: computational and driver
-- Abstraction level: leaf and composite, by provider
-- Parameterization: construction-time and runtime, by provider
-- Input representations: Pauli-sum Hamiltonian, state, time, order, steps
-- Output representations: compiled kernels, resource estimate, or statevector
-- Provides capability IDs: none
-- Requires capability IDs: optionally
-  `cudaq-algorithms.state-preparation.unitary.v1`
-- Execution layers: host, kernel factory, device kernel, simulation-only helper
-- Domain: domain-independent
-- Exactness: approximate product formula; Uncertainty: deterministic;
-  Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/trotter.py`
-
-### Fermion-to-qubit transforms
-
-- Reference: [fermion-transforms.md](fermion-transforms.md)
-- Operation + mathematical object (primary identity): transform /
-  fermionic ladder-coefficient tensors to a Pauli operator
-- Kind: classical transformation
-- Routine role: computational
-- Abstraction level: leaf operation
-- Parameterization: construction-time
-- Input representations: one- and two-body ladder-coefficient tensors
-- Output representations: `cudaq.SpinOperator`
-- Provides capability IDs: none
-- Requires capability IDs: none
-- Execution layers: host preprocessing
-- Domain: domain-independent
-- Exactness: exact apart from tolerance pruning and floating point;
-  Uncertainty: deterministic; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/fermion/`
-
-### Chemistry bridges
-
-- Reference: [chemistry-bridges.md](chemistry-bridges.md)
-- Operation + mathematical object (primary identity): load and transform /
-  fermionic integral tensors and Pauli operators
-- Kind: classical transformation
-- Routine role: computational and driver
-- Abstraction level: leaf operations and one composite bridge
-- Parameterization: construction-time
-- Input representations: FCIDUMP, PySCF/Psi4 objects, chemist-notation tensors
-- Output representations: integral triples, spin-orbital tensors,
-  `cudaq.SpinOperator`
-- Provides capability IDs: `cudaq-algorithms.chemistry-integrals.v1`
-  (provisional documentation/taxonomy contract)
-- Requires capability IDs: none
-- Execution layers: host preprocessing
-- Domain: quantum-chemistry
-- Exactness: exact transformations subject to validation and tolerance pruning;
-  Uncertainty: deterministic; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/chemistry.py`
-
-### Double factorization
-
-- Reference: [double-factorization.md](double-factorization.md)
-- Operation + mathematical object (primary identity): factorize or compress /
-  fermionic two-electron integral tensor
-- Kind: classical transformation
-- Routine role: computational
-- Abstraction level: leaf operation
-- Parameterization: construction-time
-- Input representations: dense chemist-notation ERI tensor
-- Output representations: `DoubleFactorization`, tensors, matrices, scalars
-- Provides capability IDs: none
-- Requires capability IDs: none
-- Execution layers: host preprocessing, optionally CuPy-backed linear algebra
-- Domain: quantum-chemistry
-- Exactness: exact at full explicit rank or approximate under truncation and
-  compression; Uncertainty: deterministic; Method: direct or optimization
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`,
-  `python/cudaq_algorithms/double_factorization/`
-
-### Simulation-only analysis
-
-- Reference: [simulation-analysis.md](simulation-analysis.md)
-- Operation + mathematical object (primary identity): analyze / simulated
-  statevector
-- Kind: simulation-only analysis
-- Routine role: computational and driver
-- Abstraction level: leaf and composite, by helper
-- Parameterization: per call
-- Input representations: block encoding, QSVT or Trotter object, statevector
-- Output representations: unnormalized good-subspace block or full statevector
-- Provides capability IDs: none
-- Requires capability IDs: none; consumes concrete documented representations
-- Execution layers: simulation-only host path using `cudaq.get_state`
-- Domain: domain-independent
-- Exactness: exact extraction or subject to the underlying algorithm;
-  Uncertainty: deterministic; Method: direct
-- Lifecycle: draft; Package/CUDA-Q versions verified: unverified
-- Provenance: commit `61ac072d`, `python/cudaq_algorithms/sim_utils.py`
-
-## Roadmap-only, not available
-
-QROM and coherent alias sampling, encoding combinators, quantum arithmetic,
-eigensolver protocols, sparse-oracle encodings, THC, and additional resource
-models remain roadmap concepts. They are not available primitives and must not
-be assigned plausible APIs.
-
-## Entry format
-
-`Reference` is a relative markdown link whose target is the family file name;
-paths are relative to this file, which lives in `references/`.
-
-```markdown
-### Family name
-
-- Reference: relative link to `family-name.md`
-- Operation + mathematical object (primary identity):
-- Kind:
-- Routine role:
-- Abstraction level:
-- Parameterization:
-- Input representations:
-- Output representations:
-- Provides capability IDs:
-- Requires capability IDs:
-- Execution layers:
-- Domain:
-- Exactness:
-- Uncertainty:
-- Method:
-- Lifecycle:
-- Package/CUDA-Q versions verified:
-- Provenance:
-```
+These return or manipulate statevectors. They are not device kernels or
+shot-based QPU protocols.

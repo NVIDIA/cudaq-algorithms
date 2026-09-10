@@ -2,319 +2,187 @@
 
 ## Design goal
 
-Represent CUDA-Q Algorithms as a long-lived library of composable scientific
-primitives without organizing knowledge around today's applications or
-hard-coding tomorrow's taxonomy.
+Represent CUDA-Q Algorithms as a durable library of independently selectable
+scientific contracts. Applications consume and validate those contracts; they
+do not define the taxonomy.
 
-This document defines structural invariants and the approved taxonomy. The
-taxonomy is provisional where marked; it is tested by populated records rather
-than settled in advance.
+This file is maintainer and reviewer policy. Scientific tasks normally begin at
+[the catalog](catalog.md), not here.
 
 ## Organization
 
-This file is maintainer and reviewer policy. Answering a scientific question
-does not require it; adding, changing, or reviewing a record does.
+- `../SKILL.md` is the compact router and operating contract.
+- `catalog.md` has one lightweight entry per independently selectable
+  operation/object contract.
+- The six shared routers and policies stay at `references/`; one shallow
+  family directory groups each domain's front door and focused records.
+- A family front door groups related records but contains no primitive record.
+- Each primitive record lives in one focused Markdown file and covers every
+  applicable canonical schema field once. A short record may combine adjacent
+  headings when the field boundaries remain explicit.
+- Representation and capability records may live in a family front door when
+  several primitive records exchange the same object or behavior.
+- `conventions.md`, `validation.md`, and `source-provenance.md` own information
+  shared across families.
+- `application-composition.md` explains how applications consume records.
+- `../assets/primitive-record-template.md` is the only contract schema.
 
-`SKILL.md` is the compact router and reasoning contract.
+Keep the hierarchy one level deep: `references/<family>/<record>.md`, with no
+primitive subdirectories. Every record must be directly linked from
+`../SKILL.md`, the root catalog, or its family front door. A front door is a
+navigation aid, not a workaround for a multi-contract record.
 
-`catalog.md` indexes only populated family references. It does not duplicate
-their contracts.
+## Primary identity and granularity
 
-Cross-cutting rules live in `conventions.md` and `validation.md`.
-
-Each mature family receives one flat reference file, for example
-`state-preparation.md`, `block-encodings.md`, or `qrom.md`. Split a family only
-when independent ownership or context size justifies it.
-
-`assets/primitive-record-template.md` is the canonical schema. Do not create a
-second contract schema in prose.
-
-## Catalog identity
-
-The primary identity of every record is a two-key pair:
+The routing identity is:
 
 ```text
 scientific operation + mathematical object
 ```
 
 Operations include prepare, load, encode, transform, evolve, measure, estimate,
-synthesize, and preprocess. Objects include states, fermionic operators, Pauli
-operators, tensors, block encodings, polynomials, oracles, tables, phase
-sequences, and resource descriptions.
+synthesize, preprocess, analyze, and reconstruct. Objects include states,
+fermionic operators, Pauli operators, integral tensors, block encodings,
+polynomials, phase sequences, and resource descriptions.
 
-Route by that pair first. Every other dimension below is orthogonal metadata,
-not a directory hierarchy and not a routing key. Do not organize the catalog by
-Python artifact kind, repository module, or workflow stage.
+One primitive record corresponds to one contract a caller can select
+independently. Split records when any of these differ materially:
 
-## Record granularity
+- operation or mathematical object;
+- public entry point and input representation;
+- return type or emitted kernel signature;
+- execution layer or authorization implications;
+- validation/rejection behavior or independent oracle;
+- approximation/error behavior;
+- resource contract;
+- required/provided capability or composition boundary.
 
-One record corresponds to one independently selectable scientific contract.
+Several symbols may remain in one record when they are inseparable parts of one
+contract. One source module or class may require several records. File size is
+evidence of a possible granularity problem, never the routing rule itself.
 
-A separate record is warranted when an operation has its own mathematical
-semantics, input/output behavior, approximation or error behavior, resource
-behavior, or composition boundary. Public symbols, convenience wrappers, and
-implementation helpers do not automatically receive independent records, and
-several contracts may live in one module or class.
+## Record types
 
-## Primitive kind
+1. **Primitive record:** one concrete, independently selectable operation.
+2. **Representation record:** the meaning of an exchanged object; create only
+   after multiple producers and consumers interpret the same form.
+3. **Capability record:** a reusable semantic composition boundary; create
+   only after multiple independent producers or consumers demonstrate it.
 
-"Primitive" is a broad umbrella: any independently reusable scientific building
-block in the library. Every record must declare its **kind** explicitly, because
-these artifacts do not share one runtime interface:
+These are documentation records, not automatic requests for a Python protocol,
+ABC, compiler IR operation, or new public API.
 
-- quantum operation or kernel factory;
-- classical transformation or preprocessing;
-- measurement, observable, or readout protocol;
-- simulation-only analysis;
-- resource estimator.
+## Orthogonal metadata
 
-The skill's scope is fault-tolerant algorithm primitives. Optimizer-driven NISQ
-application loops (VQE, ADAPT-VQE, QAOA, GQE) are out of scope. A primitive may
-still accept parameters that such an application would choose; parameterization
-is metadata, not a separate taxonomy.
+Classify, but do not route or organize directories, by:
 
-## Routine role is not execution layer
-
-The LAPACK routine layers are adopted by their own criterion — *completeness of
-the problem solved* — and not by where the code runs:
-
-- **driver:** solves a complete user problem by sequencing lower-level
-  routines; composite protocols and readout protocols belong here;
-- **computational:** performs one distinct, well-defined, independently usable
-  task; a host classical transform qualifies exactly as much as a device kernel
-  does;
-- **auxiliary:** block-algorithm subtasks and low-level utilities, documented
-  only where needed to interpret a driver or computational contract and
-  normally receiving no record of their own.
-
-Do not infer routine role from execution layer. Fermion-to-qubit transforms,
-classical factorizations, chemistry input bridges, and kernel factories are
-computational routines that happen to run on the host; they are not auxiliaries.
-Execution layer stays separate metadata.
-
-This is a fidelity clarification of the LAPACK analogy in the taxonomy design
-record, not a new taxonomy branch: that record's sketch — device kernels as
-computational routines, composite protocols as drivers, host transforms and
-estimators as auxiliaries — read the two axes as one. Role is determined by
-problem completeness; host, device, measurement, and simulation remain the
-orthogonal execution layer. A host transform that solves one complete,
-independently usable task is computational, and only block-algorithm subtasks
-and low-level utilities are auxiliary.
-
-CUDA-Q Algorithms follows BLAS/LAPACK principles, not their literal taxonomy.
-BLAS Levels 1/2/3 are not adopted: they stratify by the ratio of data movement
-to arithmetic, and quantum algorithm primitives have no comparable
-stratification available yet. The transferable principles are explicit
-contracts before implementations, explicit representations and conventions,
-small computational routines plus reusable drivers, visible algorithm and
-hardware policy, substitution only through compatible contracts, resource
-requirements exposed at the right abstraction, and applications as consumers
-and evidence rather than as the taxonomy.
-
-## Three record types
-
-Three complementary record types are adopted provisionally:
-
-1. **Representation records** — what does an exchanged scientific object mean?
-   Created **only** when multiple primitives exchange or interpret the same
-   object. Not created for every public Python type.
-2. **Primitive records** — what concrete scientific operation is performed?
-3. **Capability records** — what stable semantic behavior permits composition?
-   Extracted **only** when multiple independent producers or consumers
-   demonstrate a reusable boundary. One-off interfaces stay inside their
-   primitive record. This gate exists to avoid freezing accidental interfaces
-   and generating pairwise compatibility records.
-
-These are record types, not three top-level product namespaces. A flat family
-reference may hold a representation record, a capability record, and several
-primitive records when that is the clearest unit of ownership; the three must
-remain visibly separate inside the file.
-
-## Orthogonal metadata dimensions
-
-Classify each record independently along these dimensions. Do not force one
-directory hierarchy to encode them.
-
-- **Kind:** as defined above.
-- **Routine role:** driver, computational, or auxiliary.
+- **Kind:** quantum operation, classical transformation,
+  measurement/readout, simulation-only analysis, resource estimator.
+- **Routine role:** driver, computational, auxiliary. Role describes problem
+  completeness, not where code executes.
 - **Execution layer:** host preprocessing, kernel factory, device kernel,
-  observable/measurement, simulation-only analysis, or mixed.
-- **Abstraction level:** leaf operation or composite protocol.
-- **Parameterization:** none, construction-time, or runtime.
-- **Representation:** the objects accepted and produced.
-- **Capabilities:** provided and required, as stable contract identifiers
-  rather than pairwise compatibility.
-- **Exactness:** exact or approximate, with explicit approximation controls.
-- **Uncertainty:** deterministic or stochastic, including the source and
-  interpretation of randomness.
-- **Method:** direct, variational, or heuristic when that affects semantics.
-- **Domain:** domain-independent or specialized, such as quantum chemistry.
-- **Dependencies:** required and optional packages, hardware, data, or network.
-- **Error contract:** validation, rejection, and failure behavior, including
-  where a failure is detected.
-- **Resource contract:** the quantities under Resource claims below.
-- **Lifecycle:** the single maturity vocabulary defined under Lifecycle below.
+  observable/measurement, simulation-only host path, or mixed.
+- **Abstraction:** leaf operation or composite protocol.
+- **Parameterization:** none, construction-time, runtime.
+- **Representation and capabilities.**
+- **Exactness, uncertainty, and method.**
+- **Domain, dependencies, error contract, resource contract, lifecycle.**
 
-Exactness, uncertainty, and method are separate axes whose vocabularies remain
-provisional until representative records test them. They are provisional
-metadata, never routing keys.
+Host transforms such as chemistry loaders and factorizations are computational
+routines when they solve an independently useful problem. A simulation-only
+helper is not a hardware primitive merely because it consumes one.
 
-Domain specialization is a tag, never a parallel taxonomy. A chemistry-specific
-primitive uses the same operation/object identity with `domain:
-quantum-chemistry`, and its outputs may still provide domain-independent
-capabilities.
+## Capability composition
 
-## Capability-based composition
+Use identifiers of the form
+`cudaq-algorithms.<dotted-capability-name>.v<major>`. Dotted capability names
+are valid. The major version changes only for an incompatible semantic change.
 
-Composition is valid when one primitive's provided capability satisfies
-another's required capability under the same representation and conventions.
+The currently adopted documentation identifiers are:
 
-Use stable identifiers of the form
-`cudaq-algorithms.<capability-name>.v<major>`. The major version changes only
-when the semantic contract is incompatible. A capability declaration must
-state:
+- `cudaq-algorithms.state-preparation.unitary.v1`;
+- `cudaq-algorithms.block-encoding.zero-flagged.v1`;
+- `cudaq-algorithms.chemistry-integrals.v1`.
 
-- identifier and version;
-- owning family record;
-- provided or required direction;
-- boundary representation;
-- semantic invariants;
-- register or shape constraints;
-- normalization, phase, ordering, and convention requirements;
-- host/device/simulation boundary;
-- unsupported conditions.
+Their status remains `provisional`; the identifier is resolved even though the
+boundary has not been promoted to a stable taxonomy contract.
 
-Matching requires the same capability identifier and compatible major version.
-The provider must satisfy every invariant and constraint required by the
-consumer. Do not infer compatibility from similar names, and do not enumerate
-every compatible pair.
+Every capability record states its ID, status, owner, direction, boundary
+representation, exact signature, semantic invariants, geometry, conventions,
+execution boundary, providers, consumers, and unsupported conditions.
+Composition requires the same ID and compatible major version, plus every
+consumer invariant. Similar names and structural member presence are
+insufficient.
 
-Capabilities are **documentation and taxonomy contracts first**. They become
-public Python protocols or compiler IR operations only after real
-implementations demonstrate that the boundary is stable. The skill must not
-drive speculative public API design. A capability identifier written in a
-record is not a Python `Protocol`, an ABC, or a public symbol.
+## Composite protocols
 
-## Composite primitives
+A reusable driver may itself be a primitive. Its record must state required
+lower-level capabilities, a source-grounded reference composition, applicability
+conditions, alternatives, propagated conventions/errors/resources, and what an
+alternative component must preserve. Never silently replace the reference
+composition with a target-specific heuristic.
 
-An independently reusable composite protocol may itself be a primitive even
-when it is built from lower-level primitives, in the same way a LAPACK driver
-remains a legitimate routine. Phase estimation is the canonical example.
+## Source ownership and freshness
 
-A composite record must expose:
+Current public code and authoritative tests in the checked-out repository
+control API behavior. [Source provenance](source-provenance.md) records one
+historical last-review anchor and the common source/test/example locations. The
+anchor is an audit trail, not the active contract or a compatibility promise;
+each record adds only contract-specific stable symbols and paths.
 
-- required lower-level capabilities;
-- one canonical reference composition;
-- a default recipe with explicit applicability conditions;
-- materially different alternatives;
-- propagated conventions, errors, and resources;
-- a way to supply alternative component implementations.
+When a selected record differs from current source or tests:
 
-The default composition prioritizes transparent scientific correctness and
-broad validity. Target- or resource-adaptive selection may be added once cost
-models are trustworthy, but it must never silently redefine the reference
-composition.
+1. compare the relevant public symbol and tests;
+2. treat current public source as authoritative for generated code;
+3. report the drift and evidence level;
+4. update a maintained record only when that update is in scope;
+5. never retain a stale line-number claim merely because the prose is familiar.
 
-Applications instantiate and validate primitives; they never define primitive
-identity. Roadmap cards are not records — one card may span representations,
-primitives, capability candidates, composite protocols, lowering techniques,
-domain collections, and application evidence.
+Do not copy historical repository hashes or dependency pins into primitive
+records. Historical last-review values belong only in the shared provenance
+file. A validation or evaluation result instead records the exact revision and
+dependencies actually used by that run.
 
-## Layered semantics: the QROM pattern
+Use line numbers only for a non-obvious invariant that benefits from a precise
+anchor. Prefer stable symbol and test names for ordinary provenance.
 
-Some names conflate three layers that must remain distinct. "QROM" is the
-worked example, and the same split applies elsewhere (for instance, "implement
-`e^{-iHt}`" versus Trotter, QSVT, or Taylor-series LCU providers):
+## Lifecycle and evidence
 
-1. **Semantic capability:** coherent indexed data access, with distinct
-   contracts for XOR lookup, phase lookup, alias sampling, and amplitude or
-   state preparation. These are not one contract.
-2. **Implementation family:** unary iteration, select-swap, and other concrete
-   constructions, each with explicit qubit, depth, T/Toffoli, measurement,
-   routing, and feed-forward tradeoffs.
-3. **Lowering policy:** a future compiler or synthesis layer selects an
-   implementation from target and fault-tolerant resource constraints.
+`draft | verified | deprecated | removed` is the only record lifecycle
+vocabulary. A capability separately uses
+`candidate | provisional | stable taxonomy contract`.
 
-No canonical concrete QROM primitive or public API exists. Coherent indexed
-lookup is a candidate taxonomy capability only. Concrete constructions may later
-become providers, and compiler lowering may replace them without changing
-algorithm-level semantics.
+A record becomes `verified` only after its contract, runnable usage, relevant
+scientific tests, and representative evals have actually passed on a recorded,
+supported package/CUDA-Q version combination. Store exact source revisions,
+dependencies, targets, and commands with that result. Source inspection alone
+supports `source-checked` in the task that performs it, not `verified`.
 
-Measurement, readout, and classical post-processing must stay visible as their
-own layers. They must not disappear because a roadmap card is named after the
-quantum operation alone.
-
-## Source ownership and drift
-
-The codebase remains authoritative for API behavior. Every scientific record
-must identify:
-
-- public symbols and source paths;
-- authoritative tests and documentation;
-- package and CUDA-Q version range verified;
-- record owner;
-- lifecycle state;
-- date or commit last verified;
-- known divergence from external literature or packages.
-
-Do not copy volatile API details merely for convenience. When duplication is
-needed for agent reliability, preserve provenance so drift can be checked.
-Automation may be added later after repeated maintenance pain is observed.
-
-## Lifecycle
-
-`draft | verified | deprecated | removed` is the only maturity vocabulary. A
-record starts as `draft`, becomes `verified` only after its contract and
-evaluation cases pass, and may later become `deprecated` or `removed`.
-
-A capability record additionally states a capability `Status` of
-`candidate | provisional | stable taxonomy contract`. That is a different axis
-— how far the *boundary* has been demonstrated, not how far the record has been
-verified — and it never borrows a lifecycle value. A `draft` record may declare
-a `provisional` capability when the source shows several independent producers
-or consumers of the boundary.
-
-Deprecation records must name the replacement, first deprecated version, and
-behavioral differences. Removed records remain discoverable only when needed
-to interpret old code.
-
-When a contract changes incompatibly, prefer creating a newly named primitive
-and deprecating the old one over silently redefining an existing record.
+Deprecation records name the replacement, first deprecated version, and
+behavioral differences. Incompatible contract changes prefer a new primitive
+name and explicit migration over silent redefinition.
 
 ## Resource claims
 
-Every executable primitive documents its own resource contract. A reusable
-estimator may additionally be an independent primitive in its own right, with
-its own record.
+Every executable primitive either gives a resource contract or explicitly says
+that none exists. Every quantity identifies metric/unit, abstraction level,
+architecture/execution assumptions, exact/bounded/estimated/measured status,
+controlling parameters, confidence/limitations, and composition rule if known.
 
-Every resource quantity must identify:
-
-- metric and unit;
-- abstraction level, such as logical operation, decomposition proxy,
-  transpiled gate, wall time, or memory;
-- architecture and execution assumptions;
-- exact, bounded, estimated, or measured status;
-- confidence or known limitations;
-- how the quantity composes, if known.
-
-Never compare quantities from different abstraction levels as though they were
-the same metric. Target-specific optimization is never hidden behind an
-apparently universal default.
+Never compare logical operations, decomposition proxies, transpiled gates,
+runtime, memory, or measured hardware cost as if they were one metric. Never
+turn a benchmark or source comment into a fresh measurement.
 
 ## Growth rule
 
-Add structure in response to real scientific content:
+Add knowledge in this order:
 
-1. populate or add one family record;
-2. update the catalog entry;
-3. add convention records only for new cross-cutting semantics;
-4. add evaluations that fail without the new knowledge;
-5. split files or automate indexes only when scale creates demonstrated need.
+1. shared representation or convention when demonstrated;
+2. one independently selectable primitive contract;
+3. a capability only when multiple producers or consumers justify it;
+4. a composite protocol when its lower-level contracts are populated;
+5. catalog routing, runnable usage, validation, and eval coverage in the same
+   change.
 
-Document new areas in dependency order — shared representations and
-conventions, then proven shared capabilities, then concrete primitives, then
-composite protocols, then enabling primitives, then domain specialization, then
-application evidence — independent of implementation priority.
-
-This preserves a stable foundation without prematurely designing the complete
-future library.
+Do not add records for roadmap concepts or speculative APIs. Split existing
+records when real contracts have become independently selectable.

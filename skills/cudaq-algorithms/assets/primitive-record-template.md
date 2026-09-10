@@ -1,40 +1,29 @@
-# [Primitive family]
+# [Primitive name]
 
-Status: draft
+Status: draft. Operation + object: **[operation]** a **[mathematical object]**.
 
-This is the canonical contract schema. Do not create a second one. The
-**Primitive Record** below is the default shape. Two optional schemas follow it
-— **Representation Record** and **Capability Record** — so the three-record
-model in `references/architecture.md` is expressible inside one family file
-without a parallel template.
+This file documents one independently selectable scientific contract. If two
+operations differ in return type, execution layer, validation, approximation,
+resources, or composition, create two records and link them from a family front
+door.
 
-Omit a heading only when it does not apply, and say so with one line beginning
-`Deferred:` plus the follow-up trigger. A visibly deferred slot is honest; a
-silently dropped one looks like the contract does not exist.
-
-**One family file, several providers.** When a family file covers more than one
-provider, instantiate each Primitive-Record heading **once at family level** and
-put the per-provider material in visibly separate subsections beneath it. Do not
-repeat the heading set per provider, and do not rename or drop a heading. The
-optional schemas stay separate sections of their own, so the three record types
-remain visibly distinct inside the file.
-
-**Relationship to the catalog.** `references/catalog.md` carries a subset of
-these field names as a one-line summary projection per family. Shared field
-names keep the spelling and meaning defined here; the catalog never redefines a
-field and is never the authority for a contract.
+Use `Not applicable:` when a field cannot apply to this contract. Use
+`Deferred:` only when the field is required but evidence is currently missing;
+name the evidence or event that will resolve it. Never say to omit a heading and
+then put a deferred statement under that omitted heading.
 
 ## Identity and provenance
 
 - Owner:
 - Public symbols and import paths:
-- Source paths:
+- Contract-specific source paths:
 - Authoritative tests:
-- Authoritative documentation:
-- Package/CUDA-Q versions verified:
-- Commit/date last verified:
+- Authoritative documentation and runnable examples:
+- Source provenance: [source-provenance.md](../references/source-provenance.md)
+- Package/CUDA-Q versions executed:
 - Lifecycle: draft | verified | deprecated | removed
-  (the only maturity vocabulary; do not add a separate maturity field)
+- Implementation status: documented | implemented | compiled | executed |
+  numerically validated
 - Replacement and migration notes:
 
 ## Classification
@@ -43,7 +32,6 @@ field and is never the authority for a contract.
 - Kind: quantum operation | classical transformation | measurement/readout |
   simulation-only analysis | resource estimator
 - Routine role: driver | computational | auxiliary
-  (problem completeness, not execution location)
 - Abstraction level: leaf operation | composite protocol
 - Parameterization: none | construction-time | runtime
 - Execution layers:
@@ -52,9 +40,6 @@ field and is never the authority for a contract.
 - Domain: domain-independent | quantum-chemistry | other tag
 - Required dependencies:
 - Optional dependencies:
-
-Provisional metadata — record the value, do not route on it:
-
 - Exactness:
 - Uncertainty:
 - Method:
@@ -89,12 +74,13 @@ Provisional metadata — record the value, do not route on it:
 
 ## Capabilities and composition
 
-Repeat this block for every provided or required capability:
+For every provided or required capability:
 
-- Stable ID: `cudaq-algorithms.<capability-name>.v<major>`
+- Stable ID: `cudaq-algorithms.<dotted-capability-name>.v<major>`
+- Capability status: candidate | provisional | stable taxonomy contract
 - Direction: provides | requires
-- Owning family record:
-- Boundary representation:
+- Owning record:
+- Boundary representation and exact signature:
 - Semantic invariants:
 - Shape/register geometry:
 - Normalization, sign, phase, and ordering:
@@ -102,26 +88,24 @@ Repeat this block for every provided or required capability:
 - Host/device/simulation boundary:
 - Unsupported conditions:
 
-Compatibility requires matching IDs and compatible major versions. Providers
-must satisfy every consumer invariant and constraint. A capability ID is a
-documentation contract, not a Python protocol or public symbol.
+If no capability applies, say `Not applicable:` and explain the direct concrete
+composition boundary. A capability ID is a documentation identifier unless the
+record names a source-level protocol or public symbol.
 
 ## Composite protocol
 
-Required when Abstraction level is `composite protocol`; omit otherwise.
+For `composite protocol` records:
 
 - Required lower-level capabilities:
 - Canonical reference composition:
-- Default recipe and its applicability conditions:
+- Default recipe and applicability conditions:
 - Materially different alternatives:
 - Propagated conventions:
 - Propagated errors:
-- Propagated resources and how they compose:
-- Component substitution: how to supply an alternative implementation, and
-  what the substitution must preserve:
+- Propagated resources:
+- Component-substitution requirements:
 
-The default composition prioritizes transparent scientific correctness and
-broad validity. It is never silently replaced by a resource-adaptive choice.
+For leaf records, write `Not applicable: leaf operation.`
 
 ## Accuracy and limitations
 
@@ -129,23 +113,14 @@ broad validity. It is never silently replaced by a resource-adaptive choice.
 - Precision sensitivity:
 - Unsupported inputs:
 - Known implementation limitations:
-- Unsupported versus unverified: state which behaviors are documented as
-  unsupported and which are merely undocumented in the source.
+- Unsupported, absent, and unverified behavior:
 
 ## Resources
 
-Every executable primitive documents a resource contract. For each quantity,
-state:
-
-- metric and unit;
-- abstraction level;
-- architecture/execution assumptions;
-- exact, bounded, estimated, or measured status;
-- controlling parameters;
-- confidence/limitations;
-- composition rule, if known.
-
-A reusable estimator may additionally have its own primitive record.
+For every quantity, state metric/unit, abstraction level,
+architecture/execution assumptions, exact/bounded/estimated/measured status,
+controlling parameters, confidence/limitations, and composition rule. If no
+estimator exists, say so and document only exact structural facts.
 
 ## Validation
 
@@ -154,10 +129,15 @@ A reusable estimator may additionally have its own primitive record.
 - Representative cases:
 - Predeclared tolerances:
 - Expected failure/adversarial case:
-- Reference results:
-- Evidence status per claim: derived | measured | assumed | unverified.
-  A committed repository test assertion that was not executed in this session
-  is cited evidence, not a fresh measurement.
+- Runnable example or usage test:
+- Execution record: command, date, package/CUDA-Q version, target, precision,
+  result
+- Evidence status per claim: derived | source-checked | compiled | executed |
+  numerically validated | measured | assumed | unverified. Add `unexecuted` as
+  an execution-state qualifier when no successful run occurred in the current
+  task. Reserve `source-checked` for current-task inspection; describe durable
+  historical evidence as `derived` and link its review context through Source
+  provenance.
 
 ## Evaluation coverage
 
@@ -166,6 +146,7 @@ A reusable estimator may additionally have its own primitive record.
 - Capability composition:
 - Invalid/unsupported boundary:
 - Negative activation:
+- Eval status: authored | baseline run | with-skill run | compared
 
 ## External alignment
 
@@ -175,47 +156,40 @@ A reusable estimator may additionally have its own primitive record.
 
 ---
 
-# Optional schema: Representation Record
+# Optional representation record
 
-Use only when multiple primitives exchange or interpret the same object. Do not
-create one per public Python type.
+Create only when multiple producers and consumers exchange the same object.
 
 - Object name and canonical symbol:
-- Public type or structural form, and source path:
+- Public type or structural form:
 - Mathematical meaning:
 - Shape, layout, ordering, dtype, and units:
 - Normalization, sign, and phase convention:
-- Required mathematical properties (the applicability preconditions):
-- Producers (≥2 required to justify this record):
+- Applicability preconditions:
+- Producers:
 - Consumers:
-- Invariants preserved across the boundary:
-- Observable symptom of a misinterpretation:
+- Invariants:
+- Observable symptom of misinterpretation:
 - Unsupported or ambiguous forms:
-- Source paths, tests, docs, and last verification:
+- Source/tests/docs/example evidence:
 
 ---
 
-# Optional schema: Capability Record
+# Optional capability record
 
-Use only when multiple independent producers or consumers demonstrate a
-reusable boundary. A one-off interface stays inside its primitive record.
+Create only when multiple independent producers or consumers demonstrate a
+reusable semantic boundary.
 
-- Stable ID: `cudaq-algorithms.<capability-name>.v<major>`
+- Stable ID:
 - Status: candidate | provisional | stable taxonomy contract
-  (this is the capability-contract axis only; it is not the record `Lifecycle`
-  vocabulary, so `draft` never appears here. Use `candidate` while a single
-  producer or consumer motivates the boundary, `provisional` once the source
-  demonstrates several independent producers or consumers, and `stable
-  taxonomy contract` only after the contract has been verified)
-- Contract type: documentation/taxonomy only, or backed by a source-level
-  protocol (name it)
+- Contract type: documentation-only | source-level protocol (name it)
+- Owner:
 - Boundary representation and exact signature:
 - Semantic invariants:
 - Register or shape geometry and ownership:
 - Convention requirements:
 - Host/device/simulation boundary:
-- Providers, with source paths:
-- Consumers, with source paths:
+- Providers:
+- Consumers:
 - Unsupported and unverified conditions:
-- Promotion criteria to a public protocol or compiler IR operation, and the
-  explicit decision still required before promotion:
+- Promotion criteria and decision owner:

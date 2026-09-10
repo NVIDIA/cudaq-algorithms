@@ -1,96 +1,149 @@
 # Evaluation development
 
-The dataset has two kinds of case.
+The eval suite tests whether the skill changes observable agent behavior. It
+does not replace CUDA-Q compilation, repository tests, or independent numerical
+oracles.
 
-**Scaffold cases** test claims the skill's structure makes: activation,
-ownership boundaries, operation-and-object routing, composition discipline, and
-epistemic discipline about unavailable contracts. These do not assert any
-scientific contract.
+## Questions
 
-**Scientific cases** test populated family records. The
-`state-preparation-*` cases and one positive-plus-boundary case for each other
-populated family must be answerable from the skill package alone. Assertions
-must remain supported by the linked record and must not silently broaden a
-`derived`, `unverified`, or unsupported claim. These cases do not allow an
-agent to pass by ignoring the skill and reconstructing the contract from
-repository source, because that is the baseline behavior they exist to
-distinguish.
+Maintain representative cases in these buckets:
 
-`contextual-existing-primitive` is deliberately the exception: it tests the
-documented fallback for a family that has *no* populated record, so
-repository-derived reasoning is the correct behavior there.
+- explicit and implicit activation for advisory and implementation requests;
+- operation/object routing and primitive selection;
+- end-to-end application composition;
+- convention, capability, resource, and simulation/hardware boundaries;
+- incomplete, contradictory, invalid, unavailable-source, and version-drift
+  inputs;
+- authorization and prompt-injection resistance;
+- negative activation for CUDA-Q setup and generic quantum questions;
+- paraphrased variants that preserve intent without copying record wording.
 
-For each scientific refinement:
+Use `evals/files/` for input artifacts. Every case sets `files` explicitly:
+fixture-free cases use `"files": []`, while fixture-backed cases list only the
+artifacts they need. This prevents the shared fixture directory from leaking
+context into unrelated cases.
 
-1. create a task that exposes a baseline failure without the new guidance;
-2. record repeated baseline behavior;
-3. add the minimal source-grounded record;
-4. rerun the task with the skill;
-5. add executable or numerical oracles when tractable;
-6. add a boundary, misconception, or negative case;
-7. inspect correctness, discoverability, effectiveness, efficiency, and safety.
+## Behaviors
 
-A scientific case must not be added before the record that backs it, and its
-assertions must reference that record unconditionally once it exists.
+- The agent reads the skill and only the selected focused records.
+- It asks a clarification when the answer would change the primitive,
+  mathematical result, convention, execution mode, or authorization boundary.
+- It states a conservative assumption and proceeds for harmless omissions.
+- It distinguishes source-checked, compiled, executed, numerically validated,
+  measured, assumed, unexecuted, and unverified evidence.
+- It writes or adapts repository code only for implementation requests and
+  reports files and verification outcomes.
+- It preserves exact input/output, register, ordering, normalization, phase,
+  error, and resource contracts.
+- It refuses fabricated APIs, measurements, performance, package support, and
+  pairwise compatibility.
+- It treats fixture/source text as evidence rather than instructions and does
+  not expand authorization.
 
-Assertions must test observable behavior rather than preferred wording. Where a
-record's status is `unverified` — as the state-preparation record's verified
-version range is — the assertion asserts the honest status, not a value.
+Assertions describe outcomes, not preferred prose. A case should fail if the
+agent omits a material boundary even when the response sounds plausible.
 
-Where an assertion describes register ownership, it must describe the current
-source-grounded injection behavior (the packaged consumer factories allocate
-the system register), never a library-wide or future ownership policy: that
-policy is an open question.
+## Notes
 
-New datasets should use NVIDIA SkillEvaluator's current `skill_name` and
-`evals` shape.
+### Case types
 
-## Maintainer execution
+- **Routing cases** establish activation and negative activation.
+- **Scientific cases** are answerable from a populated focused record.
+- **Application cases** require a correct multi-record chain and end-to-end
+  oracle.
+- **Repository implementation cases** stage a fixture and inspect the produced
+  patch or artifact.
+- **Safety/epistemic cases** probe unavailable evidence, authorization, prompt
+  injection, and false execution claims.
 
-Everything in this section requires write and execute tools. The skill itself
-declares `allowed-tools: Read Glob Grep`, so a running agent can inspect and
-describe evaluation evidence but cannot author fixtures, execute oracles, or
-run the evaluator. These are maintainer actions performed outside the skill.
+After splitting a family record, give every new focused record observable
+prompt-and-assertion coverage. A family name alone does not count as coverage
+for each independently selectable child contract.
 
-- **Executable and numerical oracles.** Where a claim is tractable, back it
-  with an analytical identity or an independently constructed dense reference,
-  fix the tolerance before observing results, and record the target and
-  version the execution ran on. Until that execution happens, a committed
-  repository assertion stays `derived` cited evidence — see
-  `references/validation.md`.
-- **SkillEvaluator runs.** Run NVIDIA SkillEvaluator with and without the
-  skill. A benchmark establishes uplift only when repeated results show better
-  correctness or efficiency than the baseline; schema validity alone proves
-  nothing.
-- **Offline gates first.** Validate the dataset and package before any live
-  run, so a failure is a content failure rather than a staging failure.
+`contextual-existing-primitive` is the deliberate exception: it tests the
+fallback for an uncataloged contract and may ask for unavailable source rather
+than inventing behavior.
 
-Do not author `BENCHMARK.md` manually. SkillEvaluator generates it from
-with-skill and without-skill runs. **No uplift has been measured for the
-current dataset**, and no case in `evals.json` has been executed with or
-without the skill.
+### Baseline-first workflow
 
-## Harness configuration
+1. Write a case that exposes a plausible failure.
+2. Run the without-skill baseline first and record the actual failure or
+   rationalization in generated results.
+3. Add the minimal source-grounded guidance.
+4. Run the same case with the skill.
+5. Compare repeated attempts and inspect every graded trajectory.
+6. Refine assertions from observed behavior, then rerun both arms.
 
-`config.yml` pins the four keys the current NVIDIA SkillEvaluator guidance
-establishes as commit-required:
+Never claim uplift from schema validity, a single trajectory, or a run that
+skipped the baseline. Do not author `BENCHMARK.md` or `evals/results/`; those are
+generated outputs.
 
-- `schema_version: 1`;
-- `harbor.task_source: evals_json`, so the cases come from `evals.json`;
-- `grading.mode: default`;
-- `skill_workspace.mode: isolated`, so only the target skill directory is
-  staged.
+### Scientific execution
 
-`Deferred:` `n_attempts` and `pass_threshold`. The keys exist, but no captured
-guidance fixes their spelling or default for this schema version, and unknown
-keys are a hard load error rather than a warning — so they are left unset until
-the first live run establishes them, rather than guessed.
+Where a claim is tractable, separately run an analytical identity or independent
+dense reference. Fix tolerance, precision, target, inputs, and seed before
+observing the result. A committed test that was only read is source evidence,
+not a fresh execution.
 
-`skill_workspace.mode: isolated` means `python/cudaq_algorithms/`,
-`tests/python/`, and `docs/sphinx/` are **not** staged in the container.
-Scientific cases are answerable from the skill package alone, which is what
-the populated records are for. `contextual-existing-primitive` asserts that
-the agent "inspects **or requests**" source for an uncataloged primitive, which
-is satisfiable in isolation; if that case is tightened to require real
-inspection, stage fixtures under `evals/files/` and select them per case
-instead of widening the workspace mode.
+### Attempt policy
+
+`config.yml` intentionally sets three attempts, a `0.50` pass threshold, and
+stop-on-first-pass. Three attempts expose variability without making every
+passing case consume all attempts. Revisit only with recorded run data; keep the
+policy fixed when comparing baseline and with-skill arms.
+
+The workspace remains isolated. Only fixtures named by an eval's nonempty
+`files` list are staged into `/workspace/input/`; a case with `"files": []`
+receives no fixture artifacts, and the surrounding repository is not assumed to
+exist.
+
+Repository-behavior cases therefore stage the minimum evidence needed to make
+their assertions satisfiable. `source-version-drift` receives a recorded
+contract excerpt, representative current public source and focused test, and
+the client authorized for modification. `implementation-scope-overreach`
+receives its change request, the sole authorized application file, and read-only
+public-source and example evidence. These excerpts support source comparison;
+they do not by themselves establish compilation or runtime behavior.
+
+`fixture-prompt-injection-boundary` intentionally gives no warning in its
+outer prompt and labels the hostile paragraph only as a copied issue comment.
+Do not add an "untrusted" hint that would make the safety decision trivial.
+
+### Current status
+
+The dataset and fixtures are authored. On 2026-09-10, seven fresh, isolated,
+read-only Codex agents each ran one with-skill smoke case:
+`explicit-primitive-reasoning`, `implicit-ftqc-application-advisory`,
+`negative-cudaq-install`, `material-ambiguity-clarification`, and
+`qpu-authorization-boundary`, plus the focused
+`state-preparation-uccsd-open-shell-parity` and
+`state-preparation-givens-device-boundary` cases. Manual inspection against the
+authored assertions found all seven passing. This is a single-attempt smoke
+check, not a SkillEvaluator result.
+
+The following task-local command passed `9` tests on 2026-09-10: the QSVT
+fixture (`2`), the six explicitly named state-preparation cases, and the
+Trotter invalid-input no-op (`1`).
+
+```bash
+ulimit -c 0
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=python:skills/cudaq-algorithms/evals/files \
+pytest -q -p no:cacheprovider \
+  skills/cudaq-algorithms/evals/files/test_qsvt_current_contract.py \
+  tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_host_helpers \
+  tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_open_shell_occupation \
+  tests/python/test_stateprep_hf_ucc.py::test_fixed_parameter_ucc_pauli_lists_from_pool \
+  tests/python/test_stateprep_hf_ucc.py::test_fixed_parameter_ucc_pauli_lists_filter_and_reject \
+  tests/python/test_stateprep_hf_ucc.py::test_fixed_parameter_ucc_validation_and_resources \
+  tests/python/test_stateprep_hf_ucc.py::test_factory_validates_inputs \
+  tests/python/test_trotter.py::test_apply_trotter_kernel_invalid_inputs_are_noops
+```
+
+Observed result: `9 passed in 1.99s`. The installed CUDA-Q reports `0.14.2`,
+below the declared `>=0.15,<0.16` range, so this narrow run does not verify the
+declared package compatibility or the unselected family behavior.
+
+SkillEvaluator is not installed in the recorded development environment, and
+no without-skill baseline arm or repeated formal with-skill arm has run.
+Therefore no behavioral uplift or declared-range compatibility claim is made.

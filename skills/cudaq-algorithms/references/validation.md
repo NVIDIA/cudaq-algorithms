@@ -1,79 +1,76 @@
 # Validation and evidence
 
-Correctness is a gate. Compilation, plausible output, or agreement between two
-paths with shared assumptions is not sufficient scientific validation.
+## Choose the validation path
 
-## Evidence hierarchy
+Use the strongest path available without overstating it:
 
-Prefer the strongest tractable independent evidence:
+| Path | Minimum evidence | Permitted claim |
+| --- | --- | --- |
+| Source path | Current public source, tests, and docs inspected; checkout or release captured with the result | `source-checked` or `derived` |
+| Build path | Source path plus successful parse/import/compile/build | `compiled` for that artifact and environment |
+| Execution path | Build path plus successful run on a named target | `executed` for that case |
+| Scientific path | Execution path plus independent oracle and predeclared tolerance | `numerically validated` |
+| Measurement path | Scientific protocol plus newly collected empirical quantity | `measured` |
 
-1. exact analytical identity;
-2. independently constructed dense operator or state;
-3. trusted external implementation after convention alignment;
-4. invariant or property test;
-5. cross-check between mathematically independent algorithms;
-6. convergence study with a predeclared criterion.
+`verified` is a record lifecycle state, not shorthand for reading source or for
+one successful run. Promotion requires a recorded, supported package/CUDA-Q
+version combination; exact revisions, dependencies, targets, and commands
+belong with the validation or evaluation result.
 
-## Validation record
+## Scientific validation procedure
 
-Every verified primitive record must identify:
+1. State the claim and mathematical oracle before execution.
+2. Translate qubit order, tensor order, signs, phases, normalization, and units.
+3. Fix target, precision, representative inputs, random seed when relevant, and
+   tolerance before viewing results.
+4. Run the smallest test that distinguishes the intended contract from likely
+   convention errors.
+5. Include an adversarial or expected-failure case.
+6. Record the command, date, package/CUDA-Q version, target, precision, result,
+   and limitations.
 
-- claim under test;
-- oracle and why it is independent;
-- input domain and representative cases;
-- convention translation;
-- precision and execution target;
-- tolerance fixed before observing results;
-- invariant or comparison;
-- expected failure or adversarial case;
-- result and evidence status.
+Prefer dense constructions, analytic identities, independently implemented
+matrix actions, conserved quantities, or cross-representation checks. A test
+that calls the same implementation through a second wrapper is not an
+independent oracle.
 
-Use only these evidence labels:
+## Evidence labels
 
-- **derived:** follows from a stated definition or proof, including from a
-  source or test file read at a named commit;
-- **measured:** produced by a recorded execution, with the target, version, and
-  conditions of that execution stated;
-- **assumed:** required but not established;
-- **unverified:** plausible or documented elsewhere but not checked here.
+- `derived`: mathematical consequence of stated assumptions or source.
+- `source-checked`: current public source/tests/docs were inspected in the
+  current task, with the checkout or release captured in the result.
+- `compiled`: the artifact successfully parsed, imported, compiled, or built.
+- `executed`: it ran successfully on the stated environment and case.
+- `numerically validated`: execution agreed with an independent oracle within
+  the predeclared tolerance.
+- `measured`: an empirical property such as runtime or memory was collected in
+  the stated protocol.
+- `unexecuted`: an execution-state qualifier meaning no successful run was
+  completed in the current task. Combine it with the strongest available
+  evidence label, for example `source-checked; unexecuted`; it is not evidence
+  of failure or correctness.
+- `assumed`: used without verification; state why and its impact.
+- `unverified`: evidence is absent or insufficient.
 
-**A committed repository test assertion is cited evidence, not a measurement.**
-Reading `assert np.max(np.abs(actual - reference)) < 1e-12` establishes what the
-repository asserts at that commit, which is `derived`. It becomes `measured`
-only when the test is actually executed and the result recorded. This skill
-operates read-only: it can inspect and describe evidence — assertions,
-tolerances, oracles, provenance — and must never restate that evidence as a
-fresh measurement, a runtime figure, or a performance claim.
+Keep scope explicit. A committed repository assertion that was not run in the
+current task is `source-checked` or `derived`, not `executed`. One simulator
+result does not establish hardware support. A logical-operation proxy is not a
+transpiled gate count, runtime, or memory measurement.
 
-## Required dimensions
+## Unable to execute
 
-- **Semantic:** operation, sign, normalization, ordering, and phase.
-- **Interface:** type, shape, dtype, register, controls, ancillas, and boundary.
-- **Numerical:** absolute/relative error, conditioning, precision, and tolerance.
-- **Approximation:** controlling parameter and expected convergence behavior.
-- **Resources:** metric, unit, abstraction level, assumptions, and evidence.
-- **Boundary:** malformed, unsupported, non-Hermitian, or unavailable cases.
+When dependencies, hardware, credentials, source, or time prevent a run:
 
-Do not infer an asymptotic law from one data point. Do not weaken a tolerance
-after observing a mismatch without changing and justifying the scientific
-contract.
+- label code and conclusions `unexecuted` or `unverified`;
+- say exactly what blocked execution;
+- give the command, fixture, oracle, target, precision, and tolerance needed;
+- do not weaken the check or substitute a non-independent oracle merely to
+  produce a passing result.
 
-## Evaluation coverage a record must declare
+## Skill evaluation versus scientific validation
 
-Each populated scientific record states which evaluation cases its sections
-support, spanning:
-
-- explicit, implicit, and contextual positive routing where relevant;
-- adjacent and generic negative routing;
-- primitive selection;
-- exact input/output and convention handling;
-- legal and illegal capability compositions;
-- approximation or resource claims;
-- invalid, unsupported, and simulation-only boundaries;
-- refusal to fabricate measurements or undocumented behavior.
-
-Declared coverage is not validated coverage. Authoring, staging, and running
-those cases — including executable oracles and NVIDIA SkillEvaluator runs with
-and without the skill — is maintainer work that needs write and execute tools
-this skill does not have. `evals/EVAL.md` owns that procedure; do not restate
-it here, and do not claim uplift from a mapping table.
+SkillEvaluator checks activation, routing, usefulness, safety, and answer
+quality. It does not establish that a quantum circuit or numerical transform is
+scientifically correct. Run baseline and with-skill eval arms for behavioral
+uplift, and run repository tests or independent numerical oracles separately
+for scientific claims.
