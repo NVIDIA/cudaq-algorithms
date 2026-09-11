@@ -273,6 +273,123 @@ def test_cmp_ge_constant_qft_all_inputs(n):
 
 
 # ----------------------------------------------------------------------
+# Register-register >= / > comparators (CDKM)
+# ----------------------------------------------------------------------
+#
+# Layout: a at bits [0, n), b at [n, 2n), carry at 2n, out at 2n + 1.
+
+
+@cudaq.kernel
+def _run_cmp_register_basis(n: int, aval: int, bval: int, flag_init: int,
+                            strict: int):
+    a = cudaq.qvector(n)
+    b = cudaq.qvector(n)
+    carry = cudaq.qvector(1)
+    out = cudaq.qvector(1)
+    for k in range(n):
+        if ((aval >> k) & 1) == 1:
+            x(a[k])
+        if ((bval >> k) & 1) == 1:
+            x(b[k])
+    if flag_init == 1:
+        x(out[0])
+    if strict == 0:
+        arith.cmp_ge_register(a, b, carry, out)
+    else:
+        arith.cmp_gt_register(a, b, carry, out)
+
+
+@cudaq.kernel
+def _run_cmp_register_superposed(n: int, strict: int):
+    a = cudaq.qvector(n)
+    b = cudaq.qvector(n)
+    carry = cudaq.qvector(1)
+    out = cudaq.qvector(1)
+    for k in range(n):
+        h(a[k])
+        h(b[k])
+    if strict == 0:
+        arith.cmp_ge_register(a, b, carry, out)
+    else:
+        arith.cmp_gt_register(a, b, carry, out)
+
+
+@cudaq.kernel
+def _run_cmp_register_twice(n: int, angles: list[float], strict: int,
+                            apply_ops: int):
+    a = cudaq.qvector(n)
+    b = cudaq.qvector(n)
+    carry = cudaq.qvector(1)
+    out = cudaq.qvector(1)
+    for k in range(n):
+        ry(angles[k], a[k])
+        ry(angles[n + k], b[k])
+        cx(a[k], b[k])  # entangle a with b
+    ry(angles[2 * n], out[0])
+    if apply_ops == 1:
+        if strict == 0:
+            arith.cmp_ge_register(a, b, carry, out)
+            arith.cmp_ge_register(a, b, carry, out)
+        else:
+            arith.cmp_gt_register(a, b, carry, out)
+            arith.cmp_gt_register(a, b, carry, out)
+
+
+_CMP_REGISTER_OPS = [
+    ("ge", 0, lambda a, b: a >= b),
+    ("gt", 1, lambda a, b: a > b),
+]
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4])
+@pytest.mark.parametrize("name,strict,predicate", _CMP_REGISTER_OPS)
+def test_cmp_register_truth_table_exhaustive(n, name, strict, predicate):
+    # All (a, b) pairs, flag initially 0 and 1: XOR semantics, operands
+    # (and carry) verified unchanged by the full statevector equality.
+    for aval in range(1 << n):
+        for bval in range(1 << n):
+            for flag_init in (0, 1):
+                state = np.array(
+                    cudaq.get_state(_run_cmp_register_basis, n, aval, bval,
+                                    flag_init, strict))
+                flag = flag_init ^ int(predicate(aval, bval))
+                index = aval + (bval << n) + (flag << (2 * n + 1))
+                np.testing.assert_allclose(state,
+                                           _basis(index, 2 * n + 2),
+                                           atol=1e-12)
+
+
+@pytest.mark.parametrize("n", WIDTHS)
+@pytest.mark.parametrize("name,strict,predicate", _CMP_REGISTER_OPS)
+def test_cmp_register_all_inputs_superposed(n, name, strict, predicate):
+    state = np.array(cudaq.get_state(_run_cmp_register_superposed, n, strict))
+    expected = np.zeros(1 << (2 * n + 2), dtype=np.complex128)
+    norm = 1.0 / (1 << n)
+    for aval in range(1 << n):
+        for bval in range(1 << n):
+            index = aval + (bval << n) + (int(predicate(aval, bval)) <<
+                                          (2 * n + 1))
+            expected[index] += norm
+    np.testing.assert_allclose(state, expected, atol=1e-12)
+
+
+@pytest.mark.parametrize("n", WIDTHS)
+@pytest.mark.parametrize("name,strict,predicate", _CMP_REGISTER_OPS)
+def test_cmp_register_twice_is_identity(n, name, strict, predicate):
+    # Self-inverse contract: the operand action is compute-copy-uncompute
+    # and the flag is XOR-accumulated, so two applications are the
+    # identity — checked on a random entangled state (superposed flag
+    # included: XOR-loading is a permutation, so linearity carries it).
+    rng = np.random.default_rng(20260911 + 8 * n + strict)
+    angles = rng.uniform(0.1, 3.0, size=2 * n + 1).tolist()
+    twice = np.array(
+        cudaq.get_state(_run_cmp_register_twice, n, angles, strict, 1))
+    reference = np.array(
+        cudaq.get_state(_run_cmp_register_twice, n, angles, strict, 0))
+    np.testing.assert_allclose(twice, reference, atol=1e-12)
+
+
+# ----------------------------------------------------------------------
 # Direct basis-state spot checks (readable, non-superposed)
 # ----------------------------------------------------------------------
 
@@ -314,6 +431,8 @@ def test_add_register_basis_spot_checks():
 #   (free), so the price is the inner register adder's 2 n.
 # - cmp_ge_constant (K >= 1): a MAJ sweep (n) plus its literal reversal
 #   (n) with a free CNOT carry-copy in between = 2 n; K = 0 is a bare X.
+# - cmp_ge_register / cmp_gt_register: the same MAJ sweep + reversal
+#   = 2 n; the b-complement, carry-in set and flag copy are X/CNOT-only.
 #
 # Draper QFT derivations: no Toffolis at all. add_constant_qft is
 # qft + phases + iqft = 2 * (n(n-1)/2) controlled-r1, n free r1 and 2 n
@@ -358,6 +477,18 @@ def _res_cmp_ge_constant(n: int, bits: list[int], k_is_zero: int):
 
 
 @cudaq.kernel
+def _res_cmp_register(n: int, strict: int):
+    a = cudaq.qvector(n)
+    b = cudaq.qvector(n)
+    carry = cudaq.qvector(1)
+    out = cudaq.qvector(1)
+    if strict == 0:
+        arith.cmp_ge_register(a, b, carry, out)
+    else:
+        arith.cmp_gt_register(a, b, carry, out)
+
+
+@cudaq.kernel
 def _res_add_constant_qft(n: int, constant: int):
     target = cudaq.qvector(n)
     arith.add_constant_qft(target, constant)
@@ -399,6 +530,15 @@ def test_cdkm_comparator_costs_exactly_2n_toffolis(n):
     assert _toffolis(_res_cmp_ge_constant, n, complement, 0) == 2 * n
     # K = 0 short-circuits to a single X: no Toffolis.
     assert _toffolis(_res_cmp_ge_constant, n, [0] * n, 1) == 0
+
+
+@_RESOURCES
+@pytest.mark.parametrize("n", WIDTHS + [8])
+def test_cmp_register_costs_exactly_2n_toffolis(n):
+    # Widths past the truth-table range (5 and 8) included: the count is
+    # a function of the runtime width argument, never a folded constant.
+    assert _toffolis(_res_cmp_register, n, 0) == 2 * n
+    assert _toffolis(_res_cmp_register, n, 1) == 2 * n
 
 
 @_RESOURCES

@@ -23,7 +23,8 @@ The reversible integer arithmetic device kernels (:mod:`._arithmetic`)
 are the in-place little-endian adders and comparators the lookup-based
 constructions compose with: the CDKM/Cuccaro ripple-carry family
 (``add_register`` / ``subtract_register``, ``add_constant`` /
-``subtract_constant``, ``cmp_ge_constant``) and the ancilla-free Draper
+``subtract_constant``, ``cmp_ge_constant``, and the register-register
+comparators ``cmp_ge_register`` / ``cmp_gt_register``) and the ancilla-free Draper
 QFT family (``qft`` / ``iqft``, ``add_constant_qft`` /
 ``subtract_constant_qft``, the ``cmp_ge_constant_qft`` /
 ``cmp_ge_constant_qft_adj`` pair). Every inverse is hand-written and the
@@ -35,8 +36,9 @@ import QROM``); nothing here is re-exported from the package root.
 
 from ._arithmetic import (add_constant, add_constant_qft, add_register,
                           cmp_ge_constant, cmp_ge_constant_qft,
-                          cmp_ge_constant_qft_adj, iqft, phase_add_constant,
-                          qft, subtract_constant, subtract_constant_qft,
+                          cmp_ge_constant_qft_adj, cmp_ge_register,
+                          cmp_gt_register, iqft, phase_add_constant, qft,
+                          subtract_constant, subtract_constant_qft,
                           subtract_register)
 from ._qrom import QROM
 from ._unary_iteration import UnaryIterationKernels, unary_iteration_kernels
@@ -50,6 +52,8 @@ __all__ = [
     "cmp_ge_constant",
     "cmp_ge_constant_qft",
     "cmp_ge_constant_qft_adj",
+    "cmp_ge_register",
+    "cmp_gt_register",
     "iqft",
     "phase_add_constant",
     "qft",

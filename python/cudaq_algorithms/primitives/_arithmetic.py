@@ -8,15 +8,22 @@ bit, matching ``docs/conventions.md``):
 - **CDKM/Cuccaro ripple-carry** (`arXiv:quant-ph/0410184`):
   ``add_register`` / ``subtract_register`` (in-place ``b <- b +/- a``),
   ``add_constant`` / ``subtract_constant`` (constant loaded into a caller
-  provided work register), and ``cmp_ge_constant`` (a ``x >= K`` comparator
+  provided work register), ``cmp_ge_constant`` (a ``x >= K`` comparator
   writing into an out qubit, leaving ``x`` untouched: MAJ sweep, copy the
-  carry, reverse MAJ sweep). Toffoli prices (documented contracts, pinned
-  by the resource tests in ``tests/python/test_primitives_arithmetic.py``):
+  carry, reverse MAJ sweep), and the register-register comparators
+  ``cmp_ge_register`` / ``cmp_gt_register`` (``out ^= (a >= b)`` /
+  ``out ^= (a > b)`` on equal-width unsigned registers, same
+  MAJ-copy-reverse structure with ``b`` complemented in place, so no
+  ``n``-qubit work register at all — only the one-qubit carry). Toffoli
+  prices (documented contracts, pinned by the resource tests in
+  ``tests/python/test_primitives_arithmetic.py``):
   ``add_register`` / ``subtract_register`` cost exactly ``2 n`` Toffolis
   on ``n``-bit registers (``n`` in the MAJ sweep, ``n`` in the UMA sweep),
   ``add_constant`` / ``subtract_constant`` inherit the same ``2 n`` (the
-  constant load is X-only), and ``cmp_ge_constant`` costs ``2 n`` for
-  ``K >= 1`` (MAJ sweep plus its reversal) and ``0`` for ``K = 0``.
+  constant load is X-only), ``cmp_ge_constant`` costs ``2 n`` for
+  ``K >= 1`` (MAJ sweep plus its reversal) and ``0`` for ``K = 0``, and
+  ``cmp_ge_register`` / ``cmp_gt_register`` cost exactly ``2 n`` (the
+  complement and flag copy are X/CNOT-only).
 - **Draper QFT arithmetic** (`arXiv:quant-ph/0008033`): ``qft`` / ``iqft``
   and ``add_constant_qft``, plus the ``cmp_ge_constant_qft`` /
   ``cmp_ge_constant_qft_adj`` comparator pair. The QFT family needs *no*
@@ -55,6 +62,8 @@ __all__ = [
     "add_constant",
     "subtract_constant",
     "cmp_ge_constant",
+    "cmp_ge_register",
+    "cmp_gt_register",
     "qft",
     "iqft",
     "phase_add_constant",
@@ -210,6 +219,70 @@ def cmp_ge_constant(x_reg: cudaq.qview, complement_bits: list[int],
         for k in range(n):
             if complement_bits[k] == 1:
                 x(work[k])
+
+
+@cudaq.kernel
+def cmp_ge_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview,
+                    out: cudaq.qview):
+    """``out[0] ^= (a >= b)`` (CDKM, unsigned), leaving ``a``, ``b`` unchanged.
+
+    ``a`` and ``b`` have equal size ``n >= 1``; ``carry`` is a one-qubit
+    view that must be |0> on entry (it is returned to |0>); ``out`` is the
+    one-qubit flag, XOR-loaded (any input state is allowed). ``a``, ``b``,
+    ``carry`` and ``out`` must be pairwise disjoint (module precondition).
+
+    Uses the ripple identity ``a >= b <=> carry_out(a + (2^n - b))`` with
+    ``2^n - b = ~b + 1``: complement ``b`` in place and set the carry-in
+    (so ``b`` doubles as the constant-load work register — no extra
+    ``n``-qubit work is needed, unlike ``cmp_ge_constant``), MAJ sweep,
+    copy the carry-out (on the top ``b`` qubit) into ``out``, reverse the
+    MAJ sweep and undo the complement so ``a``, ``b`` and ``carry`` are
+    all restored. Because the flag is XOR-accumulated and the operand
+    action is compute-copy-uncompute, applying the kernel twice with the
+    same arguments is the identity (self-inverse).
+    """
+    n = a.size()
+    if n > 0:
+        # 2^n - b = ~b + 1: complement b in place, set the carry-in to 1.
+        for k in range(n):
+            x(b[k])
+        x(carry[0])
+        # MAJ sweep of a + ~b + 1 (b accumulates the ripple carries).
+        cx(b[0], a[0])
+        cx(b[0], carry[0])
+        x.ctrl(carry[0], a[0], b[0])
+        for i in range(1, n):
+            cx(b[i], a[i])
+            cx(b[i], b[i - 1])
+            x.ctrl(b[i - 1], a[i], b[i])
+        # a >= b iff the sum carries out of the top bit.
+        cx(b[n - 1], out[0])
+        # Reverse MAJ sweep (restores a, ~b and the carry-in).
+        for k in range(1, n):
+            i = n - k
+            x.ctrl(b[i - 1], a[i], b[i])
+            cx(b[i], b[i - 1])
+            cx(b[i], a[i])
+        x.ctrl(carry[0], a[0], b[0])
+        cx(b[0], carry[0])
+        cx(b[0], a[0])
+        x(carry[0])
+        for k in range(n):
+            x(b[k])
+
+
+@cudaq.kernel
+def cmp_gt_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview,
+                    out: cudaq.qview):
+    """``out[0] ^= (a > b)`` (CDKM, unsigned), leaving ``a``, ``b`` unchanged.
+
+    Free strict variant of ``cmp_ge_register`` via ``a > b <=> not
+    (b >= a)``: an X on ``out`` plus the ``>=`` comparator with the roles
+    swapped. Same preconditions, same ``2 n`` Toffoli price, and likewise
+    self-inverse.
+    """
+    x(out[0])
+    cmp_ge_register(b, a, carry, out)
 
 
 # ============================================================================
