@@ -18,10 +18,10 @@ full (index + garbage) register.
 
 The resource tests at the bottom hold the documented cost against the
 compiler: each PREPARE (and its adjoint) costs exactly
-``qrom.toffoli_count + 4 (mu + 1)`` Toffolis plus ``num_index`` Fredkins
+``qrom.toffoli_count + 2 mu`` Toffolis plus ``num_index`` Fredkins
 — the lookup at the QROM's *own reported* price (whatever variant
-``"auto"`` minted) plus two CDKM register adders on the ``mu+1``-bit
-comparator extension at ``2 (mu + 1)`` Toffolis each.
+``"auto"`` minted) plus one CDKM register comparator
+(``cmp_ge_register``) on the ``mu``-bit operands at ``2 mu`` Toffolis.
 """
 
 import numpy as np
@@ -152,16 +152,16 @@ def test_alias_sampling_register_accounting():
     prep = AliasSamplingPrepare([1.0, 2.0, 3.0], mu=4)
     assert prep.num_index == 2
     assert prep.num_bins == 4
-    # [alias(m) | keep(mu) | keep_pad | ref(mu) | ref_pad | flag |
-    #  ladder(qrom.num_ladder) | carry] = m + 2mu + 4 + num_ladder.
-    assert prep.num_garbage == 2 + 2 * 4 + 4 + prep.qrom.num_ladder
-    assert prep.ladder_offset == 2 + 2 * 4 + 3
+    # [alias(m) | keep(mu) | ref(mu) | flag |
+    #  ladder(qrom.num_ladder) | carry] = m + 2mu + 2 + num_ladder.
+    assert prep.num_garbage == 2 + 2 * 4 + 2 + prep.qrom.num_ladder
+    assert prep.ladder_offset == 2 + 2 * 4 + 1
     # A 4-entry table prices out to the plain select walk, whose ladder
-    # is one line per address bit — the layout then closes at the
-    # historical 2m + 2mu + 4.
+    # is one line per address bit — the layout then closes at
+    # 2m + 2mu + 2.
     assert prep.qrom.variant == "select"
     assert prep.qrom.num_ladder == prep.num_index
-    assert prep.num_garbage == 2 * 2 + 2 * 4 + 4
+    assert prep.num_garbage == 2 * 2 + 2 * 4 + 2
     assert prep.lam == pytest.approx(6.0)
     assert len(prep.keep) == 4 and len(prep.alias) == 4
     assert all(0 <= v < (1 << 4) for v in prep.keep)
@@ -221,17 +221,17 @@ def test_alias_sampling_cost_is_qrom_price_plus_comparator(
         weights, mu, adjoint):
     # The lookup cost is not re-derived here: it is asserted consistent
     # with the QROM's own reported count (whatever construction "auto"
-    # priced in), on top of which sit exactly the two CDKM adders of the
-    # comparator — 2 (mu + 1) Toffolis each on the (mu+1)-bit extension.
-    # The alias swap is num_index Fredkins (counted as cswap, not ccx —
-    # ``count_controls`` is arity-aware; ``count("ccx")`` matches
-    # nothing).
+    # priced in), on top of which sits exactly the one CDKM register
+    # comparator (cmp_ge_register) — 2 mu Toffolis on the mu-bit
+    # operands. The alias swap is num_index Fredkins (counted as cswap,
+    # not ccx — ``count_controls`` is arity-aware; ``count("ccx")``
+    # matches nothing).
     prep = AliasSamplingPrepare(weights, mu)
     resources = _prepare_resources(prep, adjoint)
     # Not a tautology: qrom.toffoli_count is classical bookkeeping in
     # QROM, deliberately cross-pinned here against the compiled circuit.
     assert resources.count_controls("x", 2) == \
-        prep.qrom.toffoli_count + 4 * (mu + 1)
+        prep.qrom.toffoli_count + 2 * mu
     assert resources.count_controls("swap", 1) == prep.num_index
     # The mu reference Hadamards and the num_index bin Hadamards. (An
     # incidental property of the current QROM gate choices — the lookup
@@ -244,7 +244,7 @@ def test_alias_sampling_forced_select_swap_variant():
     # Pins the docstring's variant-agnostic claim: force the lookup onto
     # the select_swap construction through the new passthrough at the
     # smallest simulable size (m = 2, mu = 2, B = 2: the ladder is
-    # 1 + 2 * (m + mu) = 9 lines, 21 qubits total) and re-assert the
+    # 1 + 2 * (m + mu) = 9 lines, 19 qubits total) and re-assert the
     # full PREPARE contract.
     weights = [0.7, 0.2, 1.4, 0.5]
     prep = AliasSamplingPrepare(weights,
@@ -278,7 +278,7 @@ def test_alias_sampling_forced_select_swap_variant():
     for adjoint in (False, True):
         resources = _prepare_resources(prep, adjoint)
         assert resources.count_controls("x", 2) == \
-            prep.qrom.toffoli_count + 4 * (prep.mu + 1)
+            prep.qrom.toffoli_count + 2 * prep.mu
 
 
 def test_alias_sampling_passthrough_validation_propagates():

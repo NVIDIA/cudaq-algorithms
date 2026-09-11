@@ -16,9 +16,10 @@ keep/alias tables, and the circuit is
    priced across the available QROM variants and the cheapest
    construction is minted — its clean-ancilla ladder lives inside the
    garbage register, so ``num_garbage`` follows the chosen variant),
-3. a comparator of ``keep_k`` against a uniform ``mu``-bit reference
-   register (built from the CDKM register adders of ``_arithmetic``:
-   subtract on a ``mu+1``-bit extension, copy the borrow, add back), and
+3. a comparator of a uniform ``mu``-bit reference register against
+   ``keep_k`` (the CDKM register comparator
+   :func:`~cudaq_algorithms.primitives.cmp_ge_register` of
+   ``_arithmetic``: ``flag <- (ref >= keep_k)``), and
 4. a controlled swap of the bin index with the alias when the reference
    is not below ``keep_k``.
 
@@ -48,10 +49,10 @@ assumed, in the tests.
 Kernel signatures (little-endian; ``docs/conventions.md``): both
 ``kernel()`` and ``adjoint_kernel()`` are ``(index: qview, garbage:
 qview)`` with ``index`` of width ``num_index`` and ``garbage`` of width
-``num_garbage`` laid out as ``[alias(num_index) | keep(mu) | keep_pad |
-ref(mu) | ref_pad | flag | ladder(qrom.num_ladder) | carry]`` — i.e.
-``num_garbage = num_index + 2 mu + 3 + qrom.num_ladder + 1``, which is
-``2 num_index + 2 mu + 4`` whenever the priced lookup is the plain
+``num_garbage`` laid out as ``[alias(num_index) | keep(mu) | ref(mu) |
+flag | ladder(qrom.num_ladder) | carry]`` — i.e.
+``num_garbage = num_index + 2 mu + 1 + qrom.num_ladder + 1``, which is
+``2 num_index + 2 mu + 2`` whenever the priced lookup is the plain
 ``"select"`` walk (``num_ladder = num_index``; always the case for the
 small tables where select wins ``"auto"``'s pricing). Both registers
 must be ``|0...0>`` on entry to ``kernel()``; ``adjoint_kernel()`` is the
@@ -67,10 +68,10 @@ contract stands) — consumers control SELECT, not PREPARE.
 
 Cost (pinned by ``tests/python/test_primitives_alias_sampling.py``
 against the compiler): each of ``kernel()`` / ``adjoint_kernel()`` costs
-exactly ``qrom.toffoli_count + 4 (mu + 1)`` Toffolis — the lookup at the
-QROM's own reported price plus two CDKM register adders on the
-``mu+1``-bit extension at ``2 (mu + 1)`` each — plus ``num_index``
-controlled swaps (Fredkins) for the alias swap.
+exactly ``qrom.toffoli_count + 2 mu`` Toffolis — the lookup at the
+QROM's own reported price plus one CDKM register comparator on the
+``mu``-bit operands at ``2 mu`` — plus ``num_index`` controlled swaps
+(Fredkins) for the alias swap.
 """
 
 from __future__ import annotations
@@ -81,7 +82,7 @@ from collections.abc import Sequence
 import cudaq
 import numpy as np
 
-from ._arithmetic import add_register, subtract_register
+from ._arithmetic import cmp_ge_register
 from ._qrom import QROM
 from ._unary_iteration import _retain
 
@@ -236,10 +237,10 @@ class AliasSamplingPrepare:
         m = self._num_index
         mu = self._mu
         num_ladder = self._qrom.num_ladder
-        k0 = m  # keep (keep_pad at k0 + mu)
-        r0 = m + mu + 1  # ref (ref_pad at r0 + mu)
-        flag = m + 2 * mu + 2
-        l0 = m + 2 * mu + 3
+        k0 = m  # keep
+        r0 = m + mu  # ref
+        flag = m + 2 * mu
+        l0 = m + 2 * mu + 1
         c0 = l0 + num_ladder  # carry
         qrom_kernel = self._qrom.kernel
 
@@ -252,14 +253,10 @@ class AliasSamplingPrepare:
                 h(garbage[r0 + b])
             # (alias_k, keep_k) lookup: output is garbage[0 : m + mu].
             qrom_kernel(index, garbage[l0:l0 + num_ladder], garbage[0:m + mu])
-            # flag <- NOT (ref < keep): subtract keep on the (mu+1)-bit
-            # extension of ref, copy the borrow (MSB), add keep back.
-            subtract_register(garbage[k0:k0 + mu + 1], garbage[r0:r0 + mu + 1],
-                              garbage[c0:c0 + 1])
-            cx(garbage[r0 + mu], garbage[flag])
-            x(garbage[flag])
-            add_register(garbage[k0:k0 + mu + 1], garbage[r0:r0 + mu + 1],
-                         garbage[c0:c0 + 1])
+            # flag <- (ref >= keep): the family register comparator
+            # (keep and ref are left untouched, the carry returns to |0>).
+            cmp_ge_register(garbage[r0:r0 + mu], garbage[k0:k0 + mu],
+                            garbage[c0:c0 + 1], garbage[flag:flag + 1])
             # Swap the bin index with its alias on the flag.
             for b in range(m):
                 swap.ctrl(garbage[flag], index[b], garbage[b])
@@ -271,12 +268,11 @@ class AliasSamplingPrepare:
             for j in range(m):
                 b = m - 1 - j
                 swap.ctrl(garbage[flag], index[b], garbage[b])
-            subtract_register(garbage[k0:k0 + mu + 1], garbage[r0:r0 + mu + 1],
-                              garbage[c0:c0 + 1])
-            x(garbage[flag])
-            cx(garbage[r0 + mu], garbage[flag])
-            add_register(garbage[k0:k0 + mu + 1], garbage[r0:r0 + mu + 1],
-                         garbage[c0:c0 + 1])
+            # The comparator is its own gate-reversal (a palindrome
+            # around the self-inverse flag copy), so re-applying it here
+            # IS the literal reversed gate sequence.
+            cmp_ge_register(garbage[r0:r0 + mu], garbage[k0:k0 + mu],
+                            garbage[c0:c0 + 1], garbage[flag:flag + 1])
             # The QROM lookup uncomputes itself on the clean-ladder
             # sector: the ladder is |0> here (restored by the compute
             # pass, untouched since), so re-applying the lookup XORs the
@@ -320,7 +316,7 @@ class AliasSamplingPrepare:
     @property
     def num_garbage(self) -> int:
         """Garbage register width (layout in the module docstring)."""
-        return self._num_index + 2 * self._mu + 4 + self._qrom.num_ladder
+        return self._num_index + 2 * self._mu + 2 + self._qrom.num_ladder
 
     @property
     def qrom(self) -> QROM:
@@ -340,7 +336,7 @@ class AliasSamplingPrepare:
         ``garbage[ladder_offset : ladder_offset + qrom.num_ladder]`` as
         its own ladder.
         """
-        return self._num_index + 2 * self._mu + 3
+        return self._num_index + 2 * self._mu + 1
 
     @property
     def keep(self) -> tuple[int, ...]:
