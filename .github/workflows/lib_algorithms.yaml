@@ -55,6 +55,15 @@ concurrency:
   group: ${{ github.workflow }}-build-algorithms-${{ github.ref }}
   cancel-in-progress: true
 
+# The build-and-test job runs inside the cuda-quantum devcontainer, where
+# the runner's default shell for `run:` steps resolves to `sh` (dash).
+# The steps below use bash syntax (`[[ ]]`), which dash rejects — and a
+# failing `[[` inside an `if` condition silently selects the else branch
+# instead of erroring the step. Pin bash explicitly.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-and-test:
     name: Build and test
