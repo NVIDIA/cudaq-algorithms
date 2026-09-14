@@ -52,7 +52,10 @@ on:
         required: false
 
 concurrency:
-  group: ${{ github.workflow }}-build-algorithms-${{ github.ref }}
+  # cudaq_source must be part of the group: one PR run can invoke this
+  # workflow twice (pip lanes + pin-triggered source lanes), and a
+  # shared group would have the later invocation cancel the earlier.
+  group: ${{ github.workflow }}-build-algorithms-${{ inputs.cudaq_source }}-${{ github.ref }}
   cancel-in-progress: true
 
 # The build-and-test job runs inside the cuda-quantum devcontainer, where
