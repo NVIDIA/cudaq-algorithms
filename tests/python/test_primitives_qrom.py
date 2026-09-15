@@ -13,12 +13,44 @@ table (equal (address, output) amplitudes with the clean ancillas traced
 as |0>).
 """
 
+import functools
+
 import numpy as np
 import pytest
 
 import cudaq
 
 from cudaq_algorithms.primitives import QROM
+
+
+@functools.lru_cache(maxsize=1)
+def _control_propagates_through_composition() -> bool:
+    """Whether ``cudaq.control`` works on kernels that call kernels.
+
+    True from CUDA-Q 0.16; through 0.15 control-variant generation
+    rejects the composition ("Unhandled controlled quantum kernel call")
+    and the composed select_swap lookup cannot be externally controlled.
+    """
+
+    @cudaq.kernel
+    def probe_sub(q: cudaq.qview):
+        x(q[0])
+
+    @cudaq.kernel
+    def probe_parent(q: cudaq.qview):
+        probe_sub(q)
+
+    @cudaq.kernel
+    def probe():
+        control = cudaq.qvector(1)
+        q = cudaq.qvector(1)
+        cudaq.control(probe_parent, control[0], q)
+
+    try:
+        cudaq.get_state(probe)
+        return True
+    except RuntimeError:
+        return False
 
 
 def _basis(index: int, num_qubits: int) -> np.ndarray:
@@ -172,6 +204,51 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
     np.testing.assert_allclose(joint_amplitudes(select),
                                joint_amplitudes(swap),
                                atol=1e-12)
+
+
+def test_qrom_select_swap_external_control_on_the_composition():
+    # The promise behind building select_swap as composed kernels
+    # (CUDA-Q >= 0.16): cudaq.control applied to the WHOLE composition —
+    # the parent kernel that calls the walk and routing sub-kernels —
+    # implements the controlled lookup. Pinned on a superposed control
+    # and superposed addresses against the dense reference
+    # |c>|k>|0...0>|y> -> |c>|k>|0...0>|y XOR c * data[k]>.
+    if not _control_propagates_through_composition():
+        pytest.skip("cudaq.control does not propagate through kernels that "
+                    "call kernels on this CUDA-Q (< 0.16)")
+    data = [3, 0, 5, 6, 1]
+    address_bits, output_bits = 3, 3
+    qrom = QROM(data,
+                address_bits,
+                output_bits,
+                variant="select_swap",
+                block_size=2)
+    lookup = qrom.kernel
+    num_ladder = qrom.num_ladder
+    theta = 2 * np.arccos(0.6)  # control amplitudes (0.6, 0.8)
+
+    @cudaq.kernel
+    def run():
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(address_bits)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(output_bits)
+        ry(theta, control[0])
+        for b in range(address_bits):
+            h(address_reg[b])
+        cudaq.control(lookup, control[0], address_reg, ladder, output)
+
+    state = np.array(cudaq.get_state(run))
+    total = 1 + address_bits + num_ladder + output_bits
+    shift = 1 + address_bits + num_ladder
+    amp = {0: 0.6, 1: 0.8}
+    expected = np.zeros(1 << total, dtype=np.complex128)
+    for c in range(2):
+        for k in range(1 << address_bits):
+            word = data[k] if (c == 1 and k < len(data)) else 0
+            index = c + (k << 1) + (word << shift)
+            expected[index] = amp[c] / np.sqrt(1 << address_bits)
+    np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
 def test_qrom_auto_dispatch_picks_the_cheaper_variant():

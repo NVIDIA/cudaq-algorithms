@@ -19,6 +19,17 @@ inverse-composable); the module docstrings state the coherent costs the
 minted kernels actually have, and the resource tests pin them against
 the compiler.
 
+Composition (CUDA-Q >= 0.16): minted kernels are building blocks — call
+them from your own kernels, and wrap the whole composition in
+``cudaq.control`` to obtain the controlled operation. This is the
+intended consumption model for SELECT-style constructions (the
+select_swap QROM is itself built this way), and it is pinned by tests
+(``test_primitives_composition.py``). Through CUDA-Q 0.15,
+control-variant generation rejected kernels that call kernels, so on
+0.15 use the factory's ``controlled=True`` variants instead — they also
+remain the cheaper option everywhere (the control is folded into the
+walk rather than added to every gate).
+
 Import the subpackage directly (``from cudaq_algorithms.primitives
 import QROM``); nothing here is re-exported from the package root.
 """
