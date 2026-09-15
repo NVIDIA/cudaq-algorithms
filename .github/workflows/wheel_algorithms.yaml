@@ -58,7 +58,10 @@ on:
         required: false
 
 concurrency:
-  group: ${{ github.workflow }}-build-wheels-${{ github.ref }}
+  # cudaq_wheels must be part of the group: a pin change invokes this
+  # workflow in both PyPI and Custom modes within one PR run, and a
+  # shared group would cancel the first with the second.
+  group: ${{ github.workflow }}-build-wheels-${{ inputs.cudaq_wheels }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

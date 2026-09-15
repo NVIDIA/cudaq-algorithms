@@ -52,8 +52,20 @@ on:
         required: false
 
 concurrency:
-  group: ${{ github.workflow }}-build-algorithms-${{ github.ref }}
+  # cudaq_source must be part of the group: one PR run can invoke this
+  # workflow twice (pip lanes + pin-triggered source lanes), and a
+  # shared group would have the later invocation cancel the earlier.
+  group: ${{ github.workflow }}-build-algorithms-${{ inputs.cudaq_source }}-${{ github.ref }}
   cancel-in-progress: true
+
+# The build-and-test job runs inside the cuda-quantum devcontainer, where
+# the runner's default shell for `run:` steps resolves to `sh` (dash).
+# The steps below use bash syntax (`[[ ]]`), which dash rejects — and a
+# failing `[[` inside an `if` condition silently selects the else branch
+# instead of erroring the step. Pin bash explicitly.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   build-and-test:
