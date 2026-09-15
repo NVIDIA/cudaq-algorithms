@@ -14,7 +14,7 @@ license = "Apache-2.0"
 dependencies = [
   # `cudaq` is CUDA-agnostic and selects the right cuda-quantum-cuNN at
   # install time, which lets us ship this single py3-none-any wheel.
-  "cudaq >= 0.15.0, < 0.16",
+  "cudaq >= 0.16.0, < 0.17",
   "numpy",
   "scipy",
 ]
