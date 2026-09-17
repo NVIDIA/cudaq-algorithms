@@ -170,9 +170,9 @@ class AliasSamplingPrepare:
         QROM's own ``ValueError``.
 
     Garbage caveat: the per-bin garbage vectors ``|g_k>`` are NOT
-    mutually orthogonal (measured off-diagonal overlaps reach ~0.19), so
-    the reduced state on the index register is not ``diag(p_k)``; only
-    the amplitude *magnitudes* on the index register are guaranteed.
+    mutually orthogonal, so the reduced state on the index register is
+    not ``diag(p_k)``; only the amplitude *magnitudes* on the index
+    register are guaranteed.
     That is exactly what qubitization's ``<0|PREP^dagger SELECT PREP|0>``
     contract needs — index orthogonality kills the cross terms — but
     consumers must not assume orthonormal garbage.
@@ -214,7 +214,12 @@ class AliasSamplingPrepare:
         self._probabilities = np.asarray(probabilities)
         self._table_probabilities = np.asarray(table)
 
-        # QROM data: alias in the low num_index bits, keep above it.
+        # QROM data: each address k stores one (num_index + mu)-bit word
+        # packing both lookup outputs into a single QROM entry --
+        #   bits [0, num_index)        = alias[k]  (the alias bin index)
+        #   bits [num_index, num_index+mu) = keep[k]  (the keep threshold)
+        # so one lookup emits alias into garbage's alias register and keep
+        # into its keep register (see the garbage-layout docstring).
         # variant/block_size pass through verbatim (default "auto"
         # prices the constructions); the chosen variant's ladder width
         # shapes the garbage layout below. QROM validation errors
@@ -237,11 +242,13 @@ class AliasSamplingPrepare:
         m = self._num_index
         mu = self._mu
         num_ladder = self._qrom.num_ladder
-        k0 = m  # keep
-        r0 = m + mu  # ref
-        flag = m + 2 * mu
-        l0 = m + 2 * mu + 1
-        c0 = l0 + num_ladder  # carry
+        # Base offsets into the garbage register, matching the layout
+        # [alias(m) | keep(mu) | ref(mu) | flag | ladder | carry].
+        keep_off = m  # keep register (mu bits)
+        ref_off = m + mu  # reference register (mu bits)
+        flag = m + 2 * mu  # comparator flag (1 qubit)
+        ladder_off = m + 2 * mu + 1  # QROM ladder ancillas
+        carry_off = ladder_off + num_ladder  # comparator carry (1 qubit)
         qrom_kernel = self._qrom.kernel
 
         @cudaq.kernel
@@ -250,13 +257,16 @@ class AliasSamplingPrepare:
             for b in range(m):
                 h(index[b])
             for b in range(mu):
-                h(garbage[r0 + b])
+                h(garbage[ref_off + b])
             # (alias_k, keep_k) lookup: output is garbage[0 : m + mu].
-            qrom_kernel(index, garbage[l0:l0 + num_ladder], garbage[0:m + mu])
+            qrom_kernel(index, garbage[ladder_off:ladder_off + num_ladder],
+                        garbage[0:m + mu])
             # flag <- (ref >= keep): the family register comparator
             # (keep and ref are left untouched, the carry returns to |0>).
-            cmp_ge_register(garbage[r0:r0 + mu], garbage[k0:k0 + mu],
-                            garbage[c0:c0 + 1], garbage[flag:flag + 1])
+            cmp_ge_register(garbage[ref_off:ref_off + mu],
+                            garbage[keep_off:keep_off + mu],
+                            garbage[carry_off:carry_off + 1],
+                            garbage[flag:flag + 1])
             # Swap the bin index with its alias on the flag.
             for b in range(m):
                 swap.ctrl(garbage[flag], index[b], garbage[b])
@@ -271,17 +281,24 @@ class AliasSamplingPrepare:
             # The comparator is its own gate-reversal (a palindrome
             # around the self-inverse flag copy), so re-applying it here
             # IS the literal reversed gate sequence.
-            cmp_ge_register(garbage[r0:r0 + mu], garbage[k0:k0 + mu],
-                            garbage[c0:c0 + 1], garbage[flag:flag + 1])
+            cmp_ge_register(garbage[ref_off:ref_off + mu],
+                            garbage[keep_off:keep_off + mu],
+                            garbage[carry_off:carry_off + 1],
+                            garbage[flag:flag + 1])
             # The QROM lookup uncomputes itself on the clean-ladder
             # sector: the ladder is |0> here (restored by the compute
             # pass, untouched since), so re-applying the lookup XORs the
             # table back out of garbage[0 : m + mu] — the documented
             # self-inverse contract of every QROM variant.
-            qrom_kernel(index, garbage[l0:l0 + num_ladder], garbage[0:m + mu])
+            # TODO: expose this as an explicit ``qrom_inverse`` call. Once
+            # measurement-based uncomputation lands, uncomputing the QROM
+            # is much cheaper than the forward lookup, making the adjoint
+            # PREPARE significantly cheaper than the forward pass.
+            qrom_kernel(index, garbage[ladder_off:ladder_off + num_ladder],
+                        garbage[0:m + mu])
             for j in range(mu):
                 b = mu - 1 - j
-                h(garbage[r0 + b])
+                h(garbage[ref_off + b])
             for j in range(m):
                 b = m - 1 - j
                 h(index[b])
