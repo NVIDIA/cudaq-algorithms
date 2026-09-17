@@ -126,7 +126,7 @@ jobs:
         # runners (see scripts/ci/test_wheels.sh for why the variant is
         # the resolver's business, not ours).
         run: |
-          python3 -m pip install "cudaq>=0.15.0,<0.16"
+          python3 -m pip install "cudaq>=0.16.0,<0.17"
 
       - name: Run tests
         run: |
