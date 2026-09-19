@@ -63,7 +63,7 @@ def _parity_sector_specs(h, V=None):
     return out
 
 
-def _codespace_spec(h, V=None, scalar_offset=0.0):
+def _codespace_spec(h, V=None, scalar_offset=0.0, interaction_graph=None):
     """Spectrum of BKSF on the code subspace -- the *joint +1 eigenspace* of
     the sign-fixed loop stabilizers (no sector search: the stabilizers are
     sign-fixed so +1 is the physical sector).
@@ -75,10 +75,12 @@ def _codespace_spec(h, V=None, scalar_offset=0.0):
     args = (h,) if V is None else (h, V)
     graph = _build_graph(np.asarray(h, dtype=complex),
                          np.zeros((0, 0, 0, 0)) if V is None
-                         else np.asarray(V, dtype=complex), 1e-15)
+                         else np.asarray(V, dtype=complex), 1e-15,
+                         interaction_graph)
     nq = graph.num_qubits
     dim = 1 << nq
-    Hb = _dense(bravyi_kitaev_superfast(*args, scalar_offset=scalar_offset))
+    Hb = _dense(bravyi_kitaev_superfast(*args, scalar_offset=scalar_offset,
+                                        interaction_graph=interaction_graph))
     if Hb.shape[0] < dim:                       # op did not touch every qubit
         Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
     cols = np.eye(dim, dtype=complex)
@@ -89,10 +91,10 @@ def _codespace_spec(h, V=None, scalar_offset=0.0):
     return np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
 
 
-def _matches_jw_even(h, V=None):
+def _matches_jw_even(h, V=None, interaction_graph=None):
     """Error between the BKSF code space and JW's even (code) parity sector."""
     even = _parity_sector_specs(h, V)[+1]
-    spec = _codespace_spec(h, V)
+    spec = _codespace_spec(h, V, interaction_graph=interaction_graph)
     if len(spec) != len(even):
         return np.inf
     return float(np.max(np.abs(spec - even)))
@@ -357,7 +359,7 @@ def test_bounded_weight_beats_jordan_wigner():
 # Structure / edge cases
 # ----------------------------------------------------------------------
 
-def test_qubit_count_is_edge_count_with_self_loops():
+def test_qubit_count_is_edge_count():
     n, edges = _GRAPHS["ring-4"]
     h, _ = _random_tight_binding(0, n, edges)
     assert bravyi_kitaev_superfast(h).qubit_count == len(edges)
@@ -401,18 +403,71 @@ def test_interaction_graph_out_of_range_raises():
                                                       (2, 3), (3, 9)])
 
 
-def test_isolated_number_mode_gets_self_loop():
-    """A single isolated mode carrying only a number term is represented via a
-    self-loop qubit: n_0 = (I - Z)/2 has the single-mode spectrum {0, eps}."""
-    eps = 0.7
-    h = np.array([[eps]])
-    graph = _build_graph(np.asarray(h, dtype=complex),
-                         np.zeros((0, 0, 0, 0)), 1e-15)
-    assert graph.edges == [(0, 0)]             # a self-loop qubit for n_0
-    op = bravyi_kitaev_superfast(h)
-    assert op.qubit_count == 1
-    spec = np.sort(np.linalg.eigvalsh(_dense(op)))
-    assert np.allclose(spec, [0.0, eps], atol=1e-12)
+def test_isolated_number_mode_raises():
+    """A mode carrying only a number term but no coupling is a disconnected
+    (isolated) component -- BKSF cannot represent it in a global parity sector,
+    so it raises rather than returning a wrong-sector operator."""
+    h = np.zeros((4, 4))
+    for (i, j) in [(0, 1), (1, 2), (0, 2)]:      # connected triangle 0-1-2
+        h[i, j] = h[j, i] = 1.0
+    h[3, 3] = 0.7                                 # isolated mode 3
+    with pytest.raises(ValueError, match="connected|isolated"):
+        bravyi_kitaev_superfast(h)
+
+
+def test_disconnected_graph_raises():
+    """Two decoupled components (e.g. two molecules) raise: BKSF fixes parity
+    per component, which is not a single global-parity sector."""
+    h = np.zeros((6, 6))
+    for (i, j) in [(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5)]:
+        h[i, j] = h[j, i] = 1.0                   # two disjoint triangles
+    with pytest.raises(ValueError, match="connected|disconnected"):
+        bravyi_kitaev_superfast(h)
+
+
+def test_disconnected_graph_reconnected_via_override():
+    """interaction_graph= can add a connecting edge to make a decoupled
+    Hamiltonian's graph connected; the result then matches JW's even sector."""
+    n = 4
+    h = np.zeros((n, n))
+    for (i, j) in [(0, 1), (2, 3)]:               # two disjoint edges
+        h[i, j] = h[j, i] = 1.0
+    for i in range(n):
+        h[i, i] = 0.2 * (i + 1)
+    with pytest.raises(ValueError, match="connected"):
+        bravyi_kitaev_superfast(h)                 # disconnected as-is
+    connected = [(0, 1), (2, 3), (1, 2)]           # bridge the two edges
+    assert _matches_jw_even(h, interaction_graph=connected) < 1e-10
+
+
+@pytest.mark.parametrize("edges", [
+    [(0, 1), (1, 2), (0, 2), (0, 3), (1, 3)],     # two triangles sharing edge (0,1)
+    [(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)],     # 4-ring with a chord (two cycles)
+    [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)],  # K4 (three cycles)
+])
+def test_multicycle_graphs_match_jordan_wigner(edges):
+    """Connected graphs with several (possibly edge-sharing) independent cycles
+    still match JW's even sector."""
+    n = 4
+    rng = np.random.default_rng(3)
+    h = np.zeros((n, n))
+    for i in range(n):
+        h[i, i] = rng.normal()
+    for (i, j) in edges:
+        h[i, j] = h[j, i] = rng.normal()
+    assert _matches_jw_even(h) < 1e-10
+
+
+def test_single_isolated_mode_raises():
+    """A one-mode Hamiltonian has no edge to encode B_0 on and raises."""
+    with pytest.raises(ValueError, match="connected|isolated"):
+        bravyi_kitaev_superfast(np.array([[0.7]]))
+
+
+def test_empty_hamiltonian_raises():
+    """An all-zero Hamiltonian has no interaction graph and no qubits."""
+    with pytest.raises(ValueError, match="no fermionic terms"):
+        bravyi_kitaev_superfast(np.zeros((3, 3)), scalar_offset=1.5)
 
 
 def test_scalar_offset_is_identity_term():
