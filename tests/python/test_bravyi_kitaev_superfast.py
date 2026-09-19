@@ -63,13 +63,15 @@ def _parity_sector_specs(h, V=None):
     return out
 
 
-def _codespace_specs(h, V=None):
-    """Spectra of BKSF on each joint eigenspace of the loop stabilizers.
+def _codespace_spec(h, V=None):
+    """Spectrum of BKSF on the code subspace -- the *joint +1 eigenspace* of
+    the sign-fixed loop stabilizers (no sector search: the stabilizers are
+    sign-fixed so +1 is the physical sector).
 
     Stabilizer matrices are built explicitly on ``nq`` qubits from their
-    (x, z) words -- cudaq's ``to_matrix()`` compacts unused qubit indices,
-    which would misalign the projection on graphs whose stabilizers do not
-    touch qubit 0 (e.g. dense graphs)."""
+    (coeff, x, z) words -- cudaq's ``to_matrix()`` compacts unused qubit
+    indices, which would misalign the projection on graphs whose stabilizers
+    do not touch qubit 0 (e.g. dense graphs)."""
     args = (h,) if V is None else (h, V)
     graph = _build_graph(np.asarray(h, dtype=complex),
                          np.zeros((0, 0, 0, 0)) if V is None
@@ -79,34 +81,21 @@ def _codespace_specs(h, V=None):
     Hb = _dense(bravyi_kitaev_superfast(*args))
     if Hb.shape[0] < dim:                       # op did not touch every qubit
         Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
-    stabs = [_word_matrix(x, z, nq)
-             for _, (x, z) in _stabilizer_words(graph)]
-
-    specs = []
-
-    def recurse(cols, rest):
-        if not rest:
-            specs.append(np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols)))
-            return
-        S = cols.conj().T @ rest[0] @ cols
+    cols = np.eye(dim, dtype=complex)
+    for coeff, (x, z) in _stabilizer_words(graph):
+        S = cols.conj().T @ (coeff * _word_matrix(x, z, nq)) @ cols
         w, U = np.linalg.eigh(S)
-        for sval in (+1, -1):
-            sub = cols @ U[:, np.abs(w - sval) < 1e-7]
-            if sub.shape[1]:
-                recurse(sub, rest[1:])
-
-    recurse(np.eye(dim, dtype=complex), stabs)
-    return specs
+        cols = cols @ U[:, np.abs(w - 1) < 1e-7]   # project onto the +1 sector
+    return np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
 
 
-def _matches_a_jw_sector(h, V=None, atol=1e-10):
-    sectors = _parity_sector_specs(h, V)
-    best = np.inf
-    for spec in _codespace_specs(h, V):
-        for ref in sectors.values():
-            if len(spec) == len(ref):
-                best = min(best, float(np.max(np.abs(spec - ref))))
-    return best
+def _matches_jw_even(h, V=None):
+    """Error between the BKSF code space and JW's even (code) parity sector."""
+    even = _parity_sector_specs(h, V)[+1]
+    spec = _codespace_spec(h, V)
+    if len(spec) != len(even):
+        return np.inf
+    return float(np.max(np.abs(spec - even)))
 
 
 def _max_pauli_weight(op):
@@ -172,7 +161,7 @@ def test_edge_vertex_algebra(name):
 def test_onebody_spectrum_matches_jordan_wigner(name, seed):
     n, edges = _GRAPHS[name]
     h, _ = _random_tight_binding(seed, n, edges)
-    assert _matches_a_jw_sector(h) < 1e-10
+    assert _matches_jw_even(h) < 1e-10
 
 
 @pytest.mark.parametrize("name", ["path-4", "ring-4", "ring-5", "2x2-lattice"])
@@ -180,7 +169,7 @@ def test_onebody_spectrum_matches_jordan_wigner(name, seed):
 def test_density_density_spectrum_matches_jordan_wigner(name, seed):
     n, edges = _GRAPHS[name]
     h, V = _random_tight_binding(seed, n, edges, coulomb=True)
-    assert _matches_a_jw_sector(h, V) < 1e-10
+    assert _matches_jw_even(h, V) < 1e-10
 
 
 def test_hubbard_dimer_ground_state():
@@ -202,7 +191,7 @@ def test_hubbard_dimer_ground_state():
     # the half-filled singlet lives in the even-parity sector (the code space)
     even = _parity_sector_specs(h, V)[+1]
     assert abs(float(even[0]) - e0) < 1e-10     # tensor / convention sanity
-    bksf_ground = min(float(spec[0]) for spec in _codespace_specs(h, V))
+    bksf_ground = float(_codespace_spec(h, V)[0])
     assert abs(bksf_ground - e0) < 1e-10
 
 
@@ -232,6 +221,27 @@ def test_tree_has_no_stabilizers():
     assert bravyi_kitaev_superfast_stabilizers(h) == []
 
 
+@pytest.mark.parametrize("name", ["ring-4", "ring-5", "2x2-lattice"])
+def test_code_space_is_the_joint_plus_one_eigenspace(name):
+    """The sign-fixed stabilizers put the code space at their joint +1
+    eigenspace, which equals JW's even (vacuum) parity sector -- no sector
+    search needed."""
+    n, edges = _GRAPHS[name]
+    h, V = _random_tight_binding(5, n, edges, coulomb=True)
+    Hb = _dense(bravyi_kitaev_superfast(h, V))
+    dim = Hb.shape[0]
+    cols = np.eye(dim, dtype=complex)
+    for s in bravyi_kitaev_superfast_stabilizers(h, V):
+        S = _dense(s)
+        S = np.kron(np.eye(dim // S.shape[0]), S) if S.shape[0] < dim else S
+        w, U = np.linalg.eigh(S)
+        cols = cols @ U[:, np.abs(w - 1) < 1e-7]        # +1 eigenspace
+    spec = np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
+    even = _parity_sector_specs(h, V)[+1]
+    assert len(spec) == len(even)
+    assert np.max(np.abs(spec - even)) < 1e-10
+
+
 # ----------------------------------------------------------------------
 # Locality (the point of BKSF)
 # ----------------------------------------------------------------------
@@ -256,6 +266,44 @@ def test_qubit_count_is_edge_count_with_self_loops():
     n, edges = _GRAPHS["ring-4"]
     h, _ = _random_tight_binding(0, n, edges)
     assert bravyi_kitaev_superfast(h).qubit_count == len(edges)
+
+
+def test_interaction_graph_superset_override():
+    """A caller-supplied edge set (a superset with an extra edge) fixes the
+    qubit layout and still reproduces the fermionic spectrum."""
+    n, edges = _GRAPHS["path-4"]
+    h, _ = _random_tight_binding(1, n, edges)
+    extra = edges + [(0, 3)]                      # add a chord -> +1 qubit, +1 loop
+    op = bravyi_kitaev_superfast(h, interaction_graph=extra)
+    assert op.qubit_count == len(extra)
+    assert len(bravyi_kitaev_superfast_stabilizers(
+        h, interaction_graph=extra)) == 1
+    # spectrum on the (now cyclic) code space still matches JW's even sector
+    Hb = _dense(op)
+    dim = Hb.shape[0]
+    cols = np.eye(dim, dtype=complex)
+    for s in bravyi_kitaev_superfast_stabilizers(h, interaction_graph=extra):
+        S = _dense(s)
+        S = np.kron(np.eye(dim // S.shape[0]), S) if S.shape[0] < dim else S
+        w, U = np.linalg.eigh(S)
+        cols = cols @ U[:, np.abs(w - 1) < 1e-7]
+    spec = np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
+    assert np.max(np.abs(spec - _parity_sector_specs(h)[+1])) < 1e-10
+
+
+def test_interaction_graph_missing_required_edge_raises():
+    h = np.zeros((3, 3))
+    h[0, 1] = h[1, 0] = 1.0
+    h[1, 2] = h[2, 1] = 1.0
+    with pytest.raises(ValueError, match="missing edges"):
+        bravyi_kitaev_superfast(h, interaction_graph=[(0, 1)])   # (1,2) absent
+
+
+def test_interaction_graph_out_of_range_raises():
+    h, _ = _random_tight_binding(0, *_GRAPHS["path-4"])
+    with pytest.raises(ValueError, match="out of range"):
+        bravyi_kitaev_superfast(h, interaction_graph=[(0, 1), (1, 2),
+                                                      (2, 3), (3, 9)])
 
 
 def test_isolated_number_mode_gets_self_loop():
@@ -302,7 +350,7 @@ def test_complex_hopping_matches_jordan_wigner(name, seed):
         z = rng.normal() + 1j * rng.normal()
         h[i, j] = z
         h[j, i] = np.conj(z)
-    assert _matches_a_jw_sector(h) < 1e-10
+    assert _matches_jw_even(h) < 1e-10
 
 
 @pytest.mark.parametrize("m", [3, 4])
@@ -317,7 +365,7 @@ def test_general_two_body_matches_jordan_wigner(m, seed):
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")         # dense-graph warning expected
-        assert _matches_a_jw_sector(h, V) < 1e-10
+        assert _matches_jw_even(h, V) < 1e-10
 
 
 def test_pair_hopping_on_a_lattice():
@@ -336,7 +384,7 @@ def test_pair_hopping_on_a_lattice():
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        assert _matches_a_jw_sector(h, V) < 1e-10
+        assert _matches_jw_even(h, V) < 1e-10
 
 
 def test_dense_graph_warns():
