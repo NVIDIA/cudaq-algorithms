@@ -24,12 +24,20 @@ edge operator ``A_ij`` (X on edge (i,j) dressed with Z on lower-indexed incident
 edges). The low-level (x, z)-word algebra and the ``SpinOperator`` assembly are
 reused verbatim from ``_compilers``.
 
-**Scope (Tier 1).** Real, symmetric one-body integrals plus density-density
-(``n_i n_j``) two-body integrals -- Fermi-Hubbard, extended Hubbard, spinless
-lattice fermions, and the diagonal Coulomb part of molecular Hamiltonians.
-Complex / non-symmetric one-body input and non-density (exchange, pair-hopping,
-general ``a^dag a^dag a a``) two-body input are rejected loudly; use
-``jordan_wigner`` / ``bravyi_kitaev`` for those, or a later BKSF tier.
+**Construction.** The compiler works in the Majorana algebra: a fermionic term
+is expanded into Majorana monomials, normal-ordered to products of distinct
+Majoranas, and each consecutive Majorana pair is mapped to an edge/vertex
+operator via a fixed dictionary (below). Every pair of modes coupled by a term
+is made a graph edge, so each bilinear is a direct edge operator. This supports
+arbitrary (complex, non-symmetric) one-body and arbitrary two-body integrals --
+Fermi-Hubbard and extended Hubbard, Peierls / flux (complex hopping), exchange,
+pair-hopping, and general ``a^dag a^dag a a`` terms.
+
+A two-body tensor densifies the graph (every pair of a term's modes is an
+edge); on a dense graph BKSF uses more qubits than modes with no locality
+advantage, and a ``UserWarning`` is emitted -- Jordan-Wigner / Bravyi-Kitaev
+are cheaper there. BKSF pays off for *sparse* couplings (lattice models),
+where terms stay bounded-weight regardless of system size.
 """
 from __future__ import annotations
 
@@ -107,29 +115,41 @@ def _build_graph(one_body, two_body, tolerance):
 
     if two_body is not None and two_body.size:
         for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
-            i, j, k, l = int(i), int(j), int(k), int(l)
-            if i == j or k == l:
-                continue                       # a^dag a^dag = 0 (or a a = 0)
-            if sorted((i, j)) != sorted((k, l)):
-                raise NotImplementedError(
-                    "bravyi_kitaev_superfast (Tier 1) supports only "
-                    "density-density (n_i n_j) two-body terms; entry "
-                    f"({i},{j},{k},{l}) is a non-diagonal interaction. Use "
-                    "jordan_wigner / bravyi_kitaev for general two-body "
-                    "integrals.")
-            number_modes.update((i, j))
-            # A density-density coupling is an edge of the interaction graph
-            # too: it keeps the graph connected (e.g. Fermi-Hubbard, whose
-            # hopping graph is two disconnected spin chains joined only by
-            # the on-site Coulomb term) so the code subspace is a single
-            # global-parity sector rather than one parity per component.
-            edges.add((i, j))
+            modes = sorted({int(i), int(j), int(k), int(l)})
+            number_modes.update(modes)
+            # Every pair of modes coupled by a two-body term is an edge, so
+            # each Majorana bilinear arising from that term is a direct edge
+            # operator (no path routing needed for correctness). This also
+            # keeps the graph connected -- e.g. Fermi-Hubbard, whose hopping
+            # graph is two disconnected spin chains joined only by the
+            # on-site Coulomb term -- so the code subspace is a single
+            # global-parity sector rather than one parity per component. A
+            # dense two-body tensor therefore yields a dense graph (~N^2/2
+            # edges); BKSF's locality advantage is for sparse couplings.
+            for a in range(len(modes)):
+                for b in range(a + 1, len(modes)):
+                    edges.add((modes[a], modes[b]))
 
     graph_edges = sorted(edges)
     incident_modes = {m for e in graph_edges for m in e}
     for m in sorted(number_modes - incident_modes):
         graph_edges.append((m, m))             # self-loop qubit for B_m
     return _Graph(n, graph_edges)
+
+
+def _warn_if_dense(graph):
+    """BKSF is worthwhile only for sparse interaction graphs; warn otherwise."""
+    active = {m for e in graph.edges for m in e if e[0] != e[1]}
+    coupling = [e for e in graph.edges if e[0] != e[1]]
+    k = len(active)
+    if k >= 4 and len(coupling) > 0.5 * k * (k - 1) / 2:
+        import warnings
+        warnings.warn(
+            f"bravyi_kitaev_superfast: dense interaction graph "
+            f"({len(coupling)} edges over {k} modes, > half of complete); "
+            "BKSF uses more qubits than modes with no locality advantage "
+            "here -- jordan_wigner / bravyi_kitaev are cheaper for dense "
+            "Hamiltonians.", UserWarning, stacklevel=3)
 
 
 # ---------------------------------------------------------------------------
@@ -230,60 +250,109 @@ def _stabilizer_words(graph):
 # Term compiler
 # ---------------------------------------------------------------------------
 
-def _require_real_symmetric(one_body, tolerance):
-    if np.max(np.abs(one_body.imag)) > tolerance:
-        raise ValueError(
-            "bravyi_kitaev_superfast requires a real one-body tensor "
-            "(the edge encoding represents the real-symmetric / electronic-"
-            "structure case); use jordan_wigner / bravyi_kitaev for complex "
-            "integrals.")
-    if np.max(np.abs(one_body - one_body.T)) > tolerance:
-        raise ValueError(
-            "bravyi_kitaev_superfast requires a symmetric one-body tensor "
-            "(h[i,j] == h[j,i]); use jordan_wigner / bravyi_kitaev for a "
-            "non-symmetric one-body Hamiltonian.")
+# The compiler works in the Majorana algebra. Each mode i carries two
+# Majorana operators, gamma_{2i} and gamma_{2i+1}, with
+#   a_i = (gamma_{2i} + i gamma_{2i+1})/2,  a^dag_i = (gamma_{2i} - i gamma_{2i+1})/2.
+# A fermionic term is expanded into a sum of Majorana monomials, normal-
+# ordered to a sorted product of *distinct* Majoranas (gamma^2 = I), then each
+# monomial's consecutive pairs are mapped to edge/vertex operators via the
+# BKSF dictionary (derived from B_i = -i gamma_{2i} gamma_{2i+1} and
+# A_ij = -i gamma_{2i} gamma_{2j}):
+#   gamma_{2i}   gamma_{2j}     = i A_ij            (i < j, edge)
+#   gamma_{2i}   gamma_{2j+1}   = - A_ij B_j
+#   gamma_{2i+1} gamma_{2j}     = - A_ij B_i
+#   gamma_{2i+1} gamma_{2j+1}   = -i A_ij B_i B_j
+#   gamma_{2i}   gamma_{2i+1}   =  i B_i            (same mode)
+# Every bilinear that arises has both modes coupled by the originating term,
+# hence an edge (see _build_graph), so no path routing is needed.
+
+def _ladder_majorana(mode, dagger):
+    """a_i / a^dag_i as [(coeff, majorana_index), ...]."""
+    return [(0.5, 2 * mode),
+            (-0.5j if dagger else 0.5j, 2 * mode + 1)]
+
+
+def _normal_order(sequence):
+    """Reduce a raw product of Majoranas to (sign, sorted distinct tuple)."""
+    reduced: list = []
+    sign = 1.0
+    for mu in sequence:
+        pos = len(reduced) - 1
+        while pos >= 0 and reduced[pos] > mu:
+            sign = -sign
+            pos -= 1
+        if pos >= 0 and reduced[pos] == mu:
+            del reduced[pos]                   # gamma_mu^2 = I
+        else:
+            reduced.insert(pos + 1, mu)
+    return sign, tuple(reduced)
+
+
+def _majorana_terms(one_body, two_body, tolerance):
+    """Full Hamiltonian as {sorted-Majorana-tuple: complex coefficient}."""
+    import itertools
+
+    accumulator: dict = {}
+
+    def expand(coefficient, ladders):
+        factors = [_ladder_majorana(mode, dagger) for mode, dagger in ladders]
+        for choice in itertools.product(*factors):
+            coeff = coefficient
+            indices = []
+            for factor_coeff, index in choice:
+                coeff *= factor_coeff
+                indices.append(index)
+            sign, monomial = _normal_order(indices)
+            accumulator[monomial] = accumulator.get(monomial, 0j) + coeff * sign
+
+    n = one_body.shape[0]
+    for i, j in np.argwhere(np.abs(one_body) > tolerance):
+        expand(complex(one_body[i, j]), [(int(i), True), (int(j), False)])
+    if two_body is not None and two_body.size:
+        for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
+            expand(complex(two_body[i, j, k, l]),
+                   [(int(i), True), (int(j), True),
+                    (int(k), False), (int(l), False)])
+    return {m: c for m, c in accumulator.items() if abs(c) > tolerance}
+
+
+def _bilinear_word(mu, nu, graph):
+    """gamma_mu gamma_nu (mu < nu) as (coefficient, word)."""
+    a, b = mu // 2, nu // 2
+    if a == b:                                 # (2a, 2a+1) -> i B_a
+        return 1j, _b_word(graph, a)
+    A = _a_word(graph, a, b)                    # a < b since mu < nu
+    mu_primary, nu_primary = (mu % 2 == 0), (nu % 2 == 0)
+    if mu_primary and nu_primary:
+        return 1j, A
+    if mu_primary and not nu_primary:
+        phase, word = _wmul(A, _b_word(graph, b))
+        return -phase, word
+    if not mu_primary and nu_primary:
+        phase, word = _wmul(A, _b_word(graph, a))
+        return -phase, word
+    phase, word = _wmul(A, _b_word(graph, a))
+    phase2, word = _wmul(word, _b_word(graph, b))
+    return -1j * phase * phase2, word
+
+
+def _monomial_word(monomial, graph):
+    """A sorted product of distinct Majoranas as (coefficient, word)."""
+    coeff, word = 1.0 + 0j, (0, 0)
+    for k in range(0, len(monomial), 2):
+        c, w = _bilinear_word(monomial[k], monomial[k + 1], graph)
+        coeff *= c
+        phase, word = _wmul(word, w)
+        coeff *= phase
+    return coeff, word
 
 
 def _compile(graph, one_body, two_body, scalar_offset, tolerance):
     accumulator: dict = {(0, 0): complex(scalar_offset)}
-
-    def add(coeff, word):
-        accumulator[word] = accumulator.get(word, 0j) + coeff
-
-    n = one_body.shape[0]
-
-    # one-body: eps_i n_i  and  h_ij (a^dag_i a_j + a^dag_j a_i)
-    for i in range(n):
-        eps = one_body[i, i].real
-        if abs(eps) > tolerance:
-            add(0.5 * eps, (0, 0))
-            add(-0.5 * eps, _b_word(graph, i))
-        for j in range(i + 1, n):
-            t = one_body[i, j].real
-            if abs(t) > tolerance:
-                A = _a_word(graph, i, j)
-                p_i = _wmul(A, _b_word(graph, i))
-                p_j = _wmul(A, _b_word(graph, j))
-                add(0.5j * t * p_i[0], p_i[1])
-                add(-0.5j * t * p_j[0], p_j[1])
-
-    # two-body: density-density  c * n_i n_j  (validated diagonal in _build_graph)
-    if two_body is not None and two_body.size:
-        for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
-            i, j, k, l = int(i), int(j), int(k), int(l)
-            if i == j or k == l:
-                continue
-            coeff = two_body[i, j, k, l].real
-            # (i,j,j,i) -> +n_i n_j ; (i,j,i,j) -> -n_i n_j
-            sign = 1.0 if (k, l) == (j, i) else -1.0
-            c = sign * coeff
-            Bi, Bj = _b_word(graph, i), _b_word(graph, j)
-            BiBj = _wmul(Bi, Bj)
-            add(0.25 * c, (0, 0))
-            add(-0.25 * c, Bi)
-            add(-0.25 * c, Bj)
-            add(0.25 * c * BiBj[0], BiBj[1])
-
+    for monomial, coefficient in _majorana_terms(one_body, two_body,
+                                                 tolerance).items():
+        c, word = _monomial_word(monomial, graph)
+        accumulator[word] = accumulator.get(word, 0j) + coefficient * c
     return _to_spin_operator(accumulator, tolerance)
 
 
@@ -306,19 +375,22 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
 
     Accepts an ``(n, n)`` one-body tensor, optionally with an ``(n, n, n, n)``
     two-body tensor, or a two-body tensor alone; entries are the coefficients
-    of ``adag_i a_j`` and ``adag_i adag_j a_k a_l``. ``scalar_offset`` is added
-    as an identity term; entries and compiled terms below ``tolerance`` are
-    dropped. Returns a ``cudaq.SpinOperator`` acting on the edge qubits.
+    of ``adag_i a_j`` and ``adag_i adag_j a_k a_l``. Arbitrary (complex,
+    non-symmetric) one-body and arbitrary two-body integrals are supported.
+    ``scalar_offset`` is added as an identity term; entries and compiled terms
+    below ``tolerance`` are dropped. Returns a ``cudaq.SpinOperator`` acting on
+    the edge qubits.
 
-    Tier 1 supports real, symmetric one-body integrals and density-density
-    (``n_i n_j``) two-body integrals. Other inputs raise (see the module
-    docstring). Use :func:`bravyi_kitaev_superfast_stabilizers` for the loop
-    stabilizers that fix the code subspace.
+    Two-body couplings densify the interaction graph (every pair of a term's
+    modes becomes an edge); a dense tensor gives a dense graph on which BKSF
+    has no locality advantage over Jordan-Wigner and emits a ``UserWarning``.
+    Use :func:`bravyi_kitaev_superfast_stabilizers` for the loop stabilizers
+    that fix the code subspace.
     """
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
-    _require_real_symmetric(one_body, max(tolerance, 1e-12))
     graph = _build_graph(one_body, two_body_arr, tolerance)
+    _warn_if_dense(graph)
     return _compile(graph, one_body, two_body_arr, scalar_offset, tolerance)
 
 
@@ -335,7 +407,6 @@ def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
     """
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
-    _require_real_symmetric(one_body, max(tolerance, 1e-12))
     graph = _build_graph(one_body, two_body_arr, tolerance)
     return [_to_spin_operator({word: coeff}, tolerance)
             for coeff, word in _stabilizer_words(graph)]
