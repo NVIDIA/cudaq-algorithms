@@ -118,6 +118,12 @@ def _build_graph(one_body, two_body, tolerance):
                     "jordan_wigner / bravyi_kitaev for general two-body "
                     "integrals.")
             number_modes.update((i, j))
+            # A density-density coupling is an edge of the interaction graph
+            # too: it keeps the graph connected (e.g. Fermi-Hubbard, whose
+            # hopping graph is two disconnected spin chains joined only by
+            # the on-site Coulomb term) so the code subspace is a single
+            # global-parity sector rather than one parity per component.
+            edges.add((i, j))
 
     graph_edges = sorted(edges)
     incident_modes = {m for e in graph_edges for m in e}
@@ -199,7 +205,13 @@ def _tree_path(tree, num_modes, src, dst):
 
 def _stabilizer_words(graph):
     """One loop stabilizer per independent cycle: the ordered product of edge
-    operators A around the cycle. Returns a list of (coefficient, word)."""
+    operators A around the cycle. Returns a list of (coefficient, word).
+
+    The raw product of an *odd*-length cycle carries an ``i`` phase (it is
+    anti-Hermitian, eigenvalues +-i); the coefficient is renormalized to a
+    real +-1 so each returned operator is a Hermitian involution. This only
+    relabels which joint eigenvalue tags the code subspace (the eigenspaces
+    are unchanged), fixed downstream by the reference occupation."""
     tree, chords = _spanning_forest(graph)
     stabilizers = []
     for (i, j) in chords:
@@ -208,7 +220,9 @@ def _stabilizer_words(graph):
         for a, b in zip(cycle, cycle[1:]):
             ph, word = _wmul(word, _a_word(graph, a, b))
             phase *= ph
-        stabilizers.append((phase, word))
+        # Hermitianize: real phase -> keep (+-1); imaginary phase -> drop the i.
+        coeff = phase.real if abs(phase.imag) < 1e-9 else phase.imag
+        stabilizers.append((coeff, word))
     return stabilizers
 
 
