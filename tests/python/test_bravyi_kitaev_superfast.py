@@ -63,7 +63,7 @@ def _parity_sector_specs(h, V=None):
     return out
 
 
-def _codespace_spec(h, V=None):
+def _codespace_spec(h, V=None, scalar_offset=0.0):
     """Spectrum of BKSF on the code subspace -- the *joint +1 eigenspace* of
     the sign-fixed loop stabilizers (no sector search: the stabilizers are
     sign-fixed so +1 is the physical sector).
@@ -78,7 +78,7 @@ def _codespace_spec(h, V=None):
                          else np.asarray(V, dtype=complex), 1e-15)
     nq = graph.num_qubits
     dim = 1 << nq
-    Hb = _dense(bravyi_kitaev_superfast(*args))
+    Hb = _dense(bravyi_kitaev_superfast(*args, scalar_offset=scalar_offset))
     if Hb.shape[0] < dim:                       # op did not touch every qubit
         Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
     cols = np.eye(dim, dtype=complex)
@@ -101,6 +101,75 @@ def _matches_jw_even(h, V=None):
 def _max_pauli_weight(op):
     nq = op.qubit_count
     return max(sum(c != "I" for c in term.get_pauli_word(nq)) for term in op)
+
+
+# Independent Fock-space reference (no transform in the loop) --------------
+
+_LOWER = np.array([[0, 1], [0, 0]], dtype=complex)
+
+
+def _dense_fermion_hamiltonian(one_body, two_body, scalar_offset=0.0):
+    """Exact dense Fock-space Hamiltonian via Jordan-Wigner-strung ladder
+    matrices -- independent of the transform under test."""
+    m = one_body.shape[0]
+
+    def annihilator(mode):
+        ops = ([_PAULI["Z"]] * mode + [_LOWER]
+               + [_PAULI["I"]] * (m - mode - 1))[::-1]
+        out = np.array([[1.0 + 0j]])
+        for op in ops:
+            out = np.kron(out, op)
+        return out
+
+    lower = [annihilator(j) for j in range(m)]
+    raise_ = [a.conj().T for a in lower]
+    dim = 1 << m
+    h = scalar_offset * np.eye(dim, dtype=complex)
+    for i, j in np.argwhere(one_body):
+        h += one_body[i, j] * (raise_[i] @ lower[j])
+    for i, j, k, l in np.argwhere(two_body):
+        h += two_body[i, j, k, l] * (raise_[i] @ raise_[j]
+                                     @ lower[k] @ lower[l])
+    return h
+
+
+def _physical_system(n_spatial, seed):
+    """Random Hamiltonian with physical electronic-structure symmetries: real
+    symmetric spatial one-body, 8-fold-symmetric positive-semidefinite spatial
+    two-electron integrals, spin-expanded to interleaved spin orbitals (as in
+    the Jordan-Wigner / Bravyi-Kitaev three-way spectrum test)."""
+    rng = np.random.default_rng(seed)
+    n = n_spatial
+    chem = np.zeros((n, n, n, n))
+    for _ in range(n + 1):
+        s = rng.normal(size=(n, n))
+        s = 0.5 * (s + s.T)
+        chem += float(rng.uniform(0.1, 1.0)) * np.einsum("pq,rs->pqrs", s, s)
+    h_spatial = rng.normal(size=(n, n))
+    h_spatial = 0.5 * (h_spatial + h_spatial.T)
+    reordered = np.ascontiguousarray(chem.transpose(0, 2, 3, 1))
+    m = 2 * n
+    one_body = np.zeros((m, m), dtype=complex)
+    two_body = np.zeros((m, m, m, m), dtype=complex)
+    for p in range(n):
+        for q in range(n):
+            one_body[2 * p, 2 * q] = h_spatial[p, q]
+            one_body[2 * p + 1, 2 * q + 1] = h_spatial[p, q]
+            for r in range(n):
+                for s in range(n):
+                    c = 0.5 * reordered[p, q, r, s]
+                    two_body[2 * p, 2 * q, 2 * r, 2 * s] = c
+                    two_body[2 * p + 1, 2 * q + 1, 2 * r + 1, 2 * s + 1] = c
+                    two_body[2 * p, 2 * q + 1, 2 * r + 1, 2 * s] = c
+                    two_body[2 * p + 1, 2 * q, 2 * r, 2 * s + 1] = c
+    return one_body, two_body
+
+
+def _even_sector_spectrum(matrix):
+    dim = matrix.shape[0]
+    parity = np.array([(-1) ** bin(k).count("1") for k in range(dim)])
+    idx = np.where(parity == +1)[0]
+    return np.sort(np.linalg.eigvalsh(matrix[np.ix_(idx, idx)]))
 
 
 # Graph presets (edges only; on-site / hopping / Coulomb filled per test)
@@ -170,6 +239,32 @@ def test_density_density_spectrum_matches_jordan_wigner(name, seed):
     n, edges = _GRAPHS[name]
     h, V = _random_tight_binding(seed, n, edges, coulomb=True)
     assert _matches_jw_even(h, V) < 1e-10
+
+
+@pytest.mark.parametrize("seed", [2, 3, 4])
+def test_molecular_hamiltonian_matches_exact_diagonalization(seed):
+    """The analog of the JW/BK three-way spectrum test: build a molecular-
+    symmetric Hamiltonian, diagonalize the exact fermionic operator, and
+    compare to BKSF.
+
+    Unlike the linear encodings -- whose full qubit spectrum equals the whole
+    Fock spectrum -- BKSF represents one fermion-parity sector on its code
+    subspace, so the comparison is BKSF's code space (joint +1 stabilizer
+    eigenspace) against the exact Hamiltonian's even-parity sector. The general
+    two-body integrals make a complete interaction graph, so this runs at 4
+    spin-orbitals (6 qubits)."""
+    one_body, two_body = _physical_system(2, seed)      # 4 spin-orbitals
+    offset = 0.317
+    exact_even = _even_sector_spectrum(
+        _dense_fermion_hamiltonian(one_body, two_body, offset))
+    jw_even = _even_sector_spectrum(
+        _dense(jordan_wigner(one_body, two_body, scalar_offset=offset)))
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")                 # dense (K4) graph warns
+        code = _codespace_spec(one_body, two_body, scalar_offset=offset)
+    np.testing.assert_allclose(code, exact_even, atol=1e-10)
+    np.testing.assert_allclose(code, jw_even, atol=1e-10)
 
 
 def test_hubbard_dimer_ground_state():
