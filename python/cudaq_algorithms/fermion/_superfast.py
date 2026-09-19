@@ -41,6 +41,9 @@ where terms stay bounded-weight regardless of system size.
 """
 from __future__ import annotations
 
+import itertools
+import warnings
+
 import numpy as np
 
 from ._compilers import _word_product, _to_spin_operator, _validate_tensors
@@ -131,14 +134,37 @@ def _required_structure(one_body, two_body, tolerance):
     return edges, number_modes
 
 
+def _connected_components(active, edges):
+    """Connected components (as root sets) of ``active`` modes over ``edges``."""
+    parent = {m: m for m in active}
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for (i, j) in edges:
+        if i in parent and j in parent:
+            parent[find(i)] = find(j)
+    return {find(m) for m in active}
+
+
 def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
     """Interaction graph from the nonzero terms (or a caller-supplied edge
-    list), with self-loops added for isolated modes that carry a number term.
+    list).
 
     A supplied ``interaction_graph`` must be a *superset* of the edges the
     terms require (every pair of modes coupled by a term); extra edges are
     allowed (they add qubits and stabilizers). A subset that would need
-    routing a bilinear through a path is rejected."""
+    routing a bilinear through a path is rejected.
+
+    The graph over the modes that carry a term must be **connected**: BKSF
+    encodes each connected component's even-parity subalgebra independently,
+    so a disconnected graph would not represent a single global fermion-parity
+    sector (and an isolated mode carrying only a number term has no faithful
+    ``B_i``). Both cases raise, pointing at ``interaction_graph`` to add
+    connecting edges (or map the components separately)."""
     n = one_body.shape[0]
     required, number_modes = _required_structure(one_body, two_body, tolerance)
 
@@ -162,11 +188,28 @@ def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
                 "is not supported); supply a superset or omit "
                 "interaction_graph.")
 
-    graph_edges = sorted(edges)
-    incident_modes = {m for e in graph_edges for m in e}
-    for m in sorted(number_modes - incident_modes):
-        graph_edges.append((m, m))             # self-loop qubit for B_m
-    return _Graph(n, graph_edges)
+    active = set(number_modes) | {m for e in edges for m in e}
+    if not active:
+        raise ValueError(
+            "bravyi_kitaev_superfast has no fermionic terms to encode (the "
+            "integrals are all below tolerance); there is no interaction graph "
+            "and no qubits. Add a scalar_offset to jordan_wigner instead if a "
+            "constant is all that is needed.")
+
+    components = _connected_components(active, edges)
+    isolated = sorted(m for m in active if all(m not in e for e in edges))
+    if len(components) > 1 or isolated:
+        detail = (f"isolated modes {isolated}" if isolated else
+                  "multiple disconnected components")
+        raise ValueError(
+            "bravyi_kitaev_superfast requires a connected interaction "
+            f"graph, but the Hamiltonian's graph has {detail}. BKSF fixes "
+            "fermion parity per connected component, so a disconnected "
+            "graph does not map to a single global-parity sector. Add "
+            "connecting edges via interaction_graph=, or transform each "
+            "component separately.")
+
+    return _Graph(n, sorted(edges))
 
 
 def _warn_if_dense(graph):
@@ -175,7 +218,6 @@ def _warn_if_dense(graph):
     coupling = [e for e in graph.edges if e[0] != e[1]]
     k = len(active)
     if k >= 4 and len(coupling) > 0.5 * k * (k - 1) / 2:
-        import warnings
         warnings.warn(
             f"bravyi_kitaev_superfast: dense interaction graph "
             f"({len(coupling)} edges over {k} modes, > half of complete); "
@@ -324,8 +366,6 @@ def _normal_order(sequence):
 
 def _majorana_terms(one_body, two_body, tolerance):
     """Full Hamiltonian as {sorted-Majorana-tuple: complex coefficient}."""
-    import itertools
-
     accumulator: dict = {}
 
     def expand(coefficient, ladders):
@@ -352,21 +392,23 @@ def _majorana_terms(one_body, two_body, tolerance):
 
 def _bilinear_word(mu, nu, graph):
     """gamma_mu gamma_nu (mu < nu) as (coefficient, word)."""
+    # The four branches are the dictionary in the module docstring; a mode's
+    # secondary Majorana gamma_{2a+1} = i gamma_{2a} B_a introduces a B factor.
     a, b = mu // 2, nu // 2
-    if a == b:                                 # (2a, 2a+1) -> i B_a
+    if a == b:                                 # gamma_{2a} gamma_{2a+1} =  i B_a
         return 1j, _b_word(graph, a)
     A = _a_word(graph, a, b)                    # a < b since mu < nu
     mu_primary, nu_primary = (mu % 2 == 0), (nu % 2 == 0)
-    if mu_primary and nu_primary:
+    if mu_primary and nu_primary:              # gamma_{2a} gamma_{2b}   =  i A_ab
         return 1j, A
-    if mu_primary and not nu_primary:
+    if mu_primary and not nu_primary:          # gamma_{2a} gamma_{2b+1} = -A_ab B_b
         phase, word = _wmul(A, _b_word(graph, b))
         return -phase, word
-    if not mu_primary and nu_primary:
+    if not mu_primary and nu_primary:          # gamma_{2a+1} gamma_{2b} = -A_ab B_a
         phase, word = _wmul(A, _b_word(graph, a))
         return -phase, word
-    phase, word = _wmul(A, _b_word(graph, a))
-    phase2, word = _wmul(word, _b_word(graph, b))
+    phase, word = _wmul(A, _b_word(graph, a))   # gamma_{2a+1} gamma_{2b+1}
+    phase2, word = _wmul(word, _b_word(graph, b))  #             = -i A_ab B_a B_b
     return -1j * phase * phase2, word
 
 
@@ -421,6 +463,14 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     to control the qubit layout, or to add extra edges. It must be a superset
     of the edges the Hamiltonian requires; the ordering of the edges fixes the
     qubit indexing.
+
+    The interaction graph over the modes that carry a term must be
+    **connected** (BKSF fixes fermion parity per connected component, so a
+    disconnected graph would not map to a single global-parity sector); a
+    disconnected graph or an isolated number-only mode raises, pointing at
+    ``interaction_graph`` to add connecting edges. Hermiticity of the input is
+    the caller's responsibility -- non-Hermitian integrals compile to a
+    non-Hermitian operator, as for :func:`jordan_wigner`.
 
     Two-body couplings densify the interaction graph (every pair of a term's
     modes becomes an edge); a dense tensor gives a dense graph on which BKSF
