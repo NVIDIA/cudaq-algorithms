@@ -142,6 +142,55 @@ input entries and compiled terms below `tolerance` (default ``1e-15``) are
 dropped. The result is a `cudaq.SpinOperator`, ready for
 `PauliLCU`/`Walk`/`QSVT` or `Trotter`.
 
+Locality-preserving mapping (Bravyi-Kitaev Superfast)
+-----------------------------------------------------
+
+Jordan-Wigner and Bravyi-Kitaev are *linear* encodings — ``n`` modes to ``n``
+qubits — but a single hopping term ``adag_i a_j`` becomes a Pauli string whose
+weight grows with the index distance ``|i - j|`` (a Z-string under
+Jordan-Wigner). For a lattice model that weight can span the whole register
+even between neighbouring sites.
+
+`bravyi_kitaev_superfast` (Setia & Whitfield, `arXiv:1712.00446
+<https://arxiv.org/abs/1712.00446>`_) is an **edge encoding**: it places one
+qubit on each edge of the Hamiltonian's interaction graph, and every local term
+maps to a **bounded-weight** operator (set by the graph degree, not the system
+size).
+
+.. code-block:: python
+
+    from cudaq_algorithms.fermion import bravyi_kitaev_superfast
+
+    h = bravyi_kitaev_superfast(one_body, two_body, scalar_offset=e_nuc)
+
+It takes the same tensors and conventions as the linear transforms and returns
+a `cudaq.SpinOperator`, now acting on the **edge qubits**. Arbitrary (complex,
+non-symmetric) one-body and arbitrary two-body integrals are supported.
+
+The trade-off is qubit count. The register size is the number of graph edges:
+about ``2N`` for a 2-D lattice (a good deal, since terms stay local as the
+lattice grows), but ``~N^2/2`` for a dense (e.g. general molecular) Hamiltonian,
+where BKSF uses *more* qubits than modes with no locality benefit — a
+``UserWarning`` flags that regime, and Jordan-Wigner / Bravyi-Kitaev are the
+better choice there. BKSF pays off for **sparse, local couplings**: Hubbard and
+extended-Hubbard models, spinless lattice fermions, and flux (Peierls) lattices.
+
+The encoding carries a **code subspace** fixed by one loop stabilizer per
+independent cycle of the interaction graph:
+
+.. code-block:: python
+
+    from cudaq_algorithms.fermion import bravyi_kitaev_superfast_stabilizers
+
+    stabilizers = bravyi_kitaev_superfast_stabilizers(one_body, two_body)
+
+Each stabilizer is a Hermitian involution that commutes with the mapped
+Hamiltonian and is sign-fixed so that the physical states are their **joint
++1 eigenspace** — the even fermion-parity (vacuum) sector. Restricting the
+mapped Hamiltonian to that eigenspace recovers the fermionic spectrum. Pass
+``interaction_graph=`` (an iterable of ``(i, j)`` mode pairs, a superset of the
+edges the Hamiltonian requires) to pin the edge set and qubit layout.
+
 The chemistry bridge (spatial integrals to a qubit Hamiltonian)
 ---------------------------------------------------------------
 

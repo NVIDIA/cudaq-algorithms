@@ -98,9 +98,8 @@ class _Graph:
         return self.qubit_of[(min(i, j), max(i, j))]
 
 
-def _build_graph(one_body, two_body, tolerance):
-    """Interaction graph from the nonzero terms, with self-loops added for
-    isolated modes that still carry a number term."""
+def _required_structure(one_body, two_body, tolerance):
+    """Edges every Majorana bilinear needs, and modes carrying a number term."""
     n = one_body.shape[0]
     edges = set()
     number_modes = set()
@@ -117,18 +116,51 @@ def _build_graph(one_body, two_body, tolerance):
         for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
             modes = sorted({int(i), int(j), int(k), int(l)})
             number_modes.update(modes)
-            # Every pair of modes coupled by a two-body term is an edge, so
-            # each Majorana bilinear arising from that term is a direct edge
+            # Every pair of modes coupled by a two-body term must be an edge,
+            # so each Majorana bilinear arising from that term is a direct edge
             # operator (no path routing needed for correctness). This also
             # keeps the graph connected -- e.g. Fermi-Hubbard, whose hopping
-            # graph is two disconnected spin chains joined only by the
-            # on-site Coulomb term -- so the code subspace is a single
-            # global-parity sector rather than one parity per component. A
-            # dense two-body tensor therefore yields a dense graph (~N^2/2
-            # edges); BKSF's locality advantage is for sparse couplings.
+            # graph is two disconnected spin chains joined only by the on-site
+            # Coulomb term -- so the code subspace is a single global-parity
+            # sector rather than one parity per component. A dense two-body
+            # tensor therefore needs a dense graph (~N^2/2 edges); BKSF's
+            # locality advantage is for sparse couplings.
             for a in range(len(modes)):
                 for b in range(a + 1, len(modes)):
                     edges.add((modes[a], modes[b]))
+    return edges, number_modes
+
+
+def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
+    """Interaction graph from the nonzero terms (or a caller-supplied edge
+    list), with self-loops added for isolated modes that carry a number term.
+
+    A supplied ``interaction_graph`` must be a *superset* of the edges the
+    terms require (every pair of modes coupled by a term); extra edges are
+    allowed (they add qubits and stabilizers). A subset that would need
+    routing a bilinear through a path is rejected."""
+    n = one_body.shape[0]
+    required, number_modes = _required_structure(one_body, two_body, tolerance)
+
+    if interaction_graph is None:
+        edges = set(required)
+    else:
+        edges = set()
+        for pair in interaction_graph:
+            i, j = int(pair[0]), int(pair[1])
+            if not (0 <= i < n and 0 <= j < n):
+                raise ValueError(
+                    f"interaction_graph edge {(i, j)} is out of range for "
+                    f"{n} modes.")
+            edges.add((min(i, j), max(i, j)))
+        missing = required - edges
+        if missing:
+            raise ValueError(
+                "interaction_graph is missing edges required by the "
+                f"Hamiltonian: {sorted(missing)}. Every pair of modes coupled "
+                "by a term must be an edge (routing a bilinear through a path "
+                "is not supported); supply a superset or omit "
+                "interaction_graph.")
 
     graph_edges = sorted(edges)
     incident_modes = {m for e in graph_edges for m in e}
@@ -224,25 +256,27 @@ def _tree_path(tree, num_modes, src, dst):
 
 
 def _stabilizer_words(graph):
-    """One loop stabilizer per independent cycle: the ordered product of edge
-    operators A around the cycle. Returns a list of (coefficient, word).
+    """One loop stabilizer per independent cycle. Returns a list of
+    (coefficient, word) with the coefficient sign-fixed so that the code
+    subspace is the joint ``+1`` eigenspace.
 
-    The raw product of an *odd*-length cycle carries an ``i`` phase (it is
-    anti-Hermitian, eigenvalues +-i); the coefficient is renormalized to a
-    real +-1 so each returned operator is a Hermitian involution. This only
-    relabels which joint eigenvalue tags the code subspace (the eigenspaces
-    are unchanged), fixed downstream by the reference occupation."""
+    The stabilizer is the (unphased) Pauli word of the product of edge
+    operators around a fundamental cycle, times ``(-1)^b`` where ``b`` is the
+    number of cycle edges traversed from a higher to a lower mode index. The
+    fermionic loop operator is a scalar on the code space; this orientation
+    count is exactly the sign that makes that scalar ``+1`` (the raw product's
+    ``i``/``-i`` phases and the cycle length drop out). The resulting operator
+    is a Hermitian involution whose ``+1`` eigenspace is the physical (even
+    fermion-parity / vacuum) sector."""
     tree, chords = _spanning_forest(graph)
     stabilizers = []
     for (i, j) in chords:
         cycle = _tree_path(tree, graph.num_modes, j, i) + [j]  # close the loop
-        phase, word = 1.0 + 0j, (0, 0)
+        backward = sum(1 for a, b in zip(cycle, cycle[1:]) if a > b)
+        word = (0, 0)
         for a, b in zip(cycle, cycle[1:]):
-            ph, word = _wmul(word, _a_word(graph, a, b))
-            phase *= ph
-        # Hermitianize: real phase -> keep (+-1); imaginary phase -> drop the i.
-        coeff = phase.real if abs(phase.imag) < 1e-9 else phase.imag
-        stabilizers.append((coeff, word))
+            _, word = _wmul(word, _a_word(graph, a, b))
+        stabilizers.append(((-1.0) ** backward, word))
     return stabilizers
 
 
@@ -363,7 +397,8 @@ def _compile(graph, one_body, two_body, scalar_offset, tolerance):
 def bravyi_kitaev_superfast(one_body_or_two_body,
                             two_body=None,
                             scalar_offset: float = 0.0,
-                            tolerance: float = 1e-15):
+                            tolerance: float = 1e-15,
+                            interaction_graph=None):
     """Bravyi-Kitaev Superfast transform of fermionic integrals (Setia-Whitfield,
     arXiv:1712.00446).
 
@@ -381,6 +416,12 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     below ``tolerance`` are dropped. Returns a ``cudaq.SpinOperator`` acting on
     the edge qubits.
 
+    ``interaction_graph`` optionally pins the edge set (an iterable of
+    ``(i, j)`` mode pairs) instead of inferring it from the nonzero terms --
+    to control the qubit layout, or to add extra edges. It must be a superset
+    of the edges the Hamiltonian requires; the ordering of the edges fixes the
+    qubit indexing.
+
     Two-body couplings densify the interaction graph (every pair of a term's
     modes becomes an edge); a dense tensor gives a dense graph on which BKSF
     has no locality advantage over Jordan-Wigner and emits a ``UserWarning``.
@@ -389,24 +430,29 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     """
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
-    graph = _build_graph(one_body, two_body_arr, tolerance)
+    graph = _build_graph(one_body, two_body_arr, tolerance, interaction_graph)
     _warn_if_dense(graph)
     return _compile(graph, one_body, two_body_arr, scalar_offset, tolerance)
 
 
 def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
                                         two_body=None,
-                                        tolerance: float = 1e-15):
+                                        tolerance: float = 1e-15,
+                                        interaction_graph=None):
     """Loop stabilizers of the BKSF code subspace for the given integrals.
 
     Returns one ``cudaq.SpinOperator`` per independent cycle of the interaction
-    graph (empty for a tree graph). Each is Hermitian, squares to the identity,
-    and commutes with the mapped Hamiltonian; the physical code subspace is a
-    joint eigenspace of these operators. Reference-state (occupation) fixing of
-    the eigenvalues is a later tier.
+    graph (empty for a tree graph). Each is a Hermitian involution, commutes
+    with the mapped Hamiltonian, and is sign-fixed so that the **code subspace
+    is their joint +1 eigenspace** -- the physical (even fermion-parity /
+    vacuum) sector, matching the same sector under Jordan-Wigner. Restricting
+    the mapped Hamiltonian to that eigenspace recovers the fermionic spectrum.
+
+    ``interaction_graph`` pins the edge set as in :func:`bravyi_kitaev_superfast`
+    (use the same value for both so the stabilizers act on the matching qubits).
     """
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
-    graph = _build_graph(one_body, two_body_arr, tolerance)
+    graph = _build_graph(one_body, two_body_arr, tolerance, interaction_graph)
     return [_to_spin_operator({word: coeff}, tolerance)
             for coeff, word in _stabilizer_words(graph)]
