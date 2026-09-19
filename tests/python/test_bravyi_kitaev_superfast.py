@@ -20,7 +20,26 @@ import cudaq
 from cudaq_algorithms.fermion import (jordan_wigner, bravyi_kitaev_superfast,
                                       bravyi_kitaev_superfast_stabilizers)
 from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
-                                                 _anticommute, _build_graph)
+                                                 _anticommute, _build_graph,
+                                                 _stabilizer_words)
+
+_PAULI = {
+    "I": np.eye(2),
+    "X": np.array([[0, 1], [1, 0]], dtype=complex),
+    "Y": np.array([[0, -1j], [1j, 0]]),
+    "Z": np.array([[1, 0], [0, -1]], dtype=complex),
+}
+
+
+def _word_matrix(x, z, nq):
+    """Dense matrix of the Pauli word (x, z) on ``nq`` qubits, little-endian."""
+    m = np.array([[1.0 + 0j]])
+    for q in range(nq):
+        bit = 1 << q
+        p = ("Y" if (x & bit and z & bit) else "X" if x & bit
+             else "Z" if z & bit else "I")
+        m = np.kron(_PAULI[p], m)
+    return m
 
 
 # ----------------------------------------------------------------------
@@ -45,29 +64,34 @@ def _parity_sector_specs(h, V=None):
 
 
 def _codespace_specs(h, V=None):
-    """Spectra of BKSF on each joint eigenspace of the loop stabilizers."""
-    op = bravyi_kitaev_superfast(h) if V is None else \
-        bravyi_kitaev_superfast(h, V)
-    Hb = _dense(op)
-    dim = Hb.shape[0]
-    stabs = bravyi_kitaev_superfast_stabilizers(h) if V is None else \
-        bravyi_kitaev_superfast_stabilizers(h, V)
+    """Spectra of BKSF on each joint eigenspace of the loop stabilizers.
 
-    def embed(mat):
-        return np.kron(np.eye(dim // mat.shape[0]), mat) \
-            if mat.shape[0] < dim else mat
+    Stabilizer matrices are built explicitly on ``nq`` qubits from their
+    (x, z) words -- cudaq's ``to_matrix()`` compacts unused qubit indices,
+    which would misalign the projection on graphs whose stabilizers do not
+    touch qubit 0 (e.g. dense graphs)."""
+    args = (h,) if V is None else (h, V)
+    graph = _build_graph(np.asarray(h, dtype=complex),
+                         np.zeros((0, 0, 0, 0)) if V is None
+                         else np.asarray(V, dtype=complex), 1e-15)
+    nq = graph.num_qubits
+    dim = 1 << nq
+    Hb = _dense(bravyi_kitaev_superfast(*args))
+    if Hb.shape[0] < dim:                       # op did not touch every qubit
+        Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
+    stabs = [_word_matrix(x, z, nq)
+             for _, (x, z) in _stabilizer_words(graph)]
 
     specs = []
 
     def recurse(cols, rest):
         if not rest:
-            Hp = cols.conj().T @ Hb @ cols
-            specs.append(np.sort(np.linalg.eigvalsh(Hp)))
+            specs.append(np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols)))
             return
-        S = cols.conj().T @ embed(_dense(rest[0])) @ cols
+        S = cols.conj().T @ rest[0] @ cols
         w, U = np.linalg.eigh(S)
         for sval in (+1, -1):
-            sub = cols @ U[:, np.abs(w - sval) < 1e-9]
+            sub = cols @ U[:, np.abs(w - sval) < 1e-7]
             if sub.shape[1]:
                 recurse(sub, rest[1:])
 
@@ -262,27 +286,65 @@ def test_returns_spin_operator():
 
 
 # ----------------------------------------------------------------------
-# Rejected inputs (Tier 1 scope)
+# General one-body and two-body (the Majorana compiler)
 # ----------------------------------------------------------------------
 
-def test_complex_one_body_rejected():
-    h = np.zeros((2, 2), dtype=complex)
-    h[0, 1] = 1j
-    h[1, 0] = -1j
-    with pytest.raises(ValueError, match="real"):
-        bravyi_kitaev_superfast(h)
+@pytest.mark.parametrize("name", ["ring-4", "ring-5", "2x2-lattice"])
+@pytest.mark.parametrize("seed", [2, 8])
+def test_complex_hopping_matches_jordan_wigner(name, seed):
+    """Peierls / flux phases: Hermitian complex hopping on a lattice."""
+    n, edges = _GRAPHS[name]
+    rng = np.random.default_rng(seed)
+    h = np.zeros((n, n), dtype=complex)
+    for i in range(n):
+        h[i, i] = rng.normal()
+    for (i, j) in edges:
+        z = rng.normal() + 1j * rng.normal()
+        h[i, j] = z
+        h[j, i] = np.conj(z)
+    assert _matches_a_jw_sector(h) < 1e-10
 
 
-def test_asymmetric_one_body_rejected():
-    h = np.array([[0.0, 1.0], [0.5, 0.0]])
-    with pytest.raises(ValueError, match="symmetric"):
-        bravyi_kitaev_superfast(h)
+@pytest.mark.parametrize("m", [3, 4])
+@pytest.mark.parametrize("seed", [4, 15])
+def test_general_two_body_matches_jordan_wigner(m, seed):
+    """Arbitrary Hermitian two-body integrals (dense graph)."""
+    rng = np.random.default_rng(seed)
+    h = rng.normal(size=(m, m)) + 1j * rng.normal(size=(m, m))
+    h = 0.5 * (h + h.conj().T)
+    V = 0.3 * (rng.normal(size=(m,) * 4) + 1j * rng.normal(size=(m,) * 4))
+    V = 0.5 * (V + V.transpose(3, 2, 1, 0).conj())
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")         # dense-graph warning expected
+        assert _matches_a_jw_sector(h, V) < 1e-10
 
 
-def test_nondiagonal_two_body_rejected():
-    h = np.zeros((3, 3))
-    h[0, 1] = h[1, 0] = 1.0
-    V = np.zeros((3, 3, 3, 3))
-    V[0, 1, 2, 0] = 1.0                         # not density-density
-    with pytest.raises(NotImplementedError, match="density-density"):
+def test_pair_hopping_on_a_lattice():
+    """A single Hermitian pair-hopping term adag_0 adag_1 a_2 a_3 + h.c. on a
+    chain -- a non-density two-body term."""
+    n = 4
+    h = np.zeros((n, n))
+    for i in range(n):
+        h[i, i] = 0.2 * (i + 1)
+    for (i, j) in [(0, 1), (1, 2), (2, 3)]:
+        h[i, j] = h[j, i] = -0.7
+    V = np.zeros((n, n, n, n), dtype=complex)
+    c = 0.4 + 0.1j
+    V[0, 1, 2, 3] += c
+    V[3, 2, 1, 0] += np.conj(c)                 # Hermitian pair
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert _matches_a_jw_sector(h, V) < 1e-10
+
+
+def test_dense_graph_warns():
+    """A dense two-body tensor triggers the no-advantage UserWarning."""
+    m = 4
+    rng = np.random.default_rng(0)
+    h = np.zeros((m, m))
+    V = 0.3 * rng.normal(size=(m,) * 4)
+    V = 0.5 * (V + V.transpose(3, 2, 1, 0))     # real symmetric-ish, dense
+    with pytest.warns(UserWarning, match="dense interaction graph"):
         bravyi_kitaev_superfast(h, V)
