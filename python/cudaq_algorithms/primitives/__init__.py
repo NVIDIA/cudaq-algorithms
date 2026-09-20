@@ -26,8 +26,8 @@ constructions compose with: the CDKM/Cuccaro ripple-carry family
 ``subtract_constant``, ``cmp_ge_constant``, and the register-register
 comparators ``cmp_ge_register`` / ``cmp_gt_register``) and the ancilla-free Draper
 QFT family (``qft`` / ``iqft``, ``add_constant_qft`` /
-``subtract_constant_qft``, the ``cmp_ge_constant_qft`` /
-``cmp_ge_constant_qft_adj`` pair). Every inverse is hand-written and the
+``subtract_constant_qft``, the ``cmp_ge_constant_qft_shift`` /
+``cmp_ge_constant_qft_shift_adj`` pair). Every inverse is hand-written and the
 gate prices are compiler-pinned by the resource tests.
 
 Import the subpackage directly (``from cudaq_algorithms.primitives
@@ -35,8 +35,8 @@ import QROM``); nothing here is re-exported from the package root.
 """
 
 from ._arithmetic import (add_constant, add_constant_qft, add_register,
-                          cmp_ge_constant, cmp_ge_constant_qft,
-                          cmp_ge_constant_qft_adj, cmp_ge_register,
+                          cmp_ge_constant, cmp_ge_constant_qft_shift,
+                          cmp_ge_constant_qft_shift_adj, cmp_ge_register,
                           cmp_gt_register, iqft, phase_add_constant, qft,
                           subtract_constant, subtract_constant_qft,
                           subtract_register)
@@ -50,8 +50,8 @@ __all__ = [
     "add_constant_qft",
     "add_register",
     "cmp_ge_constant",
-    "cmp_ge_constant_qft",
-    "cmp_ge_constant_qft_adj",
+    "cmp_ge_constant_qft_shift",
+    "cmp_ge_constant_qft_shift_adj",
     "cmp_ge_register",
     "cmp_gt_register",
     "iqft",
