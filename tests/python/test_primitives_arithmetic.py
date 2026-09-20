@@ -22,6 +22,8 @@ while the Draper QFT family uses only ``r1`` rotations. Each number is stated
 on the kernel's own docstring; the tests pin it.
 """
 
+import re
+
 import numpy as np
 import pytest
 
@@ -613,3 +615,54 @@ def test_qft_comparator_costs_rotations_not_toffolis(n):
     trivial = cudaq.estimate_resources(_res_cmp_ge_constant_qft_shift, n, 0, 0)
     assert trivial.count("r1") == 0
     assert trivial.count("x") == 1
+
+
+# ----------------------------------------------------------------------
+# Controlled composition (cudaq.control of a kernel that calls a sub-kernel)
+# ----------------------------------------------------------------------
+#
+# cudaq.control of a device kernel that calls another @cudaq.kernel regressed
+# on CUDA-Q 0.15.x (kernel-specialization failure: "Unhandled controlled
+# quantum kernel call"); it is correct on 0.14.2 and again on 0.16.0. Since the
+# library targets 0.16, this pins the controlled-composition behaviour there and
+# skips on the affected 0.15.x line.
+
+
+def _cudaq_version():
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", cudaq.__version__)
+    return tuple(int(part) for part in match.groups()) if match else (0, 0, 0)
+
+
+_CONTROLLED_COMPOSITION_OK = _cudaq_version() >= (0, 16, 0)
+
+
+@cudaq.kernel
+def _run_controlled_add_constant_qft(n: int, tval: int, constant: int):
+    ctrl = cudaq.qubit()
+    target = cudaq.qvector(n)
+    h(ctrl)                                  # control in a uniform superposition
+    for k in range(n):
+        if ((tval >> k) & 1) == 1:
+            x(target[k])
+    # add_constant_qft calls qft / iqft, so this exercises a controlled call.
+    cudaq.control(arith.add_constant_qft, ctrl, target, constant)
+
+
+@pytest.mark.skipif(
+    not _CONTROLLED_COMPOSITION_OK,
+    reason="cudaq.control of a composed kernel regressed on 0.15.x "
+           "(specialization failure); correct on 0.14.2 and 0.16.0")
+@pytest.mark.parametrize("n", [2, 3])
+def test_controlled_add_constant_qft_superposed_control(n):
+    # A superposed control: the branch that fires must, and the other must not.
+    # If control silently applied on both branches, the ctrl = 0 component would
+    # be shifted too and this would fail.
+    for tval in range(1 << n):
+        for constant in range(1 << n):
+            state = np.array(cudaq.get_state(
+                _run_controlled_add_constant_qft, n, tval, constant))
+            expected = np.zeros(1 << (n + 1), dtype=np.complex128)
+            amp = 1.0 / np.sqrt(2)
+            expected[tval << 1] += amp                                # ctrl = 0
+            expected[1 + (((tval + constant) % (1 << n)) << 1)] += amp  # ctrl = 1
+            np.testing.assert_allclose(state, expected, atol=1e-10)
