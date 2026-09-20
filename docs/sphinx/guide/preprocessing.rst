@@ -191,6 +191,13 @@ mapped Hamiltonian to that eigenspace recovers the fermionic spectrum. Pass
 ``interaction_graph=`` (an iterable of ``(i, j)`` mode pairs, a superset of the
 edges the Hamiltonian requires) to pin the edge set and qubit layout.
 
+The interaction graph over the modes that carry a term must be **connected**:
+BKSF fixes fermion parity per connected component, so a disconnected graph
+would represent a product of per-component parity sectors rather than a single
+global one. A disconnected graph or an isolated mode that carries only a number
+term therefore raises — connect them with ``interaction_graph=`` (add a bridging
+edge), or transform each component separately.
+
 The chemistry bridge (spatial integrals to a qubit Hamiltonian)
 ---------------------------------------------------------------
 
