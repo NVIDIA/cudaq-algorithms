@@ -470,6 +470,13 @@ def test_empty_hamiltonian_raises():
         bravyi_kitaev_superfast(np.zeros((3, 3)), scalar_offset=1.5)
 
 
+def test_interaction_graph_self_loop_rejected():
+    """A self-loop in interaction_graph cannot smuggle in an isolated mode
+    (it would leave that mode's parity unconstrained)."""
+    with pytest.raises(ValueError, match="self-loop"):
+        bravyi_kitaev_superfast(np.array([[0.7]]), interaction_graph=[(0, 0)])
+
+
 def test_scalar_offset_is_identity_term():
     h, _ = _random_tight_binding(0, *_GRAPHS["path-4"])
     base = bravyi_kitaev_superfast(h)

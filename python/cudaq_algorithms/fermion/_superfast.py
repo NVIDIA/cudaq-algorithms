@@ -79,9 +79,9 @@ def _anticommute(w1, w2):
 class _Graph:
     """Interaction graph with a fixed edge->qubit indexing and incidence.
 
-    ``edges[q]`` is the mode pair carried by qubit ``q``. A self-loop ``(i, i)``
-    is a dedicated qubit that makes ``B_i`` non-trivial for a mode that carries
-    a number term but no coupling (an isolated vertex)."""
+    ``edges[q]`` is the ``(i, j)`` mode pair (``i < j``) carried by qubit
+    ``q``. The graph is required to be connected with no self-loops (enforced
+    in :func:`_build_graph`)."""
 
     def __init__(self, num_modes, edges):
         self.num_modes = num_modes
@@ -90,8 +90,7 @@ class _Graph:
         self.incident = [[] for _ in range(num_modes)]
         for q, (i, j) in enumerate(self.edges):
             self.incident[i].append(q)
-            if j != i:
-                self.incident[j].append(q)
+            self.incident[j].append(q)
 
     @property
     def num_qubits(self):
@@ -178,6 +177,11 @@ def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
                 raise ValueError(
                     f"interaction_graph edge {(i, j)} is out of range for "
                     f"{n} modes.")
+            if i == j:
+                raise ValueError(
+                    f"interaction_graph contains a self-loop {(i, j)}; BKSF "
+                    "edges couple two distinct modes. A mode carrying only a "
+                    "number term must be coupled to the rest of the graph.")
             edges.add((min(i, j), max(i, j)))
         missing = required - edges
         if missing:
@@ -213,14 +217,18 @@ def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
 
 
 def _warn_if_dense(graph):
-    """BKSF is worthwhile only for sparse interaction graphs; warn otherwise."""
-    active = {m for e in graph.edges for m in e if e[0] != e[1]}
-    coupling = [e for e in graph.edges if e[0] != e[1]]
+    """BKSF is worthwhile only for sparse interaction graphs; warn otherwise.
+
+    The threshold is average degree > k/2 (i.e. edges > k^2/4), so genuinely
+    sparse graphs -- rings and lattices, whose average degree is O(1) -- do
+    not trip it, while near-complete graphs do."""
+    active = {m for e in graph.edges for m in e}
     k = len(active)
-    if k >= 4 and len(coupling) > 0.5 * k * (k - 1) / 2:
+    edges = len(graph.edges)
+    if k >= 4 and edges > k * k / 4:
         warnings.warn(
             f"bravyi_kitaev_superfast: dense interaction graph "
-            f"({len(coupling)} edges over {k} modes, > half of complete); "
+            f"({edges} edges over {k} modes, average degree > k/2); "
             "BKSF uses more qubits than modes with no locality advantage "
             "here -- jordan_wigner / bravyi_kitaev are cheaper for dense "
             "Hamiltonians.", UserWarning, stacklevel=3)
@@ -251,8 +259,8 @@ def _a_word(graph, i, j):
 # ---------------------------------------------------------------------------
 
 def _spanning_forest(graph):
-    """Union-find spanning forest over non-self-loop edges; returns the tree
-    edge set and the list of non-tree (chord) edges."""
+    """Union-find spanning tree; returns the tree edge set and the list of
+    non-tree (chord) edges (one fundamental cycle per chord)."""
     parent = list(range(graph.num_modes))
 
     def find(a):
@@ -263,8 +271,6 @@ def _spanning_forest(graph):
 
     tree, chords = set(), []
     for (i, j) in graph.edges:
-        if i == j:
-            continue
         ri, rj = find(i), find(j)
         if ri != rj:
             parent[ri] = rj
