@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Sparse-access block encodings (experimental).
+"""Sparse-access block encodings.
 
-Import this subpackage directly (``from cudaq_algorithms.sparse import
-SparseOracleEncoding``); while experimental, nothing here is re-exported
-from the package root.
+Two generic block encodings of sparse real symmetric matrices
+(:class:`SparseOracleEncoding`, :class:`SparseLCUEncoding`), three ways to feed
+them (:func:`banded_oracles`, :func:`qrom_oracles`, :class:`OracleKernels`), and
+a classical pricing dispatcher (:func:`encode_sparse`). These names are also
+re-exported from the package root.
 """
 
 from ._banded import banded_oracles

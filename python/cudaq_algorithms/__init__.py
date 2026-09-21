@@ -31,14 +31,16 @@ __version__ = _resolve_version()
 del _resolve_version
 
 from . import (block_encoding, chemistry, common_kernels, double_factorization,
-               fermion, pauli_lcu, qsvt, qubitization, sim_utils, stateprep,
-               trotter)
+               fermion, pauli_lcu, qsvt, qubitization, sim_utils, sparse,
+               stateprep, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
 from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
 from .qubitization import Walk, reflection_observable
+from .sparse import (OracleKernels, SparseLCUEncoding, SparseOracleEncoding,
+                     banded_oracles, encode_sparse, qrom_oracles)
 from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 
 # The composable device kernels keep their module namespaces
