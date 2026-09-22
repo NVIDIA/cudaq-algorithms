@@ -48,7 +48,7 @@ Circuit
 -------
 
 ``U_A = PREPARE-dagger . SELECT . PREPARE`` over ``ancilla = [index(m) |
-garbage(2m + 2 mu + 4) | select_work]``:
+garbage(2m + 2 mu + 2) | select_work]``:
 
 - PREPARE / PREPARE-dagger: ``AliasSamplingPrepare`` over the term
   weights (with garbage — sound only in this symmetric sandwich; see
