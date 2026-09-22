@@ -312,6 +312,29 @@ def test_apply_is_involution():
     np.testing.assert_allclose(out, expected, atol=1e-10)
 
 
+def test_apply_is_involution_on_a_dirty_ancilla():
+    # The oracle construction's U_A = T-dagger S T is involutory *globally*
+    # (a matrix identity U_A^2 = I on the whole register), not only on the
+    # |0...0>-ancilla block. Load an arbitrary state over system AND ancilla
+    # -- scratch qubits deliberately non-zero -- and check U_A^2 restores it.
+    # (SparseLCUEncoding's involution holds only on the |0>-ancilla domain,
+    # so the analogous LCU test would fail here -- this pins the difference.)
+    encoding = permutation_encoding()
+    apply_u = encoding.apply_kernel()
+    n_sys = encoding.num_system
+    n_tot = encoding.num_system + encoding.num_ancilla
+
+    @cudaq.kernel
+    def twice_full(state: cudaq.State):
+        reg = cudaq.qvector(state)
+        apply_u(reg[n_sys:n_tot], reg[0:n_sys])
+        apply_u(reg[n_sys:n_tot], reg[0:n_sys])
+
+    ket = random_ket(1 << n_tot, seed=23)
+    out = np.array(cudaq.get_state(twice_full, state_from(ket)))
+    np.testing.assert_allclose(out, ket, atol=1e-10)
+
+
 def test_walk_kernel_applies_chebyshev_of_minus_h():
     encoding = laplacian_encoding(2, 6)
     scaled = banded_quantized_dense(LAPLACIAN_OFFSETS, LAPLACIAN_VALUES, 2, 6,
