@@ -9,6 +9,16 @@ matrix-element angles. The encoded block is ``H / alpha`` with the honest
 padded normalization ``alpha = d_padded * h`` (``d_padded = 2^ceil(log2
 d)``, ``h >= max |H_ij|``).
 
+This is the standard sparse-access oracle input model for block encoding
+(Berry, Childs and Kothari, arXiv:1501.01715; Low and Chuang,
+"Hamiltonian simulation by qubitization", arXiv:1610.06546; Gilyen, Su,
+Low and Wiebe, "Quantum singular value transformation", arXiv:1806.01838):
+the caller supplies oracles for the nonzero structure and values, and the
+construction here turns them into a self-adjoint block encoding. For
+structured matrices, ``banded_oracles`` (see ``_banded``) supplies the
+oracles as explicit flat circuits, following Camps, Lin, Van Beeumen and
+Yang, arXiv:2203.10236.
+
 Construction (T . S . T-dagger)
 -------------------------------
 
