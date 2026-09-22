@@ -11,6 +11,17 @@ one-norm* (below) — the construction that wins over the oracle-based V1
 many small ones, and that handles negative diagonal entries V1 provably
 cannot.
 
+The ``U_A = PREPARE-dagger . SELECT . PREPARE`` structure is the standard
+linear-combination-of-unitaries (LCU) block encoding (Childs and Wiebe,
+"Hamiltonian simulation using linear combinations of unitary operations",
+arXiv:1202.5822; Berry, Childs, Cleve, Kothari and Somma, "Simulating
+Hamiltonian dynamics with a truncated Taylor series", arXiv:1412.4687):
+PREPARE loads the term weights as amplitudes, SELECT applies the indexed
+term unitary, and the un-PREPARE projects the weighted sum into the
+block. The PREPARE (coherent alias sampling) and SELECT (unary iteration)
+are the ``cudaq_algorithms.primitives`` gadgets of Babbush et al.
+(arXiv:1805.03662), cited where they are implemented.
+
 Term decomposition and the one-norm bookkeeping
 -----------------------------------------------
 
