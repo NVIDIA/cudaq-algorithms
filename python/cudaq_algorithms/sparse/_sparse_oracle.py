@@ -9,15 +9,24 @@ matrix-element angles. The encoded block is ``H / alpha`` with the honest
 padded normalization ``alpha = d_padded * h`` (``d_padded = 2^ceil(log2
 d)``, ``h >= max |H_ij|``).
 
-This is the standard sparse-access oracle input model for block encoding
-(Berry, Childs and Kothari, arXiv:1501.01715; Low and Chuang,
-"Hamiltonian simulation by qubitization", arXiv:1610.06546; Gilyen, Su,
-Low and Wiebe, "Quantum singular value transformation", arXiv:1806.01838):
-the caller supplies oracles for the nonzero structure and values, and the
-construction here turns them into a self-adjoint block encoding. For
-structured matrices, ``banded_oracles`` (see ``_banded``) supplies the
-oracles as explicit flat circuits, following Camps, Lin, Van Beeumen and
-Yang, arXiv:2203.10236.
+This construction follows Camps, Lin, Van Beeumen and Yang, "Explicit
+quantum circuits for block encodings of certain sparse matrices"
+(arXiv:2203.10236). ``T`` is their diffusion-``O_A``-``O_c`` sandwich
+(Sec. 4, ``D_s = H^m`` over the ``slot`` register, ``O_A`` the value
+rotation, ``O_c`` the location oracle), ``S`` is the ``O-dagger . SWAP .
+O`` symmetrization that makes the encoding Hermitian (their Thm. 5.1 /
+8.1), and ``alpha = d_padded * h`` is their sparsity normalization ``s``.
+We diverge from the paper only in the real-only sign convention (they
+carry the sign in a complex ``sqrt(A_ij)``; here a ``sign``/``upper`` bit
+pair drives ``+i``/``-i`` phases — negative *diagonals* are
+unrepresentable either way, as ``|sqrt(A_ii)|^2 = +1``) and in the
+hand-written oracle inverses (no ``cudaq.adjoint``; cuda-quantum#4897/
+#4898). The underlying sparse-access oracle input model (in-place
+location + value oracles for a d-sparse matrix) is the standard one of
+Berry, Childs and Kothari (arXiv:1501.01715); the block-encoding / QSVT
+context is Low and Chuang (arXiv:1610.06546) and Gilyen, Su, Low and
+Wiebe (arXiv:1806.01838). ``banded_oracles`` (see ``_banded``) supplies
+the paper's Sec. 4.2 banded oracles as explicit flat circuits.
 
 Construction (T . S . T-dagger)
 -------------------------------

@@ -27,13 +27,14 @@ the bands may describe any real matrix ``A``; the returned bundle has
 ``slot_flip=None`` and is meant for
 ``SparseOracleEncoding.from_general_oracles`` (Hermitian dilation).
 
-Related work: explicit block-encoding circuits for structured sparse
-matrices — banded matrices among them — are given by Camps, Lin, Van
+These oracles implement the banded construction of Camps, Lin, Van
 Beeumen and Yang, "Explicit quantum circuits for block encodings of
-certain sparse matrices" (arXiv:2203.10236). These prefab oracles play
-the same role for the banded case: they instantiate the generic
-sparse-access oracle interface of ``_sparse_oracle`` (which is that
-paper's assumed input model) with concrete flat circuits.
+certain sparse matrices" (arXiv:2203.10236, Sec. 4.2): the location
+oracle is their shift/adder ``O_c`` and the value oracle their Ry-rotation
+``O_A``, feeding the Hermitian ``T-dagger S T`` assembler of
+``SparseOracleEncoding`` (that paper's Thm. 8.1). Bands are here encoded
+non-periodically (edge elements clipped to zero) rather than as the
+paper's circulant.
 """
 
 from __future__ import annotations
