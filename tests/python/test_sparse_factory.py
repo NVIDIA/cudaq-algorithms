@@ -359,9 +359,49 @@ def test_guard_drops_one_path_and_reports_it():
     assert encoding.report["path"] == "oracle"
     assert "max_terms=16" in encoding.report["ineligible"]["lcu"]
     assert encoding.report["ineligible"]["oracle"] is None
+    # The over-budget LCU path never has its register width priced (its
+    # gate bodies are not built), so its qubit count is reported as None.
+    assert encoding.report["qubits"]["lcu"] is None
 
     with pytest.raises(ValueError, match="max_terms=16"):
         encode_sparse(matrix, max_terms=16, prefer="lcu")
+
+
+def test_over_budget_lcu_skips_building_gate_bodies():
+    # An over-budget LCU term count must be rejected on the count alone,
+    # without materializing every SELECT body (which is O(nnz) work and
+    # memory the budget is meant to avoid).
+    import cudaq_algorithms.sparse._sparse_lcu as lcu_mod
+
+    built = 0
+    original = lcu_mod._term_body
+
+    def counting(*args, **kwargs):
+        nonlocal built
+        built += 1
+        return original(*args, **kwargs)
+
+    lcu_mod._term_body = counting
+    try:
+        with pytest.raises(ValueError, match="no generic sparse encoding"):
+            encode_sparse(np.ones((64, 64)), max_terms=1)
+    finally:
+        lcu_mod._term_body = original
+    assert built == 0
+
+
+def test_uniformly_tiny_asymmetric_matrix_dilates():
+    # A genuinely asymmetric matrix whose entries all sit below a fixed
+    # 1e-12 floor must still be recognized as asymmetric (the symmetry
+    # test is matrix-relative) and dilated, not silently symmetrized or
+    # crashed on a missing mirror entry.
+    scales = [1e-13, 1.0, 1e6]
+    for scale in scales:
+        a = np.array([[0.0, scale], [0.0, 0.0]])
+        for prefer in ("lcu", "oracle"):
+            encoding = encode_sparse(a, prefer=prefer, value_bits=4)
+            assert encoding.report["dilated"] is True, (scale, prefer)
+            assert encoding.report["dim"] == 4
 
 
 def test_argument_validation_raises():

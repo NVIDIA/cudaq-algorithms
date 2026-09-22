@@ -168,22 +168,26 @@ def encode_sparse(matrix,
     # Classical pricing (no kernels; formulas match the constructions)
     # ------------------------------------------------------------------
 
-    # LCU path: term one-norm + the exact register budget.
+    # LCU path: term one-norm + the exact register budget. The term list
+    # is cheap (tuples); check the budget before materializing any SELECT
+    # gate bodies, which are only needed for the eligible register width.
     terms = _build_terms(entries)
     alpha_lcu = sum(term[3] for term in terms)
     num_index = max(1, (len(terms) - 1).bit_length())
-    _, select_work = _bodies_and_work(terms, num_system)
-    # (2 * num_index + 2 * mu + 2) is AliasSamplingPrepare's num_garbage
-    # for the select-variant QROM (num_ladder == num_index) since the
-    # PREPARE conditional moved to the family register comparator (one
-    # carry qubit, no pad pair), kept in lockstep with the
-    # variant="select" pinned in SparseLCUEncoding.
-    qubits_lcu = (num_system + num_index + (2 * num_index + 2 * mu + 2) +
-                  select_work)
     lcu_reason = None
     if len(terms) > max_terms:
         lcu_reason = (f"the LCU path needs {len(terms)} terms (two alias "
                       f"bins per matrix entry), above max_terms={max_terms}")
+        qubits_lcu = None
+    else:
+        _, select_work = _bodies_and_work(terms, num_system)
+        # (2 * num_index + 2 * mu + 2) is AliasSamplingPrepare's num_garbage
+        # for the select-variant QROM (num_ladder == num_index) since the
+        # PREPARE conditional moved to the family register comparator (one
+        # carry qubit, no pad pair), kept in lockstep with the
+        # variant="select" pinned in SparseLCUEncoding.
+        qubits_lcu = (num_system + num_index + (2 * num_index + 2 * mu + 2) +
+                      select_work)
 
     # Oracle path: padded-sparsity alpha over the same slot assignment
     # qrom_oracles would build, and its exact register budget

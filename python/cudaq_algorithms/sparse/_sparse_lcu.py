@@ -82,10 +82,15 @@ when its ladder enters clean, so composing ``U_A`` by hand on a dirty
 ancilla register silently breaks ``U_A^2 = I`` (``SparseOracleEncoding``'s
 identical claim, by contrast, is global). ``Walk``'s Chebyshev powers
 and ``QSVT``'s reuse of ``apply_kernel`` for adjoint directions hold
-with no separate adjoint factory. Walk reflections cover the **full** ancilla register,
-garbage included: at every reflection point the circuit is in the
-sandwiched frame where dirty garbage has been uncomputed, and the
-scratch-folding argument of ``_sparse_oracle`` applies unchanged.
+with no separate adjoint factory. Walk reflections cover the **full**
+ancilla register, garbage included, and this is a requirement, not a
+convenience: the block is the all-``|0...0>`` ancilla subspace, and
+because SELECT leaves the PREPARE garbage entangled with the system the
+index-``|0>`` sector is *not* garbage-free, so an index-only reflection
+would misidentify the block. (This is the one place the LCU differs from
+``_sparse_oracle``, whose scratch is a pure function of the system and is
+uncomputed to ``|0>`` in every sector, so there the full and block
+reflections genuinely coincide.)
 
 Input forms: a dense 2-D array, a ``scipy.sparse`` matrix (anything with
 ``tocoo``), or a ``(rows, cols, vals)`` tuple of parallel sequences with
@@ -272,12 +277,21 @@ def _first_asymmetry(entries: dict) -> tuple | None:
     """The first ``(i, j, value, partner)`` violating symmetry, or None.
 
     Shared by the constructor (which raises on it) and ``encode_sparse``
-    (which dilates instead).
+    (which dilates instead). Symmetry is judged two ways, both of which
+    the symmetric constructions require: an off-diagonal entry must have a
+    present mirror (missing support is an asymmetry — the constructions
+    index ``(j, i)`` directly), and the two values must agree to a
+    *matrix-relative* tolerance ``1e-12 * max|H|`` (a fixed absolute floor
+    would call a uniformly tiny but lopsided matrix symmetric).
     """
+    scale = max((abs(v) for v in entries.values()), default=1.0)
+    tol = 1e-12 * scale
     for (i, j), value in sorted(entries.items()):
-        partner = entries.get((j, i), 0.0)
-        if abs(value - partner) > 1e-12 * max(1.0, abs(value)):
-            return i, j, value, partner
+        if i == j:
+            continue
+        partner = entries.get((j, i))
+        if partner is None or abs(value - partner) > tol:
+            return i, j, value, 0.0 if partner is None else partner
     return None
 
 
@@ -490,10 +504,13 @@ class SparseLCUEncoding:
     def num_ancilla(self) -> int:
         """All ancillas: index + PREPARE garbage + SELECT work scratch.
 
-        The garbage and scratch are ``|0...0>`` at every reflection point (the
-        sandwiched frame), so reflecting over the full register equals the
-        index-only reflection — the same folding argument as
-        ``SparseOracleEncoding`` (CUDA-Q cannot deallocate mid-circuit).
+        The block is the all-ancilla-``|0...0>`` subspace, so consumers
+        reflect about the **full** register, not the index alone: after
+        SELECT the garbage is entangled with the system, so the
+        index-``|0>`` sector still carries nonzero garbage and an
+        index-only reflection would misidentify the block. The SELECT work
+        scratch *is* ``|0>`` at reflection points but is still counted here
+        because CUDA-Q cannot deallocate it mid-circuit.
         """
         return (self._preparation.num_index + self._preparation.num_garbage +
                 self._num_work)
