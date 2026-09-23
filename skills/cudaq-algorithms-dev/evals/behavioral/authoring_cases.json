@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "id": "authoring-add-givens-resource-record",
+      "suite": "authoring",
+      "mode": "implementation",
+      "prompt": "Using the staged real source and test excerpts, add a focused operational record for estimate_givens_resources to the disposable target_skill and route it from the staged state-preparation selector. Edit only the authorized target files. Keep lifecycle and run-history bookkeeping out of the operational record. In your final answer, distinguish staged source/test inspection from package execution or lifecycle promotion actually performed.",
+      "files": [
+        "behavioral/files/authoring/givens_source.py",
+        "behavioral/files/authoring/givens_test.py",
+        "behavioral/files/authoring/givens_selector.md",
+        "behavioral/files/authoring/givens_record.md"
+      ],
+      "authorized_targets": {
+        "behavioral/files/authoring/givens_selector.md": "target_skill/references/state-preparation/state-preparation.md",
+        "behavioral/files/authoring/givens_record.md": "target_skill/references/state-preparation/state-preparation-resources-givens.md"
+      },
+      "required_writes": [
+        "target_skill/references/state-preparation/state-preparation.md",
+        "target_skill/references/state-preparation/state-preparation-resources-givens.md"
+      ],
+      "optional_writes": [],
+      "assertions": [
+        "The resulting selector links the new focused record and the link resolves.",
+        "The record identifies estimate_givens_resources as a host-side logical proxy over a validated GivensRotationSchedule.",
+        "The record preserves the real/complex phase-rotation formulas and does not call proxies transpiled gates, runtime, or measured hardware cost.",
+        "The operational record cites the staged source/test evidence and contains no lifecycle or run-history stamp.",
+        "The final answer honestly distinguishes staged source/test inspection from package execution and lifecycle promotion actually performed."
+      ]
+    },
+    {
+      "id": "authoring-add-hf-occupation-record",
+      "suite": "authoring",
+      "mode": "implementation",
+      "prompt": "Using the staged real source and test excerpts, add a focused operational host-contract record for make_hartree_fock_occupation to the disposable target_skill and route it from the staged state-preparation selector. Edit only the authorized target files. Keep lifecycle and run-history bookkeeping out of the operational record. In your final answer, distinguish staged source/test inspection from package execution or lifecycle promotion actually performed.",
+      "files": [
+        "behavioral/files/authoring/hf_source.py",
+        "behavioral/files/authoring/hf_test.py",
+        "behavioral/files/authoring/hf_selector.md",
+        "behavioral/files/authoring/hf_record.md"
+      ],
+      "authorized_targets": {
+        "behavioral/files/authoring/hf_selector.md": "target_skill/references/state-preparation/state-preparation.md",
+        "behavioral/files/authoring/hf_record.md": "target_skill/references/state-preparation/state-preparation-hf-occupation.md"
+      },
+      "required_writes": [
+        "target_skill/references/state-preparation/state-preparation.md",
+        "target_skill/references/state-preparation/state-preparation-hf-occupation.md"
+      ],
+      "optional_writes": [],
+      "assertions": [
+        "The resulting selector links the new focused record and the link resolves.",
+        "The record identifies make_hartree_fock_occupation as a host helper returning ordered occupied spin-orbital indices.",
+        "The record preserves spin equals 2*S_z, interleaved open-shell ordering, parity validation, and rejection boundaries from source/tests.",
+        "The operational record cites the staged source/test evidence and contains no lifecycle or run-history stamp.",
+        "The final answer honestly distinguishes staged source/test inspection from package execution and lifecycle promotion actually performed."
+      ]
+    },
+    {
+      "id": "authoring-roadmap-no-source-advisory",
+      "suite": "authoring",
+      "mode": "advisory",
+      "prompt": "A roadmap names a future sparse-oracle encoding but provides no public source, tests, signatures, or documentation. Review the staged disposable selector and tell me whether to add and mark a verified record now. Do not edit files.",
+      "files": ["behavioral/files/authoring/roadmap_selector.md"],
+      "authorized_targets": {},
+      "required_writes": [],
+      "optional_writes": [],
+      "assertions": [
+        "The answer declines to add or verify a primitive record from a roadmap name alone.",
+        "The answer requests the minimum current public source, tests, signature, and scientific contract needed.",
+        "No staged file is changed and no speculative API, capability ID, resource result, or lifecycle pass is invented."
+      ]
+    }
+  ]
+}

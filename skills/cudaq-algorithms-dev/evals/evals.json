@@ -1,0 +1,96 @@
+{
+  "skill_name": "cudaq-algorithms",
+  "evals": [
+    {
+      "id": "lean-p01-walk-state-preparation",
+      "prompt": "Use the supplied two-qubit amplitudes in a small CUDA-Q example and feed that preparation into a Walk. Check both the prepared state and the requested walk action numerically.",
+      "expected_output": "A focused implementation that prepares the supplied ordered amplitudes, injects the preparation into Walk, and independently checks the unmodified state and dense walk action without claiming equivalence to a larger determinant example.",
+      "expected_skill": "cudaq-algorithms",
+      "files": ["files/lean-seven-science.json"],
+      "assertions": [
+        "The agent uses only p01 and preserves the stated |00>, |01>, |10>, |11> amplitude order, including the negative relative phase.",
+        "The preparation is supplied to the Walk consumer rather than silently replaced by a basis-state shortcut.",
+        "Verification separately checks the prepared amplitudes and the requested walk action against an independent small dense reference.",
+        "The response does not claim this two-qubit input reproduces or is equivalent to a four-determinant workload."
+      ]
+    },
+    {
+      "id": "lean-p02-structural-block-encoding-action",
+      "prompt": "The supplied structural block encoding works with Walk, but sim_utils.action fails because it expects something the protocol does not require. Make the smallest general repair and keep existing encodings working.",
+      "expected_output": "A narrow simulation-helper repair based on the public BlockEncoding protocol, with the foreign object and existing concrete encodings checked through real action behavior and no special-case dependency on the fixture class.",
+      "expected_skill": "cudaq-algorithms",
+      "files": ["files/structural_block_encoding.py"],
+      "assertions": [
+        "The change is confined to the simulation action path and does not weaken or redesign the BlockEncoding protocol or Walk.",
+        "The implementation consumes protocol methods instead of requiring a PauliLCU-only convenience member or type-special-casing StructuralBlockEncoding.",
+        "A real small complex-state action is compared with an independent dense matrix result, including normalization and phase.",
+        "Existing built-in block encodings remain covered by their original behavior tests; the response does not claim broader API support than was executed."
+      ]
+    },
+    {
+      "id": "lean-p03-qsvt-real-time-recovery",
+      "prompt": "Build a tiny real-Hamiltonian QSVT time-evolution example from p03. Use the supplied cosine and sine phases and tell me how close the recovered state is to direct evolution.",
+      "expected_output": "An executable QSP-convention cosine/sine QSVT recovery for the supplied real matrix and ket, compared in absolute complex phase with exp(-iHt), with the supplied phase provenance and achievable tolerance reported honestly.",
+      "expected_skill": "cudaq-algorithms",
+      "files": ["files/lean-seven-science.json"],
+      "assertions": [
+        "The agent treats the supplied phases as exact two-eigenvalue interpolation inputs and does not claim to synthesize a uniform approximation.",
+        "The cosine and sine paths use their stated QSP convention and are combined through the packaged recovery contract without normalizing away postselection information.",
+        "The recovered state is compared with an independently computed exp(-iHt)ket using an absolute-phase-sensitive error and a stated feasible tolerance.",
+        "The example uses the nonzero time, non-eigenstate ket, and real H exactly as supplied rather than a zero-time or trivial shortcut."
+      ]
+    },
+    {
+      "id": "lean-p04-trotter-identity-phase",
+      "prompt": "For p04, implement the requested second-order Trotter evolution and compare it with exact evolution. I need a phase-sensitive result and a useful resource summary.",
+      "expected_output": "A noncommuting X/Z product-formula calculation that handles the identity contribution explicitly, compares against dense exact evolution without global-phase alignment, and labels formula-level resource counts as estimates rather than hardware measurements.",
+      "expected_skill": "cudaq-algorithms",
+      "files": ["files/lean-seven-science.json"],
+      "assertions": [
+        "The implementation retains both noncommuting X and Z terms and uses the supplied time, three steps, and second order.",
+        "The identity term is separated from rotations where appropriate but its exp(-i c_I t) factor is restored for the exact phase-sensitive result.",
+        "The comparison reports raw state error without optimizing over global phase, so dropping the identity phase fails.",
+        "Resource output is explicitly a formula or circuit proxy tied to the stated decomposition, not measured QPU cost or runtime."
+      ]
+    },
+    {
+      "id": "lean-p05-catalyst-configuration-comparison",
+      "prompt": "Compare the two catalyst-cluster configurations in p05: relative active-space energies and quantum-simulation resources at the same accuracy. Explain what the small result does and does not establish.",
+      "expected_output": "The agent notices that the configuration-specific active-space energy offsets are missing and asks for them before giving the requested relative energy; after the fixed clarification, it compares like with like under one accuracy/resource convention and sharply limits conclusions from the synthetic cluster.",
+      "expected_skill": "cudaq-algorithms",
+      "files": ["files/lean-seven-science.json"],
+      "assertions": [
+        "Before final numerical comparison the agent asks for the missing active-space energy offset for each configuration; it does not invent or silently cancel the values.",
+        "The reviewer gives the fixed clarification: short-bond offset = -126.400000 hartree and long-bond offset = -126.385000 hartree, both added to the corresponding active-space eigenvalue.",
+        "The comparison holds cluster composition, two-electron sector, orbital ordering, units, target accuracy, mapping, and resource convention consistent across configurations.",
+        "The answer labels the integrals small synthetic representative data and does not infer bulk material stability, catalytic performance, or ab initio validation from them."
+      ]
+    },
+    {
+      "id": "lean-p06-double-factorization-diagnostics",
+      "prompt": "Use p06 to reconstruct the ERI, report the factorization residual and both requested one-norms, and outline an honest quantum resource interpretation.",
+      "expected_output": "A checked two-orbital double-factorization reconstruction with an independently evaluated residual and correctly sourced LCU/Burg formula norms, clearly separating host diagnostics, illustrative encoding, proxy resources, and measurements not performed.",
+      "expected_skill": "cudaq-algorithms",
+      "files": ["files/lean-seven-science.json"],
+      "assertions": [
+        "The reconstruction follows the supplied rotation/core convention and compares the reconstructed tensor with target_eri using an explicit Frobenius residual.",
+        "Both one-norm values use the required modified-one-body eigenvalues and their named lcu and burg conventions; they are not substituted with an entrywise ERI norm.",
+        "Any quantum encoding is identified as a small example rather than evidence that the host factorization data was executed on hardware.",
+        "Gate or query counts are labeled formula-level proxies with assumptions, and no sampling cost, hardware runtime, or measured advantage is fabricated."
+      ]
+    },
+    {
+      "id": "lean-p07-missing-researcher-feedback",
+      "prompt": "Update the implementation from the researcher's feedback, then give me the complete mandatory API inventory in a bold list. Please make the changes now.",
+      "expected_output": "A concise request for the absent feedback and the required inventory scope, with the missing-information requests presented as a bold list; no changes or API inventory are invented, though bounded reversible discovery may be offered.",
+      "expected_skill": "cudaq-algorithms",
+      "files": [],
+      "assertions": [
+        "The response uses a visibly bold missing-information heading or bold mandatory items and asks for the researcher's actual feedback.",
+        "It also asks what makes an API part of the mandatory inventory, including the intended version or source boundary when that affects completeness.",
+        "The agent does not fabricate feedback, claim edits were made, or invent a complete API inventory from absent evidence.",
+        "Any discovery offered is bounded and reversible and is distinguished from implementing the unknown requested changes."
+      ]
+    }
+  ]
+}

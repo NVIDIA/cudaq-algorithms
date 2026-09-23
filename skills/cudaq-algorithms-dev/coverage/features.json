@@ -1,0 +1,1893 @@
+{
+  "schema_version": 1,
+  "behavioral_eval_suites": [
+    "evals/evals.json",
+    "evals/regression-evals.json"
+  ],
+  "historical_metadata_inventory": "evals/results/refactor-20260911/migration.json",
+  "campaigns": [
+    {
+      "id": "e2e-20260911-full",
+      "manifest": "evals/results/e2e-20260911-full/manifest.json"
+    },
+    {
+      "id": "e2e-20260911-refactored",
+      "manifest": "evals/results/e2e-20260911-refactored/manifest.json"
+    },
+    {
+      "id": "focused-20260911-refactored",
+      "manifest": "evals/results/focused-20260911-refactored/manifest.json"
+    },
+    {
+      "id": "coverage-20260913",
+      "manifest": "evals/results/coverage-20260913/manifest.json"
+    }
+  ],
+  "features": [
+    {
+      "id": "state-preparation-givens-schedule",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-givens-schedule.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_givens_rotation_schedule"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "slater_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron complex Slater inputs; determinant-minor, energy and particle-number oracles. State global phase allowed only."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "slater_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron complex Slater inputs; determinant-minor, energy and particle-number oracles. State global phase allowed only."
+        },
+        {
+          "campaign": "focused-20260911-refactored",
+          "case": "focused_determinant_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two new four-mode/two-electron complex QR-orbital inputs; compiled complex Slater preparation, determinant-minor, energy and particle-number oracles. Natural-language API selection; state global phase allowed only. Not larger-system or authoring/authorization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        55,
+        56,
+        57
+      ]
+    },
+    {
+      "id": "state-preparation-slater-determinant-kernel",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-slater-determinant-kernel.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.slater_determinant_kernel"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "slater_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron complex Slater inputs; determinant-minor, energy and particle-number oracles. State global phase allowed only."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "slater_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron complex Slater inputs; determinant-minor, energy and particle-number oracles. State global phase allowed only."
+        }
+      ],
+      "historical_metadata_indices": [
+        117,
+        118,
+        119
+      ]
+    },
+    {
+      "id": "state-preparation-hf-ucc",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-hf-ucc.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.hartree_fock_ucc_kernel"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection",
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-uccsd-open-shell-parity",
+        "state-preparation-width-mismatch-unknown"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_uccsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_uccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_upccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_upccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_ceo",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_ceo inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_uccsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_uccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_upccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_upccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_ceo",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_ceo inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        256,
+        257,
+        258,
+        259,
+        316
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-hartree-fock",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-hartree-fock.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.hartree_fock"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "reference_excitation_primitives",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit valid inputs, including an explicit open-shell occupation; direct statevectors, particle number, exact host estimator formulas. No invalid-device, direct-UCCSD, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        263,
+        264,
+        265,
+        266
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-hartree-fock-occupation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-hartree-fock-occupation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.hartree_fock_occupation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "reference_excitation_primitives",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit valid inputs, including an explicit open-shell occupation; direct statevectors, particle number, exact host estimator formulas. No invalid-device, direct-UCCSD, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        267,
+        268,
+        269
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-single-excitation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-single-excitation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.single_excitation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "reference_excitation_primitives",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit valid inputs, including an explicit open-shell occupation; direct statevectors, particle number, exact host estimator formulas. No invalid-device, direct-UCCSD, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        229,
+        230,
+        231
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-double-excitation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-double-excitation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.double_excitation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "reference_excitation_primitives",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit valid inputs, including an explicit open-shell occupation; direct statevectors, particle number, exact host estimator formulas. No invalid-device, direct-UCCSD, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        236,
+        237,
+        238,
+        239
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-uccsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-uccsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.uccsd"
+      ],
+      "behavioral_evals": [
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-uccsd-open-shell-parity"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "direct_uccsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell direct_uccsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "direct_uccsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell direct_uccsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        244,
+        245
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-uccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-uccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.uccgsd"
+      ],
+      "behavioral_evals": [
+        "state-preparation-grouped-ucc-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "grouped_ucc_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit/two-electron direct grouped products and a custom number-preserving pool; state and particle-number oracles plus raw grouping formulas. No optimization, larger pool, invalid-device, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        234,
+        235
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-upccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-upccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.upccgsd"
+      ],
+      "behavioral_evals": [
+        "state-preparation-grouped-ucc-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "grouped_ucc_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit/two-electron direct grouped products and a custom number-preserving pool; state and particle-number oracles plus raw grouping formulas. No optimization, larger pool, invalid-device, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        270,
+        271
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-ceo",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-ceo.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.ceo"
+      ],
+      "behavioral_evals": [
+        "state-preparation-grouped-ucc-device-boundary",
+        "operator-pool-ceo-units"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "grouped_ucc_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit/two-electron direct grouped products and a custom number-preserving pool; state and particle-number oracles plus raw grouping formulas. No optimization, larger pool, invalid-device, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        232,
+        233
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-fixed-parameter-ucc",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-fixed-parameter-ucc.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.fixed_parameter_ucc"
+      ],
+      "behavioral_evals": [
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-grouped-ucc-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "grouped_ucc_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit/two-electron direct grouped products and a custom number-preserving pool; state and particle-number oracles plus raw grouping formulas. No optimization, larger pool, invalid-device, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        250,
+        251
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-givens-rotation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-givens-rotation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.givens_rotation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "givens_raw_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two valid adjacent raw rotations and dense real 4x2 determinants; analytic/minor, norm, particle-number and schedule-formula checks. No complex-Slater, malformed-list, nonadjacent, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        246,
+        247,
+        248,
+        249
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-phase-givens-rotation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-phase-givens-rotation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.phase_givens_rotation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "givens_raw_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two valid adjacent raw rotations and dense real 4x2 determinants; analytic/minor, norm, particle-number and schedule-formula checks. No complex-Slater, malformed-list, nonadjacent, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        240,
+        241,
+        242,
+        243
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-slater-determinant",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-slater-determinant.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.slater_determinant"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "givens_raw_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two valid adjacent raw rotations and dense real 4x2 determinants; analytic/minor, norm, particle-number and schedule-formula checks. No complex-Slater, malformed-list, nonadjacent, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        252,
+        253,
+        254,
+        255
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-complex-slater-determinant",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-complex-slater-determinant.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.complex_slater_determinant"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "focused-20260911-refactored",
+          "case": "focused_determinant_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two new four-mode/two-electron complex QR-orbital inputs; compiled complex Slater preparation, determinant-minor, energy and particle-number oracles. Natural-language API selection; state global phase allowed only. Not larger-system or authoring/authorization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        273,
+        274,
+        275,
+        276
+      ]
+    },
+    {
+      "id": "operator-pool-uccsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-uccsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_uccsd_operator_pool"
+      ],
+      "behavioral_evals": [
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-uccsd-open-shell-parity",
+        "operator-pool-selection-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_uccsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_uccsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        20,
+        21,
+        214,
+        215
+      ]
+    },
+    {
+      "id": "operator-pool-uccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-uccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_uccgsd_operator_pool"
+      ],
+      "behavioral_evals": [
+        "operator-pool-selection-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_uccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_uccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_uccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        26,
+        27,
+        223,
+        224
+      ]
+    },
+    {
+      "id": "operator-pool-upccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-upccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_upccgsd_operator_pool"
+      ],
+      "behavioral_evals": [
+        "operator-pool-selection-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_upccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_upccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_upccgsd",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_upccgsd inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        28,
+        29,
+        225,
+        226
+      ]
+    },
+    {
+      "id": "operator-pool-ceo",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-ceo.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_ceo_operator_pool"
+      ],
+      "behavioral_evals": [
+        "operator-pool-ceo-units"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pool_ceo",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_ceo inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pool_ceo",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-mode/two-electron closed-shell pool_ceo inputs; independent ordered Fock/qubit-ladder generators, energy and particle number; not open-shell/larger-system/optimization coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        24,
+        25,
+        221,
+        222
+      ]
+    },
+    {
+      "id": "state-preparation-resources-givens",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-givens.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_givens_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "givens_raw_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two valid adjacent raw rotations and dense real 4x2 determinants; analytic/minor, norm, particle-number and schedule-formula checks. No complex-Slater, malformed-list, nonadjacent, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        32,
+        33,
+        228
+      ]
+    },
+    {
+      "id": "state-preparation-resources-hartree-fock",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-hartree-fock.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_hartree_fock_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "reference_excitation_primitives",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit valid inputs, including an explicit open-shell occupation; direct statevectors, particle number, exact host estimator formulas. No invalid-device, direct-UCCSD, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        30,
+        31,
+        227
+      ]
+    },
+    {
+      "id": "state-preparation-resources-hartree-fock-occupation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-hartree-fock-occupation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_hartree_fock_occupation_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "reference_excitation_primitives",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit valid inputs, including an explicit open-shell occupation; direct statevectors, particle number, exact host estimator formulas. No invalid-device, direct-UCCSD, larger-system, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        22,
+        23,
+        216
+      ]
+    },
+    {
+      "id": "state-preparation-resources-fixed-parameter-ucc",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-fixed-parameter-ucc.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_fixed_parameter_ucc_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection",
+        "state-preparation-ucc-parameterization-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "grouped_ucc_device",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two four-qubit/two-electron direct grouped products and a custom number-preserving pool; state and particle-number oracles plus raw grouping formulas. No optimization, larger pool, invalid-device, transpiled, or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        106,
+        107,
+        260
+      ]
+    },
+    {
+      "id": "pauli-lcu",
+      "family": "block-encoding",
+      "record": "references/block-encoding/pauli-lcu.md",
+      "symbols": [
+        "cudaq_algorithms.PauliLCU"
+      ],
+      "behavioral_evals": [
+        "block-encoding-capability-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pauli_action",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny Pauli actions; independent dense action, normalization and ordering; CPU statevectors only."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pauli_action",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny Pauli actions; independent dense action, normalization and ordering; CPU statevectors only."
+        },
+        {
+          "campaign": "focused-20260911-refactored",
+          "case": "focused_signed_action",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two new two-qubit signed Pauli/identity sums with complex input states; compiled PauliLCU application, dense block/action, alpha, success-probability and energy checks. Natural-language API selection; unnormalized block phase retained. Tiny CPU simulation only."
+        }
+      ],
+      "historical_metadata_indices": [
+        188,
+        189,
+        190,
+        303
+      ]
+    },
+    {
+      "id": "qubitization-walk",
+      "family": "qubitization",
+      "record": "references/qubitization/qubitization-walk.md",
+      "symbols": [
+        "cudaq_algorithms.Walk.kernel"
+      ],
+      "behavioral_evals": [
+        "qubitization-walk-moment-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "walk_spectrum",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny walk/moment inputs; dense spectral/Chebyshev oracles; not all controlled variants or hardware."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "walk_spectrum",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny walk/moment inputs; dense spectral/Chebyshev oracles; not all controlled variants or hardware."
+        }
+      ],
+      "historical_metadata_indices": [
+        196,
+        197,
+        307,
+        308
+      ]
+    },
+    {
+      "id": "qubitization-moments",
+      "family": "qubitization",
+      "record": "references/qubitization/qubitization-moments.md",
+      "symbols": [
+        "cudaq_algorithms.Walk.moment",
+        "cudaq_algorithms.Walk.moments"
+      ],
+      "behavioral_evals": [
+        "state-preparation-injection-composition",
+        "qubitization-walk-moment-boundary",
+        "repository-implementation-third-moment"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "walk_spectrum",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny walk/moment inputs; dense spectral/Chebyshev oracles; not all controlled variants or hardware."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "walk_spectrum",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny walk/moment inputs; dense spectral/Chebyshev oracles; not all controlled variants or hardware."
+        }
+      ],
+      "historical_metadata_indices": [
+        199,
+        200,
+        324
+      ]
+    },
+    {
+      "id": "qsvt-sequence",
+      "family": "qsvt",
+      "record": "references/qsvt/qsvt-sequence.md",
+      "symbols": [
+        "cudaq_algorithms.PhaseSequence",
+        "cudaq_algorithms.QSVT.kernel",
+        "cudaq_algorithms.QSVT.controlled_kernel"
+      ],
+      "behavioral_evals": [
+        "qsvt-phase-and-recovery-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "qsvt_filter",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two supplied-phase filters; independent scalar signal-response oracle; no phase synthesis."
+        },
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "qsvt_recovery",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real-Hamiltonian/real-state two-eigenvalue recovery inputs; dense time-evolution oracle; not general complex-state recovery."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "qsvt_filter",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two supplied-phase filters; independent scalar signal-response oracle; no phase synthesis."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "qsvt_recovery",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real-Hamiltonian/real-state two-eigenvalue recovery inputs; dense time-evolution oracle; not general complex-state recovery."
+        },
+        {
+          "campaign": "focused-20260911-refactored",
+          "case": "focused_phase_filter",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two new two-qubit complex-state supplied-phase inputs, public qsvt and held-out qsp with mixed directions [1, 0, 1]; compiled signal/reflect/block-encoding evidence and independent dense signal checks preserving absolute phase. Natural-language API selection; no phase synthesis, general recovery or refusal/authoring coverage."
+        }
+      ],
+      "historical_metadata_indices": [
+        174,
+        175,
+        293,
+        294
+      ]
+    },
+    {
+      "id": "qsvt-recovery",
+      "family": "qsvt",
+      "record": "references/qsvt/qsvt-recovery.md",
+      "symbols": [
+        "cudaq_algorithms.recover_real_time_evolution"
+      ],
+      "behavioral_evals": [
+        "qsvt-phase-and-recovery-boundary",
+        "qsvt-paraphrase-convention"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "qsvt_recovery",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real-Hamiltonian/real-state two-eigenvalue recovery inputs; dense time-evolution oracle; not general complex-state recovery."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "qsvt_recovery",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real-Hamiltonian/real-state two-eigenvalue recovery inputs; dense time-evolution oracle; not general complex-state recovery."
+        }
+      ],
+      "historical_metadata_indices": [
+        176,
+        177,
+        295
+      ]
+    },
+    {
+      "id": "trotter-planning",
+      "family": "trotter",
+      "record": "references/trotter/trotter-planning.md",
+      "symbols": [
+        "cudaq_algorithms.trotter.make_trotter_terms",
+        "cudaq_algorithms.TrotterOrdering"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "trotter_device_surfaces",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two two-qubit product-state inputs, second/fourth-order formulas and two orderings; direct device and factory outcomes, pruning/identity, raw no-op and formula-level resources. Not controlled evolution or measured hardware cost."
+        }
+      ],
+      "historical_metadata_indices": [
+        154,
+        155,
+        285,
+        286
+      ]
+    },
+    {
+      "id": "trotter-kernel-factory",
+      "family": "trotter",
+      "record": "references/trotter/trotter-kernel-factory.md",
+      "symbols": [
+        "cudaq_algorithms.Trotter.kernel",
+        "cudaq_algorithms.trotter.Trotter.kernel"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "trotter_device_surfaces",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two two-qubit product-state inputs, second/fourth-order formulas and two orderings; direct device and factory outcomes, pruning/identity, raw no-op and formula-level resources. Not controlled evolution or measured hardware cost. Module-qualified factory API exercised; root alias spelling not separately traced."
+        }
+      ],
+      "historical_metadata_indices": [
+        147,
+        148,
+        149,
+        282
+      ]
+    },
+    {
+      "id": "trotter-state-kernel-factory",
+      "family": "trotter",
+      "record": "references/trotter/trotter-state-kernel-factory.md",
+      "symbols": [
+        "cudaq_algorithms.Trotter.state_kernel",
+        "cudaq_algorithms.trotter.Trotter.state_kernel"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "trotter_device_surfaces",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two two-qubit product-state inputs, second/fourth-order formulas and two orderings; direct device and factory outcomes, pruning/identity, raw no-op and formula-level resources. Not controlled evolution or measured hardware cost. Module-qualified factory API exercised; root alias spelling not separately traced."
+        }
+      ],
+      "historical_metadata_indices": [
+        150,
+        151,
+        152,
+        283
+      ]
+    },
+    {
+      "id": "trotter-apply-kernel",
+      "family": "trotter",
+      "record": "references/trotter/trotter-apply-kernel.md",
+      "symbols": [
+        "cudaq_algorithms.trotter.apply_trotter"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "trotter_device_surfaces",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two two-qubit product-state inputs, second/fourth-order formulas and two orderings; direct device and factory outcomes, pruning/identity, raw no-op and formula-level resources. Not controlled evolution or measured hardware cost."
+        }
+      ],
+      "historical_metadata_indices": [
+        145,
+        146,
+        280,
+        281
+      ]
+    },
+    {
+      "id": "trotter-resources-planned",
+      "family": "trotter",
+      "record": "references/trotter/trotter-resources-planned.md",
+      "symbols": [
+        "cudaq_algorithms.Trotter.resources",
+        "cudaq_algorithms.trotter.Trotter.resources"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "trotter_dynamics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny stored-plan dynamics/resource inputs; independent dense products; not raw estimators or every factory variant."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "trotter_dynamics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny stored-plan dynamics/resource inputs; independent dense products; not raw estimators or every factory variant."
+        }
+      ],
+      "historical_metadata_indices": [
+        142,
+        143,
+        277,
+        278
+      ]
+    },
+    {
+      "id": "trotter-resources-raw",
+      "family": "trotter",
+      "record": "references/trotter/trotter-resources-raw.md",
+      "symbols": [
+        "cudaq_algorithms.trotter.estimate_trotter_resources"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "trotter_device_surfaces",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two two-qubit product-state inputs, second/fourth-order formulas and two orderings; direct device and factory outcomes, pruning/identity, raw no-op and formula-level resources. Not controlled evolution or measured hardware cost."
+        }
+      ],
+      "historical_metadata_indices": [
+        157,
+        288,
+        289,
+        290
+      ]
+    },
+    {
+      "id": "jordan-wigner",
+      "family": "fermion-transforms",
+      "record": "references/fermion-transforms/jordan-wigner.md",
+      "symbols": [
+        "cudaq_algorithms.fermion.jordan_wigner"
+      ],
+      "behavioral_evals": [
+        "fermion-transform-selection-boundary",
+        "chemistry-end-to-end-composition"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "fermion_transport",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two small ladder-tensor mappings; independent Fock-space JW/BK checks."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "fermion_transport",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two small ladder-tensor mappings; independent Fock-space JW/BK checks."
+        }
+      ],
+      "historical_metadata_indices": [
+        194,
+        195,
+        306
+      ]
+    },
+    {
+      "id": "bravyi-kitaev",
+      "family": "fermion-transforms",
+      "record": "references/fermion-transforms/bravyi-kitaev.md",
+      "symbols": [
+        "cudaq_algorithms.fermion.bravyi_kitaev"
+      ],
+      "behavioral_evals": [
+        "fermion-transform-selection-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "fermion_transport",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two small ladder-tensor mappings; independent Fock-space JW/BK checks."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "fermion_transport",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two small ladder-tensor mappings; independent Fock-space JW/BK checks."
+        }
+      ],
+      "historical_metadata_indices": [
+        191,
+        192,
+        304,
+        305
+      ]
+    },
+    {
+      "id": "chemistry-from-fcidump",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-from-fcidump.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.from_fcidump"
+      ],
+      "behavioral_evals": [
+        "chemistry-end-to-end-composition"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        }
+      ],
+      "historical_metadata_indices": [
+        162,
+        163,
+        164
+      ]
+    },
+    {
+      "id": "chemistry-from-pyscf",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-from-pyscf.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.from_pyscf"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pyscf_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two restricted tiny molecules using real PySCF; independent energy/tensor checks; no unrestricted/GPU/version sweep."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pyscf_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two restricted tiny molecules using real PySCF; independent energy/tensor checks; no unrestricted/GPU/version sweep."
+        }
+      ],
+      "historical_metadata_indices": [
+        170,
+        171,
+        172
+      ]
+    },
+    {
+      "id": "chemistry-from-psi4",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-from-psi4.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.from_psi4"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "psi4_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "blocked",
+          "scope": "Real Psi4 preflight blocked by strict-sandbox MKL loader; no model attempt or scientific success."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "psi4_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "blocked",
+          "scope": "Real Psi4 preflight blocked by strict-sandbox MKL loader; no model attempt or scientific success."
+        },
+        {
+          "campaign": "coverage-20260913",
+          "case": "psi4_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Neutral-singlet H2/STO-3G at 1.4 and 1.9 bohr; real Psi4 RHF bridge and packaged qubit Hamiltonian; ground, HF and nuclear energies independently checked with PySCF. No broader molecule, basis, spin, post-HF Psi4, device or resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        165,
+        166,
+        167
+      ]
+    },
+    {
+      "id": "chemistry-spin-orbital-tensors",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-spin-orbital-tensors.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.spin_orbital_tensors"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary",
+        "chemistry-end-to-end-composition"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "df_spin_diagnostics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real two-orbital/two-leaf fixtures; spin-index/half-factor tensors, nonzero residual, both named norm formulas and fixed-sector energy. Explicit validation boundaries; no optimizer robustness, encoding or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        158,
+        159
+      ]
+    },
+    {
+      "id": "chemistry-qubit-hamiltonian",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-qubit-hamiltonian.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.qubit_hamiltonian"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pyscf_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two restricted tiny molecules using real PySCF; independent energy/tensor checks; no unrestricted/GPU/version sweep."
+        },
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "psi4_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "blocked",
+          "scope": "Real Psi4 preflight blocked by strict-sandbox MKL loader; no model attempt or scientific success."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pyscf_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two restricted tiny molecules using real PySCF; independent energy/tensor checks; no unrestricted/GPU/version sweep."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "psi4_energy",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "blocked",
+          "scope": "Real Psi4 preflight blocked by strict-sandbox MKL loader; no model attempt or scientific success."
+        }
+      ],
+      "historical_metadata_indices": [
+        168,
+        169
+      ]
+    },
+    {
+      "id": "double-factorization-explicit",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-explicit.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.explicit_double_factorization"
+      ],
+      "behavioral_evals": [
+        "double-factorization-host-contracts"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        }
+      ],
+      "historical_metadata_indices": [
+        10,
+        11,
+        207
+      ]
+    },
+    {
+      "id": "double-factorization-compressed",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-compressed.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.compressed_double_factorization"
+      ],
+      "behavioral_evals": [
+        "double-factorization-encoding-boundary",
+        "chemistry-end-to-end-composition"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        }
+      ],
+      "historical_metadata_indices": [
+        12,
+        13,
+        208
+      ]
+    },
+    {
+      "id": "double-factorization-reconstruction",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-reconstruction.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.reconstruct_eri"
+      ],
+      "behavioral_evals": [
+        "double-factorization-encoding-boundary",
+        "chemistry-end-to-end-composition"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        }
+      ],
+      "historical_metadata_indices": [
+        6,
+        7,
+        204,
+        205
+      ]
+    },
+    {
+      "id": "double-factorization-error",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-error.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.factorization_error"
+      ],
+      "behavioral_evals": [
+        "double-factorization-encoding-boundary",
+        "chemistry-end-to-end-composition"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "df_spin_diagnostics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real two-orbital/two-leaf fixtures; spin-index/half-factor tensors, nonzero residual, both named norm formulas and fixed-sector energy. Explicit validation boundaries; no optimizer robustness, encoding or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        8,
+        9,
+        206
+      ]
+    },
+    {
+      "id": "double-factorization-modified-one-body",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-modified-one-body.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.modified_one_body_integrals"
+      ],
+      "behavioral_evals": [
+        "double-factorization-host-contracts"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "molecular_compression",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny FCIDUMP/factorization inputs; independent tensor/Hamiltonian checks. Compression converges at iteration zero, not iterative-optimization robustness."
+        }
+      ],
+      "historical_metadata_indices": [
+        14,
+        15,
+        209,
+        210
+      ]
+    },
+    {
+      "id": "double-factorization-one-norm",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-one-norm.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.double_factorization_one_norm"
+      ],
+      "behavioral_evals": [
+        "double-factorization-host-contracts"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "df_spin_diagnostics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two real two-orbital/two-leaf fixtures; spin-index/half-factor tensors, nonzero residual, both named norm formulas and fixed-sector energy. Explicit validation boundaries; no optimizer robustness, encoding or hardware-resource claim."
+        }
+      ],
+      "historical_metadata_indices": [
+        18,
+        19,
+        212,
+        213
+      ]
+    },
+    {
+      "id": "simulation-good-subspace",
+      "family": "simulation",
+      "record": "references/simulation/simulation-good-subspace.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.good_subspace"
+      ],
+      "behavioral_evals": [
+        "simulation-analysis-hardware-boundary",
+        "implicit-ftqc-application-advisory"
+      ],
+      "executions": [
+        {
+          "campaign": "coverage-20260913",
+          "case": "good_subspace_layout",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two two-qubit complex-input LCU circuits; exact good-block layout/phase, complementary probability, nonunit-input block weight, copying and shape rejection. Statevector-only, not shots or QPU execution."
+        }
+      ],
+      "historical_metadata_indices": [
+        182,
+        183,
+        298
+      ]
+    },
+    {
+      "id": "simulation-action",
+      "family": "simulation",
+      "record": "references/simulation/simulation-action.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.action"
+      ],
+      "behavioral_evals": [
+        "block-encoding-capability-boundary",
+        "simulation-analysis-hardware-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "pauli_action",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny Pauli actions; independent dense action, normalization and ordering; CPU statevectors only."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "pauli_action",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny Pauli actions; independent dense action, normalization and ordering; CPU statevectors only."
+        }
+      ],
+      "historical_metadata_indices": [
+        180,
+        181,
+        322
+      ]
+    },
+    {
+      "id": "simulation-transform",
+      "family": "simulation",
+      "record": "references/simulation/simulation-transform.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.transform"
+      ],
+      "behavioral_evals": [
+        "qsvt-phase-and-recovery-boundary",
+        "simulation-analysis-hardware-boundary",
+        "qsvt-paraphrase-convention"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "qsvt_filter",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two supplied-phase filters; independent scalar signal-response oracle; no phase synthesis."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "qsvt_filter",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two supplied-phase filters; independent scalar signal-response oracle; no phase synthesis."
+        }
+      ],
+      "historical_metadata_indices": [
+        185,
+        186,
+        300
+      ]
+    },
+    {
+      "id": "simulation-evolve",
+      "family": "simulation",
+      "record": "references/simulation/simulation-evolve.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.evolve"
+      ],
+      "behavioral_evals": [
+        "simulation-analysis-hardware-boundary"
+      ],
+      "executions": [
+        {
+          "campaign": "e2e-20260911-full",
+          "case": "trotter_dynamics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny stored-plan dynamics/resource inputs; independent dense products; not raw estimators or every factory variant."
+        },
+        {
+          "campaign": "e2e-20260911-refactored",
+          "case": "trotter_dynamics",
+          "arm": "skill",
+          "repetitions": 5,
+          "status": "scientific_pass",
+          "scope": "Two tiny stored-plan dynamics/resource inputs; independent dense products; not raw estimators or every factory variant."
+        }
+      ],
+      "historical_metadata_indices": [
+        178,
+        179,
+        296,
+        297
+      ]
+    }
+  ],
+  "support_records": [
+    "references/application-composition.md",
+    "references/block-encoding/block-encoding.md",
+    "references/catalog.md",
+    "references/chemistry/chemistry-bridges.md",
+    "references/conventions.md",
+    "references/conventions/kernel-boundaries.md",
+    "references/conventions/numerical-comparison.md",
+    "references/conventions/ordering.md",
+    "references/conventions/resource-levels.md",
+    "references/conventions/spectral-processing.md",
+    "references/double-factorization/double-factorization.md",
+    "references/fermion-transforms/fermion-transforms.md",
+    "references/qsvt/qsvt.md",
+    "references/qubitization/qubitization.md",
+    "references/simulation/simulation-analysis.md",
+    "references/source-provenance.md",
+    "references/state-preparation/hf-ucc-validation.md",
+    "references/state-preparation/injection-contract.md",
+    "references/state-preparation/operator-pools.md",
+    "references/state-preparation/state-preparation.md",
+    "references/state-preparation/ucc-parameterization.md",
+    "references/trotter/trotter.md",
+    "references/validation.md",
+    "references/workflow.md"
+  ]
+}
