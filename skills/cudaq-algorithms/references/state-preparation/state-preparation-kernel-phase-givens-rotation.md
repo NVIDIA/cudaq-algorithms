@@ -1,13 +1,13 @@
 # Phase-aware Givens-rotation device kernel
 
-Status: draft. Operation + object: **apply** an **adjacent, phase-aware
+Operation + object: **apply** an **adjacent, phase-aware
 fermionic two-mode Givens rotation**.
 
 This is a concrete primitive record. It covers the runtime device-kernel
 contract of `phase_givens_rotation` only. Its real-rotation component and the
 flattened complex Slater-determinant preparation that consumes it remain
 separate records linked from
-[the Givens front door](state-preparation-givens.md).
+[the state-preparation family selector](state-preparation.md).
 
 ## Identity and provenance
 
@@ -18,11 +18,6 @@ separate records linked from
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_givens.py:88-94`; delegated real rotation at `:67-85`; export surface in `python/cudaq_algorithms/stateprep/__init__.py:25-32,80` |
 | Authoritative tests | No repository test calls this public symbol directly. `tests/python/test_stateprep_givens.py` exercises it transitively through `_complex_entry` -> `stateprep.complex_slater_determinant` -> `phase_givens_rotation`, notably the analytic one-electron case at `:200-212`, the relative-phase/sign case at `:215-226`, random complex determinants at `:229-246`, and the zero-phase equivalence at `:288-307` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:151-195` names the raw call. There is no standalone repository example for this symbol; the runnable usage below is derived from the test entry-kernel pattern. `docs/sphinx/examples/python/givens_slater_determinant.py` exercises it only through `complex_slater_determinant` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** The declared environment is Python `>=3.11` and `cudaq >=0.15.0,<0.16`; this record was not executed in that environment |
-| Lifecycle | draft |
-| Implementation status | documented and implemented; source was inspected during the historical last review; compilation, execution, and numerical validation are unverified in this task |
-| Replacement and migration notes | Not applicable: no deprecation or replacement was identified during the historical last review; check the current public API/source at use time |
 
 All committed tests named here are `derived` repository evidence, not fresh
 execution or measurement.
@@ -132,7 +127,7 @@ protocol.
 | Ancillas, measurements, and classical storage | metrics/units: allocated qubits and measurement operations; abstraction: source kernel; assumptions: all inputs; status: exact structural count of **0** for each; controls: none |
 
 No resource estimator exists for this symbol. Counts above are structural facts
-derived from historically reviewed source under the stated assumptions.
+derived from source under the stated assumptions.
 Sequential composition adds logical call counts; no supported rule converts
 them into transpiled depth, target cost, runtime, or memory.
 
@@ -146,8 +141,7 @@ them into transpiled depth, target cost, runtime, or memory.
 | Predeclared tolerances | after global-phase alignment, compare statevectors with `rtol=0` and `atol=1e-12` on fp64 or `5e-5` on fp32, selected at call time by `np.dtype(cudaq.complex())`; structural counts and guard predicates are exact |
 | Expected failure/adversarial case | an in-range non-adjacent pair must still change a superposition through `rz(phase)`; it must not be described as a whole-kernel no-op. An out-of-range second index must be reported unsupported/unverified rather than promised to raise |
 | Runnable example or usage test | the source-derived standalone example below prepares one electron, aligns global phase, and compares against the analytic amplitudes. It was authored here but not run. The repository's transitive runnable suite is `tests/python/test_stateprep_givens.py` |
-| Execution record | **Deferred:** no successful command was run for this record in the declared dependency range. Resolution requires recording command, date, package/CUDA-Q version, target, precision, and result after running the standalone case and the cited suite |
-| Evidence status per claim | signatures, gate order, weak guard, and call counts are `derived` from source inspected during the historical last review; the cited tests and docs are `derived` evidence from that review; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
+| Evidence status per claim | signatures, gate order, weak guard, and call counts are `derived` from source cited in the repository; the cited tests and docs are `derived` evidence from the cited assertions; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
 
 ```python
 import numpy as np
@@ -171,17 +165,6 @@ global_phase /= abs(global_phase)
 atol = 5.0e-5 if np.dtype(cudaq.complex()) == np.dtype(np.complex64) else 1.0e-12
 np.testing.assert_allclose(actual, global_phase * expected, rtol=0.0, atol=atol)
 ```
-
-## Evaluation coverage
-
-| Field | Mapping |
-| --- | --- |
-| Positive selection/application | `state-preparation-givens-device-boundary` selects this raw kernel for a caller-owned register and distinguishes it from the real kernel and validated factory |
-| Convention or misconception | the same case requires the post-rotation `exp(+i*phase*n_second)` convention and the fact that the phase still executes when the real rotation no-ops |
-| Capability composition | Not applicable: the eval must not claim that this multi-argument signature provides the one-register injection capability |
-| Invalid/unsupported boundary | the same case covers the non-adjacent phase-only path and the absence of bounds or finite-angle validation |
-| Negative activation | Not applicable: no dedicated negative-activation case targets this symbol |
-| Eval status | **authored**; one manual with-skill smoke attempt passed for `state-preparation-givens-device-boundary` on 2026-09-10. No baseline or formal repeated arm has run |
 
 ## External alignment
 

@@ -1,259 +1,119 @@
-# State preparation — family front door
+# State preparation — family selector
 
-Status: draft. Operation + object: **prepare** a **quantum state**.
+## Selectable operation contracts
 
-This file is the family front door and **not a primitive record**. It carries
-only two shared schemas of `../../assets/primitive-record-template.md` — a
-**Representation Record** for the injectable one-register preparation kernel
-and a **Capability Record** for unitary state preparation — plus routing links
-to the focused factory, runtime device-kernel, and resource-estimator records.
-`../conventions.md` owns the cross-cutting layout, ownership, and validation
-conventions the providers depend on.
-
-## Concrete primitive records
-
-| Primitive record | The scientific contract it owns |
-| --- | --- |
-| [state-preparation-givens-schedule.md](state-preparation-givens-schedule.md) | Host planning of a Givens schedule from an orthonormal orbital-coefficient matrix |
-| [state-preparation-slater-determinant-kernel.md](state-preparation-slater-determinant-kernel.md) | Injectable Slater-determinant kernel emitted from a validated Givens schedule |
-| [state-preparation-hf-ucc.md](state-preparation-hf-ucc.md) | Hartree-Fock reference occupation, optionally followed by a fixed-parameter UCC product at caller-supplied amplitudes |
-
-## Routing front doors
-
-| Front door | What it routes |
-| --- | --- |
-| [state-preparation-givens.md](state-preparation-givens.md) | Schedule planning, injectable preparation, raw Givens/Slater kernels, and logical-resource estimation |
-| [state-preparation-device-kernels.md](state-preparation-device-kernels.md) | Independently callable, runtime-parameterized Hartree-Fock, excitation, UCC, Givens, and flattened Slater-determinant device kernels |
-| [state-preparation-resources.md](state-preparation-resources.md) | Four independently selectable logical-resource estimators |
-| [operator-pools.md](operator-pools.md) | UCCSD, UCCGSD, UpCCGSD, and CEO operator-pool providers |
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| preprocess / orbital-coefficient matrix into a Givens schedule | `cudaq_algorithms.stateprep.make_givens_rotation_schedule` | classical transformation; host | none | [Givens schedule](state-preparation-givens-schedule.md) |
+| prepare / Slater-determinant state from a Givens schedule | `cudaq_algorithms.stateprep.slater_determinant_kernel` | quantum operation; host validation + kernel factory/device kernel | provides `cudaq-algorithms.state-preparation.unitary.v1` | [injectable Slater determinant](state-preparation-slater-determinant-kernel.md) |
+| prepare / Hartree–Fock state with optional fixed-parameter UCC product | `cudaq_algorithms.stateprep.hartree_fock_ucc_kernel` | quantum operation; host validation + kernel factory/device kernel | provides `cudaq-algorithms.state-preparation.unitary.v1` | [HF + fixed UCC](state-preparation-hf-ucc.md) |
+| prepare / contiguous Hartree–Fock occupation on a live register | `cudaq_algorithms.stateprep.hartree_fock` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [canonical HF device kernel](state-preparation-kernel-hartree-fock.md) |
+| prepare / explicit occupation on a live register | `cudaq_algorithms.stateprep.hartree_fock_occupation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [occupation HF device kernel](state-preparation-kernel-hartree-fock-occupation.md) |
+| apply / one UCCSD single excitation to a live register | `cudaq_algorithms.stateprep.single_excitation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [single-excitation device kernel](state-preparation-kernel-single-excitation.md) |
+| apply / one UCCSD double excitation to a live register | `cudaq_algorithms.stateprep.double_excitation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [double-excitation device kernel](state-preparation-kernel-double-excitation.md) |
+| apply / occupied-to-virtual UCCSD product to a live register | `cudaq_algorithms.stateprep.uccsd` | quantum operation; device kernel | runtime amplitudes and concrete caller-owned `cudaq.qview`; no capability ID | [UCCSD device kernel](state-preparation-kernel-uccsd.md) |
+| apply / generalized UCCGSD product to a live register | `cudaq_algorithms.stateprep.uccgsd` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [UCCGSD device kernel](state-preparation-kernel-uccgsd.md) |
+| apply / paired UpCCGSD product to a live register | `cudaq_algorithms.stateprep.upccgsd` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [UpCCGSD device kernel](state-preparation-kernel-upccgsd.md) |
+| apply / coupled-exchange product to a live register | `cudaq_algorithms.stateprep.ceo` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [CEO device kernel](state-preparation-kernel-ceo.md) |
+| apply / arbitrary fixed-parameter UCC product to a live register | `cudaq_algorithms.stateprep.fixed_parameter_ucc` | quantum operation; device kernel | runtime amplitudes/grouped Pauli data; no capability ID | [fixed-UCC device kernel](state-preparation-kernel-fixed-parameter-ucc.md) |
+| apply / adjacent real fermionic Givens rotation | `cudaq_algorithms.stateprep.givens_rotation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [Givens-rotation device kernel](state-preparation-kernel-givens-rotation.md) |
+| apply / adjacent phase-aware fermionic Givens rotation | `cudaq_algorithms.stateprep.phase_givens_rotation` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [phase-Givens device kernel](state-preparation-kernel-phase-givens-rotation.md) |
+| prepare / real Slater determinant from flattened arrays | `cudaq_algorithms.stateprep.slater_determinant` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [real Slater device kernel](state-preparation-kernel-slater-determinant.md) |
+| prepare / complex Slater determinant from flattened arrays | `cudaq_algorithms.stateprep.complex_slater_determinant` | quantum operation; device kernel | concrete caller-owned `cudaq.qview`; no capability ID | [complex Slater device kernel](state-preparation-kernel-complex-slater-determinant.md) |
+| preprocess / occupied-to-virtual UCCSD excitation pool | `cudaq_algorithms.stateprep.make_uccsd_operator_pool` | classical transformation; host | none | [UCCSD operator pool](operator-pool-uccsd.md) |
+| preprocess / generalized UCCGSD excitation pool | `cudaq_algorithms.stateprep.make_uccgsd_operator_pool` | classical transformation; host | none | [UCCGSD operator pool](operator-pool-uccgsd.md) |
+| preprocess / paired UpCCGSD excitation pool | `cudaq_algorithms.stateprep.make_upccgsd_operator_pool` | classical transformation; host | none | [UpCCGSD operator pool](operator-pool-upccgsd.md) |
+| preprocess / coupled-exchange operator pool | `cudaq_algorithms.stateprep.make_ceo_operator_pool` | classical transformation; host | none | [CEO operator pool](operator-pool-ceo.md) |
+| estimate / Givens determinant logical operations | `cudaq_algorithms.stateprep.estimate_givens_resources` | formula-level resource estimator; host | consumes a Givens schedule | [Givens resources](state-preparation-resources-givens.md) |
+| estimate / canonical Hartree–Fock logical operations | `cudaq_algorithms.stateprep.estimate_hartree_fock_resources` | formula-level resource estimator; host | consumes qubit/electron counts | [canonical HF resources](state-preparation-resources-hartree-fock.md) |
+| estimate / occupation-list Hartree–Fock logical operations | `cudaq_algorithms.stateprep.estimate_hartree_fock_occupation_resources` | formula-level resource estimator; host | consumes an occupation list | [occupation HF resources](state-preparation-resources-hartree-fock-occupation.md) |
+| estimate / fixed-parameter UCC logical operations | `cudaq_algorithms.stateprep.estimate_fixed_parameter_ucc_resources` | formula-level resource estimator; host | consumes grouped Pauli words (structural counts only) | [fixed-UCC resources](state-preparation-resources-fixed-parameter-ucc.md) |
 
 The schedule planner returns host data; the Slater-determinant and HF/UCC
 factories return one-register kernels. Inputs, outputs, validation, and
-provenance live in their focused records. The coupled Givens pipeline is also
-summarized by its [routing front door](state-preparation-givens.md).
+provenance live in their focused records. A Givens schedule is host data, not a
+kernel, and is independently consumed by `estimate_givens_resources`.
 
-The raw device kernels are a different representation from the injectable
-one-register seam below: they take runtime scientific data alongside a live
-register and are not directly accepted as `state_prep`. Route by exact public
-symbol through [state-preparation-device-kernels.md](state-preparation-device-kernels.md).
+The raw Hartree–Fock, excitation, UCC, Givens, and flattened
+Slater-determinant device kernels are independently callable and
+runtime-parameterized. They mutate a caller-owned `cudaq.qview`, return no host
+value, and are a different representation from the injectable one-register
+seam below: they take runtime scientific data alongside a live register and
+are not directly accepted as `state_prep` unless their full signature already
+has that shape or a caller supplies a wrapper. Device bodies provide no general
+host validation or status channel; use the host planners or validators named
+by the selected focused record before launch.
+
+Eleven device-kernel entries in the operation table are public exports in
+`stateprep.__all__`. `single_excitation` and `double_excitation` are explicitly
+imported into the public module and are addressable there, although omitted
+from `__all__`; their focused records preserve that surface qualification.
 
 ## Resource estimator routing
 
 Resource estimation is independently selectable because its inputs, results,
 validation, and interpretation differ from state preparation. Route an exact
-`cudaq_algorithms.stateprep` estimator symbol through
-[state-preparation-resources.md](state-preparation-resources.md), then read only
-the focused estimator record it selects. Do not infer one estimator's validation
-or bound status from either preparation record.
+`cudaq_algorithms.stateprep` estimator symbol through the operation table, then
+read only the focused estimator record it selects. Do not infer one estimator's
+validation or bound status from either preparation record.
 
-## Family scope and source provenance
+All four estimators and their frozen result dataclasses live in the
+`cudaq_algorithms.stateprep` namespace; none is exported from the package root.
+They execute on the host and do not build, compile, transpile, or run a quantum
+circuit. Their quantities are logical operations before transpilation, not
+hardware gate counts. The Givens result is additionally documented by its
+source as decomposition-independent upper-bound proxies; the three
+Hartree–Fock/UCC estimator docstrings do not make that bound claim. None reports
+target-aware decomposition, routed depth, runtime, memory, T/Toffoli count,
+measurement, or scientific approximation error, and no cross-estimator
+composition rule is documented.
 
-- Owner: CUDA-Q Algorithms Team.
-- Family scope: prepare or transform a many-fermion state through either a
-  factory-emitted one-argument kernel or a documented raw device kernel. The
-  Capability Record below applies only to the one-argument injection seam.
-  Choosing or optimizing amplitudes is a consumer workflow, out of scope
-  (`../../SKILL.md`).
-- Source paths: `python/cudaq_algorithms/stateprep/` (`_givens.py`,
-  `_hartree_fock.py`, `_kernels.py`, `_pools.py`); the four consumer modules
-  tabulated in the Capability Record below;
-  `python/cudaq_algorithms/block_encoding.py`, cited below for a non-implication
-  and **not** a consumer of this seam.
-- Authoritative tests: `tests/python/test_state_prep_injection.py` for the seam,
-  plus the per-provider suites each primitive record lists.
-- Authoritative documentation: `docs/sphinx/guide/state_prep.rst`,
-  `docs/sphinx/conventions.rst`; example
-  `docs/sphinx/examples/python/05_state_prep_and_injection.py`.
-- Source provenance: current public source/tests are authoritative and must be
-  checked at use time. This record's historical source review is recorded in
-  [Source provenance](../source-provenance.md).
-- Package/CUDA-Q versions verified: **unverified.** The declared environment is
-  Python `>=3.11` with `cudaq >= 0.15.0, < 0.16` (`pyproject.toml`). No
-  compatible-range family verification was completed. The narrower task-local
-  smoke run on an out-of-range CUDA-Q is recorded centrally in
-  [EVAL.md](../../evals/EVAL.md).
-- Lifecycle: draft, for this file and the focused records.
-- **Evidence rule for this family.** Every test named in this file or a linked
-  preparation/resource record is *cited repository evidence* — a committed
-  assertion inspected during the historical last review, labeled `derived` —
-  unless that record states a fresh execution separately. A test pass is never
-  a hardware measurement.
+## Shared contracts
 
----
+Read the [injection contract](injection-contract.md) for the one-register representation,
+consumer methods, exact-width requirement, and unsupported/unverified boundaries.
+Read [UCC parameterization](ucc-parameterization.md) when choosing among UCC kernels,
+and [HF/UCC validation](hf-ucc-validation.md) for host rejection checks and oracles.
+The distinct UCCSD, UCCGSD, UpCCGSD, and CEO operator-pool provider
+representation remains indexed by [operator-pools.md](operator-pools.md).
 
-## Representation Record — the injectable preparation kernel
+Shared source for Givens scheduling, kernels, and resources is
+`python/cudaq_algorithms/stateprep/_givens.py`; Hartree–Fock and UCC resource
+estimation uses `python/cudaq_algorithms/stateprep/_hartree_fock.py`; remaining
+device kernels use `python/cudaq_algorithms/stateprep/_kernels.py`; exports are
+in `python/cudaq_algorithms/stateprep/__init__.py`. Authoritative tests include
+`tests/python/test_stateprep_givens.py`,
+`tests/python/test_state_prep_injection.py`, and
+`tests/python/test_stateprep_hf_ucc.py`. Current public source/tests are
+authoritative and must be checked at use time. Cited assertions are derived
+evidence until checked or executed in the current task; compatibility and
+hardware behavior require their own scoped execution evidence.
 
-- Object name and canonical symbol: the one-argument preparation kernel, passed
-  as the `state_prep` argument of a consumer factory.
-- Public type or structural form, and source path: a compiled CUDA-Q kernel
-  whose only parameter is `(qubits: cudaq.qview)`. There is no named public
-  type; the form is established by the two factories
-  (`python/cudaq_algorithms/stateprep/_givens.py:367`,
-  `_hartree_fock.py:240-320`) and the consumers' `state_prep` parameters.
-- Mathematical meaning: a unitary acting on the register it is handed. Applied
-  to `|0...0>` it produces the provider's target state; a degenerate
-  `pass`-bodied provider leaves the register in `|0...0>`.
-- Shape, layout, ordering, dtype, and units: width is baked in at factory time
-  (`schedule.num_spin_orbitals` or `num_qubits`); Jordan-Wigner layout with
-  qubit 0 least significant and interleaved alpha-even / beta-odd spin orbitals
-  (`../conventions.md`). The object carries no dtype or units of its own.
-- Normalization, sign, and phase convention: unitary, so norm-preserving. The
-  seam fixes no phase; each primitive record states its own phase contract.
-- Required mathematical properties (applicability preconditions): a register
-  of exactly the kernel's width, in `|0...0>` per both providers' contract.
-- Producers (>=2 required to justify this record): the packaged factories
-  `slater_determinant_kernel` and `hartree_fock_ucc_kernel`, plus caller-written
-  one-argument kernels such as `product_prep` and `noop_prep` in
-  `tests/python/test_state_prep_injection.py:24-33`.
-- Consumers: the four modules tabulated in the Capability Record below.
-- Invariants preserved across the boundary: all problem data is captured inside
-  the kernel at factory time — the *data erasure at the kernel boundary*
-  contract of `python/cudaq_algorithms/block_encoding.py` — so the signature
-  carries registers only and no status channel exists.
-- Observable symptom of a misinterpretation: a multi-argument kernel offered
-  here is not the one-register injection representation. A wrong-width kernel
-  may fail, no-op on part of the register, or prepare a plausible wrong state;
-  the outcome is provider/consumer-dependent and unverified.
-- Unsupported or ambiguous forms: multi-argument device kernels — a different
-  representation routed through
-  [state-preparation-device-kernels.md](state-preparation-device-kernels.md),
-  not a variant of this one; kernels that allocate ancillas,
-  measure, or reset (none is packaged, and the capability is unitary-only).
-- Source paths, tests, docs, and provenance: "Family scope and source
-  provenance" above.
+## Premise check (claim → verdict)
 
----
+Requests about this family often carry one of these premises, in the user's own words. Test
+every claim the request makes or assumes against this table before answering; a matching row
+is the answer to give, cited by the record path in its last cell, and the records named there
+are the ones you open next. Never confirm a premise marked false, unverified, or absent.
 
-## Capability Record — unitary state preparation
-
-- Stable ID: `cudaq-algorithms.state-preparation.unitary.v1`. Architecture
-  explicitly permits a dotted capability name. This is the adopted
-  documentation identifier; capability status remains provisional.
-- Status: **provisional.** Source shows multiple independent providers and
-  consumers of this boundary, so it is past `candidate`, but it is not a public
-  protocol and its stability across future providers is not established.
-- Contract type: documentation/taxonomy only — not a Python `Protocol`, not an
-  ABC, not a public symbol. Extraction is justified because **two packaged
-  providers and four independent consumer modules** already exchange it.
-- Boundary representation and exact signature: the Representation Record
-  above — a kernel with the single parameter `(qubits: cudaq.qview)`.
-- Semantic invariants, `derived` from the `state_prep` call sites and the
-  documentation:
-  1. **Fresh register in `|0...0>`, allocated by the calling consumer**, handed
-     to `state_prep(system)` before any ancilla, signal, or control register
-     exists, so preparation precedes the consumer operation on the same
-     register and receives the system register only.
-  2. **Exact width match required, unenforced at factory time.** The
-     preparation acts only on the register handed to it, of width `num_qubits`
-     (Trotter) or `num_system` (encodings). No general factory-time check exists.
-     A mismatch can fail or silently prepare the wrong state depending on which
-     indices the provider touches; no uniform runtime behavior is verified.
-  3. **Zero-argument consumer mode.** Given `state_prep`, the consumer
-     factories return kernels taking no arguments; without it, the
-     encoding/Walk/QSVT factories return a kernel taking one `cudaq.State`.
-     `Trotter.kernel` is zero-argument either way — it evolves `|0...0>` with
-     no preparation — and its `cudaq.State` twin is `Trotter.state_kernel`.
-  4. **Unitary only.** No packaged provider kernel allocates an ancilla,
-     measures, or resets. A `pass`-bodied kernel is a legal degenerate provider.
-  5. **Controlled consumers run the preparation once, uncontrolled**, before
-     the control register exists — a consumer sequencing choice, not evidence
-     of a controlled-preparation capability.
-- Register or shape geometry and ownership: geometry is invariant 2. At the
-  historical last review, ownership was **caller-owned in the reviewed source
-  only**: the consumer factory that called the preparation kernel allocated the
-  register, handed it over fresh in `|0...0>`, and expected exactly its own system
-  width. That is a `derived` historical description, **explicitly not a universal
-  or future policy.** Check current public source at use time. Whether the
-  caller or the primitive should own system and ancilla registers in general is
-  an **open** question in the
-  taxonomy design record outside this package (`../conventions.md` repeats the
-  scope limit); do not present the reviewed behavior as a library-wide guarantee,
-  nor the open question as settled.
-- Convention requirements: the qubit-ordering, Pauli-word, and interleaved
-  spin-orbital conventions of `../conventions.md`.
-- Host/device/simulation boundary: providers validate and flatten data on the
-  host at factory time; the emitted kernel is pure device code, with no
-  simulation-only dependency.
-- Providers, with source paths: `slater_determinant_kernel`
-  (`python/cudaq_algorithms/stateprep/_givens.py`, contract in
-  [state-preparation-slater-determinant-kernel.md](state-preparation-slater-determinant-kernel.md));
-  `hartree_fock_ucc_kernel`
-  (`python/cudaq_algorithms/stateprep/_hartree_fock.py`, contract in
-  [state-preparation-hf-ucc.md](state-preparation-hf-ucc.md)); caller-written
-  one-argument kernels.
-- Consumers, with source paths — **four modules**, twelve public methods:
-
-| Consumer module | Symbols |
-| --- | --- |
-| `python/cudaq_algorithms/pauli_lcu.py` | `PauliLCU.encode_kernel`, `PauliLCU.walk_kernel` |
-| `python/cudaq_algorithms/qubitization.py` | `Walk.kernel`, `Walk.adjoint_kernel`, `Walk.roundtrip_kernel`, `Walk.controlled_kernel`, `Walk.controlled_roundtrip_kernel`; `Walk.moment`, `Walk.moments` (measurement/readout) |
-| `python/cudaq_algorithms/qsvt.py` | `QSVT.kernel`, `QSVT.controlled_kernel` |
-| `python/cudaq_algorithms/trotter.py` | `Trotter.kernel` |
-
-  `Walk.moment` / `Walk.moments` are the classical-readout consumers: they
-  return Chebyshev moments of `H/alpha` rather than a kernel, and raise
-  `ValueError("provide exactly one of ket or state_prep")` when both or neither
-  input mode is given, so measurement and classical post-processing stay visible
-  here instead of folding into the kernel table. Two asymmetries, reported
-  rather than smoothed over: `Trotter.kernel` types the parameter `Any | None`
-  while the others use `Kernel | None`, and its no-preparation mode differs per
-  invariant 3.
-- Unsupported and unverified conditions: the shared boundaries below, plus each
-  primitive record's own unsupported inputs and limitations.
-- Promotion criteria to a public protocol or compiler IR operation, and the
-  explicit decision still required: (a) a provider outside the two historically
-  reviewed providers that exercises the same boundary without widening it, (b)
-  a resolved register-ownership policy, (c) characterized behavior for the conditions
-  marked `unverified` below, and (d) an explicit team decision recorded with an
-  owner. None of the four held at the historical last review; check current
-  public source and team records at use time. This record proposes no promotion.
-
-## Shared unsupported and unverified boundaries
-
-Read each label literally — unsupported, absent, and unverified are three
-different statements. These hold for the seam and for both providers;
-provider-specific limitations stay in the provider records.
-
-| Shared boundary | Label | Why the label |
+| If the request claims or assumes (also phrased as) | Verdict | Say first, then the rest |
 | --- | --- | --- |
-| Controlled preparation | unverified | no packaged provider documents, wraps, or performs it, and `cudaq.control` never appears in the stateprep sources |
-| Inverse/adjoint preparation | unverified | `cudaq.adjoint` never appears in the stateprep sources and no inverse-preparation symbol exists |
-| Global phase under control | unverified | the Givens contract holds only up to a global phase, and no source characterizes a preparation later placed under control |
-| Measurement-assisted preparation | absent | no measurement, reset, feed-forward, repeat-until-success, or success-probability construct exists in the family, so there is no library success probability to report |
-| Dirty (non-zero) input register | unverified | both providers document an all-zero input register; behavior on any other input state is unspecified |
-| Width-mismatch behavior | unverified | exact width is required, but no source or test establishes one uniform outcome; the HF-only path touches fixed indices and may remain in range on a differently sized register |
-| Foreign consumer injection | unverified | a caller's own encoding or consumer is not covered by the consumer table above; check its source |
+| A width mismatch between preparation and consumer always throws, with a fixed exception text (what exception do I get if widths differ; confirm it throws) | unverified | **Unverified: exact width is required, no factory-time check exists, and no uniform outcome is established.** The HF-only shape (fixed `X` indices) can silently prepare a wrong state on a wider register. Any simulator run is target-specific evidence, not a library guarantee. Records: `cat <this skill's directory>/references/state-preparation/injection-contract.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-hf-ucc.md` |
+| Raw Givens or Slater device kernels raise on bad input (confirm every raw kernel raises before changing the register; mismatched index, angle, phase, or final-phase lists) | false | **None raises: `givens_rotation` on a non-adjacent pair is a silent no-op while `phase_givens_rotation` still applies `rz(phase)`; `slater_determinant` no-ops unless `len(orbital_indices) == 2*len(angles)`; `complex_slater_determinant` no-ops unless its three length predicates hold and silently ignores extra final phases.** Validated injectable route: `make_givens_rotation_schedule` then `slater_determinant_kernel`. Records: `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-givens-rotation.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-phase-givens-rotation.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-slater-determinant.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-complex-slater-determinant.md` |
+| `uccgsd`, `upccgsd`, `ceo`, and `fixed_parameter_ucc` validate widths or parallel list lengths, their grouped data are interchangeable, or the reference determinant can be skipped (similar signatures; interchange their grouped data) | false | **`len(pauli_words_list)` drives the loop, so extra theta or coefficient entries are ignored and missing ones fail; there is no single rejection mode; the host check is `validate_fixed_parameter_ucc`.** Same grouped shape (one theta per ordered group, `exp(+i·theta·coefficient·P)` in group and term order) but distinct provenance and content; CEO converts spatial orbitals to twice as many qubits; all act on a caller-prepared reference register and prepare no determinant. Records: `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-uccgsd.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-upccgsd.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-ceo.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-fixed-parameter-ucc.md` |
+| `hartree_fock_occupation`, `single_excitation`, `double_excitation`, or `uccsd` reject duplicate, reversed, or out-of-range indices (rely on the device kernels to reject bad indices) | false | **Device bodies perform no bounds, distinctness, or finiteness validation and raise no host exception; validate on the host with `validate_hartree_fock_occupation` and take endpoints from `get_uccsd_excitations`. Reversed or equal `single_excitation` endpoints are outside the demonstrated contract: the device body applies no canonicalization and produces a silently wrong unitary; `double_excitation` needs four distinct in-range indices, canonicalizes each pair, and flips the effective theta when exactly one pair is descending; all of these kernels mutate the caller-owned live register in place and return no host value, and none is the injectable one-register seam.** Records: `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-hartree-fock-occupation.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-single-excitation.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-double-excitation.md` |
+| `hartree_fock` accepts a `spin` argument or builds an open-shell layout (call hartree_fock with a spin argument) | false | **The signature is `hartree_fock(qubits: cudaq.qview, num_electrons: int)`; it has no `spin` and fills a contiguous prefix.** Open-shell interleaved references go through `make_hartree_fock_occupation` plus `hartree_fock_occupation`. Record: `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-hartree-fock.md` |
+| `get_uccsd_excitations(n, n_e, spin)` returning data means `spin` names a valid physical sector (confirm spin=1 represents the requested sector) | false | **`spin` is 2·S_z and `(num_electrons - spin)` must be even; `get_uccsd_excitations` has no parity guard: its floor division `(num_electrons - spin)//2` silently realizes the spin=2 partition for (8, 4, 1), three alpha and one beta.** `make_hartree_fock_occupation` rejects the mismatch, so run that host check first. Record: `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-uccsd.md` |
+| The `uccsd` device kernel equals `make_uccsd_operator_pool` plus `fixed_parameter_ucc`, so they can be swapped or `uccsd` injected as `state_prep` (same ansatz; inject uccsd directly) | false | **Not equivalent: the fixed-parameter path applies `exp(+i·theta·coefficient·P)` per term with no factor of one half, one theta per group and one group per pool operator in pool order (so `len(thetas)` is the same on both paths); the `uccsd` ladder realizes `exp(-i·(theta/2)·c·P)` and negates theta for some double-excitation index patterns, shown for the tested case only, not a general conversion rule.** `uccsd` takes runtime arguments beyond the register, so it is not a one-argument `(qubits: cudaq.qview)` injectable; injectables are `hartree_fock_ucc_kernel`, `slater_determinant_kernel`, or an explicitly written one-argument wrapper. Records: `cat <this skill's directory>/references/state-preparation/ucc-parameterization.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-uccsd.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-kernel-fixed-parameter-ucc.md` |
+| The Hartree-Fock reference plus fixed UCC amplitudes case is served by the `fixed_parameter_ucc` or `hartree_fock` device kernels (pick the packaged provider; how does the prepared register reach the consumer) | false | **The packaged injectable providers are `hartree_fock_ucc_kernel` for a Hartree-Fock reference with fixed UCC amplitudes (host validation: exactly one of `num_electrons` or `occupied_orbitals`) and `make_givens_rotation_schedule` then `slater_determinant_kernel` for an orthonormal coefficient matrix (host validation: shape and column normalization); both return a one-argument `(qubits: cudaq.qview)` kernel that the consumer factory calls on the register it allocates. Ordering for both is interleaved spin orbitals under Jordan–Wigner little-endian: qubit i = spin-orbital i, alpha even and beta odd; the coefficient matrix has shape `num_spin_orbitals x num_electrons` with rows in that interleaved order, and `make_givens_rotation_schedule` raises `ValueError` for an empty matrix, ragged rows, more electrons than spin orbitals, a column that is not normalized, or columns that are not orthogonal; `hartree_fock_ucc_kernel` takes `spin = 2 * S_z` and rejects an odd `num_electrons - spin`.** Resource estimates for each provider are in the focused estimator records named below; read them before quoting counts. Records: `cat <this skill's directory>/references/state-preparation/state-preparation-hf-ucc.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-givens-schedule.md`, `cat <this skill's directory>/references/state-preparation/state-preparation-slater-determinant-kernel.md` |
+| `make_ceo_operator_pool(n)` takes a qubit count and yields Jordan–Wigner excitations with parity strings | false | **`num_orbitals` counts spatial orbitals, the pool acts on `2n` qubits, and CEO is a coupled-exchange construction with no Jordan–Wigner `Z` parity strings.** Record: `cat <this skill's directory>/references/state-preparation/operator-pool-ceo.md` |
+| A packaged preparation wrapped in `cudaq.control` or `cudaq.adjoint` is a supported operation with known phase behavior (confirm this is supported) | unverified | **Unverified: controlled preparation, inverse/adjoint preparation, and global phase under control are documented and tested by no provider.** Label any general CUDA-Q attempt unverified and outside the library contract. Record: `cat <this skill's directory>/references/state-preparation/injection-contract.md` |
+| The library offers measurement-assisted, repeat-until-success, reset, or feed-forward preparation with a reported success probability | absent | **Absent: providers are unitary, allocate no ancilla, perform no measurement, and report no success probability.** Do not hand-roll one and present it as a library API. Record: `cat <this skill's directory>/references/state-preparation/injection-contract.md` |
+| `BlockEncoding` conformance means a consumer, or the caller's own encoding, accepts `state_prep` (my consumer already allocates the system register; confirm all of these consumers, including mine, accept the preparation kernel) | false | **No protocol member mentions `state_prep`; support is per consumer: `PauliLCU.encode_kernel`, `Walk.kernel`, `QSVT.kernel`, and `Trotter.kernel` each allocate the fresh all-zero system register, call the one-argument `(qubits: cudaq.qview)` preparation on it, then apply the operation; a caller's own encoding or consumer is unverified until its source is checked, so do not confirm it.** Exact width is required and unchecked at factory time. The `state: cudaq.State` input is a different, simulation-only path. Record: `cat <this skill's directory>/references/state-preparation/injection-contract.md` |
+| The skill should choose or optimize the amplitudes | out of scope | **Pools return ordered `cudaq.SpinOperator` generators; amplitude selection or optimization is outside the primitive contract; do not invent an optimizer API.** Record: `cat <this skill's directory>/references/state-preparation/operator-pools.md` |
+| One provider is faster, or the records verify a CUDA-Q version (which is faster on the CUDA-Q version you verified) | unverified | **Records declare only the dependency range `cudaq >=0.15.0,<0.16` and carry no verified-version field; the runtime version you observed in the session is a measurement, not a record fact.** Resource estimators return formula-level logical counts, not runtime; rank nothing you did not execute in the session. |
 
-**`BlockEncoding` conformance does not imply injection support.** It is a
-structural protocol type in `python/cudaq_algorithms/block_encoding.py`, and
-**no member of it mentions `state_prep`**, so conformance promises nothing about
-injection. Injection support comes from the *consumer* (`Walk`, `QSVT`), which
-accepts `state_prep` generically for any conforming encoding, or from an
-encoding's own non-protocol factories. Check support per consumer against source
-or documentation; never infer it for an unchecked or caller-supplied consumer.
-
-Do not hand-roll an alternative for any of these, and do not present an
-out-of-contract experiment as a library capability.
-
-## Shared evaluation coverage
-
-| Case id in `../../evals/evals.json` | What to load |
-| --- | --- |
-| `state-preparation-provider-selection` | this file (scope, Representation Record, Capability Record), [Givens schedule planning](state-preparation-givens-schedule.md), the [Slater-determinant kernel](state-preparation-slater-determinant-kernel.md), and the [HF/UCC kernel](state-preparation-hf-ucc.md) |
-| `state-preparation-ucc-parameterization-boundary` | [state-preparation-hf-ucc.md](state-preparation-hf-ucc.md) (Scientific contract; Accuracy and limitations → Parameterization boundary), plus this file's Representation Record for the one-argument seam |
-| `state-preparation-reference-excitation-device-boundary` | [device-kernel routing](state-preparation-device-kernels.md), then the focused Hartree-Fock, explicit-occupation, single-excitation, and double-excitation records |
-| `state-preparation-uccsd-open-shell-parity` | the focused [UCCSD device-kernel record](state-preparation-kernel-uccsd.md), [UCCSD pool record](operator-pool-uccsd.md), and the HF/UCC host contract's occupation validation |
-| `state-preparation-grouped-ucc-device-boundary` | [device-kernel routing](state-preparation-device-kernels.md), then the focused UCCGSD, UpCCGSD, CEO, and fixed-parameter-UCC records |
-| `state-preparation-givens-device-boundary` | [device-kernel routing](state-preparation-device-kernels.md), then the focused real/phase Givens and real/complex flattened-Slater records |
-| `state-preparation-injection-composition` | this file only: Capability Record invariants, the four-module consumer table, and the `BlockEncoding` non-implication |
-| `state-preparation-controlled-adjoint-unknown` | this file only: Shared unsupported and unverified boundaries |
-| `state-preparation-measurement-assisted-negative` | this file only: Shared unsupported and unverified boundaries, plus Capability Record invariant 4 (unitary only) |
-| `state-preparation-width-mismatch-unknown` | this file's exact-width invariant plus [the HF/UCC provider limitation](state-preparation-hf-ucc.md) |
-
-Each leaf is reachable directly from the catalog and through at most one family
-front door; no deeper directory or routing layer is required. One manual
-with-skill smoke attempt passed for
-`state-preparation-uccsd-open-shell-parity` and
-`state-preparation-givens-device-boundary` on 2026-09-10. No baseline or formal
-repeated arm has run, and all other rows remain authored coverage only;
-`../../evals/EVAL.md` owns the procedure.
+Boundaries to restate whenever they apply, marked "from record": exact width, unchecked at
+factory time; the `(qubits: cudaq.qview)` one-register seam and which symbols are not it;
+Jordan–Wigner little-endian layout with qubit i = spin-orbital i and alpha even / beta odd;
+host validation lives in the helpers, never in the device kernels.

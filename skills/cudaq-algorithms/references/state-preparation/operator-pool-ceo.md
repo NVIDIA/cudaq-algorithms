@@ -1,6 +1,6 @@
 # Coupled-exchange-operator pool
 
-Status: draft. Operation + object: **preprocess** a **coupled-exchange operator
+Operation + object: **preprocess** a **coupled-exchange operator
 pool**.
 
 ## Identity and classification
@@ -16,9 +16,7 @@ pool**.
 - Runnable usage: `docs/sphinx/guide/state_prep.rst:58,69,265-267` and
   `pytest -q tests/python/test_operator_pools.py -k ceo`.
 - Source provenance: current public source/tests are authoritative and must be
-  checked at use time. This record's historical source review is recorded in
-  [Source provenance](../source-provenance.md). Lifecycle is
-  draft; execution remains unverified for this record.
+  checked at use time.
 - Kind/role/layer: exact deterministic classical transformation,
   computational leaf, host only; dependency `cudaq`.
 
@@ -87,7 +85,7 @@ record; literature agreement is unverified. The dense kernel test derives its
 reference from the same pool and cannot independently catch a count-preserving
 word or sign error.
 
-## Validation and evaluation coverage
+## Validation
 
 - Independent oracle: an absolute known answer at `M=2` pins all four
   operators, Pauli words, coefficients, order, and signs exactly
@@ -96,10 +94,5 @@ word or sign error.
 - Structural checks: exact counts at `M=2,4`, width bounds, converter grouping,
   invalid-count rejection, and kernel dense-exponential agreement at `M=2,3,4`.
   The latter is supporting, not independent, because it reuses the same pool.
-- Evidence: source and committed assertions inspected during the historical
-  last review support `derived` claims; package/CUDA-Q execution and numerical
-  validation are `unexecuted` here.
-- Eval coverage: authored `operator-pool-ceo-units` covers the spatial-orbital
-  unit, doubled qubit width, and rejection of the false Jordan–Wigner/parity
-  characterization. Baseline and with-skill arms have not run. Empty-pool
-  behavior has no dedicated eval.
+- Evidence: the scientific assertions above are derived from cited source/tests;
+  they require fresh execution before claiming numerical validation.

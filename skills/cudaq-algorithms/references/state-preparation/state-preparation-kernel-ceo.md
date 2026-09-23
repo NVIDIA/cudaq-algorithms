@@ -1,6 +1,6 @@
 # Parameterized CEO device kernel
 
-Status: draft. Operation + object: **apply** a **coupled-exchange-operator
+Operation + object: **apply** a **coupled-exchange-operator
 product** to a caller-owned quantum register.
 
 This is one independently selectable primitive contract. CEO's spatial-orbital
@@ -16,11 +16,6 @@ though its runtime containers resemble the grouped UCC kernels.
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`ceo`); `python/cudaq_algorithms/stateprep/_pools.py` (CEO construction and `get_ceo_pauli_lists`); generic validator in `python/cudaq_algorithms/stateprep/_hartree_fock.py`; exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_ceo_kernel_matches_dense_exponential`); absolute provider oracle in `tests/python/test_operator_pools.py`; shapes and smoke use in `tests/python/test_stateprep.py` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable use in `tests/python/test_stateprep_kernels.py` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** Declared Python `>=3.11`, `cudaq >=0.15.0,<0.16`; no compatible execution was completed for this record |
-| Lifecycle | draft |
-| Implementation status | documented; source and committed tests were inspected during the historical last review; `unexecuted` and not freshly numerically validated |
-| Replacement and migration notes | Not applicable: no deprecation or removal was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -97,7 +92,7 @@ though its runtime containers resemble the grouped UCC kernels.
 | Stable ID | Not applicable: no capability ID is assigned to this multi-argument kernel |
 | Capability status | Not applicable |
 | Direction | Not applicable |
-| Owning record | this record owns the direct boundary; [state-preparation.md](state-preparation.md) owns the different one-register capability |
+| Owning record | this record owns the direct boundary; [injection-contract.md](injection-contract.md) owns the different one-register capability |
 | Boundary representation and exact signature | direct device composition through the four-argument signature under Inputs |
 | Semantic invariants | retain CEO provenance, spatial-to-spin width conversion, non-parity-string construction, one amplitude per group, and group/term order |
 | Shape/register geometry | one caller-owned register of width `2*num_orbitals`, matching every full-width word |
@@ -142,19 +137,7 @@ or measured cost.
 | Predeclared tolerances | maximum amplitude error `<1e-12` for double precision or `<5e-5` for single precision; absolute provider coefficients are exact dyadic values |
 | Expected failure/adversarial case | invalid provider counts reject; passing `4` as `num_orbitals` when four qubits were intended silently constructs eight-qubit words; malformed parallel data must be rejected on host |
 | Runnable example or usage test | `pytest -q tests/python/test_stateprep_kernels.py -k ceo`; provider oracle in `pytest -q tests/python/test_operator_pools.py -k ceo` |
-| Execution record | unexecuted for this record in the declared package/CUDA-Q range; no result, target, or precision is claimed |
-| Evidence status per claim | signatures, loops, formulas, and cited assertions are `derived` from source and committed tests inspected during the historical last review; fresh compilation, execution, numerical validation, literature alignment, and measurement are `unverified` with `unexecuted` qualifier |
-
-## Evaluation coverage
-
-| Field | Contract |
-| --- | --- |
-| Positive selection/application | authored `state-preparation-grouped-ucc-device-boundary` selects this record and its matching provider |
-| Convention or misconception | authored `operator-pool-ceo-units` covers spatial-orbital units and the non-Jordan-Wigner construction; the grouped-boundary case rejects provider interchangeability |
-| Capability composition | the grouped-boundary case keeps this runtime signature distinct from one-register `state_prep` |
-| Invalid/unsupported boundary | the two cases cover width conversion, provider provenance, host validation, and ignored-extra/missing-entry behavior |
-| Negative activation | Not applicable: no dedicated non-activation case targets this record |
-| Eval status | authored in `../../evals/evals.json`; baseline and with-skill arms have not run, so no comparison is claimed |
+| Evidence status per claim | signatures, loops, formulas, and cited assertions are `derived` from source and committed tests cited in the repository; fresh compilation, execution, numerical validation, literature alignment, and measurement are `unverified` with `unexecuted` qualifier |
 
 ## External alignment
 

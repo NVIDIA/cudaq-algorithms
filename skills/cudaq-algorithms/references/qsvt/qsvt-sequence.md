@@ -1,6 +1,6 @@
 # QSVT sequence application
 
-Status: draft. Operation + object: **transform** an **encoded spectrum with a
+Operation + object: **transform** an **encoded spectrum with a
 phase sequence**.
 
 ## Identity and classification
@@ -74,7 +74,7 @@ controlled width adds one qubit. The circuit has `d` encoding invocations,
 logical subcircuit counts, not decomposed gates, depth, runtime, memory, or a
 degree/error bound.
 
-## Validation and evaluation
+## Validation
 
 Independent oracles in the repository include a 2x2 signal-model product,
 dense eigendecomposition of the transformed block, a countable mock circuit,
@@ -84,12 +84,9 @@ tests use values from `1e-12` to `1e-8` by case.
 
 Expected adversarial cases include negative eigenvalues, conflicting retags,
 zero-ancilla encodings, degree zero, and control 0. Current public source and
-tests are authoritative and must be rechecked at use time; this record was not
-freshly executed. [source-provenance.md](../source-provenance.md) records
-historical last-review audit context. Runnable pointers are
+tests are authoritative and must be rechecked at use time. [Source lookup](../source-provenance.md) gives shared current-source paths. Runnable pointers are
 `tests/python/test_qsvt.py` and
-`docs/sphinx/examples/python/02_hamiltonian_simulation.py`. Eval coverage includes
-`qsvt-phase-and-recovery-boundary` and the application composition cases.
+`docs/sphinx/examples/python/02_hamiltonian_simulation.py`.
 
 ## External alignment
 

@@ -1,6 +1,6 @@
 # Block encoding — family front door
 
-Status: draft. Family operation + object: **encode** an **operator as a
+Family operation + object: **encode** an **operator as a
 zero-flagged block of a unitary**.
 
 This front door owns the shared representation and capability records. The
@@ -62,7 +62,6 @@ because it calls `encode_kernel`, which the protocol does not declare.
 ## Capability record — zero-flagged block access
 
 - Stable ID: `cudaq-algorithms.block-encoding.zero-flagged.v1`.
-- Status: provisional.
 - Contract type: backed by the source-level `BlockEncoding` protocol; the ID
   itself is a documentation identifier, not a public symbol.
 - Owner: this family record.
@@ -76,15 +75,10 @@ because it calls `encode_kernel`, which the protocol does not declare.
   semantics cannot be inferred from structural conformance; hardware execution
   and foreign helper compatibility are unverified unless separately tested.
 
-Promotion to `stable taxonomy contract` requires a second packaged provider, a
-decision about the optional observable member, and executed cross-provider
-contract tests. None is claimed by this draft.
-
 ## Provenance and validation
 
 - Source provenance: current public source and tests are authoritative and must
-  be rechecked at use time. [source-provenance.md](../source-provenance.md)
-  records historical last-review audit context.
+  be rechecked at use time. [Source lookup](../source-provenance.md) gives shared current-source paths.
 - Contract source: `python/cudaq_algorithms/block_encoding.py`.
 - Authoritative tests: `test_block_encoding_protocol.py`,
   `test_walk_qsvt_orchestration.py`, `test_df_encoding.py`.
@@ -103,3 +97,9 @@ contract tests. None is claimed by this draft.
 | Measure Chebyshev moments | [qubitization-moments.md](../qubitization/qubitization-moments.md) |
 | Apply a polynomial transform | [qsvt-sequence.md](../qsvt/qsvt-sequence.md) |
 | Inspect simulated flagged blocks | [simulation analysis](../simulation/simulation-analysis.md) |
+
+## Selectable operation contracts
+
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| encode / Pauli-sum operator as a zero-flagged unitary block | `PauliLCU` | quantum operation; host construction + kernel factory/device kernel | provides `cudaq-algorithms.block-encoding.zero-flagged.v1`; optionally requires `cudaq-algorithms.state-preparation.unitary.v1` | [Pauli LCU](pauli-lcu.md) |

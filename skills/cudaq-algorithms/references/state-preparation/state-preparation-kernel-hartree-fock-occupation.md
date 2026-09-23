@@ -1,6 +1,6 @@
 # Explicit-occupation Hartree-Fock device kernel
 
-Status: draft. Operation + object: **prepare** an **explicit-occupation
+Operation + object: **prepare** an **explicit-occupation
 Hartree-Fock determinant**.
 
 This record owns only the runtime device kernel. Host occupation construction,
@@ -16,11 +16,6 @@ the injectable factory, and the resource estimators are routed separately by
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py:47-56`; host validator and builder in `python/cudaq_algorithms/stateprep/_hartree_fock.py:74-137`; export in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | Direct assertions: `tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_explicit_occupation_statevector` and `::test_hartree_fock_open_shell_occupation` (`:114-150`). Validator assertions at `:84-106` are host-boundary evidence |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:74-108`; `docs/sphinx/examples/python/hartree_fock_ucc.py` constructs and consumes an open-shell occupation |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | None for this record. The declared target is Python `>=3.11` and `cudaq >=0.15.0,<0.16`; execution in that range is unverified |
-| Lifecycle | draft |
-| Implementation status | documented and implemented; source was inspected during the historical last review; not compiled, executed, or numerically validated during this record expansion |
-| Replacement and migration notes | Not applicable: no deprecation or replacement was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -106,11 +101,10 @@ cost is `m` logical `X` calls, no ancilla allocation, and no measurement. The
 metric is pre-transpilation logical operation calls, the abstraction is the raw
 device body, the execution assumption is a caller-owned register containing
 every listed index, and the controlling parameter is
-`len(occupied_orbitals)`. The count is exact and derived from historically
-reviewed source, not measured; it composes additively with surrounding logical
+`len(occupied_orbitals)`. The count is exact and derived from source, not measured; it composes additively with surrounding logical
 operations. The separate public `estimate_hartree_fock_occupation_resources`
 contract is routed through
-[state-preparation-resources.md](state-preparation-resources.md). This claim is
+[state-preparation family selector](state-preparation.md). This claim is
 not circuit depth, transpiled gates, hardware runtime, or memory.
 
 ## Validation
@@ -123,19 +117,7 @@ not circuit depth, transpiled gates, hardware runtime, or memory.
 | Predeclared tolerances | `atol=1.0e-12` in `_assert_basis_state` at `tests/python/test_stateprep_hf_ucc.py:53-56`; no relative tolerance is declared there |
 | Expected failure/adversarial case | The host validator rejects `[0,2,2]`, `[0,-1]`, and an index equal to the register width; the raw kernel must not be described as raising for them |
 | Runnable example or usage test | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python pytest -q -p no:cacheprovider tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_explicit_occupation_statevector tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_open_shell_occupation` |
-| Execution record | Command above; date 2026-09-10; package/CUDA-Q version, target, and precision: unverified; result: **unexecuted** during this record expansion |
-| Evidence status per claim | Signature, gate sequence, list-order behavior, and structural cost: `derived` from source inspected during the historical last review; cited test results and tolerance: `derived` from committed evidence inspected during that review; fresh execution, compilation, numerical validation, and measurement: `unexecuted` / `unverified` |
-
-## Evaluation coverage
-
-| Field | Coverage |
-| --- | --- |
-| Positive selection/application | Authored case `state-preparation-reference-excitation-device-boundary` selects `make_hartree_fock_occupation` plus this kernel for its requested open-shell reference |
-| Convention or misconception | The case checks explicit alpha-even/beta-odd open-shell occupation instead of contiguous filling |
-| Capability composition | The case checks the caller-owned multi-argument device boundary rather than the one-argument injectable-provider seam |
-| Invalid/unsupported boundary | The case requires host validation and forbids promising raw-device rejection of duplicate or out-of-range indices |
-| Negative activation | Not applicable: no dedicated negative-activation eval targets this symbol |
-| Eval status | authored; baseline run, with-skill run, and comparison not run |
+| Evidence status per claim | Signature, gate sequence, list-order behavior, and structural cost: `derived` from source cited in the repository; cited test results and tolerance: `derived` from committed evidence cited in the repository; fresh execution, compilation, numerical validation, and measurement: `unexecuted` / `unverified` |
 
 ## External alignment
 

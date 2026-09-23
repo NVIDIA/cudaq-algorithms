@@ -1,6 +1,6 @@
 # UCCSD double-excitation device kernel
 
-Status: draft. Operation + object: **apply** one **Jordan-Wigner UCCSD double
+Operation + object: **apply** one **Jordan-Wigner UCCSD double
 excitation**.
 
 This is one runtime device-kernel contract. It does not prepare a reference
@@ -16,11 +16,6 @@ determinant and is not the full UCCSD product documented in
 | Contract-specific source paths | Public circuit and its two private realizations: `python/cudaq_algorithms/stateprep/_kernels.py:94-442`; matching pool generator: `python/cudaq_algorithms/stateprep/_pools.py:157-183`; import surface: `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | **No direct standalone test exists.** Indirect composition evidence is `tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential` (`:158-182`). `::test_uccsd_interleaved_mixed_double_matches_dense_exponential` (`:185-208`) sets every other amplitude to zero and isolates the overlapping-interval tuple `[4,1,3,6]`, but still calls the full `uccsd` entry kernel |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:24-72` documents the full UCCSD kernel and its host-generated endpoints; no standalone `double_excitation` example is documented |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | None for this record. The declared target is Python `>=3.11` and `cudaq >=0.15.0,<0.16`; execution in that range is unverified |
-| Lifecycle | draft |
-| Implementation status | documented and implemented; source was inspected during the historical last review; not compiled, directly executed, or directly numerically validated during this record expansion |
-| Replacement and migration notes | Not applicable: no deprecation or replacement was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -132,7 +127,7 @@ Other one- and two-qubit logical-call counts depend on endpoint geometry and
 the selected branch. These are exact pre-transpilation structural facts,
 controlled by pair order and interval overlap, not a depth, native-gate,
 runtime, or memory estimate. They compose additively only at the logical-call
-level, are derived from historically reviewed source rather than measured, and
+level, are derived from source rather than measured, and
 make no architecture-level claim.
 
 ## Validation
@@ -145,19 +140,7 @@ make no architecture-level claim.
 | Predeclared tolerances | For the indirect dense suite, maximum absolute statevector error `<5e-5` when `cudaq.complex()` is `complex64`, otherwise `<1e-12` (`tests/python/test_stateprep_kernels.py:127-131`) |
 | Expected failure/adversarial case | Repeat an endpoint within or across the two pairs: the caller must reject it before launch; do not expect a device exception or a meaningful canonicalization |
 | Runnable example or usage test | Indirect composition command: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python pytest -q -p no:cacheprovider tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential tests/python/test_stateprep_kernels.py::test_uccsd_interleaved_mixed_double_matches_dense_exponential` |
-| Execution record | Command above; date 2026-09-10; package/CUDA-Q version, target, and precision: unverified; result: **unexecuted** during this record expansion. It is not a direct standalone test |
-| Evidence status per claim | Signature, canonicalization, sign rule, mathematical circuit, invalid-path behavior, and structural resources: `derived` from source inspected during the historical last review; dense agreement and tolerance: `derived` from indirect committed tests inspected during that review; direct execution, direct numerical validation, and measurement: `unexecuted` / `unverified` |
-
-## Evaluation coverage
-
-| Field | Coverage |
-| --- | --- |
-| Positive selection/application | Authored case `state-preparation-reference-excitation-device-boundary` selects this symbol for one UCCSD double factor inside a caller-owned kernel |
-| Convention or misconception | The case requires four distinct indices; this record adds the source-defined pair canonicalization and exactly-one-descending sign rule |
-| Capability composition | The case checks that the multi-argument device kernel is not itself the one-argument injectable-provider seam |
-| Invalid/unsupported boundary | The case forbids promising device rejection for duplicate or out-of-range endpoints. Reversing a valid pair is supported here, unlike the single-excitation contract, but changes effective `theta` when exactly one pair descends |
-| Negative activation | Not applicable: no dedicated negative-activation eval targets this symbol |
-| Eval status | authored; baseline run, with-skill run, and comparison not run |
+| Evidence status per claim | Signature, canonicalization, sign rule, mathematical circuit, invalid-path behavior, and structural resources: `derived` from source cited in the repository; dense agreement and tolerance: `derived` from indirect committed tests cited in the repository; direct execution, direct numerical validation, and measurement: `unexecuted` / `unverified` |
 
 ## External alignment
 

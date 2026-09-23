@@ -1,6 +1,6 @@
 # Qubitization walk kernels
 
-Status: draft. Operation + object: **evolve** a **quantum state by a
+Operation + object: **evolve** a **quantum state by a
 qubitization walk**.
 
 ## Identity and classification
@@ -9,8 +9,7 @@ qubitization walk**.
 - Source: `python/cudaq_algorithms/qubitization.py`.
 - Tests: `test_qubitization.py`, `test_walk_qsvt_orchestration.py`.
 - Source provenance: current public source and tests are authoritative and must
-  be rechecked at use time. [source-provenance.md](../source-provenance.md)
-  records historical last-review audit context.
+  be rechecked at use time. [Source lookup](../source-provenance.md) gives shared current-source paths.
 - Kind/role/abstraction: quantum operation, computational, composite protocol.
 - Parameterization: encoding at construction; `power`, direction, control, and
   uncomputation at factory call.
@@ -48,8 +47,12 @@ factory has no general way to verify it. Runtime behavior for a mismatch is
 provider/consumer-dependent and unverified; do not promise a launch failure.
 
 `power` must be a non-negative integer and `control_state` must be 0 or 1. The
-controlled register's qubit 0 is the external control. Control `|0>` reduces to
-identity up to the cancelling PREPARE pair.
+factory initializes qubit 0 of its own controlled register to `control_state`;
+this is not an active-low control selector. With control `|0>`, walk steps leave
+the system in its supplied or `state_prep`-prepared state. In this control-off
+branch, `uncompute=True` cancels PREPARE with UNPREPARE and returns the added
+control/ancillas to zero; `uncompute=False` leaves the ancillas prepared, so
+full-register identity is not generally valid.
 
 ## Capabilities and composition
 
@@ -73,12 +76,11 @@ Independent oracles:
 
 - compare the flagged block with dense `T_power(-H/alpha)`;
 - verify walk followed by adjoint walk returns the input;
-- verify the control-0 and control-1 blocks independently;
+- verify the control-0 and control-1 blocks independently, including retained
+  PREPARE when `uncompute=False`;
 - use a countable mock encoding to check factory call counts.
 
 The runnable pointers are `tests/python/test_qubitization.py` and
 `tests/python/test_walk_qsvt_orchestration.py`; they use dense Pauli references
 and amplitude comparisons. Current public source and tests must be rechecked at
-use time; this record was not freshly executed. Eval coverage includes
-`qubitization-walk-moment-boundary` and
-application composition cases.
+use time.

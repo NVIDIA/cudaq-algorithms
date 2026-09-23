@@ -1,55 +1,41 @@
 # Hartree-Fock reference plus fixed-parameter UCC preparation
 
-Status: draft. Operation + object: **prepare** a **quantum state**.
+Operation + object: **prepare** a **quantum state**.
 
-This is a **concrete primitive record**: it instantiates each applicable
-canonical Primitive-Record heading of `../../assets/primitive-record-template.md`
-exactly once, for one contract — a Hartree-Fock reference occupation optionally
-followed by a UCC product at amplitudes the caller already knows. The shared
-seam it plugs into (kernel representation, unitary capability, consumer table,
-common boundaries) is [state-preparation.md](state-preparation.md);
-cross-cutting layout, ownership, and validation conventions are
-`../conventions.md`. Neither is repeated here.
+The factory prepares a Hartree-Fock reference and an optional UCC product
+at known amplitudes. The shared [injection contract](injection-contract.md) owns
+the one-register signature, consumer table, and common boundaries.
 
 ## Identity and provenance
 
 | Field | Value |
 | --- | --- |
 | Owner | CUDA-Q Algorithms Team |
-| Public symbols and import paths | from `cudaq_algorithms.stateprep`: `hartree_fock_ucc_kernel`, `make_hartree_fock_occupation`, `validate_hartree_fock_occupation`, `get_fixed_parameter_ucc_pauli_lists`, `validate_fixed_parameter_ucc`. Related **device** kernels are separate contracts routed by [state-preparation-device-kernels.md](state-preparation-device-kernels.md) |
+| Public symbols and import paths | from `cudaq_algorithms.stateprep`: `hartree_fock_ucc_kernel`, `make_hartree_fock_occupation`, `validate_hartree_fock_occupation`, `get_fixed_parameter_ucc_pauli_lists`, `validate_fixed_parameter_ucc`. Related **device** kernels are separate contracts routed by the [state-preparation family selector](state-preparation.md) |
 | Source paths | `python/cudaq_algorithms/stateprep/_hartree_fock.py`; `python/cudaq_algorithms/stateprep/_kernels.py` for the emitted gates; `python/cudaq_algorithms/stateprep/_pools.py` for operator pools |
 | Authoritative tests | `tests/python/test_stateprep_hf_ucc.py`, `tests/python/test_stateprep_kernels.py`, `tests/python/test_operator_pools.py`, `tests/python/test_stateprep.py`, and `tests/python/test_state_prep_injection.py` for the seam |
 | Authoritative documentation | `docs/sphinx/guide/state_prep.rst`, `docs/sphinx/conventions.rst`; example `docs/sphinx/examples/python/05_state_prep_and_injection.py` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions verified | **unverified.** The declared environment is Python `>=3.11` with `cudaq >= 0.15.0, < 0.16` (`pyproject.toml`), but no test was executed for this record |
-| Lifecycle | draft |
-| Replacement and migration notes | none; no listed symbol was identified as deprecated during the historical last review; check the current public API/source at use time |
 
-**Evidence rule.** Every test named below is *cited repository evidence* — a
-committed assertion inspected during the historical last review, labeled
-`derived` — never a fresh measurement in this session.
+Cited repository assertions provide derived evidence until executed in the current task.
 
 ## Classification
 
 | Dimension | Value |
 | --- | --- |
-| Operation + mathematical object (primary identity) | **prepare** + **quantum state**. Register ownership is deliberately not part of the identity; the seam's source-derived behavior is in the family Capability Record |
-| Kind | quantum operation. The independently selectable host resource helpers are routed from [state-preparation-resources.md](state-preparation-resources.md) and are not part of the emitted-kernel kind |
+| Operation + mathematical object (primary identity) | **prepare** + **quantum state**. Register ownership is deliberately not part of the identity; the seam's source-derived behavior is in the shared injection Capability Record |
+| Kind | quantum operation. The independently selectable host resource helpers are routed from the [state-preparation family selector](state-preparation.md) and are not part of the emitted-kernel kind |
 | Routine role | computational — one distinct, independently usable task. Role follows problem completeness, not execution location, so host-side validation and flattening are computational too |
 | Abstraction level | leaf operation. The two-stage circuit (reference determinant, then UCC product) is fixed inside this one contract |
 | Parameterization | construction-time: amplitudes, words, coefficients, and register width are baked in when the kernel is minted. The runtime-parameterized device kernels named above are **not** this seam |
 | Execution layers | host validation and flattening, kernel factory, device kernel |
 | Input representations | Hartree-Fock occupation; grouped fixed-parameter UCC Pauli words and coefficients; a flat amplitude list |
-| Output representations | the one-argument `(qubits: cudaq.qview)` preparation kernel of the family Representation Record |
+| Output representations | the one-argument `(qubits: cudaq.qview)` preparation kernel of the shared injection Representation Record |
 | Domain | `quantum-chemistry` — a tag, not a parallel taxonomy; the capability it provides is domain-independent |
 | Required dependencies | `cudaq >= 0.15.0, < 0.16` (`pyproject.toml`); the host path uses `cudaq` only. A simulator or hardware target is needed to *run* an emitted kernel, not to build one |
 | Optional dependencies | none |
 | Exactness | exact for the emitted circuit contract, subject to host input validation and floating-point synthesis of the rotation angles |
 | Uncertainty | deterministic |
-| Method | a fixed-parameter ansatz product. `ansatz` is outside the provisional `direct \| variational \| heuristic` vocabulary of `../architecture.md`, so it is a provisional extension here |
-
-The last three rows are provisional metadata: record the value, never route on
-it.
+| Method | a fixed-parameter ansatz product |
 
 ## Scientific contract
 
@@ -110,13 +96,14 @@ is equivalent to this product.
 - Why and when to use: when the target is a Hartree-Fock reference determinant,
   optionally followed by a UCC product at amplitudes the caller already knows.
 - When not to use: when the target is a single Slater determinant from an
-  orbital-coefficient matrix — that is
-  [state-preparation-givens.md](state-preparation-givens.md), a different
-  contract, not a variant of this one; when the amplitudes still have to be
-  chosen or optimized (a consumer workflow, out of scope); or when a
+  orbital-coefficient matrix — that is the
+  [Givens schedule](state-preparation-givens-schedule.md) followed by the
+  [injectable Slater-determinant kernel](state-preparation-slater-determinant-kernel.md),
+  different contracts rather than a variant of this one; when the amplitudes
+  still have to be chosen or optimized (a consumer workflow, out of scope); or when a
   multi-argument device kernel is wanted — route that different representation
   by exact symbol through
-  [state-preparation-device-kernels.md](state-preparation-device-kernels.md).
+  [state-preparation family selector](state-preparation.md).
 - Approximation controls: none. The circuit is exact for the data supplied.
 
 ## Inputs
@@ -131,26 +118,9 @@ is equivalent to this product.
 | Normalization | none required of the inputs |
 | Required mathematical properties | each `P_gj` spans the full register width |
 
-Validation and rejection behavior: `validate_fixed_parameter_ucc` runs first,
-then the occupation guards; every rejection is a `ValueError`
-(`_hartree_fock.py:94-118`, `:196-221`, `:258-279`).
-
-| # | Rejected condition |
-| --- | --- |
-| 1 | unequal outer lengths of `parameters`, `pauli_words`, `coefficients` |
-| 2 | a group whose word count differs from its coefficient count |
-| 3 | a `str` word whose width is not `num_qubits`, or containing a character outside `IXYZ`. A `cudaq.pauli_word` exposes no accessor and is trusted (`assumed`) |
-| 4 | not exactly one of `num_electrons` / `occupied_orbitals` — `ValueError("provide exactly one of num_electrons or occupied_orbitals")` |
-| 5 | `spin != 0` supplied together with `occupied_orbitals`; encode an open-shell reference in `occupied_orbitals` directly |
-| 6 | an occupied index that is non-integral or negative (validated before any integer coercion, so `2.5` is rejected rather than truncated to `2`), `>= num_qubits`, or duplicated |
-| 7 | from `make_hartree_fock_occupation`, which runs inside the factory: `num_electrons > num_qubits`; odd `num_qubits` when `spin > 0`; `spin > num_electrons`; **`(num_electrons - spin)` odd when `spin > 0`**; an alpha count exceeding the spatial-orbital count `num_qubits // 2` |
-
-The parity guard in row 7 is the easiest of these to miss, because `spin` reads
-like a multiplicity: it is `2 * S_z`, so `(num_electrons - spin)` must be even.
-The source states that without the guard the beta floor
-`(num_electrons - spin) // 2` would silently realize `spin + 1` — `(8, 4, 1)`
-would return the same occupation as `(8, 4, 2)` — and the rejection is asserted
-at `test_stateprep_hf_ucc.py:149-150` (`_hartree_fock.py:104-111`).
+Validation runs on the host and raises `ValueError` for rejected inputs.
+Read the [seven rejection groups and occupation parity guard](hf-ucc-validation.md)
+before supplying hand-built inputs.
 
 ### Building the grouped inputs
 
@@ -197,7 +167,7 @@ prep = stateprep.hartree_fock_ucc_kernel(num_qubits, thetas, words, coeffs,
 
 - Stable ID: `cudaq-algorithms.state-preparation.unitary.v1`
 - Direction: provides
-- Owning family record: [state-preparation.md](state-preparation.md), whose
+- Owning family record: [injection-contract.md](injection-contract.md), whose
   Capability Record carries the invariants, the four-module consumer table, and
   the register-ownership scope limit. Match the capability ID, the
   `(qubits: cudaq.qview)` boundary representation, the exact register width, and
@@ -215,94 +185,28 @@ Not applicable: `Abstraction level` is `leaf operation`.
 | --- | --- |
 | Error behavior or bounds | no approximation is introduced; deviations come from floating-point synthesis of the rotation angles, and no error bound is stated in source |
 | Precision sensitivity | the emitted circuit is precision-agnostic; observed agreement with a dense reference depends on the active simulator precision (see "Validation") |
-| Unsupported inputs | the seven rejected condition groups tabulated above |
+| Unsupported inputs | the seven rejected condition groups in [HF/UCC validation](hf-ucc-validation.md) |
 | Known implementation limitation 1 | the device kernel `fixed_parameter_ucc` requires the register to already hold a reference determinant; applied to an all-zero register the source calls the result "physically meaningless" (`_kernels.py:576-579`). `hartree_fock_ucc_kernel` is the packaged form that guarantees the ordering |
 | Known implementation limitation 2 | the `hf_only` factory shape emits only `X` gates at fixed occupation indices (`_hartree_fock.py:300-306`), so a width mismatch that leaves those indices in range has no stated detection mechanism. Per `../conventions.md` a silent wrong-state path must be recorded rather than smoothed over, so it is flagged as a **candidate** limitation: whether such a launch succeeds with a wrong-width determinant, fails, or no-ops is `unverified`, and no source or test covers it |
-| Unsupported versus unverified | the shared boundaries — controlled, adjoint, measurement-assisted, dirty input register, width-mismatch behavior, foreign consumer injection, and global phase under control — are stated once with their labels under "Shared unsupported and unverified boundaries" in [state-preparation.md](state-preparation.md). This provider adds none of its own |
+| Unsupported versus unverified | the shared boundaries — controlled, adjoint, measurement-assisted, dirty input register, width-mismatch behavior, foreign consumer injection, and global phase under control — are stated once with their labels under "Shared unsupported and unverified boundaries" in [injection-contract.md](injection-contract.md). This provider adds none of its own |
 
-### Parameterization boundary and non-interchangeability
+### Parameterization boundary
 
-A parameterized kernel *is* a state-preparation primitive: the operation is
-`parameters + register -> prepared state`. Choosing or optimizing the parameters
-is a consumer workflow, outside this library and this skill. But parameterization
-is not interchangeability:
-
-- `uccsd(qubits, thetas, num_electrons, spin)` and
-  `fixed_parameter_ucc(qubits, thetas, words, coeffs)` are multi-argument device
-  kernels, so **neither is directly injectable** as `state_prep`. Only this
-  factory, the Givens factory, or an explicitly caller-written one-argument
-  wrapper kernel is. `uccsd` performs no input validation, so `thetas` must hold
-  exactly `get_num_uccsd_parameters(num_qubits, num_electrons, spin)` entries in
-  the `get_uccsd_excitations` order.
-- Substituting `make_uccsd_operator_pool` plus a group-consuming kernel for
-  `uccsd` at the same `thetas` does not reproduce the same state. Three distinct
-  committed assertions establish the parts of that statement, and they are
-  **not** the same test or the same cases. In the table, `scale` is the
-  multiplier `s` in the dense reference `exp(i * s * theta * c * P)` used at
-  `tests/python/test_stateprep_kernels.py:105-112`, with `theta` the
-  per-excitation amplitude, `c` the real pool coefficient of a term, and `P` its
-  Pauli word.
-
-| Claim | Cited assertion | Cases |
-| --- | --- | --- |
-| the group-consuming `fixed_parameter_ucc` path realizes `scale = +1` against the pool generators | `test_fixed_parameter_ucc_matches_dense_pool_exponential`, `tests/python/test_stateprep_hf_ucc.py:239-264` | `(4,2,0)`, `(6,3,1)`, `(8,4,2)` |
-| the other group-consuming kernels also realize `scale = +1` | `tests/python/test_stateprep_kernels.py:211-255` | `uccgsd` at `num_qubits` 4, 6; `upccgsd` at 4, 8; `ceo` at `num_orbitals` 2, 3, 4 |
-| the `uccsd` CNOT-ladder circuit instead comes out as `exp(-i * (theta / 2) * c * P)`, i.e. `scale = -1/2`, and negates theta for the double-excitation index patterns `(p < q and r > s)` and `(p > q and r < s)` while the pool operators carry no such sign | `test_uccsd_kernel_matches_dense_exponential` with `_uccsd_circuit_signs`, `tests/python/test_stateprep_kernels.py:139-182` | `(4,2,0)`, `(6,3,1)`, `(8,4,0)`, `(10,5,1)`, `(8,4,2)` |
-
-`fixed_parameter_ucc` is **not** exercised in `test_stateprep_kernels.py`; its
-evidence is the `test_stateprep_hf_ucc.py` case in the first row. That is tested
-evidence of **non-interchangeability for the listed cases only**: do not promote
-it into a general amplitude-conversion rule, and do not supply substitution code
-that silently changes the prepared state.
-
-**Parameterized-UCC routing.** Runtime-parameterized UCC constructions remain
-state-preparation primitives but are separate from this injectable factory
-seam. Read the focused contracts for
-[`uccsd`](state-preparation-kernel-uccsd.md) and
-[`fixed_parameter_ucc`](state-preparation-kernel-fixed-parameter-ucc.md), and
-route `uccgsd`, `upccgsd`, and `ceo` through the
-[device-kernel family front door](state-preparation-device-kernels.md). Their
-lower-level exported building blocks are
-[`single_excitation`](state-preparation-kernel-single-excitation.md) and
-[`double_excitation`](state-preparation-kernel-double-excitation.md). None of
-these multi-argument kernels directly satisfies the one-register `state_prep`
-representation.
+Runtime UCC kernels and this injectable factory have distinct signatures and amplitude
+conventions. Read [UCC parameterization](ucc-parameterization.md) before substituting them.
 
 ## Resources
 
 This preparation record does not own the three independently selectable
 estimators. Route by the exact input object through the
-[state-preparation resource front door](state-preparation-resources.md) to the
+[state-preparation family selector](state-preparation.md) to the
 canonical Hartree-Fock, explicit-occupation Hartree-Fock, or fixed-parameter UCC
 resource record.
 
 ## Validation
 
-| Field | Evidence |
-| --- | --- |
-| Independent oracles | two, both committed in the repository and cited rather than executed: a dense pool exponential built with NumPy/SciPy `expm` in pool order (`tests/python/test_stateprep_hf_ucc.py:65-76`, applied at `:239-264`), and an independent fermionic-generator bijection (`tests/python/test_operator_pools.py:172-231`). The seam itself is covered by `tests/python/test_state_prep_injection.py` — injected kernel versus `cudaq.State`-fed twin agreement, zero-argument sampleability, a no-op preparation on an all-zero register, and non-cross-contamination of two kernels minted by one factory |
-| Invariants | the open-shell Hartree-Fock occupation equals the determinant implied by `get_uccsd_excitations` (`test_stateprep_hf_ucc.py:125-135`) |
-| Representative cases | the `(num_qubits, num_electrons, spin)` triples in the non-interchangeability table, and `(8, 4, spin=2)` occupying `{0, 1, 2, 4}` |
-| Predeclared tolerances | they differ by suite, so read the suite. `test_stateprep_hf_ucc.py:59-63` and `test_stateprep_kernels.py:127-131` select `1e-12` (fp64) or `5e-5` (fp32) from the active simulator precision, gating on `np.dtype(cudaq.complex()) == np.complex64`. `tests/python/test_state_prep_injection.py` does **not** gate on precision: it hard-codes `atol=1e-12` for the statevector comparisons and uses `abs=1e-10` / `atol=1e-10` for the `Walk.moment` / `Walk.moments` path, and `tests/python/conftest.py` honors `CUDAQ_DEFAULT_SIMULATOR` with a `qpp-cpu` fallback rather than forcing fp64. So do not tell a caller that "the repository's tolerances adapt to simulator precision" — that holds for the provider suites, not for the injection suite |
-| Expected failure/adversarial cases | the factory rejections — seven `pytest.raises` blocks over six distinct messages (`test_stateprep_hf_ucc.py:335-379`) — and the occupation guards, including the `(num_electrons - spin)` parity rejection (`test_stateprep_hf_ucc.py:140-150`) |
-| Reference results | none; each oracle is constructed inside the cited test |
-| Evidence status per claim | `derived` from the cited source or committed test assertion, unless labeled `assumed` or `unverified` in place. Nothing here is `measured` |
-
-## Evaluation coverage
-
-| Case id in `../../evals/evals.json` | Sections that support it |
-| --- | --- |
-| `state-preparation-provider-selection` | Scientific contract (the HF-plus-UCC target); Inputs (grouped arguments, ordering, rejection table); Outputs; Identity and provenance (unverified versions) |
-| `state-preparation-ucc-parameterization-boundary` | Scientific contract (grouping, `exp(+i theta c P)`, no factor of `1/2`); Accuracy and limitations → Parameterization boundary and non-interchangeability |
-| `state-preparation-uccsd-open-shell-parity` | Inputs (the open-shell parity guard and the contrast with `get_uccsd_excitations`) |
-| `state-preparation-width-mismatch-unknown` | Outputs (exact-width requirement); Accuracy and limitations (candidate silent wrong-state path) |
-
-Shared injection, controlled/adjoint, measurement-assisted, and raw-device
-cases are routed from [state-preparation.md](state-preparation.md). One manual
-with-skill smoke attempt passed for
-`state-preparation-uccsd-open-shell-parity` on 2026-09-10; no baseline or
-formal repeated arm has run, so no uplift is claimed. The other rows remain
-authored coverage only; `../../evals/EVAL.md` owns the procedure.
+Read [HF/UCC validation](hf-ucc-validation.md) for independent oracles,
+representative cases, rejection evidence, and suite-specific precision/tolerance behavior.
 
 ## External alignment
 
@@ -314,5 +218,5 @@ authored coverage only; `../../evals/EVAL.md` owns the procedure.
   repository translates these inputs to an external chemistry package.
 - Known semantic differences: inside this repository, the `uccsd` device
   kernel's amplitude convention differs from the group-consuming kernels exactly
-  as tabulated under "Accuracy and limitations". No external-package difference
+  as tabulated in [UCC parameterization](ucc-parameterization.md). No external-package difference
   is established.

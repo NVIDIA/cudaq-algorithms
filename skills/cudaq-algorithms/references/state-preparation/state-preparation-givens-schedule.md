@@ -1,6 +1,6 @@
 # Givens rotation schedule planning
 
-Status: draft. Operation + object: **preprocess** an **orthonormal
+Operation + object: **preprocess** an **orthonormal
 orbital-coefficient matrix into a Givens rotation schedule**.
 
 ## Identity and classification
@@ -15,11 +15,6 @@ orbital-coefficient matrix into a Givens rotation schedule**.
   `docs/sphinx/examples/python/05_state_prep_and_injection.py`.
 - Kind/role/layer: classical transformation, computational leaf, host.
 - Input/output: orbital-coefficient matrix -> `GivensRotationSchedule`.
-- Lifecycle/evidence: draft; this record was historically source-reviewed, with
-  review provenance recorded in [Source provenance](../source-provenance.md). Current
-  public source/tests are authoritative and must be checked at use time;
-  unexecuted for this record.
-
 ## Scientific and input contract
 
 `make_givens_rotation_schedule(Q, tolerance=1.0e-12)` accepts a real or complex
@@ -72,6 +67,3 @@ oracles. Runnable cases include `test_givens_schedule_two_orbital_statevector`,
 `test_complex_schedule_shape_and_resources`, both `test_validate_schedule_*`
 cases, and `test_orbital_coefficient_validation_errors`. Statevector tolerances
 are `1e-12` for fp64 or `5e-5` for fp32; structural assertions are exact.
-
-Declared eval coverage is `state-preparation-provider-selection`; it must keep
-schedule data distinct from the emitted kernel. Evals have not been run.

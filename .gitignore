@@ -8,3 +8,6 @@ __pycache__/
 compile_commands.json
 timer.dat
 docs/sphinx/_build/
+
+# Skill-development run evidence stays out of the repository
+skills/cudaq-algorithms-dev/evals/results/

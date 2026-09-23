@@ -1,6 +1,6 @@
 # Zero-argument Trotter kernel factory
 
-Status: draft. Operation + object: **evolve** a **newly allocated all-zero or
+Operation + object: **evolve** a **newly allocated all-zero or
 injected-preparation quantum state under a stored Suzuki–Trotter plan**.
 
 ## Identity and classification
@@ -13,10 +13,7 @@ injected-preparation quantum state under a stored Suzuki–Trotter plan**.
   kernel factory, device kernel.
 - Input/output: stored `Trotter` plan plus evolution controls and optional
   one-register preparation -> zero-argument kernel.
-- Lifecycle/evidence: draft; current public source and tests are authoritative
-  and must be rechecked at use time; unexecuted for this record.
-- Source provenance: [source-provenance.md](../source-provenance.md) records
-  historical last-review audit context.
+- Source provenance: [Source lookup](../source-provenance.md) gives shared current-source paths.
 
 ## Scientific, input, and output contract
 
@@ -40,7 +37,7 @@ no a priori error bound or step selector.
 
 ## Capability, boundaries, and resources
 
-Optional preparation consumes provisional capability
+Optional preparation consumes capability
 `cudaq-algorithms.state-preparation.unitary.v1`. The consumer allocates the
 fresh system register and runs preparation first. Exact width is required but
 not generally checked at factory time; mismatch behavior can fail or silently
@@ -53,7 +50,7 @@ Use [Trotter.state_kernel](trotter-state-kernel-factory.md) for a caller-supplie
 claims belong to [the planned estimator](trotter-resources-planned.md); its
 logical proxies are not hardware depth, runtime, or memory.
 
-## Validation and evaluation
+## Validation
 
 Compare with dense `exp(-iHt)` while explicitly removing/accounting for the
 identity global phase. Check zero-state evolution, injected-preparation
@@ -64,7 +61,3 @@ many-term inputs. Runnable factory cases include
 `test_kernel_factory_evolves_the_zero_state`, and
 `test_identity_only_hamiltonian_kernel_factory_branches` in
 `tests/python/test_trotter.py`; tolerances are case-specific there.
-
-Declared eval coverage is `trotter-evolution-resource-boundary` and application
-composition cases. Neither runtime compatibility nor behavioral uplift has
-been verified.

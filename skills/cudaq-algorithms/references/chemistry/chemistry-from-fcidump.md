@@ -1,6 +1,6 @@
 # FCIDUMP integral loader
 
-Status: draft. Operation + object: **load** a **chemist-notation spatial
+Operation + object: **load** a **chemist-notation spatial
 integral triple from FCIDUMP text**.
 
 ## Identity and classification
@@ -12,11 +12,6 @@ integral triple from FCIDUMP text**.
   `docs/sphinx/guide/preprocessing.rst` and the function docstring.
 - Kind/role/layer: classical transformation, computational leaf, host parser.
 - Dependency: NumPy; PySCF and Psi4 are not required.
-- Lifecycle/evidence: draft; current public source and tests are authoritative
-  and must be rechecked at use time; not freshly executed.
-  [source-provenance.md](../source-provenance.md) records historical last-review
-  audit context.
-
 ## Input, rejection, and output
 
 `from_fcidump(contents)` consumes the file **contents as a string**, not a
@@ -50,6 +45,3 @@ cited tests), verify the generated eightfold orbit, and compare the downstream
 qubit-Hamiltonian spectrum with the same integrals supplied directly
 (`atol=1e-10`). Exercise every rejection above and the optional orbital-energy
 path. `tests/python/test_fcidump.py` is the runnable usage test.
-
-Eval coverage: authored `chemistry-end-to-end-composition`. Baseline and
-with-skill arms have not been run.

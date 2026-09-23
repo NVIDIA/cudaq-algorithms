@@ -1,6 +1,6 @@
 # Low-level Trotter apply kernel
 
-Status: draft. Operation + object: **apply** a **Suzuki–Trotter product formula
+Operation + object: **apply** a **Suzuki–Trotter product formula
 to a caller-owned live qubit register**.
 
 ## Identity and classification
@@ -26,10 +26,7 @@ to a caller-owned live qubit register**.
   `tests/python/test_trotter.py`.
 - Kind/role/layer: quantum operation, computational leaf, device kernel.
 - Parameterization: runtime. It mutates `qubits` and returns no host value.
-- Lifecycle/evidence: draft; current public source and tests are authoritative
-  and must be rechecked at use time; runtime execution remains unverified.
-- Source provenance: [source-provenance.md](../source-provenance.md) records
-  historical last-review audit context.
+- Source provenance: [Source lookup](../source-provenance.md) gives shared current-source paths.
 
 ## Scientific contract
 
@@ -99,7 +96,7 @@ No reusable capability ID applies: this leaf consumes a concrete live
 `cudaq.qview` plus flattened lists. It is not a kernel factory, simulation-only
 statevector helper, or resource-estimator interface.
 
-## Oracle, runnable evidence, and evaluation
+## Oracle and runnable evidence
 
 Independently apply the Pauli rotations to a dense statevector and compare every
 supported order, sign, list order, and step count against the kernel output.
@@ -113,9 +110,3 @@ Run the authoritative cases from the repository root:
 PYTHONPATH=python pytest -q tests/python/test_trotter.py \
   -k 'apply_trotter_kernel'
 ```
-
-The authored `trotter-evolution-resource-boundary` eval directly selects this
-record and requires the silent no-op result for nonpositive `steps` and an
-unsupported `order`, while also covering the product-formula, identity-phase,
-and resource-metric distinctions. It does not separately pin the mismatched-list
-or equal-empty-list boundaries. Baseline and with-skill arms have not been run.

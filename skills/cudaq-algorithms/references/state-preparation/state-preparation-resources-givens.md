@@ -1,6 +1,6 @@
 # Givens schedule resource estimate
 
-Status: draft. Operation + object: **estimate** a **logical circuit description
+Operation + object: **estimate** a **logical circuit description
 for a Givens rotation schedule**.
 
 ## Identity and classification
@@ -12,12 +12,6 @@ for a Givens rotation schedule**.
 - Source/tests: `python/cudaq_algorithms/stateprep/_givens.py`,
   `tests/python/test_stateprep_givens.py`.
 - Kind/role/layer: resource estimator, computational leaf, host.
-- Lifecycle and implementation status: `draft`; the implementation was present
-  and the record was historically source-reviewed; review provenance is recorded
-  in [Source provenance](../source-provenance.md). Current public source/tests
-  are authoritative and must be checked at use time; declared package/CUDA-Q
-  compatibility remains unverified.
-
 ## Input and rejection contract
 
 `schedule` is a
@@ -61,7 +55,7 @@ does not count the initial `E` occupation-setting `X` gates. Its two proxy field
 are documented as decomposition-independent upper bounds, not transpiled gate
 counts; `depth_proxy` is not scheduled, routed, or measured hardware depth.
 
-## Boundaries, validation, and evaluation
+## Boundaries and validation
 
 The estimator neither inspects an emitted kernel nor includes native
 decomposition, connectivity, compilation, runtime, memory, state-preparation
@@ -74,11 +68,3 @@ Run the focused source cases from the repository root:
 PYTHONPATH=python pytest -q tests/python/test_stateprep_givens.py \
   -k 'basis_determinant_schedule_has_no_rotations or real_schedule_shape_and_resources or complex_schedule_shape_and_resources or validate_schedule_rejects_non_adjacent_rotation or validate_schedule_rejects_invalid_counts_and_indices'
 ```
-
-The task-local combined run reported in
-[the resource front door](state-preparation-resources.md) included all five
-cases. `state-preparation-provider-selection` now requires routing the Givens
-input to this estimator and preserving the logical-estimate/hardware boundary;
-it does not assert the field formulas or schedule rejection matrix. No
-SkillEvaluator arm has been run, so this is authored rather than validated
-coverage.

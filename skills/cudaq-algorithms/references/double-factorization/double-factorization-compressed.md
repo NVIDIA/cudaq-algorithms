@@ -1,6 +1,6 @@
 # Compressed double factorization
 
-Status: draft. Operation + object: **compress** a **chemist-notation
+Operation + object: **compress** a **chemist-notation
 two-electron integral tensor**.
 
 ## Identity and classification
@@ -53,8 +53,4 @@ backend fallback. Runnable pointers are the compressed-factorization cases in
 `docs/sphinx/examples/python/df_compression_to_qsvt.py`. Current public source
 and tests are authoritative and must be rechecked at use time; this record was
 not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Declared eval coverage: `double-factorization-encoding-boundary` and
-`chemistry-end-to-end-composition`.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

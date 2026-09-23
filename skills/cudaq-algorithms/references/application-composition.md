@@ -48,20 +48,10 @@ does not define new primitives or promise pairwise compatibility.
 - A one-argument preparation kernel must be checked against each concrete
   consumer. `BlockEncoding` conformance alone does not promise injection.
 
-## Implementation checklist
-
-- Selected records and public symbols are named.
-- Inputs have exact shapes, dtypes, units, and ordering.
-- Output signatures and register allocation order are explicit.
-- Capability IDs and concrete member requirements both match.
-- Approximation knobs and resource abstraction are explicit.
-- Host, device, observable, and simulation-only stages remain separate.
-- No install, QPU, credential, or remote-job action exceeds authorization.
-- Runnable code is executed when possible; otherwise it is labeled
-  **unexecuted** with the exact verification command.
-- The end-to-end oracle is independent of the implementation path.
-- Reported tolerance, target, precision, version, and evidence labels match the
-  actual run.
+For implementation, use the shared [workflow](workflow.md#advice-or-implementation).
+State input shapes, dtypes, units, ordering, output signatures, and register
+allocation explicitly; report component and end-to-end evidence with the target,
+precision, version, and tolerance actually used.
 
 ## Source-grounded example pointers
 

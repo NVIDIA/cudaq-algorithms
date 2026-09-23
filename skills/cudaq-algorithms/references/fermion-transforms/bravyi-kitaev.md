@@ -1,6 +1,6 @@
 # Bravyi–Kitaev fermion transform
 
-Status: draft. Operation + object: **transform** **fermionic ladder-coefficient
+Operation + object: **transform** **fermionic ladder-coefficient
 tensors into a Bravyi–Kitaev Pauli operator**.
 
 ## Identity and classification
@@ -59,9 +59,5 @@ equivalence after the correct basis transform; raw JW/BK Pauli words are not
 expected to match. The runnable pointer is
 `tests/python/test_fermion_compilers.py`, including its width/pruning cases.
 Current public source and tests are authoritative and must be rechecked at use
-time; this record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Eval coverage includes `fermion-transform-selection-boundary` and chemistry
-application cases.
+time.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

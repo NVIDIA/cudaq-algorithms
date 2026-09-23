@@ -1,6 +1,6 @@
 # Arbitrary fixed-parameter UCC device kernel
 
-Status: draft. Operation + object: **apply** an **arbitrary grouped fixed-
+Operation + object: **apply** an **arbitrary grouped fixed-
 parameter UCC product** to a caller-owned quantum register.
 
 This is one independently selectable primitive contract. The caller chooses
@@ -16,11 +16,6 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`fixed_parameter_ucc`); `python/cudaq_algorithms/stateprep/_hartree_fock.py` (converter, validator, estimator, and injectable factory); exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_hf_ucc.py` (converter, validation, resource fields, grouped-argument launch, and dense product); supporting grouped-kernel comparisons in `tests/python/test_stateprep_kernels.py` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Hartree-Fock references and fixed-parameter UCC”; runnable example `docs/sphinx/examples/python/05_state_prep_and_injection.py` and tests above |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** Declared Python `>=3.11`, `cudaq >=0.15.0,<0.16`; no compatible execution was completed for this record |
-| Lifecycle | draft |
-| Implementation status | documented; source and committed tests were inspected during the historical last review; `unexecuted` and not freshly numerically validated |
-| Replacement and migration notes | Not applicable: no deprecation or removal was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -99,7 +94,7 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 | Stable ID | Not applicable: no capability ID is assigned to this multi-argument kernel |
 | Capability status | Not applicable |
 | Direction | Not applicable |
-| Owning record | this record owns the direct boundary; [state-preparation.md](state-preparation.md) owns the different one-register capability |
+| Owning record | this record owns the direct boundary; [injection-contract.md](injection-contract.md) owns the different one-register capability |
 | Boundary representation and exact signature | direct device composition through the exact four-argument signature under Inputs |
 | Semantic invariants | one amplitude per group, caller pool provenance, full-width words, `+i` exponent, strict group/term order, and prior reference preparation |
 | Shape/register geometry | one caller-owned register matching every Pauli word; no ancilla |
@@ -147,19 +142,7 @@ hardware cost, and no such estimate is provided.
 | Predeclared tolerances | maximum amplitude error `<1e-12` at double precision or `<5e-5` at single precision; factory/manual comparison uses `atol=1e-12` |
 | Expected failure/adversarial case | validator rejects outer/inner mismatch, over- and under-width string words, and invalid Pauli characters; converter rejects complex coefficients and negative tolerance; raw-device malformed combinations remain uncharacterized |
 | Runnable example or usage test | `pytest -q tests/python/test_stateprep_hf_ucc.py -k fixed_parameter_ucc` |
-| Execution record | unexecuted for this record in the declared package/CUDA-Q range; no result, target, or precision is claimed |
-| Evidence status per claim | signatures, loops, validation, estimates, and cited assertions are `derived` from source and committed tests inspected during the historical last review; fresh compilation, execution, numerical validation, and measurement are `unverified` with `unexecuted` qualifier |
-
-## Evaluation coverage
-
-| Field | Contract |
-| --- | --- |
-| Positive selection/application | authored `state-preparation-ucc-parameterization-boundary` selects the grouped fixed-amplitude contract; `state-preparation-grouped-ucc-device-boundary` selects its arbitrary-provider boundary |
-| Convention or misconception | the parameterization case requires the exact one-theta-per-group `+i` convention and rejects equivalence to raw `uccsd`; the grouped case rejects scientific interchangeability by signature |
-| Capability composition | both cases distinguish this multi-argument kernel from the one-register injectable factory |
-| Invalid/unsupported boundary | grouped-boundary coverage includes reference preparation, host validation, ignored extras, and possible missing-entry failure; not every malformed parallel-list combination is covered |
-| Negative activation | Not applicable: no dedicated non-activation case targets this record |
-| Eval status | authored in `../../evals/evals.json`; baseline and with-skill arms have not run, so no comparison is claimed |
+| Evidence status per claim | signatures, loops, validation, estimates, and cited assertions are `derived` from source and committed tests cited in the repository; fresh compilation, execution, numerical validation, and measurement are `unverified` with `unexecuted` qualifier |
 
 ## External alignment
 

@@ -1,6 +1,6 @@
 # Jordan–Wigner fermion transform
 
-Status: draft. Operation + object: **transform** **fermionic ladder-coefficient
+Operation + object: **transform** **fermionic ladder-coefficient
 tensors into a Jordan–Wigner Pauli operator**.
 
 ## Identity and classification
@@ -69,8 +69,4 @@ and mismatched-dimension cases. The runnable pointers are
 `tests/python/test_fermion_compilers.py`. Current public source and tests are
 authoritative and must be rechecked at use time; this record was not freshly
 executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Declared eval coverage: `fermion-transform-selection-boundary` and
-`chemistry-end-to-end-composition`.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

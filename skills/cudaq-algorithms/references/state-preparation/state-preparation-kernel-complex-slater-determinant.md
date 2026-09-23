@@ -1,6 +1,6 @@
 # Flattened complex Slater-determinant device kernel
 
-Status: draft. Operation + object: **prepare** a **complex Slater-determinant
+Operation + object: **prepare** a **complex Slater-determinant
 quantum state from flattened phase-aware Givens data**.
 
 This is a concrete primitive record for the runtime device kernel
@@ -18,11 +18,6 @@ validates and captures a `GivensRotationSchedule`.
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_givens.py:114-128`; delegated phase-aware rotation at `:88-94`; flattening helpers at `:341-359`; export surface in `python/cudaq_algorithms/stateprep/__init__.py:25-32,82` |
 | Authoritative tests | `tests/python/test_stateprep_givens.py`: `_complex_entry` calls this symbol directly at `:50-57`; statevector cases are `:200-246`; the independent second-quantized spot check is `:262-274`; zero-phase real equivalence is `:288-307`; full filling is `:341-351`; factory equivalence and rotation-free shape are `:583-621`. No committed test directly covers the three raw guards or extra-final-phase behavior |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:151-200`; runnable `docs/sphinx/examples/python/givens_slater_determinant.py`, especially `prepare_complex` at `:32-38` and `run_case` at `:68-96` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** The declared environment is Python `>=3.11` and `cudaq >=0.15.0,<0.16`; this record was not executed in that environment |
-| Lifecycle | draft |
-| Implementation status | documented and implemented; source was inspected during the historical last review; compilation, execution, and numerical validation are unverified in this task |
-| Replacement and migration notes | Not applicable: no deprecation or replacement was identified during the historical last review; check the current public API/source at use time |
 
 All committed tests named here are `derived` repository evidence, not fresh
 execution or measurement.
@@ -164,10 +159,9 @@ transpiled depth, target cost, runtime, or memory.
 | Invariants | unit norm, particle number, phase-aware sign convention, paired-list application order, final phases before rotations, and exact reduction to the real flattened kernel when all phases are zero |
 | Representative cases | analytic complex `2 x 1`; relative-phase/sign `3 x 2`; random complex `4 x 2` and `5 x 3`; full filling `3 x 3`; rotation-free complex basis state; zero-phase agreement with the real path. These are committed cases in `tests/python/test_stateprep_givens.py:200-246,288-307,341-351,614-621` |
 | Predeclared tolerances | global-phase-aligned statevectors use `rtol=0` and `atol=1e-12` on fp64 or `5e-5` on fp32, selected at call time by `np.dtype(cudaq.complex())`; same-simulator real/complex and factory/raw comparisons use `atol=1e-12`; the complex64 list case uses `max(active_tolerance,1e-7)`; structural predicates are exact |
-| Expected failure/adversarial case | independently falsify each of the three outer predicates and require identity; supply extra final phases and require them to be ignored; then supply one in-range non-adjacent pair and require its phase, but not its real rotation, to execute. These are source-derived and represented in the authored eval, but no committed direct test pins them |
+| Expected failure/adversarial case | independently falsify each of the three outer predicates and require identity; supply extra final phases and require them to be ignored; then supply one in-range non-adjacent pair and require its phase, but not its real rotation, to execute. These are source-derived, but no committed direct test pins them |
 | Runnable example or usage test | `python3 docs/sphinx/examples/python/givens_slater_determinant.py` runs both raw paths against dense minors. The smaller complex-only usage below follows the same entry-kernel pattern; neither was run for this record |
-| Execution record | **Deferred:** no successful command was run for this record in the declared dependency range. Resolution requires recording command, date, package/CUDA-Q version, target, precision, and result for the example and `pytest -q tests/python/test_stateprep_givens.py` |
-| Evidence status per claim | signature, ordering, guards, extra-phase behavior, and structural resources are `derived` from source inspected during the historical last review; cited tests/docs are `derived` evidence from that review; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
+| Evidence status per claim | signature, ordering, guards, extra-phase behavior, and structural resources are `derived` from source cited in the repository; cited tests/docs are `derived` evidence from the cited assertions; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
 
 ```python
 import numpy as np
@@ -206,17 +200,6 @@ global_phase /= abs(global_phase)
 atol = 5.0e-5 if np.dtype(cudaq.complex()) == np.dtype(np.complex64) else 1.0e-12
 np.testing.assert_allclose(actual, global_phase * expected, rtol=0.0, atol=atol)
 ```
-
-## Evaluation coverage
-
-| Field | Mapping |
-| --- | --- |
-| Positive selection/application | `state-preparation-givens-device-boundary` selects this raw flattened kernel for a caller-owned register and distinguishes it from real flattening, schedule data, and the injectable factory |
-| Convention or misconception | the same case requires final phases before the ordered rotations, one relative phase per angle, and the phase-active behavior of a non-adjacent pair |
-| Capability composition | Not applicable: the eval must not claim that this six-argument signature provides the one-register injection capability; it should route validated injection to `make_givens_rotation_schedule` plus `slater_determinant_kernel` |
-| Invalid/unsupported boundary | the same case covers all three outer predicates, silent whole-kernel no-op, ignored extra final phases, and absent count/bounds/adjacency/finiteness validation |
-| Negative activation | Not applicable: no dedicated negative-activation case targets this symbol |
-| Eval status | **authored**; one manual with-skill smoke attempt passed for `state-preparation-givens-device-boundary` on 2026-09-10. No baseline or formal repeated arm has run |
 
 ## External alignment
 

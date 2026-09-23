@@ -1,6 +1,6 @@
 # Paired UpCCGSD operator pool
 
-Status: draft. Operation + object: **preprocess** a **spin-preserving singles
+Operation + object: **preprocess** a **spin-preserving singles
 and paired-doubles UpCCGSD pool**.
 
 ## Identity and classification
@@ -16,9 +16,7 @@ and paired-doubles UpCCGSD pool**.
 - Runnable usage: `docs/sphinx/guide/state_prep.rst:57,68` and
   `pytest -q tests/python/test_operator_pools.py -k upccgsd`.
 - Source provenance: current public source/tests are authoritative and must be
-  checked at use time. This record's historical source review is recorded in
-  [Source provenance](../source-provenance.md). Lifecycle is
-  draft; execution remains unverified for this record.
+  checked at use time.
 - Kind/role/layer: exact deterministic classical transformation,
   computational leaf, host only; dependency `cudaq`.
 
@@ -87,7 +85,7 @@ subset. Absolute overall signs are derived from source rather than independently
 pinned. Cross-implementation agreement with absent C++ source remains
 unverified.
 
-## Validation and evaluation coverage
+## Validation
 
 - Independent oracle: at `n=4`, dense Jordan–Wigner ladder matrices establish a
   full bijection for the complete and doubles-only pools within `atol=1e-10`
@@ -96,11 +94,5 @@ unverified.
 - Structural checks: counts through `n=20`, width bounds, converter shape/order,
   and rejection of odd width. The kernel dense-exponential test at `n=4,8` is
   supporting but self-derived from the same pool.
-- Evidence: source and committed assertions inspected during the historical
-  last review support `derived` claims; package/CUDA-Q execution and numerical
-  validation are `unexecuted` here.
-- Eval coverage: authored `operator-pool-selection-boundary` explicitly covers
-  selection among UCCSD, UCCGSD, and UpCCGSD, including this provider's paired
-  semantics, ordered output, and the excluded optimization boundary. Baseline
-  and with-skill arms have not run; even-width rejection and doubles-only
-  selection remain explicit eval gaps.
+- Evidence: the scientific assertions above are derived from cited source/tests;
+  they require fresh execution before claiming numerical validation.

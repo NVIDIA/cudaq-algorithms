@@ -1,11 +1,11 @@
 # Fermion-to-qubit transforms — family front door
 
-Status: draft.
+## Selectable operation contracts
 
-| Operation + object | Record |
-| --- | --- |
-| transform / ladder-coefficient tensors with Jordan–Wigner encoding | [jordan-wigner.md](jordan-wigner.md) |
-| transform / ladder-coefficient tensors with Bravyi–Kitaev encoding | [bravyi-kitaev.md](bravyi-kitaev.md) |
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| transform / ladder tensors to Jordan–Wigner Pauli operator | `fermion.jordan_wigner` | classical transformation; host | none | [Jordan–Wigner](jordan-wigner.md) |
+| transform / ladder tensors to Bravyi–Kitaev Pauli operator | `fermion.bravyi_kitaev` | classical transformation; host | none | [Bravyi–Kitaev](bravyi-kitaev.md) |
 
 ## Shared input representation
 
@@ -37,5 +37,4 @@ eligible merely because its type is `cudaq.SpinOperator`.
 Shared source is `python/cudaq_algorithms/fermion/_compilers.py`; tests are
 `test_fermion.py`, `test_fermion_compilers.py`, and `test_jordan_wigner.py`.
 Current public source and tests are authoritative and must be rechecked at use
-time. [source-provenance.md](../source-provenance.md) records historical
-last-review audit context.
+time. [Source lookup](../source-provenance.md) gives shared current-source paths.

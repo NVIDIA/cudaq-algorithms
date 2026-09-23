@@ -1,6 +1,6 @@
 # Simulated QSVT transform
 
-Status: draft. Operation + object: **analyze** a **QSVT-transformed
+Operation + object: **analyze** a **QSVT-transformed
 good-subspace statevector**.
 
 ## Contract
@@ -34,9 +34,5 @@ adversarial cases. Runnable pointers are the `sim.transform` cases in
 [application-composition.md](../application-composition.md). Current public
 source and tests are authoritative and must be rechecked at use time; this
 record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context. No resource estimator exists; statevector simulation work is not
+[Source lookup](../source-provenance.md) gives shared current-source paths. No resource estimator exists; statevector simulation work is not
 a logical-circuit estimate or measured performance.
-
-Declared eval coverage: `simulation-analysis-hardware-boundary`,
-`qsvt-phase-and-recovery-boundary`, and `qsvt-paraphrase-convention`.

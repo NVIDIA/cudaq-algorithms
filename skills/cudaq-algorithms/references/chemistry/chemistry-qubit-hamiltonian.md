@@ -1,6 +1,6 @@
 # Chemistry qubit Hamiltonian bridge
 
-Status: draft. Operation + object: **transform** **chemist-notation spatial
+Operation + object: **transform** **chemist-notation spatial
 integrals into a Pauli Hamiltonian**.
 
 ## Identity and classification
@@ -60,7 +60,4 @@ same input through explicit spin expansion plus `jordan_wigner`, and include an
 asymmetric-ERI failure. The runnable pointer is
 `tests/python/test_df_qsvt_bridge.py`. Current public source and tests are
 authoritative and must be rechecked at use time; this record was not freshly
-executed. Eval coverage is
-`chemistry-bridge-dependency-boundary` plus end-to-end application cases.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
+executed.

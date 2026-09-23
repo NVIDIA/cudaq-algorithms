@@ -1,6 +1,6 @@
 # Raw Trotter resource estimate
 
-Status: draft. Operation + object: **estimate** a **logical circuit description
+Operation + object: **estimate** a **logical circuit description
 from caller-supplied flattened coefficient and Pauli-word lists**.
 
 ## Identity and classification
@@ -51,7 +51,7 @@ simple Pauli-rotation decomposition proxy. Neither value is hardware depth,
 runtime, a measured gate count, target-aware cost, memory, or a numerical error
 estimate. The helper does not inspect a circuit.
 
-## Oracle, runnable evidence, and evaluation
+## Oracle and runnable evidence
 
 Compute both formulas independently from the exact supplied strings and verify
 that `num_terms` remains `len(words)`; do not silently preprocess the oracle.
@@ -69,9 +69,4 @@ PYTHONPATH=python pytest -q tests/python/test_trotter.py \
 The cited test supplies output from `make_trotter_terms`; it does not directly
 pin the weaker raw-input boundaries above. Current public source and tests are
 authoritative and must be rechecked at use time.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context. Runtime execution for this record remains unverified. Eval
-coverage is
-`trotter-evolution-resource-boundary`, which must keep logical proxy
-counts separate from exact hardware depth/runtime and identity device
-rotations.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

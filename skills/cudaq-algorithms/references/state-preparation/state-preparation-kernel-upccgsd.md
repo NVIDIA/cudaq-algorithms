@@ -1,6 +1,6 @@
 # Parameterized UpCCGSD device kernel
 
-Status: draft. Operation + object: **apply** a **spin-preserving singles and
+Operation + object: **apply** a **spin-preserving singles and
 paired-doubles UpCCGSD product** to a caller-owned quantum register.
 
 This is one independently selectable primitive contract. Its grouped runtime
@@ -16,11 +16,6 @@ the contract and cannot be inferred from the Python container types.
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`upccgsd`); `python/cudaq_algorithms/stateprep/_pools.py` (`make_upccgsd_operator_pool`, `get_upccgsd_pauli_lists`); generic validator in `python/cudaq_algorithms/stateprep/_hartree_fock.py`; exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_upccgsd_kernel_matches_dense_exponential`); `tests/python/test_operator_pools.py` (independent paired-pool oracle); shapes and smoke use in `tests/python/test_stateprep.py` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable use in `tests/python/test_stateprep_kernels.py` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** Declared Python `>=3.11`, `cudaq >=0.15.0,<0.16`; no compatible execution was completed for this record |
-| Lifecycle | draft |
-| Implementation status | documented; source and committed tests were inspected during the historical last review; `unexecuted` and not freshly numerically validated |
-| Replacement and migration notes | Not applicable: no deprecation or removal was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -97,7 +92,7 @@ the contract and cannot be inferred from the Python container types.
 | Stable ID | Not applicable: no capability ID is assigned to this multi-argument kernel |
 | Capability status | Not applicable |
 | Direction | Not applicable |
-| Owning record | this record owns the direct boundary; [state-preparation.md](state-preparation.md) owns a different one-register capability |
+| Owning record | this record owns the direct boundary; [injection-contract.md](injection-contract.md) owns a different one-register capability |
 | Boundary representation and exact signature | direct device composition through the four-argument signature under Inputs |
 | Semantic invariants | retain matching provider provenance, one amplitude per group, spin-preserving/paired content, and exact group/term order |
 | Shape/register geometry | one caller-owned even-width register matching every full-width word |
@@ -141,19 +136,7 @@ eight. These are not depth, native-gate count, runtime, memory, or measurement.
 | Predeclared tolerances | maximum amplitude error `<1e-12` for double precision or `<5e-5` for single precision; independent pool matrices use `atol=1e-10` |
 | Expected failure/adversarial case | `get_upccgsd_pauli_lists(7)` rejects odd width; malformed parallel lists should be rejected with `validate_fixed_parameter_ucc`, not entrusted to the device body |
 | Runnable example or usage test | `pytest -q tests/python/test_stateprep_kernels.py -k upccgsd`; provider oracle in `pytest -q tests/python/test_operator_pools.py -k upccgsd` |
-| Execution record | unexecuted for this record in the declared package/CUDA-Q range; no result, target, or precision is claimed |
-| Evidence status per claim | signatures, loops, formulas, and cited assertions are `derived` from source and committed tests inspected during the historical last review; fresh compilation, execution, numerical validation, and measurement are `unverified` with `unexecuted` qualifier |
-
-## Evaluation coverage
-
-| Field | Contract |
-| --- | --- |
-| Positive selection/application | authored `state-preparation-grouped-ucc-device-boundary` selects this record and the paired provider |
-| Convention or misconception | the case preserves UpCCGSD provenance and rejects interchangeability based on similar signatures |
-| Capability composition | the case keeps this runtime signature distinct from one-register `state_prep` |
-| Invalid/unsupported boundary | the case covers even/full-width and parallel-list host validation plus ignored-extra/missing-entry behavior |
-| Negative activation | Not applicable: no dedicated non-activation case targets this record |
-| Eval status | authored in `../../evals/evals.json`; baseline and with-skill arms have not run, so no comparison is claimed |
+| Evidence status per claim | signatures, loops, formulas, and cited assertions are `derived` from source and committed tests cited in the repository; fresh compilation, execution, numerical validation, and measurement are `unverified` with `unexecuted` qualifier |
 
 ## External alignment
 

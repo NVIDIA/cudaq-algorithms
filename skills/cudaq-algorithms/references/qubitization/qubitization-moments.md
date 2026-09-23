@@ -1,6 +1,6 @@
 # Qubitization Chebyshev moments
 
-Status: draft. Operation + object: **measure** a **Chebyshev spectral moment**.
+Operation + object: **measure** a **Chebyshev spectral moment**.
 
 ## Identity and classification
 
@@ -62,9 +62,4 @@ tests cover 1- and 2-qubit Hamiltonians. Runnable pointers are the moment cases
 in `tests/python/test_qubitization.py` and
 `tests/python/test_state_prep_injection.py`. Current public source and tests are
 authoritative and must be rechecked at use time; this record was not freshly
-executed. [source-provenance.md](../source-provenance.md) records historical
-last-review audit context.
-
-Declared eval coverage: `qubitization-walk-moment-boundary`,
-`repository-implementation-third-moment`, and
-`state-preparation-injection-composition`.
+executed. [Source lookup](../source-provenance.md) gives shared current-source paths.

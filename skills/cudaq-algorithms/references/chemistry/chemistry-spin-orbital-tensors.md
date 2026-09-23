@@ -1,6 +1,6 @@
 # Spin-orbital tensor expansion
 
-Status: draft. Operation + object: **transform** **chemist-notation spatial
+Operation + object: **transform** **chemist-notation spatial
 integrals into spin-orbital ladder-coefficient tensors**.
 
 ## Identity and classification
@@ -55,8 +55,4 @@ compiled qubit matrix. Include an ERI symmetry-breaking failure and a square
 but asymmetric one-body case so the actual validation boundary stays visible.
 Runnable usage is in `docs/sphinx/guide/preprocessing.rst`. Current public
 source and tests are authoritative and must be rechecked at use time; this
-record was not freshly executed. Eval coverage is through
-`chemistry-bridge-dependency-boundary` and
-`chemistry-end-to-end-composition`; the baseline and with-skill arms have not
-been run. [source-provenance.md](../source-provenance.md) records historical
-last-review audit context.
+record was not freshly executed.

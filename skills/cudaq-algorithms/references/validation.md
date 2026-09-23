@@ -12,11 +12,6 @@ Use the strongest path available without overstating it:
 | Scientific path | Execution path plus independent oracle and predeclared tolerance | `numerically validated` |
 | Measurement path | Scientific protocol plus newly collected empirical quantity | `measured` |
 
-`verified` is a record lifecycle state, not shorthand for reading source or for
-one successful run. Promotion requires a recorded, supported package/CUDA-Q
-version combination; exact revisions, dependencies, targets, and commands
-belong with the validation or evaluation result.
-
 ## Scientific validation procedure
 
 1. State the claim and mathematical oracle before execution.
@@ -66,11 +61,3 @@ When dependencies, hardware, credentials, source, or time prevent a run:
 - give the command, fixture, oracle, target, precision, and tolerance needed;
 - do not weaken the check or substitute a non-independent oracle merely to
   produce a passing result.
-
-## Skill evaluation versus scientific validation
-
-SkillEvaluator checks activation, routing, usefulness, safety, and answer
-quality. It does not establish that a quantum circuit or numerical transform is
-scientifically correct. Run baseline and with-skill eval arms for behavioral
-uplift, and run repository tests or independent numerical oracles separately
-for scientific claims.

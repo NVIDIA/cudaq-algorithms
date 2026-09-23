@@ -1,6 +1,6 @@
 # Simulated block-encoding action
 
-Status: draft. Operation + object: **analyze** **`(H/alpha)|ket>` for a
+Operation + object: **analyze** **`(H/alpha)|ket>` for a
 Pauli LCU encoding**.
 
 ## Contract
@@ -33,10 +33,6 @@ Runnable pointers are the `sim.action` cases in
 `tests/python/test_pauli_lcu.py` and
 `docs/sphinx/examples/python/pauli_lcu_demo.py`. Current public source and tests
 are authoritative and must be rechecked at use time; this record was not freshly
-executed. [source-provenance.md](../source-provenance.md) records historical
-last-review audit context. No resource estimator exists; simulator statevector
+executed. [Source lookup](../source-provenance.md) gives shared current-source paths. No resource estimator exists; simulator statevector
 cost is not a
 quantum-resource or measured-performance result.
-
-Declared eval coverage: `simulation-analysis-hardware-boundary`,
-`block-encoding-capability-boundary`, and application composition cases.

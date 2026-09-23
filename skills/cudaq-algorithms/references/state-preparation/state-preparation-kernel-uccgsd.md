@@ -1,6 +1,6 @@
 # Parameterized UCCGSD device kernel
 
-Status: draft. Operation + object: **apply** a **generalized UCC singles-and-
+Operation + object: **apply** a **generalized UCC singles-and-
 doubles product** to a caller-owned quantum register.
 
 This is one independently selectable primitive contract. The shared nested
@@ -16,11 +16,6 @@ fixed-parameter UCC, or the one-register injection seam.
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`uccgsd`); `python/cudaq_algorithms/stateprep/_pools.py` (`make_uccgsd_operator_pool`, `get_uccgsd_pauli_lists`); generic validator in `python/cudaq_algorithms/stateprep/_hartree_fock.py`; exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_uccgsd_kernel_matches_dense_exponential`); `tests/python/test_operator_pools.py` (independent generalized-pool oracle); shape and smoke checks in `tests/python/test_stateprep.py` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable use in `tests/python/test_stateprep_kernels.py` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** Declared Python `>=3.11`, `cudaq >=0.15.0,<0.16`; no compatible execution was completed for this record |
-| Lifecycle | draft |
-| Implementation status | documented; source and committed tests were inspected during the historical last review; `unexecuted` and not freshly numerically validated |
-| Replacement and migration notes | Not applicable: no deprecation or removal was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -98,7 +93,7 @@ fixed-parameter UCC, or the one-register injection seam.
 | Stable ID | Not applicable: no capability ID is assigned to this multi-argument kernel |
 | Capability status | Not applicable |
 | Direction | Not applicable |
-| Owning record | this primitive owns the direct boundary; [state-preparation.md](state-preparation.md) owns the different one-register capability |
+| Owning record | this primitive owns the direct boundary; [injection-contract.md](injection-contract.md) owns the different one-register capability |
 | Boundary representation and exact signature | direct device composition through the exact four-argument signature under Inputs |
 | Semantic invariants | preserve UCCGSD provider provenance, one amplitude per group, and group/term order |
 | Shape/register geometry | one caller-owned register whose width equals every Pauli word's full width |
@@ -142,19 +137,7 @@ figures is depth, native-gate count, runtime, memory, or measured hardware cost.
 | Predeclared tolerances | maximum amplitude error `<1e-12` for double precision or `<5e-5` for single precision; independent pool matrices use `atol=1e-10` |
 | Expected failure/adversarial case | host construction rejects negative/fractional/boolean `num_qubits`; malformed parallel groups should be rejected by `validate_fixed_parameter_ucc`, not entrusted to the device kernel |
 | Runnable example or usage test | `pytest -q tests/python/test_stateprep_kernels.py -k uccgsd`; host-provider oracle in `pytest -q tests/python/test_operator_pools.py -k uccgsd` |
-| Execution record | unexecuted for this record in the declared package/CUDA-Q range; no result, target, or precision is claimed |
-| Evidence status per claim | signatures, loops, resource formula, and cited assertions are `derived` from source and committed tests inspected during the historical last review; fresh compilation, execution, numerical validation, and measurement are `unverified` with qualifier `unexecuted` |
-
-## Evaluation coverage
-
-| Field | Contract |
-| --- | --- |
-| Positive selection/application | authored `state-preparation-grouped-ucc-device-boundary` selects this record and its matching provider |
-| Convention or misconception | the case preserves UCCGSD provenance and the one-theta-per-group `+i` convention instead of treating similar signatures as equivalent |
-| Capability composition | the case keeps this runtime signature distinct from the one-register injection seam |
-| Invalid/unsupported boundary | the case covers width and parallel-list non-validation plus ignored-extra/missing-entry behavior |
-| Negative activation | Not applicable: no dedicated non-activation case targets this record |
-| Eval status | authored in `../../evals/evals.json`; baseline and with-skill arms have not run, so no comparison is claimed |
+| Evidence status per claim | signatures, loops, resource formula, and cited assertions are `derived` from source and committed tests cited in the repository; fresh compilation, execution, numerical validation, and measurement are `unverified` with qualifier `unexecuted` |
 
 ## External alignment
 

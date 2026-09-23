@@ -1,17 +1,18 @@
 # Simulation analysis — family front door
 
-Status: draft. These helpers are packaged but statevector-oriented; none is a
+These helpers are packaged but statevector-oriented; none is a
 QPU substitute for the hardware-shaped kernel or observable contracts.
 
-| Operation + object | Record |
-| --- | --- |
-| extract / zero-ancilla good block from a simulated statevector | [simulation-good-subspace.md](simulation-good-subspace.md) |
-| analyze / `(H/alpha)|ket>` through a Pauli LCU simulation | [simulation-action.md](simulation-action.md) |
-| analyze / QSVT-transformed good-subspace statevector | [simulation-transform.md](simulation-transform.md) |
-| evolve / statevector with a Trotter simulation helper | [simulation-evolve.md](simulation-evolve.md) |
+## Selectable operation contracts
+
+| Operation + object | Public entry point | Kind / layer | Capabilities | Record |
+| --- | --- | --- | --- | --- |
+| extract / zero-ancilla amplitude block | `sim_utils.good_subspace` | simulation analysis; host array slicing | concrete geometry | [good subspace](simulation-good-subspace.md) |
+| analyze / `(H/alpha)|ket>` | `sim_utils.action` | simulation analysis; `cudaq.get_state` | concrete `PauliLCU.encode_kernel` | [action](simulation-action.md) |
+| analyze / QSVT good-subspace vector | `sim_utils.transform` | simulation analysis; `cudaq.get_state` | concrete QSVT | [transform](simulation-transform.md) |
+| evolve / Trotter statevector | `sim_utils.evolve` | simulation analysis; `cudaq.get_state` | concrete Trotter | [evolve](simulation-evolve.md) |
 
 Shared source is `python/cudaq_algorithms/sim_utils.py`. The module depends on
 `cudaq.get_state` except for the pure slicing helper. Current public source and
 tests are authoritative and must be rechecked at use time.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

@@ -1,6 +1,6 @@
 # Planned Trotter resource estimate
 
-Status: draft. Operation + object: **estimate** a **logical circuit description
+Operation + object: **estimate** a **logical circuit description
 for an already validated `Trotter` plan**.
 
 ## Identity and classification
@@ -51,7 +51,7 @@ composition rule with other estimators is provided.
 Use the [raw estimator](trotter-resources-raw.md) only when flattened lists are
 already the owned representation and its weaker validation is acceptable.
 
-## Oracle, runnable evidence, and evaluation
+## Oracle and runnable evidence
 
 With retained Pauli weights `w_j` and multiplicity `m={1:1,2:2,4:6}`, verify
 `pauli_rotations = T * steps * m` and
@@ -67,8 +67,4 @@ PYTHONPATH=python pytest -q tests/python/test_trotter.py \
 
 Current public source and tests are authoritative and must be rechecked at use
 time.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context. Runtime execution remains unverified. Eval coverage is
-`trotter-evolution-resource-boundary`,
-which must reject exact hardware-depth or runtime claims and must not turn the
-identity coefficient into a device rotation.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

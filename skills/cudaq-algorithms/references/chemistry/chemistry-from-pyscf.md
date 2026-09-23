@@ -1,6 +1,6 @@
 # PySCF integral loader
 
-Status: draft. Operation + object: **load** a **chemist-notation spatial
+Operation + object: **load** a **chemist-notation spatial
 integral triple from a PySCF mean-field object**.
 
 ## Identity and classification
@@ -15,11 +15,8 @@ integral triple from a PySCF mean-field object**.
   provider bridge.
 - Dependency: PySCF is imported when this provider is called; it is not needed
   to import or use the other chemistry providers.
-- Lifecycle/evidence: draft; current public source and tests are authoritative
-  and must be rechecked at use time; not freshly executed. External PySCF version
-  compatibility is
-  unverified. [source-provenance.md](../source-provenance.md) records historical
-  last-review audit context.
+- External PySCF version compatibility is unverified unless checked in the
+  current environment; see the [shared integral contract](chemistry-bridges.md).
 
 ## Input, rejection, and output
 
@@ -53,7 +50,3 @@ They also compare whole spectra with the Psi4 provider rather than raw MO
 coefficients, which may differ by orbital phase or ordering. Add a rank-3
 `mo_coeff` fixture for the explicit unrestricted rejection when validating
 that boundary independently.
-
-Eval coverage: authored `chemistry-bridge-dependency-boundary` exercises the
-restricted-reference and optional-dependency decisions. Baseline and
-with-skill arms have not been run.

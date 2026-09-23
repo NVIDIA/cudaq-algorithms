@@ -1,6 +1,6 @@
 # Modified one-body integrals for double factorization
 
-Status: draft. Operation + object: **transform** **one-body and chemist ERI
+Operation + object: **transform** **one-body and chemist ERI
 tensors into the DF-corrected one-body matrix**.
 
 ## Contract
@@ -22,15 +22,11 @@ conversion and are outside this real-integral contract.
 The result is host data used when assembling the full double-factorized
 Hamiltonian. No resource estimator or quantum kernel is provided.
 
-## Validation and evaluation
+## Validation
 
 Use an explicit `p,q,r` loop independent of `einsum`. The runnable pointer is
 `tests/python/test_double_factorization.py::test_modified_one_body_matches_independent_loop`;
 `test_modified_one_body_integrals` supplies an additional formula check.
 Current public source and tests are authoritative and must be rechecked at use
-time; this record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Declared eval coverage: `double-factorization-host-contracts` exercises the
-two-dense-tensor input boundary and the corrected-one-body formula.
+time.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

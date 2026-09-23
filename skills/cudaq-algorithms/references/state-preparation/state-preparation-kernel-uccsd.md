@@ -1,6 +1,6 @@
 # Parameterized UCCSD device kernel
 
-Status: draft. Operation + object: **apply** an **occupied-to-virtual UCCSD
+Operation + object: **apply** an **occupied-to-virtual UCCSD
 product** to a caller-owned quantum register.
 
 This is one independently selectable primitive contract. It documents the raw
@@ -16,11 +16,6 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`uccsd`, `single_excitation`, `double_excitation`); `python/cudaq_algorithms/stateprep/_pools.py` (`get_uccsd_excitations`, `get_num_uccsd_parameters`, `make_uccsd_operator_pool`); exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_uccsd_kernel_matches_dense_exponential`, `test_uccsd_interleaved_mixed_double_matches_dense_exponential`, host-invalid-input cases); `tests/python/test_operator_pools.py` (absolute and fermionic pool oracles); smoke/regression coverage in `tests/python/test_stateprep.py` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable repository usage in `tests/python/test_stateprep_kernels.py` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** Declared Python `>=3.11`, `cudaq >=0.15.0,<0.16`; no compatible execution was completed for this record |
-| Lifecycle | draft |
-| Implementation status | documented; source and committed tests were inspected during the historical last review; `unexecuted` and not freshly numerically validated |
-| Replacement and migration notes | Not applicable: no deprecation or removal was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -100,7 +95,7 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Stable ID | Not applicable: no reusable capability is assigned to this multi-argument runtime kernel |
 | Capability status | Not applicable |
 | Direction | Not applicable |
-| Owning record | this primitive record owns the direct concrete boundary; [state-preparation.md](state-preparation.md) owns a different one-register capability |
+| Owning record | this primitive record owns the direct concrete boundary; [injection-contract.md](injection-contract.md) owns a different one-register capability |
 | Boundary representation and exact signature | direct device composition through `uccsd(qubits, thetas, num_electrons, spin)` |
 | Semantic invariants | preserve the five-group excitation and amplitude order, local UCCSD scale/sign convention, and caller-prepared input state |
 | Shape/register geometry | one caller-owned even-width register; no allocated ancilla |
@@ -146,19 +141,7 @@ excitation endpoints and target lowering; no bound or measurement is claimed.
 | Predeclared tolerances | maximum amplitude error `<1e-12` for double precision or `<5e-5` for single precision |
 | Expected failure/adversarial case | host helper rejects odd `n`, odd electrons at `spin=0`, excessive counts, and invalid scalar counts; **parity-invalid `(8,4,1)` is the known missing host guard and must not be used as a passing case** |
 | Runnable example or usage test | `pytest -q tests/python/test_stateprep_kernels.py -k uccsd`; smoke usage also lives in `tests/python/test_stateprep.py` |
-| Execution record | unexecuted for this record in the declared package/CUDA-Q range; no result, target, or precision is claimed |
-| Evidence status per claim | signatures, loops, limitations, and cited assertions are `derived` from source and committed tests inspected during the historical last review; fresh compilation, execution, numerical validation, and measurement are `unverified` with qualifier `unexecuted` |
-
-## Evaluation coverage
-
-| Field | Contract |
-| --- | --- |
-| Positive selection/application | authored cases `state-preparation-ucc-parameterization-boundary` and `state-preparation-uccsd-open-shell-parity` select this exact runtime kernel contract |
-| Convention or misconception | the parameterization case rejects equivalence with grouped `fixed_parameter_ucc` and preserves the tested scale/sign relationship; the parity case preserves `spin = 2*S_z` and rejects permissive enumeration as proof of a physical spin sector |
-| Capability composition | the same case checks that this four-argument kernel is not directly injectable as one-argument `state_prep` |
-| Invalid/unsupported boundary | `state-preparation-uccsd-open-shell-parity` directly covers the missing host parity guard and stricter occupation-builder route; no authored eval exhaustively covers malformed amplitude lists |
-| Negative activation | Not applicable: no dedicated non-activation case targets this record |
-| Eval status | authored in `../../evals/evals.json`; one manual with-skill smoke attempt passed for `state-preparation-uccsd-open-shell-parity` on 2026-09-10. No baseline or formal repeated arm has run, so no comparison or uplift is claimed |
+| Evidence status per claim | signatures, loops, limitations, and cited assertions are `derived` from source and committed tests cited in the repository; fresh compilation, execution, numerical validation, and measurement are `unverified` with qualifier `unexecuted` |
 
 ## External alignment
 

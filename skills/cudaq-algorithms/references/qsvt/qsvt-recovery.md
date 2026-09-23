@@ -1,6 +1,6 @@
 # QSVT real-time-evolution recovery
 
-Status: draft. Operation + object: **reconstruct** a **real-time-evolved
+Operation + object: **reconstruct** a **real-time-evolved
 statevector from cosine and sine good-subspace components**.
 
 ## Identity and classification
@@ -61,8 +61,4 @@ input behavior. Runnable pointers are the recovery cases in
 `tests/python/test_qsvt.py` and
 `docs/sphinx/examples/python/02_hamiltonian_simulation.py`. Current public source
 and tests are authoritative and must be rechecked at use time; this record was
-not freshly executed. [source-provenance.md](../source-provenance.md) records
-historical last-review audit context.
-
-Declared eval coverage: `qsvt-phase-and-recovery-boundary`,
-`qsvt-paraphrase-convention`, and the QSVT application cases.
+not freshly executed. [Source lookup](../source-provenance.md) gives shared current-source paths.

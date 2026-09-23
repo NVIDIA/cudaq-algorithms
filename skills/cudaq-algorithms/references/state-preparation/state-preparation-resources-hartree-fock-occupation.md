@@ -1,6 +1,6 @@
 # Explicit-occupation Hartree-Fock resource estimate
 
-Status: draft. Operation + object: **estimate** a **logical `X`-gate description
+Operation + object: **estimate** a **logical `X`-gate description
 for an explicit Hartree-Fock occupation**.
 
 ## Identity and classification
@@ -13,12 +13,6 @@ for an explicit Hartree-Fock occupation**.
 - Source/tests: `python/cudaq_algorithms/stateprep/_hartree_fock.py`,
   `tests/python/test_stateprep_hf_ucc.py`.
 - Kind/role/layer: resource estimator, computational leaf, host.
-- Lifecycle and implementation status: `draft`; the implementation was present
-  and the record was historically source-reviewed; review provenance is recorded
-  in [Source provenance](../source-provenance.md). Current public source/tests
-  are authoritative and must be checked at use time; declared package/CUDA-Q
-  compatibility remains unverified.
-
 ## Input and rejection contract
 
 `num_qubits` must be a non-negative integer count. `occupied_orbitals` must be a
@@ -48,7 +42,7 @@ indices, and it supplies no depth, routing, native-gate, runtime, memory,
 measurement, or state-accuracy information. No bound or cross-estimator
 composition rule is documented.
 
-## Boundaries, validation, and evaluation
+## Boundaries and validation
 
 Use
 [`estimate_hartree_fock_resources`](state-preparation-resources-hartree-fock.md)
@@ -62,11 +56,3 @@ Run the focused source case from the repository root:
 PYTHONPATH=python pytest -q tests/python/test_stateprep_hf_ucc.py \
   -k hartree_fock_host_helpers
 ```
-
-The task-local combined run reported in
-[the resource front door](state-preparation-resources.md) included this case.
-`state-preparation-provider-selection` now requires routing explicit occupations
-to this estimator and preserving the logical-estimate/hardware boundary; it does
-not assert the field formulas or duplicate/out-of-range rejection. No
-SkillEvaluator arm has been run, so this is authored rather than validated
-coverage.

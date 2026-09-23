@@ -1,6 +1,6 @@
 # Trotter term planning
 
-Status: draft. Operation + object: **preprocess** a **Pauli-sum Hamiltonian
+Operation + object: **preprocess** a **Pauli-sum Hamiltonian
 into product-formula terms**.
 
 ## Identity and classification
@@ -51,9 +51,5 @@ conditions. The cited test suite also checks that zero coefficients do not
 inflate resources. The runnable pointer is `tests/python/test_trotter.py`, in
 particular its term-extraction, ordering, and zero-coefficient cases.
 Current public source and tests are authoritative and must be rechecked at use
-time; this record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Eval coverage is `trotter-evolution-resource-boundary` plus application
-composition cases.
+time.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

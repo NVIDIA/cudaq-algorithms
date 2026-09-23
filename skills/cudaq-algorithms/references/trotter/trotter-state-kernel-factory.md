@@ -1,6 +1,6 @@
 # State-input Trotter kernel factory
 
-Status: draft. Operation + object: **evolve** a **caller-supplied
+Operation + object: **evolve** a **caller-supplied
 `cudaq.State` under a stored Suzuki–Trotter plan**.
 
 ## Identity and classification
@@ -13,10 +13,7 @@ Status: draft. Operation + object: **evolve** a **caller-supplied
   kernel factory, device kernel.
 - Input/output: stored `Trotter` plan and evolution controls -> kernel with one
   `cudaq.State` argument.
-- Lifecycle/evidence: draft; current public source and tests are authoritative
-  and must be rechecked at use time; unexecuted for this record.
-- Source provenance: [source-provenance.md](../source-provenance.md) records
-  historical last-review audit context.
+- Source provenance: [Source lookup](../source-provenance.md) gives shared current-source paths.
 
 ## Scientific, input, and output contract
 
@@ -54,7 +51,7 @@ Resource claims belong to
 [the planned estimator](trotter-resources-planned.md). They exclude state
 loading, simulator work, transpiled gates, hardware depth, runtime, and memory.
 
-## Validation and evaluation
+## Validation
 
 Compare the output against a dense product-formula or `exp(-iHt)` oracle while
 handling the identity phase explicitly. Cross-check it against
@@ -67,7 +64,3 @@ Relevant runnable cases are
 `test_identity_only_hamiltonian_is_a_global_phase`, and
 `test_sim_utils_evolve_validates_parameters` in
 `tests/python/test_trotter.py`; tolerances are case-specific there.
-
-Declared eval coverage is `trotter-evolution-resource-boundary`, contradictory
-output-boundary cases, and application composition cases. Neither runtime
-compatibility nor behavioral uplift has been verified.

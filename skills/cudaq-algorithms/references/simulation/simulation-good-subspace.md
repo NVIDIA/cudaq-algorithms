@@ -1,6 +1,6 @@
 # Good-subspace extraction
 
-Status: draft. Operation + object: **extract** the **zero-ancilla amplitude
+Operation + object: **extract** the **zero-ancilla amplitude
 block from a simulated statevector**.
 
 ## Contract
@@ -33,10 +33,6 @@ Validate with basis states that put amplitude inside and outside the good block,
 check the exact slice and norm, and reject wrong dimensions. Current public
 source and tests are authoritative and must be rechecked at use time; this
 record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context. The runnable pointers are the `good_subspace` cases in
+[Source lookup](../source-provenance.md) gives shared current-source paths. The runnable pointers are the `good_subspace` cases in
 `tests/python/test_pauli_lcu.py`. No resource estimator exists; array size and
 slicing work are not measured runtime or memory claims.
-
-Declared eval coverage: `simulation-analysis-hardware-boundary` and
-`implicit-ftqc-application-advisory`.

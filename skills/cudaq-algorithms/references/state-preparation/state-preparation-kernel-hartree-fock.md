@@ -1,12 +1,11 @@
 # Canonical Hartree-Fock device kernel
 
-Status: draft. Operation + object: **prepare** a **contiguous Hartree-Fock
+Operation + object: **prepare** a **contiguous Hartree-Fock
 occupation**.
 
 This is one runtime device-kernel contract. The explicit-occupation kernel,
 the injectable factory, and the resource estimators are separate records
-routed by [the device-kernel front door](state-preparation-device-kernels.md)
-and [the state-preparation front door](state-preparation.md).
+routed by [the state-preparation family selector](state-preparation.md).
 
 ## Identity and provenance
 
@@ -17,11 +16,6 @@ and [the state-preparation front door](state-preparation.md).
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py:35-44`; export in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | Direct device-kernel assertion: `tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_canonical_statevector` (`:109-111`). Host-helper assertions at `:84-106` are related evidence, not direct kernel validation |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:74-103`; `docs/sphinx/examples/python/08_quantum_phase_estimation.py` wraps this kernel for a two-electron reference |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | None for this record. The declared target is Python `>=3.11` and `cudaq >=0.15.0,<0.16`; execution in that range is unverified |
-| Lifecycle | draft |
-| Implementation status | documented and implemented; source was inspected during the historical last review; not compiled, executed, or numerically validated during this record expansion |
-| Replacement and migration notes | Not applicable: no deprecation or replacement was identified during the historical last review; check the current public API/source at use time |
 
 ## Classification
 
@@ -106,7 +100,7 @@ logical `X` calls, no ancilla allocation, and no measurement. The metric is
 pre-transpilation logical operation calls, the abstraction is the raw device
 body, the execution assumption is a valid caller-owned `n`-qubit register, and
 the controlling parameter is `N = num_electrons`. The count is exact and
-derived from historically reviewed source, not measured; it composes additively
+derived from source, not measured; it composes additively
 with surrounding logical operations. No direct public estimator belongs to
 this record, and this claim is not circuit depth, transpiled gates, hardware
 runtime, or memory.
@@ -121,19 +115,7 @@ runtime, or memory.
 | Predeclared tolerances | `atol=1.0e-12` in `_assert_basis_state` at `tests/python/test_stateprep_hf_ucc.py:53-56`; no relative tolerance is declared there |
 | Expected failure/adversarial case | `num_electrons > qubits.size()` must be rejected on the host before invoking this raw kernel; the device failure mode is intentionally not promised |
 | Runnable example or usage test | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python pytest -q -p no:cacheprovider tests/python/test_stateprep_hf_ucc.py::test_hartree_fock_canonical_statevector` |
-| Execution record | Command above; date 2026-09-10; package/CUDA-Q version, target, and precision: unverified; result: **unexecuted** during this record expansion |
-| Evidence status per claim | Signature, gate sequence, and structural cost: `derived` from source inspected during the historical last review; cited test result and tolerance: `derived` from committed evidence inspected during that review; fresh execution, compilation, numerical validation, and measurement: `unexecuted` / `unverified` |
-
-## Evaluation coverage
-
-| Field | Coverage |
-| --- | --- |
-| Positive selection/application | Authored case `state-preparation-reference-excitation-device-boundary` selects this device-kernel family but correctly rejects it for an open-shell reference |
-| Convention or misconception | The case checks that this signature has no `spin` argument and that contiguous filling is not open-shell interleaving |
-| Capability composition | The case checks the caller-owned multi-argument device boundary rather than the one-argument injectable-provider seam |
-| Invalid/unsupported boundary | The case rejects reliance on the raw kernel for duplicate, reversed, or out-of-range endpoint validation; for this record the relevant boundary is the unchecked count/register extent |
-| Negative activation | Not applicable: no dedicated negative-activation eval targets this symbol |
-| Eval status | authored; baseline run, with-skill run, and comparison not run |
+| Evidence status per claim | Signature, gate sequence, and structural cost: `derived` from source cited in the repository; cited test result and tolerance: `derived` from committed evidence cited in the repository; fresh execution, compilation, numerical validation, and measurement: `unexecuted` / `unverified` |
 
 ## External alignment
 

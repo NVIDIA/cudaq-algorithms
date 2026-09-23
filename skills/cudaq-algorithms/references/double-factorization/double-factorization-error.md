@@ -1,6 +1,6 @@
 # Double-factorization residual error
 
-Status: draft. Operation + object: **compare** a **chemist ERI tensor with a
+Operation + object: **compare** a **chemist ERI tensor with a
 `DoubleFactorization` approximation**.
 
 ## Contract
@@ -17,7 +17,7 @@ with the exact reconstructed shape; otherwise conversion/broadcast behavior is
 not a meaningful factorization metric. It emits no quantum resource or error
 bound beyond the scalar computed for the supplied arrays.
 
-## Validation and evaluation
+## Validation
 
 Independently reconstruct the tensor, form the residual, and compare with
 `np.linalg.norm` using a predeclared tolerance. The runnable cases throughout
@@ -25,8 +25,4 @@ Independently reconstruct the tensor, form the residual, and compare with
 full-rank, thresholded, compressed, and nonconverged results. Current public
 source and tests are authoritative and must be rechecked at use time; this
 record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Declared eval coverage: `double-factorization-encoding-boundary` and
-`chemistry-end-to-end-composition`.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

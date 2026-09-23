@@ -1,6 +1,6 @@
 # Pauli LCU block encoding
 
-Status: draft. Operation + object: **encode** a **Pauli-sum operator as the
+Operation + object: **encode** a **Pauli-sum operator as the
 zero-flagged block of a unitary**.
 
 ## Identity and provenance
@@ -14,10 +14,7 @@ zero-flagged block of a unitary**.
   `test_qubitization.py`, `test_qsvt.py`.
 - Examples: `01_quickstart_block_encoding.py`, `pauli_lcu_demo.py`.
 - Source provenance: current public source and tests are authoritative and must
-  be rechecked at use time. [source-provenance.md](../source-provenance.md)
-  records historical last-review audit context.
-- Lifecycle/implementation: draft; runtime unverified.
-
+  be rechecked at use time. [Source lookup](../source-provenance.md) gives shared current-source paths.
 ## Classification
 
 - Identity: encode / Pauli-sum operator.
@@ -113,7 +110,7 @@ width `num_system + num_ancilla`, one PREPARE and UNPREPARE around SELECT for
 subcircuit counts, not decomposed gates, depth, runtime, memory, T count, or
 Toffoli count.
 
-## Validation and evaluation
+## Validation
 
 - Independent oracle: build the dense Pauli matrix without calling
   `PauliLCU`, apply the emitted unitary, and extract the zero-ancilla block.
@@ -127,8 +124,6 @@ Toffoli count.
 - Expected failures: invalid nonempty words, inconsistent widths, complex
   coefficients, no retained terms, and undersized explicit width. Empty-word
   input is a known unguarded source gap, not a promised rejection.
-- Eval coverage: `block-encoding-capability-boundary` plus application and
-  invalid-input cases in `../../evals/evals.json`; evals have not been run.
 
 ## External alignment
 

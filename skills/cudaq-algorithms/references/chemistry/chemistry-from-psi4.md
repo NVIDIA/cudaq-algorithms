@@ -1,6 +1,6 @@
 # Psi4 integral loader
 
-Status: draft. Operation + object: **load** a **chemist-notation spatial
+Operation + object: **load** a **chemist-notation spatial
 integral triple from a Psi4 wavefunction**.
 
 ## Identity and classification
@@ -14,11 +14,8 @@ integral triple from a Psi4 wavefunction**.
   provider bridge.
 - Dependency: Psi4 is imported when this provider is called; it is not needed
   to import or use the other chemistry providers.
-- Lifecycle/evidence: draft; current public source and tests are authoritative
-  and must be rechecked at use time; not freshly executed. External Psi4 version
-  compatibility is
-  unverified. [source-provenance.md](../source-provenance.md) records historical
-  last-review audit context.
+- External Psi4 version compatibility is unverified unless checked in the
+  current environment; see the [shared integral contract](chemistry-bridges.md).
 
 ## Input, rejection, and output
 
@@ -53,8 +50,3 @@ resulting qubit-Hamiltonian spectra with independently extracted PySCF tensors
 using `np.allclose(..., atol=1e-6)` with NumPy's default relative tolerance.
 Validation of this provider must also exercise the two explicit failures:
 multiple irreps and unequal alpha/beta orbitals.
-
-Eval coverage: the optional-dependency assertion in authored
-`chemistry-bridge-dependency-boundary` covers Psi4 indirectly; no dedicated
-positive Psi4-provider eval is present. Baseline and with-skill arms have not
-been run.

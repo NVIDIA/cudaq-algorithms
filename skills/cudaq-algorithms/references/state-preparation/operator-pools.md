@@ -1,6 +1,6 @@
 # Operator pools — family front door
 
-Status: draft. This file routes among independently selectable operator-pool
+This file routes among independently selectable operator-pool
 constructors and owns the shared pool representation. It does not define a
 combined construction contract.
 
@@ -32,14 +32,10 @@ non-equivalence of that path to the `uccsd` device kernel live in
   `tests/python/test_stateprep_kernels.py`.
 - Runnable documentation: `docs/sphinx/guide/state_prep.rst`; the UCCSD path
   also has `docs/sphinx/examples/python/hartree_fock_ucc.py`.
-- Source provenance and version status: current public source/tests are
-  authoritative and must be checked at use time. The records were historically
-  source-reviewed, with review provenance recorded in
-  [Source provenance](../source-provenance.md) and cite committed tests as
-  `derived` evidence from that review; package/CUDA-Q execution and evaluator
-  runs remain unverified unless a focused record says otherwise.
-- The historically reviewed source docstring called this a port of C++ files
-  that were absent from the reviewed source. Cross-implementation agreement is
+- Source authority: current public source/tests control API behavior. Cited
+  tests provide derived evidence until checked or executed in the current task.
+- The source docstring called this a port of C++ files
+  that were absent from the cited source. Cross-implementation agreement is
   therefore unverified; check current public source and the named tests at use
   time.
 
@@ -72,7 +68,7 @@ non-equivalence of that path to the `uccsd` device kernel live in
 - **Consumers:** `get_fixed_parameter_ucc_pauli_lists` accepts an arbitrary
   iterable pool; the three provider-specific `get_*_pauli_lists` helpers build
   and convert their matching pools internally. The fixed-parameter factory and
-  [device kernels](state-preparation-device-kernels.md) consume grouped Pauli
+  [device kernels](state-preparation.md) consume grouped Pauli
   data rather than this raw list.
 - **Composition preconditions:** the caller must retain the construction width,
   preserve list order, provide exactly one consumer parameter per element, and

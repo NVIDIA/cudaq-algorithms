@@ -1,6 +1,6 @@
 # Simulated Trotter evolution
 
-Status: draft. Operation + object: **evolve** a **statevector with a Trotter
+Operation + object: **evolve** a **statevector with a Trotter
 simulation helper**.
 
 ## Contract
@@ -28,9 +28,8 @@ global phase is intended.
 Independent oracle: compare with dense `exp(-iHt) @ ket`, including a nonzero
 identity term, and test both identity-phase settings. Reject wrong ket shape and
 invalid evolution parameters. Current public source and tests are authoritative
-and must be rechecked at use time; this record was not freshly executed.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
+and must be rechecked at use time.
+[Source lookup](../source-provenance.md) gives shared current-source paths.
 
 The runnable pointer is
 `tests/python/test_trotter.py::test_sim_utils_evolve_includes_identity_phase`,
@@ -38,6 +37,3 @@ with validation cases in `test_sim_utils_evolve_validates_parameters`. No
 separate resource estimator belongs to this simulation helper; use the focused
 Trotter resource records for logical circuit proxies, and do not infer measured
 simulator cost.
-
-Eval coverage includes `simulation-analysis-hardware-boundary` and application
-composition cases.

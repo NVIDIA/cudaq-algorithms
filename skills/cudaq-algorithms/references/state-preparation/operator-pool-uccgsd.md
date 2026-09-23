@@ -1,6 +1,6 @@
 # Generalized UCCGSD operator pool
 
-Status: draft. Operation + object: **preprocess** a **generalized UCC singles
+Operation + object: **preprocess** a **generalized UCC singles
 and doubles pool**.
 
 ## Identity and classification
@@ -17,9 +17,7 @@ and doubles pool**.
 - Runnable usage: `docs/sphinx/guide/state_prep.rst:54,66-67` and
   `pytest -q tests/python/test_operator_pools.py -k uccgsd`.
 - Source provenance: current public source/tests are authoritative and must be
-  checked at use time. This record's historical source review is recorded in
-  [Source provenance](../source-provenance.md). Lifecycle is
-  draft; execution remains unverified for this record.
+  checked at use time.
 - Kind/role/layer: exact deterministic classical transformation,
   computational leaf, host only; dependency `cudaq`.
 
@@ -94,7 +92,7 @@ Per-operator overall signs outside source arithmetic are not independently
 pinned. Cross-implementation agreement with the absent C++ sources named by the
 module docstring remains unverified.
 
-## Validation and evaluation coverage
+## Validation
 
 - Independent oracle: at `n=4`, dense Jordan–Wigner ladder matrices establish a
   full bijection for the combined, singles-only, and doubles-only pools within
@@ -105,11 +103,5 @@ module docstring remains unverified.
   supporting but self-derived because it converts the same pool on both sides.
 - Expected boundary: invalid counts reject; both subset switches truthy and
   undersized families return empty without warning.
-- Evidence: source and committed assertions inspected during the historical
-  last review support `derived` claims; package/CUDA-Q execution and numerical
-  validation are `unexecuted` here.
-- Eval coverage: authored `operator-pool-selection-boundary` covers selection
-  among UCCSD, UCCGSD, and UpCCGSD, including generalized enumeration, output
-  order, and the excluded optimization workflow. Baseline and with-skill arms
-  have not run. There is no dedicated eval for both switches truthy or odd
-  register width.
+- Evidence: the scientific assertions above are derived from cited source/tests;
+  they require fresh execution before claiming numerical validation.

@@ -1,6 +1,6 @@
 # Explicit double factorization
 
-Status: draft. Operation + object: **factorize** a **chemist-notation
+Operation + object: **factorize** a **chemist-notation
 two-electron integral tensor**.
 
 ## Identity and classification
@@ -64,8 +64,4 @@ executed. Runnable
 pointers are the explicit-factorization cases in
 `tests/python/test_double_factorization.py` and
 `docs/sphinx/examples/python/04_double_factorization_and_the_protocol.py`.
-[source-provenance.md](../source-provenance.md) records historical last-review
-audit context.
-
-Declared eval coverage: `double-factorization-host-contracts` exercises the
-explicit ERI input, public operation, host-data output, and encoding boundary.
+[Source lookup](../source-provenance.md) gives shared current-source paths.

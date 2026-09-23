@@ -1,12 +1,12 @@
 # Real Givens-rotation device kernel
 
-Status: draft. Operation + object: **apply** an **adjacent, real fermionic
+Operation + object: **apply** an **adjacent, real fermionic
 two-mode Givens rotation**.
 
 This is a concrete primitive record. It covers the runtime device-kernel
 contract of `givens_rotation` only. The phase-aware rotation and the two
 flattened Slater-determinant kernels have separate records linked from
-[the Givens front door](state-preparation-givens.md).
+[the state-preparation family selector](state-preparation.md).
 
 ## Identity and provenance
 
@@ -17,11 +17,6 @@ flattened Slater-determinant kernels have separate records linked from
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_givens.py:67-85`; export surface in `python/cudaq_algorithms/stateprep/__init__.py:25-32,79` |
 | Authoritative tests | No repository test calls this public symbol directly. `tests/python/test_stateprep_givens.py` exercises it transitively through `_real_entry` -> `stateprep.slater_determinant` -> `givens_rotation`, notably the analytic two-orbital case at `:153-167`, random real determinants at `:170-197`, and the sign case at `:179-188` |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:151-195` names the raw call and its adjacent-pair restriction. There is no standalone repository example for this symbol; the runnable usage below is derived from the test entry-kernel pattern. `docs/sphinx/examples/python/givens_slater_determinant.py` exercises it only through `slater_determinant` |
-| Source provenance | Current public source/tests are authoritative and must be checked at use time; this record's historical source review is recorded in [Source provenance](../source-provenance.md) |
-| Package/CUDA-Q versions executed | **unverified.** The declared environment is Python `>=3.11` and `cudaq >=0.15.0,<0.16`; this record was not executed in that environment |
-| Lifecycle | draft |
-| Implementation status | documented and implemented; source was inspected during the historical last review; compilation, execution, and numerical validation are unverified in this task |
-| Replacement and migration notes | Not applicable: no deprecation or replacement was identified during the historical last review; check the current public API/source at use time |
 
 All committed tests named here are `derived` repository evidence, not fresh
 execution or measurement.
@@ -132,7 +127,7 @@ capabilities.
 | Invalid-pair branch | metric/unit: applied logical operations; abstraction: source kernel; assumptions: an in-range pair with `abs(f-s) != 1`; status: exact structural count of **0**; controls: the two positive adjacency guards; limitations: does not characterize out-of-range pairs that satisfy an adjacency expression |
 
 No resource estimator exists for this symbol. Counts above are structural facts
-derived from historically reviewed source under the stated assumptions.
+derived from source under the stated assumptions.
 Sequential composition adds the `exp_pauli` call counts; no supported rule
 converts them into transpiled depth, target cost, runtime, or memory.
 
@@ -146,8 +141,7 @@ converts them into transpiled depth, target cost, runtime, or memory.
 | Predeclared tolerances | compare statevectors with `rtol=0` and `atol=1e-12` on fp64 or `5e-5` on fp32, selected at call time by `np.dtype(cudaq.complex())`; structural counts and guard predicates are exact |
 | Expected failure/adversarial case | an in-range non-adjacent pair must leave the register unchanged; an adjacent out-of-range pair must be reported as unsupported/unverified rather than promised to raise |
 | Runnable example or usage test | the source-derived standalone example below prepares one electron and compares indices 1 and 2 with the analytic rotation. It was authored here but not run. The repository's transitive runnable suite is `tests/python/test_stateprep_givens.py` |
-| Execution record | **Deferred:** no successful command was run for this record in the declared dependency range. Resolution requires recording command, date, package/CUDA-Q version, target, precision, and result after running the standalone case and the cited suite |
-| Evidence status per claim | signatures, guards, call counts, and conventions are `derived` from source inspected during the historical last review; the cited tests and docs are `derived` evidence from that review; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
+| Evidence status per claim | signatures, guards, call counts, and conventions are `derived` from source cited in the repository; the cited tests and docs are `derived` evidence from the cited assertions; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
 
 ```python
 import numpy as np
@@ -166,17 +160,6 @@ expected = np.array([0.0, np.cos(theta), np.sin(theta), 0.0], complex)
 atol = 5.0e-5 if np.dtype(cudaq.complex()) == np.dtype(np.complex64) else 1.0e-12
 np.testing.assert_allclose(actual, expected, rtol=0.0, atol=atol)
 ```
-
-## Evaluation coverage
-
-| Field | Mapping |
-| --- | --- |
-| Positive selection/application | `state-preparation-givens-device-boundary` selects this raw kernel for a caller-owned register and distinguishes it from the validated factory |
-| Convention or misconception | the same case requires the real kernel's non-adjacent silent no-op and distinguishes it from the phase-aware kernel |
-| Capability composition | Not applicable: the eval must not claim that this multi-argument signature provides the one-register injection capability |
-| Invalid/unsupported boundary | the same case covers non-adjacent pairs and the absence of bounds or finite-angle validation |
-| Negative activation | Not applicable: no dedicated negative-activation case targets this symbol |
-| Eval status | **authored**; one manual with-skill smoke attempt passed for `state-preparation-givens-device-boundary` on 2026-09-10. No baseline or formal repeated arm has run |
 
 ## External alignment
 

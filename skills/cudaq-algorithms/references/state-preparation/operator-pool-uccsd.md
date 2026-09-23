@@ -1,6 +1,6 @@
 # Occupied-to-virtual UCCSD operator pool
 
-Status: draft. Operation + object: **preprocess** an **occupied-to-virtual
+Operation + object: **preprocess** an **occupied-to-virtual
 UCCSD excitation pool**.
 
 ## Identity and classification
@@ -17,9 +17,7 @@ UCCSD excitation pool**.
 - Runnable usage: `docs/sphinx/examples/python/hartree_fock_ucc.py:58` and
   `pytest -q tests/python/test_operator_pools.py -k uccsd`.
 - Source provenance: current public source/tests are authoritative and must be
-  checked at use time. This record's historical source review is recorded in
-  [Source provenance](../source-provenance.md). Lifecycle is
-  draft; execution remains unverified for this record.
+  checked at use time.
 - Kind/role/layer: exact deterministic classical transformation,
   computational leaf, host only; dependency `cudaq`.
 
@@ -109,10 +107,9 @@ Committed assertions pin `3` elements at `(4,2,0)`, `8` at `(6,3,1)`, and
 `875` at `(20,10,0)`. These are combinatorial host counts, not gate count,
 depth, runtime, or memory. Selection, screening, and amplitude optimization are
 absent. Cross-implementation agreement with the C++ paths named by the module
-docstring is unverified because those paths were absent from the historically
-reviewed source; recheck current public source at use time.
+docstring is unverified because those paths were absent from the cited source; recheck current public source at use time.
 
-## Validation and evaluation coverage
+## Validation
 
 - Independent absolute oracle: exact words, coefficients, order, and signs at
   `(4,2,0)` (`test_operator_pools.py:92-127`).
@@ -124,14 +121,5 @@ reviewed source; recheck current public source at use time.
   `(6,3,1)`, width bounds, and all rejection rows above. The pool-derived dense
   circuit test is supporting but not independent because both sides reuse the
   pool.
-- Evidence: source and committed assertions inspected during the historical
-  last review support `derived` claims; package/CUDA-Q execution and numerical
-  validation are `unexecuted` here.
-- Eval coverage: authored `operator-pool-selection-boundary` covers selection
-  among occupied-to-virtual UCCSD, generalized UCCGSD, and paired UpCCGSD, plus
-  the excluded optimization boundary;
-  `state-preparation-ucc-parameterization-boundary` covers the consumer-side
-  non-equivalence; `state-preparation-uccsd-open-shell-parity` directly covers
-  the odd-parity silent acceptance. One manual with-skill smoke attempt passed
-  for the parity case on 2026-09-10; no baseline or formal repeated arm has
-  run.
+- Evidence: the scientific assertions above are derived from cited source/tests;
+  they require fresh execution before claiming numerical validation.
