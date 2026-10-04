@@ -46,7 +46,6 @@ def _basis(index: int, num_qubits: int) -> np.ndarray:
 #
 # Layout: a at bits [0, n), b at [n, 2n), carry at bit 2n.
 
-
 # The input register ``a`` is a uniform superposition while ``b`` is a fixed
 # classical value (looped over all of them). This is exhaustive over every
 # (a, b) and, crucially, *operation-pinning*: for a fixed ``b`` the maps
@@ -54,6 +53,7 @@ def _basis(index: int, num_qubits: int) -> np.ndarray:
 # output statevector distinguishes add from subtract. Superposing *both* a and
 # b does not -- any bijection sends a uniform input to the same uniform output,
 # so that collapsed check stays green even if add and subtract are swapped.
+
 
 @cudaq.kernel
 def _run_register_op_fixed_b(n: int, bval: int, subtract: int):
@@ -104,7 +104,8 @@ def test_register_add_subtract_all_inputs(n, name, subtract, op):
     for bval in range(1 << n):
         state = np.array(
             cudaq.get_state(_run_register_op_fixed_b, n, bval, subtract))
-        np.testing.assert_allclose(state, _fixed_b_expected(n, bval, op),
+        np.testing.assert_allclose(state,
+                                   _fixed_b_expected(n, bval, op),
                                    atol=1e-12)
 
 
@@ -125,12 +126,12 @@ def test_subtract_register_inverts_add_register(n):
 # CDKM layout: target at [0, n), work at [n, 2n), carry at 2n.
 # QFT layout: target only.
 
-
 # A single register carries no second operand to leave fixed, so pinning the
 # constant K requires a definite input value: these truth tables prepare
 # ``target`` in each basis state (exhaustive at small n). A uniform-target
 # superposition, by contrast, maps to the same uniform output for every K, so
 # it checks only that work/carry are restored -- not that K was added.
+
 
 @cudaq.kernel
 def _run_add_constant_basis(n: int, bits: list[int], tval: int, subtract: int,
@@ -153,8 +154,8 @@ def _run_add_constant_basis(n: int, bits: list[int], tval: int, subtract: int,
 
 
 @cudaq.kernel
-def _run_add_constant_qft_basis(n: int, constant: int, tval: int, subtract: int,
-                                roundtrip: int):
+def _run_add_constant_qft_basis(n: int, constant: int, tval: int,
+                                subtract: int, roundtrip: int):
     target = cudaq.qvector(n)
     for k in range(n):
         if ((tval >> k) & 1) == 1:
@@ -181,17 +182,20 @@ def test_add_and_subtract_constant_all_inputs(n):
         for tval in range(1 << n):
             added = np.array(
                 cudaq.get_state(_run_add_constant_basis, n, bits, tval, 0, 0))
-            np.testing.assert_allclose(
-                added, _basis((tval + constant) % (1 << n), 2 * n + 1),
-                atol=1e-12)
+            np.testing.assert_allclose(added,
+                                       _basis((tval + constant) % (1 << n),
+                                              2 * n + 1),
+                                       atol=1e-12)
             subtracted = np.array(
                 cudaq.get_state(_run_add_constant_basis, n, bits, tval, 1, 0))
-            np.testing.assert_allclose(
-                subtracted, _basis((tval - constant) % (1 << n), 2 * n + 1),
-                atol=1e-12)
+            np.testing.assert_allclose(subtracted,
+                                       _basis((tval - constant) % (1 << n),
+                                              2 * n + 1),
+                                       atol=1e-12)
             roundtrip = np.array(
                 cudaq.get_state(_run_add_constant_basis, n, bits, tval, 0, 1))
-            np.testing.assert_allclose(roundtrip, _basis(tval, 2 * n + 1),
+            np.testing.assert_allclose(roundtrip,
+                                       _basis(tval, 2 * n + 1),
                                        atol=1e-12)
 
 
@@ -199,17 +203,85 @@ def test_add_and_subtract_constant_all_inputs(n):
 def test_add_and_subtract_constant_qft_all_inputs(n):
     for constant in range(1 << n):
         for tval in range(1 << n):
-            added = np.array(cudaq.get_state(
-                _run_add_constant_qft_basis, n, constant, tval, 0, 0))
-            np.testing.assert_allclose(
-                added, _basis((tval + constant) % (1 << n), n), atol=1e-10)
-            subtracted = np.array(cudaq.get_state(
-                _run_add_constant_qft_basis, n, constant, tval, 1, 0))
-            np.testing.assert_allclose(
-                subtracted, _basis((tval - constant) % (1 << n), n), atol=1e-10)
-            roundtrip = np.array(cudaq.get_state(
-                _run_add_constant_qft_basis, n, constant, tval, 0, 1))
+            added = np.array(
+                cudaq.get_state(_run_add_constant_qft_basis, n, constant, tval,
+                                0, 0))
+            np.testing.assert_allclose(added,
+                                       _basis((tval + constant) % (1 << n), n),
+                                       atol=1e-10)
+            subtracted = np.array(
+                cudaq.get_state(_run_add_constant_qft_basis, n, constant, tval,
+                                1, 0))
+            np.testing.assert_allclose(subtracted,
+                                       _basis((tval - constant) % (1 << n), n),
+                                       atol=1e-10)
+            roundtrip = np.array(
+                cudaq.get_state(_run_add_constant_qft_basis, n, constant, tval,
+                                0, 1))
             np.testing.assert_allclose(roundtrip, _basis(tval, n), atol=1e-10)
+
+
+# qft / iqft are public; test them directly (not only inside add_constant_qft,
+# where a gate-count-neutral change that cancels in the composite would hide).
+
+
+@cudaq.kernel
+def _run_qft(n: int, xval: int):
+    reg = cudaq.qvector(n)
+    for k in range(n):
+        if ((xval >> k) & 1) == 1:
+            x(reg[k])
+    arith.qft(reg)
+
+
+@cudaq.kernel
+def _run_qft_then_iqft(n: int, xval: int):
+    reg = cudaq.qvector(n)
+    for k in range(n):
+        if ((xval >> k) & 1) == 1:
+            x(reg[k])
+    arith.qft(reg)
+    arith.iqft(reg)
+
+
+@pytest.mark.parametrize("n", [1, 2, 3])
+def test_qft_matches_analytic_no_swap(n):
+    # On |x>, qubit t holds (|0> + exp(2 pi i x / 2^(t+1)) |1>)/sqrt(2), with no
+    # bit-reversal. Pins the exact transform -- e.g. an S appended to qft (which
+    # cancels inside add_constant_qft) changes this state and is caught here.
+    for xval in range(1 << n):
+        state = np.array(cudaq.get_state(_run_qft, n, xval))
+        ref = np.zeros(1 << n, dtype=np.complex128)
+        for y in range(1 << n):
+            amp = 1.0 / np.sqrt(1 << n)
+            for t in range(n):
+                if ((y >> t) & 1) == 1:
+                    amp *= np.exp(2j * np.pi * xval / (1 << (t + 1)))
+            ref[y] = amp
+        np.testing.assert_allclose(state, ref, atol=1e-10)
+
+
+@pytest.mark.parametrize("n", [1, 2, 3])
+def test_iqft_inverts_qft(n):
+    for xval in range(1 << n):
+        state = np.array(cudaq.get_state(_run_qft_then_iqft, n, xval))
+        np.testing.assert_allclose(state, _basis(xval, n), atol=1e-10)
+
+
+@pytest.mark.parametrize("n", [2, 3, 4])
+def test_qft_add_constant_large_K_integer_reduction(n):
+    # Pins phase_add_constant's integer mod-2^(t+1) reduction: casting a large K
+    # straight to a float corrupts the phase (the 2 pi * (integer) part is not a
+    # float multiple of 2 pi), so a mutant dropping the reduction is wrong here
+    # while 0 <= K < 2^n stays exact. n = 4 also exercises the t = 3 rotation.
+    for constant in [(1 << 40) + 3, (1 << 53) + 5, (1 << 60) + 7]:
+        for tval in range(1 << n):
+            added = np.array(
+                cudaq.get_state(_run_add_constant_qft_basis, n, constant, tval,
+                                0, 0))
+            np.testing.assert_allclose(added,
+                                       _basis((tval + constant) % (1 << n), n),
+                                       atol=1e-9)
 
 
 # ----------------------------------------------------------------------
@@ -233,17 +305,21 @@ def _run_cmp_ge_constant(n: int, bits: list[int], k_is_zero: int,
 
 @cudaq.kernel
 def _run_cmp_ge_constant_qft_shift(n: int, constant: int, invert: int,
-                             uncompute: int):
+                                   uncompute: int, flag_init: int):
     x_reg = cudaq.qvector(n)
     out = cudaq.qvector(1)
     for k in range(n):
         h(x_reg[k])
-    arith.cmp_ge_constant_qft_shift(x_reg, out, constant, invert)
+    if flag_init == 1:
+        x(out[0])
+    arith.cmp_ge_constant_qft_shift(x_reg, constant, invert, out)
     if uncompute == 1:
-        arith.cmp_ge_constant_qft_shift_adj(x_reg, out, constant, invert)
+        arith.cmp_ge_constant_qft_shift_adj(x_reg, constant, invert, out)
 
 
-def _cmp_expected(n: int, predicate, extra_before_out: int,
+def _cmp_expected(n: int,
+                  predicate,
+                  extra_before_out: int,
                   flag_init: int = 0) -> np.ndarray:
     """|x> (work/carry |0>) |out = flag_init ^ predicate(x)> over superposed x."""
     total = n + extra_before_out + 1
@@ -261,47 +337,51 @@ def test_cmp_ge_constant_all_inputs(n):
     # always false), and out prepared to 0 and 1 (the flag is XOR-loaded).
     for constant in list(range(1 << n)) + [1 << n]:
         if constant == 0:
-            complement, k_is_zero = [0] * n, 1           # K = 0: always true
+            complement, k_is_zero = [0] * n, 1  # K = 0: always true
         elif constant == (1 << n):
-            complement, k_is_zero = [0] * n, 0           # K = 2^n: always false
+            complement, k_is_zero = [0] * n, 0  # K = 2^n: always false
         else:
             complement, k_is_zero = _bits((1 << n) - constant, n), 0
         for flag_init in (0, 1):
             state = np.array(
                 cudaq.get_state(_run_cmp_ge_constant, n, complement, k_is_zero,
                                 flag_init))
-            np.testing.assert_allclose(
-                state, _cmp_expected(n, lambda v: v >= constant, n + 1,
-                                     flag_init),
-                atol=1e-12)
+            np.testing.assert_allclose(state,
+                                       _cmp_expected(n,
+                                                     lambda v: v >= constant,
+                                                     n + 1, flag_init),
+                                       atol=1e-12)
 
 
 @pytest.mark.parametrize("n", WIDTHS)
 def test_cmp_ge_constant_qft_shift_all_inputs(n):
-    # Between the compute/adjoint pair the register is shifted by -K (a
-    # documented contract), so the compute-only check reads out through the
-    # shifted basis; the roundtrip check pins full restoration.
-    for constant in range(1 << n):
+    # K over 0 .. 2^n inclusive (both boundaries), and out prepared to 0 and 1
+    # (the flag is XOR-loaded, like the CDKM comparators). Between the
+    # compute/adjoint pair the register is shifted by -K (a documented
+    # contract), so the compute-only check reads out through the shifted basis;
+    # the roundtrip check pins full restoration (x and out back to flag_init).
+    norm = 1.0 / np.sqrt(1 << n)
+    for constant in list(range(1 << n)) + [1 << n]:
         for invert in (0, 1):
-            state = np.array(
-                cudaq.get_state(_run_cmp_ge_constant_qft_shift, n, constant, invert,
-                                0))
-            expected = np.zeros(1 << (n + 1), dtype=np.complex128)
-            norm = 1.0 / np.sqrt(1 << n)
-            for value in range(1 << n):
-                flag = (value >= constant) if invert == 0 else (value
-                                                                < constant)
-                shifted = (value - constant) % (1 << n)
-                expected[shifted + (int(flag) << n)] += norm
-            np.testing.assert_allclose(state, expected, atol=1e-10)
-            roundtrip = np.array(
-                cudaq.get_state(_run_cmp_ge_constant_qft_shift, n, constant, invert,
-                                1))
-            # compute then adjoint restores the input: uniform x, out |0>.
-            restored = np.zeros(1 << (n + 1), dtype=np.complex128)
-            for value in range(1 << n):
-                restored[value] += norm
-            np.testing.assert_allclose(roundtrip, restored, atol=1e-10)
+            for flag_init in (0, 1):
+                state = np.array(
+                    cudaq.get_state(_run_cmp_ge_constant_qft_shift, n,
+                                    constant, invert, 0, flag_init))
+                expected = np.zeros(1 << (n + 1), dtype=np.complex128)
+                for value in range(1 << n):
+                    pred = (value >= constant) if invert == 0 else (value
+                                                                    < constant)
+                    flag = flag_init ^ int(pred)
+                    shifted = (value - constant) % (1 << n)
+                    expected[shifted + (flag << n)] += norm
+                np.testing.assert_allclose(state, expected, atol=1e-10)
+                roundtrip = np.array(
+                    cudaq.get_state(_run_cmp_ge_constant_qft_shift, n,
+                                    constant, invert, 1, flag_init))
+                restored = np.zeros(1 << (n + 1), dtype=np.complex128)
+                for value in range(1 << n):
+                    restored[value + (flag_init << n)] += norm
+                np.testing.assert_allclose(roundtrip, restored, atol=1e-10)
 
 
 # ----------------------------------------------------------------------
@@ -373,11 +453,14 @@ _CMP_REGISTER_OPS = [
 ]
 
 
-@pytest.mark.parametrize("n", [1, 2, 3, 4])
+@pytest.mark.parametrize("n", [1, 2, 3])
 @pytest.mark.parametrize("name,strict,predicate", _CMP_REGISTER_OPS)
 def test_cmp_register_truth_table_exhaustive(n, name, strict, predicate):
     # All (a, b) pairs, flag initially 0 and 1: XOR semantics, operands
     # (and carry) verified unchanged by the full statevector equality.
+    # (n is capped at 3: the n = 4 truth table is 1024 launches per operator,
+    # ~80 s per CI leg on 0.15.1's re-JIT; n = 4..5 coverage is carried by the
+    # superposed test below, which checks all (a, b) in one shot.)
     for aval in range(1 << n):
         for bval in range(1 << n):
             for flag_init in (0, 1):
@@ -406,8 +489,8 @@ def test_cmp_register_all_inputs_superposed(n, name, strict, predicate):
 
 
 @pytest.mark.parametrize("n", WIDTHS)
-@pytest.mark.parametrize("name,strict,predicate", _CMP_REGISTER_OPS)
-def test_cmp_register_twice_is_identity(n, name, strict, predicate):
+@pytest.mark.parametrize("strict", [0, 1], ids=["ge", "gt"])
+def test_cmp_register_twice_is_identity(n, strict):
     # Self-inverse contract: the operand action is compute-copy-uncompute
     # and the flag is XOR-accumulated, so two applications are the
     # identity — checked on a random entangled state (superposed flag
@@ -456,15 +539,16 @@ def test_add_register_basis_spot_checks():
 # depend on the folding rather than the construction.
 #
 # CDKM derivations (n-bit registers, one Toffoli per MAJ and per UMA):
-# - add_register / subtract_register: the MAJ sweep is one Toffoli at
-#   the carry step plus n - 1 in the ripple = n; the UMA sweep mirrors
-#   it = n. Total exactly 2 n.
+# - add_register / subtract_register: a full MAJ/UMA pair would be 2n, but the
+#   mod-2^n adder never forms the top carry-out, so the top MAJ/UMA Toffoli
+#   pair cancels -> 2n - 2 (n = 1 needs none).
 # - add_constant / subtract_constant: the constant load/unload is X-only
-#   (free), so the price is the inner register adder's 2 n.
-# - cmp_ge_constant (K >= 1): a MAJ sweep (n) plus its literal reversal
-#   (n) with a free CNOT carry-copy in between = 2 n; K = 0 is a bare X.
-# - cmp_ge_register / cmp_gt_register: the same MAJ sweep + reversal
-#   = 2 n; the b-complement, carry-in set and flag copy are X/CNOT-only.
+#   (free), so the price is the inner register adder's 2n - 2.
+# - cmp_ge_constant (K >= 1): the comparator reads the top carry (it is the
+#   result), so only that carry's compute/copy/uncompute collapses: a MAJ
+#   sweep (n) plus its reversal (n) minus one = 2n - 1; K = 0 is a bare X.
+# - cmp_ge_register / cmp_gt_register: the same 2n - 1; the b-complement,
+#   carry-in set and flag copy are X/CNOT-only.
 #
 # Draper QFT derivations: no Toffolis at all. add_constant_qft is
 # qft + phases + iqft = 2 * (n(n-1)/2) controlled-r1, n free r1 and 2 n
@@ -530,7 +614,14 @@ def _res_add_constant_qft(n: int, constant: int):
 def _res_cmp_ge_constant_qft_shift(n: int, constant: int, invert: int):
     x_reg = cudaq.qvector(n)
     out = cudaq.qvector(1)
-    arith.cmp_ge_constant_qft_shift(x_reg, out, constant, invert)
+    arith.cmp_ge_constant_qft_shift(x_reg, constant, invert, out)
+
+
+@cudaq.kernel
+def _res_cmp_ge_constant_qft_shift_adj(n: int, constant: int, invert: int):
+    x_reg = cudaq.qvector(n)
+    out = cudaq.qvector(1)
+    arith.cmp_ge_constant_qft_shift_adj(x_reg, constant, invert, out)
 
 
 def _toffolis(kernel, *args) -> int:
@@ -543,6 +634,7 @@ def _toffolis(kernel, *args) -> int:
 # The mod-2^n adder never reads the top carry-out, so its MAJ/UMA Toffoli pair
 # cancels -> 2n - 2 Toffolis (n = 1 needs none). Cuccaro et al.
 # (arXiv:quant-ph/0410184) Section 4.1 reaches 2n - 3; not adopted here.
+
 
 @_RESOURCES
 @pytest.mark.parametrize("n", WIDTHS)
@@ -603,13 +695,21 @@ def test_qft_add_constant_costs_rotations_not_toffolis(n):
 @pytest.mark.parametrize("n", WIDTHS)
 def test_qft_comparator_costs_rotations_not_toffolis(n):
     for invert in (0, 1):
-        resources = cudaq.estimate_resources(_res_cmp_ge_constant_qft_shift, n, 1,
-                                             invert)
+        resources = cudaq.estimate_resources(_res_cmp_ge_constant_qft_shift, n,
+                                             1, invert)
         assert resources.count_controls("x", 2) == 0
         assert resources.count_controls("r1", 1) == n * (n + 1)
         assert resources.count_controls("r1", 0) == n + 1
         assert resources.count("h") == 2 * (n + 1)
         assert resources.count("x") == (1 if invert == 0 else 0)
+        # The separately hand-written adjoint has the same rotation budget.
+        adj = cudaq.estimate_resources(_res_cmp_ge_constant_qft_shift_adj, n,
+                                       1, invert)
+        assert adj.count_controls("x", 2) == 0
+        assert adj.count_controls("r1", 1) == n * (n + 1)
+        assert adj.count_controls("r1", 0) == n + 1
+        assert adj.count("h") == 2 * (n + 1)
+        assert adj.count("x") == (1 if invert == 0 else 0)
     # K = 0 emits no rotations at all: the constant-true comparator is a
     # bare X on the out qubit.
     trivial = cudaq.estimate_resources(_res_cmp_ge_constant_qft_shift, n, 0, 0)
@@ -630,7 +730,12 @@ def test_qft_comparator_costs_rotations_not_toffolis(n):
 
 def _cudaq_version():
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", cudaq.__version__)
-    return tuple(int(part) for part in match.groups()) if match else (0, 0, 0)
+    if match is None:
+        # Fail loudly rather than fall back to (0, 0, 0), which would skip the
+        # controlled-composition test silently and permanently.
+        raise RuntimeError(f"could not parse a version from cudaq.__version__="
+                           f"{cudaq.__version__!r}")
+    return tuple(int(part) for part in match.groups())
 
 
 _CONTROLLED_COMPOSITION_OK = _cudaq_version() >= (0, 16, 0)
@@ -640,7 +745,7 @@ _CONTROLLED_COMPOSITION_OK = _cudaq_version() >= (0, 16, 0)
 def _run_controlled_add_constant_qft(n: int, tval: int, constant: int):
     ctrl = cudaq.qubit()
     target = cudaq.qvector(n)
-    h(ctrl)                                  # control in a uniform superposition
+    h(ctrl)  # control in a uniform superposition
     for k in range(n):
         if ((tval >> k) & 1) == 1:
             x(target[k])
@@ -651,7 +756,7 @@ def _run_controlled_add_constant_qft(n: int, tval: int, constant: int):
 @pytest.mark.skipif(
     not _CONTROLLED_COMPOSITION_OK,
     reason="cudaq.control of a composed kernel regressed on 0.15.x "
-           "(specialization failure); correct on 0.14.2 and 0.16.0")
+    "(specialization failure); correct on 0.14.2 and 0.16.0")
 @pytest.mark.parametrize("n", [2, 3])
 def test_controlled_add_constant_qft_superposed_control(n):
     # A superposed control: the branch that fires must, and the other must not.
@@ -659,10 +764,28 @@ def test_controlled_add_constant_qft_superposed_control(n):
     # be shifted too and this would fail.
     for tval in range(1 << n):
         for constant in range(1 << n):
-            state = np.array(cudaq.get_state(
-                _run_controlled_add_constant_qft, n, tval, constant))
+            state = np.array(
+                cudaq.get_state(_run_controlled_add_constant_qft, n, tval,
+                                constant))
             expected = np.zeros(1 << (n + 1), dtype=np.complex128)
             amp = 1.0 / np.sqrt(2)
-            expected[tval << 1] += amp                                # ctrl = 0
-            expected[1 + (((tval + constant) % (1 << n)) << 1)] += amp  # ctrl = 1
+            expected[tval << 1] += amp  # ctrl = 0
+            expected[1 + (((tval + constant) %
+                           (1 << n)) << 1)] += amp  # ctrl = 1
             np.testing.assert_allclose(state, expected, atol=1e-10)
+
+
+# ----------------------------------------------------------------------
+# Public API surface
+# ----------------------------------------------------------------------
+
+
+def test_public_names_resolve_on_package():
+    # The tests import the private module (``arith``); pin that every name in
+    # its ``__all__`` is re-exported from the public package and is the same
+    # object, so a mutant dropping a name from the package import/__all__ fails.
+    import cudaq_algorithms.primitives as primitives
+    for name in arith.__all__:
+        assert hasattr(primitives, name), name
+        assert name in primitives.__all__, name
+        assert getattr(primitives, name) is getattr(arith, name), name

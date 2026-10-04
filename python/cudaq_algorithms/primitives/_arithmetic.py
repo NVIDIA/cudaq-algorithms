@@ -10,10 +10,19 @@ resource-contract tests in ``tests/python/test_primitives_arithmetic.py``.
 
 Registers passed to one op must be pairwise disjoint: the kernels never
 alias-check, and overlapping views (e.g. ``add_register(a, a, carry)``, or a
-``work`` view sharing qubits with ``target``) are undefined.
+``work`` view sharing qubits with ``target``) are undefined -- an aliased
+Toffoli raises within seconds on CUDA-Q 0.15.1 but hangs the simulation with
+no diagnostic on 0.16.0. The register width is read from the *first* operand
+(``n = a.size()`` / ``x_reg.size()``); a longer second operand is silently
+reduced to its low ``n`` bits.
 
-Every inverse is hand-written -- ``cudaq.adjoint`` is off-limits as of CUDA-Q
-0.15 (cuda-quantum#4897/#4898) -- and pinned by op-then-inverse identity tests.
+Hand-written inverses are used throughout. They are *required* for the CDKM
+family -- ``cudaq.adjoint`` fails on those kernels (silently wrong on
+loop-carried counters, cuda-quantum#4897; refuses the flip/rotate/unflip idiom,
+cuda-quantum#4898; both still unfixed as of 0.16.0). ``cudaq.adjoint`` does
+work on the Draper/QFT kernels (verified on 0.14.2 / 0.15.1 / 0.16.0); their
+inverses are hand-written anyway for a uniform, version-independent surface.
+Every inverse is pinned by op-then-inverse identity tests.
 """
 
 from __future__ import annotations
@@ -44,9 +53,11 @@ __all__ = [
 # MAJ(x, y, z) = cx(z, y); cx(z, x); ccx(x, y, z)
 # UMA(x, y, z) = ccx(x, y, z); cx(z, x); cx(x, y)
 #
-# The adder chains MAJ(carry, b0, a0), MAJ(a0, b1, a1), ...; after the MAJ
-# sweep the ripple carry-out sits on a[n-1]; the UMA sweep (in reverse)
-# restores ``a`` and the carry ancilla and completes ``b <- a + b mod 2^n``.
+# The adder chains MAJ(carry, b0, a0), MAJ(a0, b1, a1), ...; for a mod-2^n
+# adder the sweep stops one bit early -- the ripple carry into bit n-1 sits on
+# a[n-2], and the top carry-out c_n (which would land on a[n-1]) is never
+# formed, since it is discarded mod 2^n. The UMA sweep (in reverse) restores
+# ``a`` and the carry ancilla and completes ``b <- a + b mod 2^n``.
 
 
 @cudaq.kernel
@@ -88,7 +99,9 @@ def add_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
             cx(a[i - 1], b[i])
         x.ctrl(carry[0], b[0], a[0])
         cx(a[0], carry[0])
-        cx(carry[0], b[0])
+        # The UMA carry-in CNOT ``cx(carry[0], b[0])`` is omitted: the carry
+        # ancilla is |0> on entry (precondition) and restored by the line
+        # above, so it is the identity here -- adding it back would be dead.
 
 
 @cudaq.kernel
@@ -104,7 +117,8 @@ def subtract_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
     if n == 1:
         cx(a[0], b[0])
     elif n > 1:
-        cx(carry[0], b[0])
+        # Mirror of ``add_register``: the UMA carry-in CNOT is omitted (it is
+        # the identity under the carry = |0> precondition).
         cx(a[0], carry[0])
         x.ctrl(carry[0], b[0], a[0])
         for i in range(1, n - 1):
@@ -127,12 +141,14 @@ def add_constant(target: cudaq.qview, constant_bits: list[int],
                  work: cudaq.qview, carry: cudaq.qview):
     """``target <- (target + K) mod 2^n`` (CDKM).
 
-    ``constant_bits[k]`` is bit ``k`` of ``K`` (little-endian). Precondition:
-    ``constant_bits`` has length exactly ``n = target.size()``, i.e.
-    ``0 <= K < 2^n`` — a shorter or longer list is not truncated or padded
-    and the kernel is undefined. ``work`` (``n`` qubits) and ``carry`` (1
-    qubit) must be |0> on entry and are returned to |0>: the constant is
-    X-loaded into ``work``, ripple-added, and X-unloaded.
+    ``constant_bits[k]`` is bit ``k`` of ``K`` (little-endian). Only bits
+    ``0 .. n-1`` are read (``n = target.size()``): a longer list is in effect
+    ``K mod 2^n``, and a **shorter** list reads past the end of the host list
+    with no bounds check (undefined), so the caller must pass at least ``n``
+    bits. The intended precondition is ``0 <= K < 2^n`` with a length-``n``
+    list. ``work`` (``n`` qubits) and ``carry`` (1 qubit) must be |0> on entry
+    and are returned to |0>: the constant is X-loaded into ``work``,
+    ripple-added, and X-unloaded.
 
     Cost: ``2n - 2`` Toffolis (the constant load/unload is X-only). An
     ancilla-light constant adder (Haener et al., arXiv:1611.07995) that avoids
@@ -176,14 +192,17 @@ def cmp_ge_constant(x_reg: cudaq.qview, complement_bits: list[int],
     x_reg.size()`` and ``0 <= K <= 2^n`` (so ``2^n - K`` fits in ``n``
     bits; pass ``k_is_zero = 1`` and all-zero bits for ``K = 0``, which is
     always true, and all-zero bits with ``k_is_zero = 0`` for ``K = 2^n``,
-    which is always false). Uses the ripple identity ``x >= K <=> carry_out(x + (2^n
-    - K))`` for ``K >= 1``: MAJ sweep, write the carry-out into ``out``, then
+    which is always false). ``work`` (``n`` qubits) and ``carry`` (1 qubit)
+    must be |0> on entry and are returned to |0>; ``out`` is the one-qubit
+    flag, XOR-loaded (any input state is allowed). Uses the ripple identity
+    ``x >= K <=> carry_out(x + (2^n - K))`` for ``K >= 1``: MAJ sweep, write
+    the carry-out into ``out``, then
     reverse the MAJ sweep so ``x_reg``, ``work`` and ``carry`` are all
     restored.
 
-    This is the ``x``-preserving, ``out``-XOR-ing, complement-bit comparator;
-    contrast ``cmp_ge_constant_qft_shift``, which shifts ``x``, sets ``out``
-    from |0>, and takes ``K`` as an integer.
+    This is the ``x``-preserving, complement-bit comparator; contrast
+    ``cmp_ge_constant_qft_shift``, which shifts ``x`` and takes ``K`` as an
+    integer (both XOR the one-qubit ``out`` flag).
 
     Cost: ``2n - 1`` Toffolis for ``K >= 1`` (the top carry is written straight
     into ``out``, saving one Toffoli over compute/copy/uncompute); ``0`` for
@@ -200,7 +219,7 @@ def cmp_ge_constant(x_reg: cudaq.qview, complement_bits: list[int],
             # carry_out(x + (2 - K)) = x AND (2 - K), and 2 - K is X-loaded
             # into work[0], so the result is a single Toffoli.
             x.ctrl(x_reg[0], work[0], out[0])
-        else:
+        elif n > 1:
             # MAJ sweep (a = work, b = x_reg) over the lower bits.
             cx(work[0], x_reg[0])
             cx(work[0], carry[0])
@@ -303,26 +322,38 @@ def cmp_gt_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview,
     """``out[0] ^= (a > b)`` (CDKM, unsigned), leaving ``a``, ``b`` unchanged.
 
     Free strict variant of ``cmp_ge_register`` via ``a > b <=> not
-    (b >= a)``: an X on ``out`` plus the ``>=`` comparator with the roles
-    swapped. Same preconditions, same ``2n - 1`` Toffoli price, and likewise
-    self-inverse.
+    (b >= a)``: for ``n > 1`` an X on ``out`` plus the ``>=`` comparator with
+    the roles swapped. ``n = 1`` has its own branch (``a > b == a AND ~b``)
+    rather than deferring to ``cmp_ge_register``, so the two X gates on ``out``
+    that would otherwise cancel are never emitted. Same preconditions, same
+    ``2n - 1`` Toffoli price, and likewise self-inverse.
     """
-    x(out[0])
-    cmp_ge_register(b, a, carry, out)
+    n = a.size()
+    if n == 1:
+        # a > b  ==  a AND NOT b: one Toffoli, and no redundant X pair on out.
+        x(b[0])
+        x.ctrl(a[0], b[0], out[0])
+        x(b[0])
+    elif n > 1:
+        x(out[0])
+        cmp_ge_register(b, a, carry, out)
 
 
 # ============================================================================
-# Draper QFT family (no work qubits)
+# Draper QFT family (no work qubits) -- the swap-free convention is on ``qft``.
 # ============================================================================
-#
-# ``qft`` is the textbook circuit without the final bit-reversal swaps;
-# after it, qubit t holds (|0> + exp(2 pi i x / 2^(t+1)) |1>)/sqrt(2), so a
-# constant K is added by the single-qubit phases r1(2 pi K / 2^(t+1)).
 
 
 @cudaq.kernel
 def qft(reg: cudaq.qview):
-    """Quantum Fourier transform (no bit-reversal swaps; see module doc)."""
+    """Quantum Fourier transform, **without** the final bit-reversal swaps.
+
+    After it, qubit ``t`` holds
+    ``(|0> + exp(2 pi i x / 2^(t+1)) |1>) / sqrt(2)``, so a constant ``K`` is
+    added in this basis by the single-qubit phases ``r1(2 pi K / 2^(t+1))``
+    (see ``phase_add_constant``). Omitting the swaps is why the little-endian
+    phase index is ``2^(t+1)`` rather than ``2^(n-t)``.
+    """
     n = reg.size()
     for j in range(n):
         t = n - 1 - j
@@ -344,7 +375,13 @@ def iqft(reg: cudaq.qview):
 
 @cudaq.kernel
 def phase_add_constant(reg: cudaq.qview, constant: int):
-    """``reg <- reg + K mod 2^n`` in the Fourier basis (between qft/iqft)."""
+    """``reg <- reg + K mod 2^n`` in the Fourier basis (between qft/iqft).
+
+    Valid for ``n = reg.size() <= 62``: the per-bit reduction below forms
+    ``2^(t+1)`` as a kernel-side ``int64`` (``t`` up to ``n-1``), which
+    overflows at ``t = 62``; ``n = 63`` would make the top-bit phase a silent
+    no-op. (Far above any simulable width, but stated for completeness.)
+    """
     n = reg.size()
     k = constant % (1 << n)
     for t in range(n):
@@ -397,50 +434,65 @@ def _iqft_extended(x_reg: cudaq.qview, msb: cudaq.qview):
 
 
 @cudaq.kernel
-def cmp_ge_constant_qft_shift(x_reg: cudaq.qview, out: cudaq.qview,
-                              constant: int, invert: int):
-    """Compute ``out[0] = (x >= K)`` and **leave ``x_reg`` shifted to
-    ``(x - K) mod 2^n``** (hence the ``_shift`` -- this is the compute half of a
-    pair). ``invert = 1`` gives ``x < K``.
+def cmp_ge_constant_qft_shift(x_reg: cudaq.qview, constant: int, invert: int,
+                              out: cudaq.qview):
+    """``out[0] ^= (x >= K)``, and **leave ``x_reg`` shifted to
+    ``(x - K) mod 2^n``** (hence ``_shift`` -- the compute half of a pair).
+    ``invert = 1`` flips the flag to ``x < K``.
+
+    ``out`` is the one-qubit flag and is **XOR-loaded** (any input state is
+    allowed, like the CDKM comparators): the subtraction's borrow toggles it.
+    The argument order matches the CDKM comparators (``out`` last).
 
     Unlike ``cmp_ge_constant`` (which restores ``x``), this Draper comparator
-    does *not* restore ``x_reg``: it must be paired with
-    ``cmp_ge_constant_qft_shift_adj`` to undo the shift, and the caller may read
-    ``out`` but must **not** consume ``x_reg`` in between. ``out`` must be |0>
-    on entry.
+    does *not* restore ``x_reg``: pair it with
+    ``cmp_ge_constant_qft_shift_adj`` to undo the shift, and do not consume
+    ``x_reg`` between the two. A cheaper restore that still keeps the flag is to
+    follow the shift with ``add_constant_qft(x_reg, K)``: ``n(n-1)`` controlled
+    rotations and no ancilla, versus ``n(n+1)`` for the adjoint.
 
-    Precondition: ``0 <= K <= 2^n`` (``n = x_reg.size()``). For ``K > 2^n`` the
-    result is silently wrong: the subtraction acts on the (n+1)-bit extension,
-    so the borrow wraps mod ``2^(n+1)`` and ``out`` no longer encodes
-    ``x < K``. Mechanically: subtract ``K`` on the (n+1)-bit register
-    ``[x_reg, out]``; the MSB (``out``) becomes the borrow ``x < K``. ``K = 0``
-    (with ``invert = 0``) yields the constant-true comparator.
+    Preconditions: ``n = x_reg.size() <= 61`` (the per-bit reduction forms
+    ``2^(n+1)`` as a kernel-side ``int64``). ``0 <= K <= 2^n``: for ``K > 2^n``
+    the result is silently wrong (the borrow on the (n+1)-bit extension wraps
+    mod ``2^(n+1)``). For ``K <= 0`` the subtraction is skipped, so ``x_reg`` is
+    left **unshifted** -- ``K = 0`` with ``invert = 0`` is the constant-true
+    comparator, and a negative ``K`` leaves ``out`` correct but ``x_reg``
+    unchanged (not shifted as the ``K >= 1`` contract promises). Mechanically:
+    subtract ``K`` on the (n+1)-bit register ``[x_reg, out]``; the MSB (``out``)
+    takes the borrow ``x < K``.
 
     Cost: no Toffolis -- ``n(n+1)`` controlled-``r1`` plus ``n+1`` single-qubit
-    ``r1`` per side of the compute/adjoint pair (``K >= 1``; zero at ``K = 0``).
+    ``r1`` (``K >= 1``; zero at ``K = 0``).
     """
     n = x_reg.size()
     if constant > 0:
         _qft_extended(x_reg, out)
         for t in range(n):
-            r1(-6.283185307179586 * constant / (1 << (t + 1)), x_reg[t])
-        r1(-6.283185307179586 * constant / (1 << (n + 1)), out[0])
+            # Reduce K mod 2^(t+1) as an integer first (as in
+            # phase_add_constant), so the rotation is exact for any K rather
+            # than losing precision when a large K is cast to float.
+            kt = constant % (1 << (t + 1))
+            r1(-6.283185307179586 * kt / (1 << (t + 1)), x_reg[t])
+        kout = constant % (1 << (n + 1))
+        r1(-6.283185307179586 * kout / (1 << (n + 1)), out[0])
         _iqft_extended(x_reg, out)
     if invert == 0:
         x(out[0])
 
 
 @cudaq.kernel
-def cmp_ge_constant_qft_shift_adj(x_reg: cudaq.qview, out: cudaq.qview,
-                            constant: int, invert: int):
-    """Hand-written inverse of ``cmp_ge_constant_qft_shift``."""
+def cmp_ge_constant_qft_shift_adj(x_reg: cudaq.qview, constant: int,
+                                  invert: int, out: cudaq.qview):
+    """Hand-written inverse of ``cmp_ge_constant_qft_shift`` (``out`` last)."""
     n = x_reg.size()
     if invert == 0:
         x(out[0])
     if constant > 0:
         _qft_extended(x_reg, out)
-        r1(6.283185307179586 * constant / (1 << (n + 1)), out[0])
+        kout = constant % (1 << (n + 1))
+        r1(6.283185307179586 * kout / (1 << (n + 1)), out[0])
         for k in range(n):
             t = n - 1 - k
-            r1(6.283185307179586 * constant / (1 << (t + 1)), x_reg[t])
+            kt = constant % (1 << (t + 1))
+            r1(6.283185307179586 * kt / (1 << (t + 1)), x_reg[t])
         _iqft_extended(x_reg, out)
