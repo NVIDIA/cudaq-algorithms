@@ -9,8 +9,16 @@ Old 42- or 7-case measurements are not results for this delivery suite.
 
 ## Paired campaign protocol
 
+The maintained [multi-model runner](runner/README.md) provides endpoint preflight,
+frozen campaigns, isolated execution, private grading and canonical export through
+`scripts/run_eval.py`. Its first backend supports OpenAI-compatible Chat
+Completions endpoints. Offline CI validates the infrastructure and all 24
+registered executable checks. Live endpoint health and actual model outcomes
+must still be established for each campaign; absent verification is explicitly
+reported as unassessed.
+
 Use the canonical suite, [`config.yml`](config.yml), declared `files/` fixtures,
-and runtime skill [`../../cudaq-algorithms`](../../cudaq-algorithms). An external
+and runtime skill [`../../cudaq-algorithms`](../../cudaq-algorithms). The
 runner must execute every case with and without the skill, for **exactly five
 independent paired repetitions**: 62 × 5 × 2 = 620 records per model. Include
 records for failures, unanswered runs and ungraded runs. Never stop on pass,
@@ -19,7 +27,7 @@ does not promise deterministic model-provider behavior.
 
 The harness configuration uses `n_attempts: 1`, `stop_on_pass: false`, and the
 unchanged `pass_threshold: 0.50`. The separate `evaluation_protocol` section is
-reporting metadata, **not a supported harness seed-loop feature**. The runner
+reporting metadata, **not an implicit Harbor seed-loop feature**. The runner
 must loop `[0, 1, 2, 3, 4]` itself, select budgets before running, and copy the
 actual protocol into the results. Do not pass custom reporting metadata to a
 harness unless its configuration adapter supports it.
@@ -42,6 +50,16 @@ an extra universal simulator or hardware requirement. In science cases, grade
 substantive CUDA-Q Algorithms use against the original rubric; an unused
 import is insufficient, and permitted independent classical references remain
 valid.
+
+The maintained runner appends identical public artifact-format instructions to
+both arms' system messages, preserving each user question verbatim. It freezes
+all numerical checker specifications in the campaign and fingerprints their
+source. The `after_final_answer_v1` policy performs one private check after the
+final answer, within the remaining task budget, on qpp-cpu/fp64. Completion costs
+include that observed check; preceding independent failed checks are zero when
+this first check succeeds. Worker self-tests remain transcript evidence, not
+trusted completion events. Numerical verification and original rubric assessment
+of library use, method and interpretation are separate requirements.
 
 For applicable scientific checks, preregister the oracle, inputs, tolerance,
 target and precision. Check intermediate stages and pin the full statevector

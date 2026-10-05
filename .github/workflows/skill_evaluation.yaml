@@ -1,0 +1,75 @@
+name: Skill evaluation offline checks
+
+on:
+  pull_request:
+    paths:
+      - 'skills/cudaq-algorithms-dev/**'
+      - 'skills/cudaq-algorithms/**'
+      - '.github/workflows/skill_evaluation.yaml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Suite, runner and reporting contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      # The CI job never opts into namespace, scientific-runtime or model probes.
+      CUDAQ_RUNNER_TEST_ISOLATION: '0'
+      CUDAQ_RUNNER_TEST_PYTHON: ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: python -m pip install pytest jsonschema PyYAML numpy scipy pyscf
+
+      - name: Prepare diagnostic directory
+        run: mkdir -p "$RUNNER_TEMP/cudaq-skill-evaluation"
+
+      - name: Validate canonical suite and private grading
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python -B -m unittest discover -s skills/cudaq-algorithms-dev/evals/tests 2>&1 | tee "$RUNNER_TEMP/cudaq-skill-evaluation/evals.log"
+
+      - name: Test routing, coverage and reporting
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python -B -m pytest -q -p no:cacheprovider skills/cudaq-algorithms-dev/scripts/tests 2>&1 | tee "$RUNNER_TEMP/cudaq-skill-evaluation/scripts.log"
+
+      - name: Test runner with offline transports and trusted test commands
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python -B -m pytest -q -p no:cacheprovider skills/cudaq-algorithms-dev/evals/runner/tests 2>&1 | tee "$RUNNER_TEMP/cudaq-skill-evaluation/runner.log"
+
+      - name: Check skill coverage and links
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python -B skills/cudaq-algorithms-dev/scripts/check_coverage.py 2>&1 | tee "$RUNNER_TEMP/cudaq-skill-evaluation/coverage.log"
+
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-evaluation-offline-logs
+          path: ${{ runner.temp }}/cudaq-skill-evaluation/*.log
+          if-no-files-found: ignore
+          retention-days: 7
