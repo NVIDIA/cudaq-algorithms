@@ -6,12 +6,14 @@ not a complete or independently runnable CUDA-Q implementation.
 
 
 class PhaseSequence:
+
     def __init__(self, phases, *, convention="qsvt"):
         self.phases = tuple(phases)
         self.convention = convention
 
 
 class QSVT:
+
     def kernel(self, sequence: PhaseSequence, *, state_prep=None):
         """Build a kernel from an explicitly tagged PhaseSequence.
 

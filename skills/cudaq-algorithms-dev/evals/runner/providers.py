@@ -67,7 +67,8 @@ class ProviderError(Exception):
         self.request_id = request_id if isinstance(
             request_id, str) and _REQUEST_ID.fullmatch(request_id) else None
         self.provider_reason = provider_reason if isinstance(
-            provider_reason, str) and provider_reason in _PROVIDER_REASONS else None
+            provider_reason,
+            str) and provider_reason in _PROVIDER_REASONS else None
 
     def as_dict(self) -> dict:
         result = {
@@ -88,8 +89,10 @@ class ProviderError(Exception):
 def _error_request_id(headers, credential: str) -> str | None:
     # Header names are case insensitive even for plain-dict test transports.
     for name in ("nvcf-reqid", "x-request-id"):
-        values = [value for key, value in headers.items()
-                  if isinstance(key, str) and key.lower() == name]
+        values = [
+            value for key, value in headers.items()
+            if isinstance(key, str) and key.lower() == name
+        ]
         if len(values) != 1:
             continue
         value = values[0]
@@ -101,8 +104,8 @@ def _error_request_id(headers, credential: str) -> str | None:
 
 def _error_reason(error: HTTPError, deadline: float) -> str:
     """Classify bounded diagnostic input; never retain free-form provider text."""
-    fallback = ("rate_limited" if error.code == 429 else "internal_error"
-                if 500 <= error.code < 600 else "unknown")
+    fallback = ("rate_limited" if error.code == 429 else
+                "internal_error" if 500 <= error.code < 600 else "unknown")
     response = error.fp
     sock = getattr(getattr(getattr(response, "fp", None), "raw", None),
                    "_sock", None)
@@ -112,7 +115,8 @@ def _error_reason(error: HTTPError, deadline: float) -> str:
         return fallback
     try:
         raw = _read_response(response,
-                             min(deadline, time.monotonic() + ERROR_READ_SECONDS),
+                             min(deadline,
+                                 time.monotonic() + ERROR_READ_SECONDS),
                              max_bytes=MAX_ERROR_BYTES)
         body = json.loads(raw)
     except (OSError, HTTPException, ValueError, TypeError, RecursionError,

@@ -2,6 +2,7 @@
 
 
 class PauliLCU:
+
     def __init__(self,
                  hamiltonian,
                  *,

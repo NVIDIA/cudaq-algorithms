@@ -229,25 +229,33 @@ def prepare(root,
                    sort_keys=True).encode()).hexdigest()
     revision = f"{revision}+tree-sha256:{source_hash}"
     env = {
-        "simulator": "qpp-cpu",
-        "precision": "fp64",
-        "threads": "1",
-        "runner": "http-tools-v1",
+        "simulator":
+        "qpp-cpu",
+        "precision":
+        "fp64",
+        "threads":
+        "1",
+        "runner":
+        "http-tools-v1",
         # Environment strings survive canonical export without extending its
         # fixed schema. The settings below remain the execution authority.
-        "transport_policy": json.dumps({
-            'name': 'measured_failed_requests_and_backoff_v1',
-            'task_budget_seconds': budget,
-            'backend_wait_budget_seconds': backend_wait_budget_seconds,
-            'wall_cap_seconds': budget + backend_wait_budget_seconds,
-            'request_timeout_seconds': request_timeout,
-            'max_retries_per_request': transport_max_retries,
-            'fallback_backoff_seconds': [2, 4, 8, 16, 32, 60],
-            'honor_retry_after': True,
-            'retry_after_policy': 'maximum_of_header_and_fallback',
-            'successful_request_latency': 'task_time',
-            'zero_wait_allowance': 'no_retries_all_latency_charged'
-        }, sort_keys=True, allow_nan=False)
+        "transport_policy":
+        json.dumps(
+            {
+                'name': 'measured_failed_requests_and_backoff_v1',
+                'task_budget_seconds': budget,
+                'backend_wait_budget_seconds': backend_wait_budget_seconds,
+                'wall_cap_seconds': budget + backend_wait_budget_seconds,
+                'request_timeout_seconds': request_timeout,
+                'max_retries_per_request': transport_max_retries,
+                'fallback_backoff_seconds': [2, 4, 8, 16, 32, 60],
+                'honor_retry_after': True,
+                'retry_after_policy': 'maximum_of_header_and_fallback',
+                'successful_request_latency': 'task_time',
+                'zero_wait_allowance': 'no_retries_all_latency_charged'
+            },
+            sort_keys=True,
+            allow_nan=False)
     }
     python = str(runtime_python or "python3")
     probe = subprocess.run([
@@ -460,8 +468,9 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
             # Preserve actual elapsed time even if OS scheduling overslept.
             # The wall cap still prevents further work after such an overrun.
             backend_wait += seconds
-            deadline = min(start + spec['protocol']['budget_seconds'] +
-                           backend_wait, wall_deadline)
+            deadline = min(
+                start + spec['protocol']['budget_seconds'] + backend_wait,
+                wall_deadline)
 
     event("started", case_id=case["id"], seed=row["seed"], arm=row["arm"])
     try:
@@ -489,7 +498,8 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     transport_stop_reason = ('wall_budget' if time.monotonic()
-                                             >= wall_deadline else 'task_budget')
+                                             >= wall_deadline else
+                                             'task_budget')
                     raise last_error or providers.ProviderError(
                         "timeout", None, "Attempt deadline reached")
                 if retry and measured_wait_policy and backend_wait >= wait_budget:
@@ -506,8 +516,10 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                             'backend_wait_budget', None,
                             'Measured backend wait allowance exhausted.')
                 request_count += 1
-                event('request_started', request_index=request_count,
-                      retry_index=retry, timeout_seconds=timeout)
+                event('request_started',
+                      request_index=request_count,
+                      retry_index=retry,
+                      timeout_seconds=timeout)
                 request_started = time.monotonic()
                 try:
                     response = providers.complete(model, messages, TOOLS,
@@ -517,11 +529,16 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                     latency = time.monotonic() - request_started
                     record_wait(latency)
                     usage_incomplete = True
-                    event('transport_error', request_index=request_count,
-                          retry_index=retry, latency_seconds=latency,
-                          error={'kind': 'interrupted', 'status': None,
-                                 'message': 'Provider request interrupted.',
-                                 'retryable': False})
+                    event('transport_error',
+                          request_index=request_count,
+                          retry_index=retry,
+                          latency_seconds=latency,
+                          error={
+                              'kind': 'interrupted',
+                              'status': None,
+                              'message': 'Provider request interrupted.',
+                              'retryable': False
+                          })
                     raise
                 except providers.ProviderError as exc:
                     latency = time.monotonic() - request_started
@@ -530,7 +547,8 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                     event("transport_error",
                           error=exc.as_dict(),
                           request_index=request_count,
-                          retry_index=retry, latency_seconds=latency)
+                          retry_index=retry,
+                          latency_seconds=latency)
                     last_error = exc
                     fallback_delay = min(60., 2**min(retry + 1, 6))
                     delay = getattr(exc, "retry_after_seconds", None)
@@ -545,15 +563,18 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                         transport_stop_reason = 'backend_wait_budget'
                     elif wall_deadline - time.monotonic() <= delay:
                         transport_stop_reason = 'wall_budget'
-                    elif not measured_wait_policy and deadline - time.monotonic() <= delay:
+                    elif not measured_wait_policy and deadline - time.monotonic(
+                    ) <= delay:
                         transport_stop_reason = 'task_budget'
                     else:
                         transport_stop_reason = None
                     if transport_stop_reason is not None:
-                        event('transport_stopped', reason=transport_stop_reason,
+                        event('transport_stopped',
+                              reason=transport_stop_reason,
                               request_index=request_count)
                         raise
-                    event('transport_backoff_started', scheduled_seconds=delay,
+                    event('transport_backoff_started',
+                          scheduled_seconds=delay,
                           request_index=request_count)
                     if progress:
                         label = f'HTTP {exc.status}' if exc.status else exc.kind
@@ -568,12 +589,15 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                     finally:
                         waited = time.monotonic() - sleep_started
                         record_wait(waited)
-                        event('transport_backoff', seconds=waited,
+                        event('transport_backoff',
+                              seconds=waited,
                               scheduled_seconds=delay,
                               request_index=request_count)
                     retry += 1
             responses.append(response)
-            event("response", response=response, request_index=request_count,
+            event("response",
+                  response=response,
+                  request_index=request_count,
                   latency_seconds=time.monotonic() - request_started)
             if measured_wait_policy and time.monotonic() > deadline:
                 outcome = 'budget_timeout'

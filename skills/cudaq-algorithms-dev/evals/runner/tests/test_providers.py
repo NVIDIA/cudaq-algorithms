@@ -222,38 +222,80 @@ class ProviderTests(unittest.TestCase):
                           'private-test-key', headers or {}, stream)
         with patch.object(self.p, '_open', side_effect=error):
             with self.assertRaises(self.p.ProviderError) as raised:
-                self.p.complete(self.model, [{'role': 'user',
-                                             'content': 'private prompt'}],
-                                None, timeout)
+                self.p.complete(self.model, [{
+                    'role': 'user',
+                    'content': 'private prompt'
+                }], None, timeout)
         self.assertTrue(stream.closed)
         return raised.exception.as_dict()
 
     def test_http_error_records_safe_request_id_and_overload_category(self):
-        error = self.http_failure(503, json.dumps({
-            'error': {'message': 'Service temporarily overloaded',
-                      'type': 'Service Unavailable', 'code': 503},
-            'request_id': 'untrusted-body-id', 'status': 200,
-            'kind': 'success', 'retryable': False,
-            'prompt': 'private prompt', 'secret': 'private-test-key'
-        }).encode(), {'Nvcf-Reqid': '62ff7c74-1532-4277-b43a-2a519e31c23b',
-                      'Retry-After': '3.5', 'Authorization': 'private-test-key'})
-        self.assertEqual(error, {
-            'kind': 'http', 'status': 503,
-            'message': 'Provider returned HTTP 503.', 'retryable': True,
-            'retry_after_seconds': 3.5,
-            'request_id': '62ff7c74-1532-4277-b43a-2a519e31c23b',
-            'provider_reason': 'overloaded'
-        })
+        error = self.http_failure(
+            503,
+            json.dumps({
+                'error': {
+                    'message': 'Service temporarily overloaded',
+                    'type': 'Service Unavailable',
+                    'code': 503
+                },
+                'request_id': 'untrusted-body-id',
+                'status': 200,
+                'kind': 'success',
+                'retryable': False,
+                'prompt': 'private prompt',
+                'secret': 'private-test-key'
+            }).encode(), {
+                'Nvcf-Reqid': '62ff7c74-1532-4277-b43a-2a519e31c23b',
+                'Retry-After': '3.5',
+                'Authorization': 'private-test-key'
+            })
+        self.assertEqual(
+            error, {
+                'kind': 'http',
+                'status': 503,
+                'message': 'Provider returned HTTP 503.',
+                'retryable': True,
+                'retry_after_seconds': 3.5,
+                'request_id': '62ff7c74-1532-4277-b43a-2a519e31c23b',
+                'provider_reason': 'overloaded'
+            })
 
     def test_http_error_classifies_only_exact_known_error_fields(self):
         cases = [
-            (500, {'error': {'message': 'Internal server error'}}, 'internal_error'),
-            (429, {'status': 429, 'title': 'Too Many Requests'}, 'rate_limited'),
-            (400, {'error': {'code': 'rate_limit_exceeded'}}, 'rate_limited'),
-            (400, {'error': {'type': 'overloaded_error'}}, 'overloaded'),
-            (400, {'error': {'message': 'Service temporarily overloaded private prompt'}}, 'unknown'),
-            (400, {'prompt': 'Service temporarily overloaded'}, 'unknown'),
-            (400, {'error': {'message': {'secret': 'private-test-key'}}}, 'unknown'),
+            (500, {
+                'error': {
+                    'message': 'Internal server error'
+                }
+            }, 'internal_error'),
+            (429, {
+                'status': 429,
+                'title': 'Too Many Requests'
+            }, 'rate_limited'),
+            (400, {
+                'error': {
+                    'code': 'rate_limit_exceeded'
+                }
+            }, 'rate_limited'),
+            (400, {
+                'error': {
+                    'type': 'overloaded_error'
+                }
+            }, 'overloaded'),
+            (400, {
+                'error': {
+                    'message': 'Service temporarily overloaded private prompt'
+                }
+            }, 'unknown'),
+            (400, {
+                'prompt': 'Service temporarily overloaded'
+            }, 'unknown'),
+            (400, {
+                'error': {
+                    'message': {
+                        'secret': 'private-test-key'
+                    }
+                }
+            }, 'unknown'),
             (503, {}, 'internal_error'),
         ]
         for status, body, expected in cases:
@@ -265,25 +307,52 @@ class ProviderTests(unittest.TestCase):
 
     def test_http_error_accepts_only_bounded_allowlisted_request_headers(self):
         for headers, expected in [
-            ({'x-request-id': 'req_123:abc.def-456'}, 'req_123:abc.def-456'),
-            ({'nvcf-reqid': 'provider-123'}, 'provider-123'),
-            ({'X-Request-ID': 'request-456'}, 'request-456'),
-            ({'Request-Id': 'not-allowlisted'}, None),
-            ({'Nvcf-Reqid': 'bad\r\nprivate-test-key'}, None),
-            ({'Nvcf-Reqid': 'private-test-key'}, None),
-            ({'Nvcf-Reqid': 'prefix-private-test-key-suffix'}, None),
-            ({'Nvcf-Reqid': 'a' * 129}, None),
-            ({'Nvcf-Reqid': 'two, ids'}, None),
-            ({'Nvcf-Reqid': 'é'}, None),
-            ({'Nvcf-Reqid': ['not', 'a', 'string']}, None),
-            ({'Nvcf-Reqid': 'bad id', 'x-request-id': 'fallback'}, 'fallback'),
+            ({
+                'x-request-id': 'req_123:abc.def-456'
+            }, 'req_123:abc.def-456'),
+            ({
+                'nvcf-reqid': 'provider-123'
+            }, 'provider-123'),
+            ({
+                'X-Request-ID': 'request-456'
+            }, 'request-456'),
+            ({
+                'Request-Id': 'not-allowlisted'
+            }, None),
+            ({
+                'Nvcf-Reqid': 'bad\r\nprivate-test-key'
+            }, None),
+            ({
+                'Nvcf-Reqid': 'private-test-key'
+            }, None),
+            ({
+                'Nvcf-Reqid': 'prefix-private-test-key-suffix'
+            }, None),
+            ({
+                'Nvcf-Reqid': 'a' * 129
+            }, None),
+            ({
+                'Nvcf-Reqid': 'two, ids'
+            }, None),
+            ({
+                'Nvcf-Reqid': 'é'
+            }, None),
+            ({
+                'Nvcf-Reqid': ['not', 'a', 'string']
+            }, None),
+            ({
+                'Nvcf-Reqid': 'bad id',
+                'x-request-id': 'fallback'
+            }, 'fallback'),
         ]:
             with self.subTest(headers=headers):
                 error = self.http_failure(503, b'{}', headers)
                 self.assertEqual(error.get('request_id'), expected)
-                self.assertEqual(error.get('provider_reason'), 'internal_error')
+                self.assertEqual(error.get('provider_reason'),
+                                 'internal_error')
 
     def test_http_error_invalid_or_oversized_body_preserves_http_failure(self):
+
         class TrackedBody(io.BytesIO):
             consumed = 0
 
@@ -300,19 +369,22 @@ class ProviderTests(unittest.TestCase):
                 body = TrackedBody(raw)
                 error = self.http_failure(503, body, {'Retry-After': '2'})
                 self.assertEqual(error['status'], 503)
-                self.assertEqual(error.get('provider_reason'), 'internal_error')
+                self.assertEqual(error.get('provider_reason'),
+                                 'internal_error')
                 self.assertEqual(error['retry_after_seconds'], 2.)
                 self.assertLessEqual(body.consumed, 16385)
                 self.assertNotIn('private-test-key', json.dumps(error))
 
     def test_http_error_body_timeout_preserves_status_and_retry_after(self):
+
         class TimeoutBody(io.BytesIO):
 
             def read1(self, size=-1):
                 raise TimeoutError('private-test-key private prompt')
 
         error = self.http_failure(503, TimeoutBody(), {
-            'Nvcf-Reqid': 'request-123', 'Retry-After': '2'
+            'Nvcf-Reqid': 'request-123',
+            'Retry-After': '2'
         })
         self.assertEqual(error['kind'], 'http')
         self.assertEqual(error['status'], 503)
@@ -330,9 +402,10 @@ class ProviderTests(unittest.TestCase):
                 clock.now += 0.1
                 return super().read1(min(size, 1))
 
-        body = SlowBody(b'{"error":{"message":"Service temporarily overloaded"}}')
-        body.fp = SimpleNamespace(raw=SimpleNamespace(
-            _sock=SimpleNamespace(settimeout=timeouts.append)))
+        body = SlowBody(
+            b'{"error":{"message":"Service temporarily overloaded"}}')
+        body.fp = SimpleNamespace(raw=SimpleNamespace(_sock=SimpleNamespace(
+            settimeout=timeouts.append)))
         with patch.object(self.p.time, 'monotonic', clock.monotonic):
             error = self.http_failure(503, body, timeout=10)
         self.assertEqual(error['status'], 503)
@@ -343,6 +416,7 @@ class ProviderTests(unittest.TestCase):
         self.assertTrue(all(a > b for a, b in zip(timeouts, timeouts[1:])))
 
     def test_http_error_body_without_timeout_support_is_not_read(self):
+
         class UnboundedBody:
             closed = False
 

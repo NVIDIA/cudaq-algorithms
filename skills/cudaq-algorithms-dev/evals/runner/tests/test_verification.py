@@ -1,12 +1,23 @@
 import json
 import sys
 import time
+import venv
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from runner import verification, campaign
+
+
+@pytest.fixture(scope='module')
+def runtime_python(tmp_path_factory):
+    # Hosted Python installations need a dedicated runtime prefix. Reuse the
+    # test interpreter's dependencies without installing anything or weakening
+    # the runner's validation of non-system interpreters.
+    root = tmp_path_factory.mktemp('verification-runtime')
+    venv.EnvBuilder(system_site_packages=True, symlinks=True).create(root)
+    return root / 'bin' / 'python'
 
 
 def test_public_contract_does_not_expose_references_or_change_prompt():
@@ -21,7 +32,8 @@ def test_public_contract_does_not_expose_references_or_change_prompt():
     assert 'Dense T3' not in messages[0]['content']
 
 
-def test_artifact_execution_and_private_validation_are_distinct(tmp_path):
+def test_artifact_execution_and_private_validation_are_distinct(
+        tmp_path, runtime_python):
     worker = tmp_path / 'workspace'
     worker.mkdir()
     (worker / '.tmp').mkdir()
@@ -34,11 +46,11 @@ def third_moment(ket):
     result = verification.execute('repository-implementation-third-moment',
                                   worker,
                                   tmp_path,
-                                  runtime_python=Path(sys.executable),
+                                  runtime_python=runtime_python,
                                   isolation='trusted',
                                   deadline=time.monotonic() + 20)
-    assert result['status'] == 'passed'
     evidence = json.loads((tmp_path / result['evidence_file']).read_text())
+    assert result['status'] == 'passed', evidence
     assert evidence['artifact_execution']['exit_code'] == 0
     assert evidence['oracle']['passed'] is True
     (worker /
@@ -46,7 +58,7 @@ def third_moment(ket):
     result = verification.execute('repository-implementation-third-moment',
                                   worker,
                                   tmp_path,
-                                  runtime_python=Path(sys.executable),
+                                  runtime_python=runtime_python,
                                   isolation='trusted',
                                   deadline=time.monotonic() + 20)
     assert result['status'] == 'failed'
@@ -108,7 +120,7 @@ def test_scope_validation_rejects_changed_source_but_allows_client_fixture_copie
 
 
 def test_attempt_records_measured_verification_and_hash_bindings(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, runtime_python):
     from runner import workspace, providers, assessment
     worker = tmp_path / 'workspace'
     worker.mkdir()
@@ -142,7 +154,7 @@ def third_moment(ket):
         })
     spec = {
         'settings': {
-            'runtime_python': sys.executable,
+            'runtime_python': str(runtime_python),
             'isolation': 'trusted'
         },
         'protocol': {
@@ -166,7 +178,8 @@ def third_moment(ket):
     result = campaign.run_attempt(tmp_path, attempt, case, {'alias': 'fake'},
                                   row, spec)
     check = json.loads((attempt / 'verification.json').read_text())
-    assert check['status'] == 'passed'
+    evidence = json.loads((tmp_path / check['evidence']).read_text())
+    assert check['status'] == 'passed', evidence
     assert check['result_sha256'] == campaign.digest(attempt / 'result.json')
     assert check['transcript_sha256'] == campaign.digest(attempt /
                                                          'transcript.jsonl')

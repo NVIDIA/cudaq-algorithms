@@ -27,9 +27,11 @@ import re
 import tempfile
 import time
 
-
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
-OUTCOMES = {"answered", "backend_error", "budget_timeout", "tool_limit", "no_answer", "error"}
+OUTCOMES = {
+    "answered", "backend_error", "budget_timeout", "tool_limit", "no_answer",
+    "error"
+}
 CHECKS = {"passed", "failed", "not_run", "not_applicable"}
 NOTICE = "Operational file snapshots; not delivery metrics."
 
@@ -42,11 +44,13 @@ def read_json(path):
             return None, "unreadable"
         raw = path.read_bytes()
         after = path.stat()
-        if (before.st_ino, before.st_size, before.st_mtime_ns) != (
-                after.st_ino, after.st_size, after.st_mtime_ns):
+        if (before.st_ino, before.st_size,
+                before.st_mtime_ns) != (after.st_ino, after.st_size,
+                                        after.st_mtime_ns):
             return None, "unreadable"
         value = json.loads(raw)
-        return (value, "ok") if isinstance(value, dict) else (None, "unreadable")
+        return (value, "ok") if isinstance(value, dict) else (None,
+                                                              "unreadable")
     except FileNotFoundError:
         return None, "missing"
     except (OSError, ValueError, RecursionError):
@@ -61,7 +65,8 @@ def pid_alive(pid):
         os.kill(pid, 0)
         try:
             # An unreaped exited launcher can still answer signal zero.
-            state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+            state = Path(f"/proc/{pid}/stat").read_text().rsplit(
+                ")", 1)[1].split()[0]
             return state not in {"Z", "X"}
         except (OSError, IndexError):
             return True
@@ -88,7 +93,8 @@ def controller_status(root, launch):
         if record is not None:
             launch_pid = launch.get("pid", pid)
             if (type(launch_pid) is int and launch_pid > 0
-                    and type(record.get("pid")) is int and record["pid"] == launch_pid
+                    and type(record.get("pid")) is int
+                    and record["pid"] == launch_pid
                     and type(record.get("exit_code")) is int
                     and -9999 <= record["exit_code"] <= 9999):
                 code = record["exit_code"]
@@ -103,12 +109,16 @@ def controller_status(root, launch):
     if supervisor_state not in ("paused", "cooldown"):
         supervisor_state = None
     return {
-        "state": "exited" if code is not None else "running" if alive else
-                 "not_running" if alive is False else "unknown",
-        "pid": pid if type(pid) is int and pid > 0 else None,
-        "exit_code": code,
+        "state":
+        "exited" if code is not None else
+        "running" if alive else "not_running" if alive is False else "unknown",
+        "pid":
+        pid if type(pid) is int and pid > 0 else None,
+        "exit_code":
+        code,
         # Explicit supervisor metadata does not establish controller liveness.
-        "supervisor_state": supervisor_state,
+        "supervisor_state":
+        supervisor_state,
     }
 
 
@@ -143,7 +153,8 @@ def model_snapshot(root, directory, spec, alias, launch, now):
     controller = controller_status(root, launch)
     if controller["supervisor_state"] is not None:
         alerts["supervisor_" + controller["supervisor_state"]] += 1
-    controller_pid = launch.get("controller_pid") if isinstance(launch, dict) else None
+    controller_pid = launch.get("controller_pid") if isinstance(launch,
+                                                                dict) else None
     for case in cases:
         contracts = spec.get("case_contracts")
         contract = contracts.get(case) if isinstance(contracts, dict) else None
@@ -158,14 +169,16 @@ def model_snapshot(root, directory, spec, alias, launch, now):
                              "assessment.provenance"):
                     file = path / (name + ".json")
                     files[name], states[name] = read_json(file)
-                    counts["partial_or_unreadable_files"] += states[name] == "unreadable"
+                    counts["partial_or_unreadable_files"] += states[
+                        name] == "unreadable"
                     latest = max(latest, mtime(file))
                 # Activity requires only metadata, never transcript contents.
                 latest = max(latest, mtime(path / "transcript.jsonl"))
                 result = files["result"]
                 complete = False
                 if result is not None:
-                    if (result.get("case_id"), result.get("seed"), result.get("arm")) != (case, seed, arm):
+                    if (result.get("case_id"), result.get("seed"),
+                            result.get("arm")) != (case, seed, arm):
                         alerts["result_identity_mismatch"] += 1
                     elif (not isinstance(result.get("outcome"), str)
                           or result["outcome"] not in OUTCOMES):
@@ -182,24 +195,28 @@ def model_snapshot(root, directory, spec, alias, launch, now):
                     if not isinstance(answer, str) or not answer.strip():
                         alerts["no_final_answer"] += 1
                     check = files["verification"]
-                    if (check is not None and isinstance(check.get("status"), str)
+                    if (check is not None
+                            and isinstance(check.get("status"), str)
                             and check["status"] in CHECKS):
                         checks[check["status"]] += 1
-                    elif states["verification"] == "missing" and no_executable_check:
+                    elif states[
+                            "verification"] == "missing" and no_executable_check:
                         # The frozen contract makes absence expected for discussion cases.
                         checks["not_applicable"] += 1
                     else:
                         checks["missing_or_unreadable"] += 1
                     assessment = files["assessment"]
-                    if assessment is not None and assessment.get("case_id") == case:
+                    if assessment is not None and assessment.get(
+                            "case_id") == case:
                         counts["assessment_files"] += 1
                         # Presence of provenance is observed, not authenticated.
-                        counts["graded"] += files["assessment.provenance"] is not None
+                        counts["graded"] += files[
+                            "assessment.provenance"] is not None
                 elif states["started"] != "missing":
                     started = files["started"] or {}
                     alive = pid_alive(started.get("pid"))
-                    mismatch = (type(controller_pid) is int and
-                                started.get("pid") != controller_pid)
+                    mismatch = (type(controller_pid) is int
+                                and started.get("pid") != controller_pid)
                     if mismatch and alive:
                         alerts["reservation_pid_mismatch"] += 1
                     if alive and not mismatch:
@@ -214,18 +231,23 @@ def model_snapshot(root, directory, spec, alias, launch, now):
                 else:
                     counts["pending"] += 1
     scheduled = len(cases) * len(seeds) * 2
-    if counts["completed"] < scheduled and controller["state"] in {"exited", "not_running"}:
+    if counts["completed"] < scheduled and controller["state"] in {
+            "exited", "not_running"
+    }:
         alerts["controller_stopped_before_completion"] += 1
     preflight, _ = read_json(directory / ("preflight-" + alias + ".json"))
     if preflight is not None and preflight.get("ok") is False:
         alerts["endpoint_unavailable"] += 1
     return {
         "scheduled": scheduled,
-        **{key: counts[key] for key in ("completed", "active", "unfinished", "pending",
-                                      "graded", "assessment_files", "partial_or_unreadable_files")},
+        **{
+            key: counts[key]
+            for key in ("completed", "active", "unfinished", "pending", "graded", "assessment_files", "partial_or_unreadable_files")
+        },
         "outcomes": dict(sorted(outcomes.items())),
         "numerical_checks": dict(sorted(checks.items())),
-        "last_activity_age_seconds": round(max(0, now - latest), 1) if latest else None,
+        "last_activity_age_seconds":
+        round(max(0, now - latest), 1) if latest else None,
         "controller": controller,
         "run_lock_present": (directory / ".run-lock").exists(),
         "alerts": dict(sorted(alerts.items())),
@@ -241,10 +263,15 @@ def snapshot(root, now=None):
     if not isinstance(launches, dict):
         launches = {}
     data = {
-        "schema_version": 1,
-        "observed_at": datetime.datetime.fromtimestamp(now, datetime.timezone.utc).isoformat(),
-        "notice": NOTICE,
-        "models": {}, "alerts": {},
+        "schema_version":
+        1,
+        "observed_at":
+        datetime.datetime.fromtimestamp(now,
+                                        datetime.timezone.utc).isoformat(),
+        "notice":
+        NOTICE,
+        "models": {},
+        "alerts": {},
     }
     alerts = Counter()
     if launch_state == "unreadable":
@@ -263,7 +290,8 @@ def snapshot(root, now=None):
         models = spec.get("models")
         if not (isinstance(cases, list) and all(safe_name(c) for c in cases)
                 and len(set(cases)) == len(cases) and isinstance(seeds, list)
-                and all(type(s) is int for s in seeds) and len(set(seeds)) == len(seeds)
+                and all(type(s) is int
+                        for s in seeds) and len(set(seeds)) == len(seeds)
                 and isinstance(models, list)):
             alerts["invalid_campaign_schedule"] += 1
             continue
@@ -275,8 +303,10 @@ def snapshot(root, now=None):
             if alias in data["models"]:
                 alerts["duplicate_model_alias"] += 1
                 continue
-            data["models"][alias] = model_snapshot(
-                root, directory, spec, alias, launches.get(alias, {}), now)
+            data["models"][alias] = model_snapshot(root, directory, spec,
+                                                   alias,
+                                                   launches.get(alias,
+                                                                {}), now)
     data["alerts"] = dict(sorted(alerts.items()))
     return data
 
@@ -284,7 +314,8 @@ def snapshot(root, now=None):
 def render(data):
     lines = [data["observed_at"], NOTICE]
     for alias, row in data["models"].items():
-        checks = ",".join(f"{k}={v}" for k, v in row["numerical_checks"].items()) or "none"
+        checks = ",".join(
+            f"{k}={v}" for k, v in row["numerical_checks"].items()) or "none"
         lines.append(
             f"{alias}: completed={row['completed']}/{row['scheduled']} "
             f"active={row['active']} unfinished={row['unfinished']} pending={row['pending']} "
@@ -293,15 +324,19 @@ def render(data):
             f"supervisor={row['controller']['supervisor_state'] or 'unknown'} "
             f"activity_age={row['last_activity_age_seconds']}s")
         if row["alerts"]:
-            lines.append("  alerts: " + ", ".join(f"{k}={v}" for k, v in row["alerts"].items()))
+            lines.append("  alerts: " +
+                         ", ".join(f"{k}={v}"
+                                   for k, v in row["alerts"].items()))
     if data["alerts"]:
-        lines.append("alerts: " + ", ".join(f"{k}={v}" for k, v in data["alerts"].items()))
+        lines.append("alerts: " +
+                     ", ".join(f"{k}={v}" for k, v in data["alerts"].items()))
     return "\n".join(lines) + "\n"
 
 
 def atomic_write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", dir=path.parent)
+    descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".",
+                                             dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(text)
@@ -329,16 +364,21 @@ def main(argv=None):
         parser.error("--output must have a distinct JSON filename")
     for path in destinations:
         if path.resolve() == (args.root / "launches.json").resolve() or any(
-                path.resolve().is_relative_to(directory.resolve()) for directory in campaigns(args.root)):
-            parser.error("monitor output must be outside campaign evidence directories")
+                path.resolve().is_relative_to(directory.resolve())
+                for directory in campaigns(args.root)):
+            parser.error(
+                "monitor output must be outside campaign evidence directories")
     try:
         while True:
             data = snapshot(args.root)
             human = render(data)
-            atomic_write(output, json.dumps(data, indent=2, allow_nan=False) + "\n")
+            atomic_write(output,
+                         json.dumps(data, indent=2, allow_nan=False) + "\n")
             atomic_write(text_output, human)
             with events.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(data, separators=(",", ":"), allow_nan=False) + "\n")
+                handle.write(
+                    json.dumps(data, separators=(",", ":"), allow_nan=False) +
+                    "\n")
             if not args.quiet:
                 print(human, end="", flush=True)
             if args.once:

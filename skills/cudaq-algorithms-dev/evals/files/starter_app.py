@@ -1,6 +1,5 @@
 from cudaq_algorithms import PauliLCU, Walk
 
-
 HAMILTONIAN = {"Z": 0.75, "X": -0.25}
 
 

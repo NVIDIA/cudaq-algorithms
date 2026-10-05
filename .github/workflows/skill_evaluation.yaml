@@ -32,7 +32,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install test dependencies
-        run: python -m pip install pytest jsonschema PyYAML numpy scipy pyscf
+        run: python -m pip install pytest jsonschema PyYAML numpy scipy pyscf openfermion
 
       - name: Prepare diagnostic directory
         run: mkdir -p "$RUNNER_TEMP/cudaq-skill-evaluation"

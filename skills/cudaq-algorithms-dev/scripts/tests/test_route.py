@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[4]
 SCRIPT = ROOT / "skills/cudaq-algorithms/scripts/route.py"
 SPEC = importlib.util.spec_from_file_location("skill_route", SCRIPT)
@@ -20,8 +19,7 @@ SPEC.loader.exec_module(router)
      "the local magnetization changes sign.",
      {"trotter/trotter.md", "application-composition.md"}),
     ("After discarding the ancilla, how does the density matrix differ "
-     "from conditioning on success?",
-     {"simulation/simulation-analysis.md"}),
+     "from conditioning on success?", {"simulation/simulation-analysis.md"}),
     ("Use the supplied QSP phases for spectral filtering of a spin chain "
      "after a quench.", {"qsvt/qsvt.md"}),
     ("Construct a Krylov energy estimate from Chebyshev moments.",
@@ -60,8 +58,7 @@ def test_named_methods_take_priority_over_default_dynamics():
 def test_conditional_analysis_is_not_displaced_by_default_dynamics():
     records = router.route(
         "Use QSP phases for an Ising quench and report good_subspace success "
-        "probability after discarding ancillas."
-    )
+        "probability after discarding ancillas.")
     assert records[0] == "qsvt/qsvt.md"
     assert "simulation/simulation-analysis.md" in records
     assert "trotter/trotter.md" not in records
@@ -79,10 +76,11 @@ def test_nonchemical_basis_and_bonds_do_not_select_chemistry(prompt):
 def test_atomic_inputs_can_select_the_molecular_chain_with_a_named_method():
     records = router.route(
         "Given these atoms and coordinates, use walk moments to estimate "
-        "ground energies during bond stretching."
-    )
-    assert records == ["qubitization/qubitization.md",
-                       "chemistry/chemistry-bridges.md", "application-composition.md"]
+        "ground energies during bond stretching.")
+    assert records == [
+        "qubitization/qubitization.md", "chemistry/chemistry-bridges.md",
+        "application-composition.md"
+    ]
 
 
 @pytest.mark.parametrize("prompt", [

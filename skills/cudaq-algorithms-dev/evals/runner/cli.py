@@ -209,17 +209,17 @@ def parser():
     init.add_argument("--tool-limit", type=int, default=100)
     init.add_argument("--request-timeout", type=float, default=180)
     init.add_argument(
-        '--backend-wait-budget-seconds', type=float, default=1800,
+        '--backend-wait-budget-seconds',
+        type=float,
+        default=1800,
         help='Maximum measured failed-request/backoff allowance per attempt; '
-             'hard wall cap is task budget plus this allowance (default 1800)')
+        'hard wall cap is task budget plus this allowance (default 1800)')
     init.add_argument(
         '--transport-max-retries',
         type=int,
         default=None,
-        help=
-        'Optional maximum retries per failed transport request (0-10); '
-        'by default retries are bounded by the backend wait allowance'
-    )
+        help='Optional maximum retries per failed transport request (0-10); '
+        'by default retries are bounded by the backend wait allowance')
     init.add_argument("--runtime-python", type=Path, required=True)
     init.add_argument("--exposure",
                       choices=["listed", "injected"],
