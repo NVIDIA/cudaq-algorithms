@@ -7,6 +7,14 @@ name only within this directory and open the matching record. Links are relative
 to this catalog, not the project's working directory. These are routing cues,
 not a complete API inventory or evidence that unlisted APIs exist.
 
+For a researcher who supplies physical inputs and asks for a result, start with
+[the molecular or lattice workflow](application-composition.md#workflow), then
+read **Workflow** and **Verification** in the selected family guides below.
+These sections supply the scientific handoffs and numerical checkpoints;
+focused records retain the API signatures. For LCU workflow guidance open
+[Pauli LCU](block-encoding/pauli-lcu.md#workflow), while the block-encoding family
+selector remains the entry point for protocol/provider questions.
+
 | Operation / object | Family selector |
 | --- | --- |
 | Prepare states; [inject a preparation kernel into a consumer](state-preparation/injection-contract.md); construct [excitation pools](state-preparation/operator-pools.md); estimate preparation resources | [State preparation](state-preparation/state-preparation.md) |

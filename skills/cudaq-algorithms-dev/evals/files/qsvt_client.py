@@ -1,5 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 """Application code written against the recorded QSVT contract."""
 
 from cudaq_algorithms import QSVT

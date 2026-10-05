@@ -20,7 +20,9 @@ Use the strongest path available without overstating it:
    tolerance before viewing results.
 4. Run the smallest test that distinguishes the intended contract from likely
    convention errors.
-5. Include an adversarial or expected-failure case.
+5. For new or repaired implementations, include a relevant discriminating
+   edge/failure case (for example, a complex state or near-zero success branch).
+   Avoid adding unrelated tests to an already checked numerical calculation.
 6. Record the command, date, package/CUDA-Q version, target, precision, result,
    and limitations.
 
@@ -28,6 +30,38 @@ Prefer dense constructions, analytic identities, independently implemented
 matrix actions, conserved quantities, or cross-representation checks. A test
 that calls the same implementation through a second wrapper is not an
 independent oracle.
+
+## Match the check to the scientific claim
+
+Let `psi` be normalized, `b` an unnormalized success branch, and `O` Hermitian.
+Declare units, sector, absolute/relative tolerance, and sampling uncertainty
+where applicable. Dense references below are for tractable validation cases.
+
+| Requested quantity | Independent checkpoint | What it does not establish |
+| --- | --- | --- |
+| Prepared physical state | Occupations/symmetries and `1 - abs(vdot(target, psi))**2`; normalize both states first | A global phase needed later by a controlled or interferometric operation |
+| Raw block or phase-sensitive amplitude | Vector/matrix norm against an independent dense action, without renormalization or phase alignment | Conditional fidelity or heralding probability by itself |
+| Energy or gap | Diagonalize the same physical sector, with every scalar included exactly once; specify which distinct levels define a gap | A sector ground state need not be the global ground state; a small energy error need not mean high state fidelity |
+| Observable dynamics | `abs(vdot(psi, O @ psi) - reference)` at all requested times, plus the declared cost model | Conservation alone does not prove accurate dynamics; a finite grid is not a uniform-in-time bound |
+| Return amplitude | Complex spectral sum or independent matrix exponential; preserve scalar phases | Its squared magnitude loses phase information |
+| Conditional observable | `p = vdot(b, b).real`, then `vdot(b, O @ b).real / p` only for resolvably nonzero `p` | Normalizing first erases the success probability; conditioning is not tracing out a register |
+| Discarded-register state | Partial trace of the actual dilation, or independently justified Kraus operators; check trace, Hermiticity, positivity | Knowing only the good block does not determine an arbitrary dilation's discarded channel |
+| Model compression | Reconstruct the physical operator, then check the requested sector energy/gap/observable and cost | Tensor Frobenius residual, leaf count, or optimizer success alone does not certify physical accuracy |
+
+For low-probability branches, finite shots, rank truncation, or near-degenerate
+levels, expose sensitivity instead of hiding it with normalization or a loose
+tolerance. Keep model discrepancy separate from numerical agreement. Use the
+family guide's checkpoint to establish the selected boundary; an entire chain
+requires its own end-to-end comparison. A candidate that fails a requested
+accuracy target is a valid assessment when the evidence and searched scope
+are reported accurately.
+
+Record enough run provenance to reproduce the result in the artifact: package
+versions, target/precision, inputs or their provenance, settings, reference,
+and errors. Summarize routine checks in the answer; do not reproduce every
+command or fill context with unrelated records. A small checkpoint passing does
+not demonstrate improved model pass rates, time, or token usage; those require
+separate paired evaluations on the same tasks and budgets.
 
 ## Evidence labels
 

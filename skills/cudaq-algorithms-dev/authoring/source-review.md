@@ -3,10 +3,11 @@
 ## Source ownership and freshness
 
 Current public code and authoritative tests in the checked-out repository
-control API behavior. [Source lookup](../../cudaq-algorithms/references/source-provenance.md) records common source/test/example
-locations; [coverage history](../coverage/history.md) holds the historical review
-anchor, an audit trail rather than an active contract or compatibility promise;
-each record adds only contract-specific stable symbols and paths.
+control API behavior. [Source lookup](../../cudaq-algorithms/references/source-provenance.md)
+records common source/test/example locations; each record adds only
+contract-specific stable symbols and paths. Follow the
+[coverage policy](../coverage/policy.md) for evidence claims. Archived reviews
+are audit material, not current contracts or compatibility promises.
 
 When a selected record differs from current source or tests:
 
@@ -17,13 +18,11 @@ When a selected record differs from current source or tests:
 5. never retain a stale line-number claim merely because the prose is familiar.
 
 Do not copy historical repository hashes or dependency pins into primitive
-records. Historical last-review values belong in coverage history. A validation or evaluation result instead records the exact revision and
+records. Historical last-review values belong with the archived review. A validation or evaluation result instead records the exact revision and
 dependencies actually used by that run.
 
 Use line numbers only for a non-obvious invariant that benefits from a precise
 anchor. Prefer stable symbol and test names for ordinary provenance.
-
-## Historical review procedure
 
 ## Freshness check
 
@@ -31,7 +30,7 @@ Before implementing from a maintained record:
 
 ```bash
 git rev-parse HEAD
-git diff 61ac072d -- \
+git status --short -- \
   python/cudaq_algorithms tests/python docs/sphinx \
   pyproject.toml .cudaq_version
 ```
@@ -40,4 +39,6 @@ Inspect only the selected symbols and their tests. If public signatures or
 scientific assertions changed, follow current source for generated code, report
 the drift, and update the maintained record only when that work is in scope. Do
 not silently upgrade the lifecycle from `draft` or claim a newly verified
-version range.
+version range. If comparing against a previous review, obtain its actual
+recorded revision from that review; do not assume a fixed historical hash is
+the baseline for today's checkout.

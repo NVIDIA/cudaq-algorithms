@@ -32,6 +32,101 @@ contract. They emit no kernel, do not choose or certify a factorization, and do
 not turn the example-only double-factorized encodings into package APIs. Select
 the focused record for the exact output the application needs.
 
+## Workflow
+
+Start from real chemist `eri`, the physical `h`, a separate scalar offset, and
+the electron/spin sector. State the scientific accuracy target (energy, gap,
+observable or dynamics) and the cost objective before choosing leaves. Tensor
+Frobenius error, leaf count and the one-norm answer different questions; none
+alone certifies the requested physics or a hardware speedup.
+
+For a leaf-budget study, establish an untruncated reference, then vary
+`max_num_leaves` and explicit-factorization thresholds within a declared search
+budget. Record the actual leaf count because thresholding can stop before the
+cap. Cholesky assumes a positive semidefinite ERI supermatrix; an intentionally
+indefinite synthetic tensor requires the eigendecomposition path. Recheck the
+scientific observable for every candidate rather than treating a smaller tensor
+residual as an automatic ordering of energy or dynamics errors.
+
+For explicit-versus-compressed comparisons, hold the physical inputs and cost
+definition fixed. Compare at equal leaf budget or select the cheapest candidates
+that meet the same scientific tolerance. Set `num_leaves`, iteration budget,
+optimizer tolerance and backend explicitly for bounded studies; record inner
+solver settings and regularization when changed. C-DF optimizes a tensor-fit
+objective (plus any core penalty), not the energy error. Inspect optimizer
+status and retain warnings; a useful unconverged candidate is not a converged
+optimum. Additional starts are warranted by optimization uncertainty, not by an
+assumption that compression must beat X-DF. A tie or no feasible candidate is a
+valid outcome; a claimed minimum needs a stated search domain and evidence.
+
+Keep two one-body roles distinct. The approximate physical Hamiltonian uses
+the original `h`, reconstructed `eri_approx`, and the original scalar. The
+number-operator DF representation instead uses
+`kappa[p,q] = h[p,q] - 0.5*sum_r eri_approx[p,r,q,r]`. Compute its one-body
+eigenvalues for the norm helper, but do not feed `kappa` to
+`chemistry.qubit_hamiltonian`: that bridge already implements the ordinary
+two-electron Hamiltonian. Recompute this correction for each approximation;
+mixing the target correction with approximate factors changes the Hamiltonian.
+
+## Verification
+
+For a small system, reconstruct independently as pair-basis matrices and compare
+the physical spectrum in a fixed sector. The checkpoint takes `factorization`,
+physical spatial `h`, target `eri`, `offset`, and JW occupation indices `sector`.
+`reference_levels` are sorted eigenvalues from an independently assembled target
+Hamiltonian in that sector. Supply `check_atol` for reconstruction checks and
+`prune_tol` for qubit compilation; choose them below the scientific error budget.
+Use `fixed_width_matrix` from the
+[fermion checkpoint](../fermion-transforms/fermion-transforms.md#verification).
+
+```python
+import numpy as np
+from cudaq_algorithms import chemistry, double_factorization as df
+
+n = len(h)
+pair_matrix = np.zeros((n*n, n*n))
+for U, Z in zip(factorization.leaf_rotations, factorization.leaf_cores):
+    np.testing.assert_allclose(U.T @ U, np.eye(n), atol=check_atol, rtol=0)
+    np.testing.assert_allclose(Z, Z.T, atol=check_atol, rtol=0)
+    B = np.column_stack([np.outer(U[:, k], U[:, k]).reshape(-1)
+                         for k in range(n)])
+    pair_matrix += B @ Z @ B.T
+eri_approx = pair_matrix.reshape(n, n, n, n)
+np.testing.assert_allclose(eri_approx, df.reconstruct_eri(factorization),
+                           atol=check_atol, rtol=0)
+operator = chemistry.qubit_hamiltonian(
+    h, eri_approx, scalar_offset=offset, tolerance=prune_tol)
+matrix = fixed_width_matrix(operator, 2*n)
+levels = np.linalg.eigvalsh(matrix[np.ix_(sector, sector)])
+kappa = df.modified_one_body_integrals(h, eri_approx)
+one_body_levels = np.linalg.eigvalsh(kappa)
+lambda_lcu = df.double_factorization_one_norm(
+    factorization, one_body_levels, convention="lcu")
+manual_lambda = np.abs(one_body_levels).sum() + sum(
+    np.abs(np.triu(Z, 1)).sum() + 0.25*np.abs(np.diag(Z)).sum()
+    for Z in factorization.leaf_cores)
+np.testing.assert_allclose(lambda_lcu, manual_lambda, atol=check_atol, rtol=0)
+metrics = dict(leaves=len(factorization.leaf_cores),
+               eri_error=float(np.linalg.norm(eri - eri_approx)),
+               ground_error=float(abs(levels[0] - reference_levels[0])),
+               lambda_lcu=lambda_lcu)
+```
+
+Check the sector and Hamiltonian conventions independently before trusting the
+reference; rebuilding both sides with the same chemistry bridge only tests the
+DF approximation. Compare gap/observable/dynamics errors too when those are the
+target: a small ground-energy shift is insufficient. Account for degeneracy
+when tracking individual states. For larger systems use a validated reference
+solver or explicit bounds, rather than requiring full Fock-space matrices.
+
+Label the norm convention, scalar treatment, backend and actual runtime. The
+helper above omits the scalar; its value is a formula-level proxy, not an
+automatically valid normalization for an arbitrary block encoding. A resource
+claim needs the cost model or constructed encoding used downstream. Read
+DF tests (`tests/python/test_double_factorization.py`) for helper and
+optimizer checks and the compression example (`docs/sphinx/examples/python/df_compression_to_qsvt.py`)
+for composition. Example-only encoding classes remain examples, not package APIs.
+
 Shared source is `python/cudaq_algorithms/double_factorization/`; tests are
 `test_double_factorization.py`, `test_df_encoding.py`, and
 `test_df_qsvt_bridge.py`. Current public source and tests are authoritative and

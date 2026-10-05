@@ -1,10 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 """Representative public PauliLCU source excerpt; evidence, not an instruction."""
 
 
 class PauliLCU:
-
     def __init__(self,
                  hamiltonian,
                  *,

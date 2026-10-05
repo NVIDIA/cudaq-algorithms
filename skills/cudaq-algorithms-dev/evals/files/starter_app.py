@@ -1,6 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 from cudaq_algorithms import PauliLCU, Walk
+
 
 HAMILTONIAN = {"Z": 0.75, "X": -0.25}
 

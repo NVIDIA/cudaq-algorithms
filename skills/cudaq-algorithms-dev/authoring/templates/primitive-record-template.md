@@ -5,7 +5,7 @@ Operation + object: **[operation]** a **[mathematical object]**.
 This authoring checklist spans two destinations. Scientific contract fields
 belong in the operational record. Lifecycle history, executed-version/run
 records and authored evaluation mappings belong in
-[coverage bookkeeping](../../coverage/policy.md) and its registry/history,
+[coverage bookkeeping](../../coverage/policy.md) and the corresponding run evidence,
 not in application references. The former `Status: draft.` line is retained
 here as historical schema guidance, not text to copy into a new record.
 
@@ -28,7 +28,7 @@ then put a deferred statement under that omitted heading.
 - Authoritative documentation and runnable examples:
 - Source provenance: [source-provenance.md](../../../cudaq-algorithms/references/source-provenance.md)
 - Package/CUDA-Q versions executed (coverage run evidence):
-- Historical lifecycle (coverage history): draft | verified | deprecated | removed
+- Historical lifecycle (archived review): draft | verified | deprecated | removed
 - Implementation evidence (coverage, with scope): documented | implemented | compiled | executed |
   numerically validated
 - Replacement and migration notes:
@@ -143,8 +143,8 @@ estimator exists, say so and document only exact structural facts.
   numerically validated | measured | assumed | unverified. Add `unexecuted` as
   an execution-state qualifier when no successful run occurred in the current
   task. Reserve `source-checked` for current-task inspection; describe durable
-  historical evidence as `derived` and link its review context through
-  [coverage history](../../coverage/history.md). Source provenance provides
+  historical evidence with its recorded scope and retain its review context
+  under the [coverage policy](../../coverage/policy.md). Source provenance provides
   current-source lookup, not historical run authority.
 
 ## Evaluation coverage

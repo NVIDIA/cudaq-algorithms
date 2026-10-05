@@ -1,6 +1,6 @@
 ---
 name: cudaq-algorithms
-description: Use when designing, implementing, debugging, repairing, extending, reviewing, validating, or composing cudaq_algorithms / CUDA-Q Algorithms repository APIs and fault-tolerant primitives—state preparation, Pauli/block encoding, qubitization and Chebyshev moments, QSP/QSVT, Suzuki–Trotter evolution, fermion transforms, chemistry, double factorization, or statevector analysis—or when selecting their contracts. Not for CUDA-Q installation, backend setup, basic standalone kernels such as Bell states, or unrelated quantum-computing questions.
+description: Use when designing, implementing, debugging, reviewing, validating, or composing cudaq_algorithms / CUDA-Q Algorithms APIs and fault-tolerant primitives, including scientific requests expressed as molecular geometry/integrals to energies, lattice Hamiltonians to dynamics, or prepared states to spectral and conditional observables. Covers state preparation, Pauli/block encoding, qubitization, QSP/QSVT, Suzuki–Trotter evolution, fermion transforms, chemistry, double factorization, and statevector analysis. Not for CUDA-Q installation, backend setup, basic standalone kernels such as Bell states, or unrelated quantum-computing questions.
 license: Apache-2.0
 metadata:
   author: CUDA-Q Algorithms Team <cuda-quantum@nvidia.com>
@@ -9,29 +9,27 @@ metadata:
 
 # CUDA-Q Algorithms
 
-Every answer about this library ends with four headings, in this order, each present even
-when short: `## Record consulted` (the record paths you opened or were given), `## Premise
-check` (one line per claim the request makes or assumes: the claim, then verified, false, or
-unknown, then what the record and source say), `## Boundaries` (the unsupported, absent, and
-unverified rows that apply, restated and marked "from record", plus what the library does not
-check), and `## Unknowns` (what the request must still supply). This applies to advisory,
-show-me, and implementation requests alike. When essential inputs are missing, `## Unknowns`
-carries the **bold** list of missing items and the answer stops there: no invented APIs, no
-edits. When a change request forbids generated files, run `pytest -p no:cacheprovider` and name in the scope statement any file you generated; do not sweep the tree for caches. Report the result of every command you executed and quote the output line next to each
-number you report; a script that timed out or never ran is listed as "not run" with no result;
-a record sentence is "from record", never "observed".
+Start from the researcher's inputs and desired output; they need not name APIs,
+repository files, or tests. Use the existing API contracts together with the
+selected guide's **Workflow** and **Verification** sections. Lead the answer with
+the scientific result or actionable conclusion, then give its evidence and material
+limitations. Cite the records used, check consequential premises, and identify
+unresolved inputs; do not turn every scientific result into a contract inventory.
+For a contract audit, organize these as Record consulted, Premise check, Boundaries,
+and Unknowns. A record sentence is source evidence, never an observed run.
 
-For any request naming this library, the first command is
-`python3 <this skill's directory>/scripts/route.py "<the request>"`; it prints the family
-records that apply, their premise-check rows, and the focused records you must then open.
+Route in-scope requests with
+`python3 <this skill's directory>/scripts/route.py "<the request>"`. It prints at most
+three starting paths, section names, and candidate premise rows. Open the relevant
+sections and follow their focused-record/source pointers; `--full` prints the whole
+selected guides when needed. Routing is a navigation aid, not a scientific decision.
 
-If essential feedback, source, or scope is missing from the request, attachments,
-and named project files, ask for it and wait; do not invent APIs or edits.
-Put the missing items in a **bold** list. When a request demands a "complete" or
-"mandatory" inventory, also ask which boundary defines it (which version, source
-tree, or public-API surface counts), because completeness cannot be judged without it.
-Use ordinary chat if a question tool is unavailable. When the available inputs
-resolve the task, proceed without asking again.
+Use supplied data and derive intermediate inputs that the available model determines.
+For example, specified geometry/basis/charge/spin can determine molecular integrals
+and the nuclear constant. Ask only for missing choices that change the scientific
+result or scope, and continue independent work. Do not invent data or APIs. Resolve
+the version/source boundary of a requested complete inventory from context first;
+ask when it remains ambiguous. When the available inputs resolve the task, proceed.
 
 Use CUDA-Q Algorithms as a BLAS/LAPACK-like set of small scientific building
 blocks. Start with the requested operation and mathematical object, choose the
@@ -54,11 +52,15 @@ parent-directory or whole-filesystem searches for missing inputs.
 - Multi-step advice, implementation, or repair: read the shared
   [workflow](references/workflow.md) before acting. Advice alone does not
   authorize file changes.
+- Molecular energies or lattice dynamics without a named algorithm: start with
+  [application composition](references/application-composition.md#workflow), then
+  open the stage guides it names. Choose a method from the requested output,
+  accuracy, and execution constraints; a default route does not mandate a circuit.
 
 - Contract or boundary question (does X validate, is X supported, are X and Y
-  interchangeable, what happens on a mismatch): the premise-check rows the router prints are
-  the answer to give, cited by record path; never confirm a premise a row marks false,
-  unverified, or absent, however the request phrases it.
+  interchangeable, what happens on a mismatch): check the applicable premise rows
+  against the current source and cite the focused record. Keyword overlap alone
+  does not establish that a row applies. Never confirm an unsupported premise.
 
 Open the relevant [conventions](references/conventions.md) when translating
 boundaries, [composition guide](references/application-composition.md) when
@@ -95,9 +97,9 @@ from cudaq_algorithms import double_factorization as df
 | Consume any `BlockEncoding` (protocol only) | The protocol members are `num_system`, `num_ancilla`, `alpha`, `prepare_kernel()`, `unprepare_kernel()`, `apply_kernel()`, `controlled_apply_kernel()`, `walk_step_kernel()`, `adjoint_walk_step_kernel()`, the controlled walk steps, and `select_observable()`. `apply_kernel()` returns the full block encoding `U_A` (PREPARE, SELECT, UNPREPARE) on `(ancilla, system)`; `walk_step_kernel()` is one walk step; `prepare_kernel()`/`unprepare_kernel()` are only needed when you sequence walk steps yourself. `encode_kernel()` and `kernel_args` are `PauliLCU` conveniences, not protocol members, so a consumer must not require them. Compose by minting kernels outside and capturing the kernel objects, never the encoding object, inside a `@cudaq.kernel`: `apply_k = enc.apply_kernel(); n_anc = enc.num_ancilla` then `@cudaq.kernel def encoded(state: cudaq.State): system = cudaq.qvector(state); ancilla = cudaq.qvector(n_anc); apply_k(ancilla, system)`; run `cudaq.get_state(encoded, state_from(ket))` and take `sim.good_subspace(enc, ...)`. A repair belongs in the consumer (for example `python/cudaq_algorithms/sim_utils.py`), not in the caller's encoding class, and leaves no backup files in the package | `06_bring_your_own_encoding.py`, `python/cudaq_algorithms/qubitization.py` |
 | Qubitization walk action | The walk action is `Walk`, executed; `sim.action` is not a substitute. In a `.py` file: `walk = Walk(enc)`; `sv = np.asarray(cudaq.get_state(walk.kernel(power=k), state_from(psi)))`; `block = sim.good_subspace(enc, sv)` is the unnormalized `T_k(-H/alpha) psi`. Dense reference: `M = -H_dense/enc.alpha`, Chebyshev recurrence `T0=I, T1=M, T[j+1]=2 M T[j] - T[j-1]`, compare `block` with `T[k] @ psi` (raw, no renormalization). `walk.moment(psi, k)` returns `<psi|T_k(H/alpha)|psi>`. To inject a preparation kernel instead of a state: `@cudaq.kernel def prep(qubits: cudaq.qview): ...` in the same file, then `cudaq.get_state(walk.kernel(power=k, state_prep=prep))` (no state argument). When asked to check the prepared state, read the register back and compare it to the supplied amplitudes: `@cudaq.kernel def prepared(state: cudaq.State): q = cudaq.qvector(state)` then `readback = np.asarray(cudaq.get_state(prepared, state_from(psi)))` and report `np.max(np.abs(readback - psi))` (about 1e-8 on the default single-precision simulator); a matching walk output does not by itself verify the preparation, and printing the input array is not a check | `05_state_prep_and_injection.py`, `pauli_lcu_demo.py` |
 | QSP/QSVT sequence | `qsvt = QSVT(enc)`; `out = sim.transform(qsvt, ket, PhaseSequence(phases, convention="qsp"))` returns the good-subspace state; the default convention is `"qsvt"` | `hamiltonian_simulation_qsvt.py` |
-| Real-time evolution recovery | `recover_real_time_evolution(cos_state, sin_state, cos_phases, sin_phases)` on the two `sim.transform` outputs gives `exp(-iHt) ket`; compare the raw complex vector with `scipy.linalg.expm(-1j * H * t) @ ket` without renormalizing or aligning a global phase | `hamiltonian_simulation_qsvt.py`, `02_hamiltonian_simulation.py` |
-| Suzuki-Trotter | Do not hand-write the product formula. `ev = Trotter([(0.37, "X"), (-0.48, "Z"), (0.21, "I")])` (identity terms move to `ev.identity_coefficient`); `trotter = sim.evolve(ev, ket, time, steps=3, order=2)` includes the identity phase; `exact = expm(-1j * H_dense * time) @ ket`; report the raw `np.linalg.norm(trotter - exact)` (no global-phase alignment); `ev.resources(steps=3, order=2)` gives formula-level counts, labelled as a circuit proxy, not hardware cost; device kernels are `ev.kernel(time, steps, order, state_prep=...)` and `ev.state_kernel(time, steps, order)` | `02_hamiltonian_simulation.py` |
-| Chemistry integrals | `one_body, eri, constant = chemistry.from_pyscf(mf)` (also `from_psi4`, `from_fcidump(text)`); `chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=constant)`; `chemistry.spin_orbital_tensors(one_body, eri)`. Active-space energies are eigenvalues of that Hamiltonian restricted to the stated electron sector, never sums of integral entries: `H = chemistry.qubit_hamiltonian(one_body, eri).to_matrix(); idx = [i for i in range(H.shape[0]) if bin(i).count("1") == n_electrons]; E = np.linalg.eigvalsh(H[np.ix_(idx, idx)])[0]` (project the matrix onto the sector's basis states, then diagonalize; never filter a sorted eigenvalue list by basis-state index). Sparse chemist-notation entries such as `two_body_chemist_nonzero` are symmetry representatives: an entry `[p, q, r, s, v]` is the chemist integral (pq|rs), so set `eri[p, q, r, s] = v` in that index order (never reorder the four indices), then fill the other seven eightfold-symmetric positions (`[q,p,r,s]`, `[p,q,s,r]`, `[q,p,s,r]`, `[r,s,p,q]`, `[s,r,p,q]`, `[r,s,q,p]`, `[s,r,q,p]`) and state that convention. Comparing configurations needs each configuration's scalar/core constant. If it is absent from the inputs, your reply is a request for it and nothing else: one sentence saying the scalar/core constant is missing and asking the user to provide it for both configurations, then one bold item per configuration naming the constant; report no active-space energy, total, or difference until the constants are supplied. Never set an absent constant to zero, and never assume it cancels between configurations: it is geometry dependent and does not cancel | `03_chemistry_to_ground_state.py` |
+| Real-time evolution recovery | `recover_real_time_evolution(cos_state, sin_state, cos_phases, sin_phases)` on cosine/sine approximations for a **real Hamiltonian and real input state** estimates `exp(-iHt) ket`; arbitrary supplied phases need not approximate evolution. For complex inputs use a separately validated linear extension; see the QSVT Workflow. When vector accuracy is requested, compare the raw complex vector with `scipy.linalg.expm(-1j * H * t) @ ket` without renormalizing or aligning a global phase | `hamiltonian_simulation_qsvt.py`, `02_hamiltonian_simulation.py` |
+| Suzuki-Trotter | Do not hand-write the product formula. `ev = Trotter([(0.37, "X"), (-0.48, "Z"), (0.21, "I")])` (identity terms move to `ev.identity_coefficient`); `trotter = sim.evolve(ev, ket, time, steps=3, order=2)` includes the identity phase; `exact = expm(-1j * H_dense * time) @ ket`; for phase-sensitive vector accuracy report raw `np.linalg.norm(trotter - exact)`; for an observable target compare its expectation values at the requested times (see Trotter Verification); `ev.resources(steps=3, order=2)` gives formula-level counts, labelled as a circuit proxy, not hardware cost; device kernels are `ev.kernel(time, steps, order, state_prep=...)` and `ev.state_kernel(time, steps, order)` | `02_hamiltonian_simulation.py` |
+| Chemistry integrals | `one_body, eri, constant = chemistry.from_pyscf(mf)` (also `from_psi4`, `from_fcidump(text)`); `chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=constant)`; `chemistry.spin_orbital_tensors(one_body, eri)`. Active-space energies are eigenvalues of the physical Hamiltonian in the requested electron/spin sector, with the scalar included exactly once. Use the Chemistry Workflow and Verification for frozen-core preprocessing and the fermion Verification checkpoint for a matrix at the intended spin-orbital width; operator support alone may omit idle orbitals. Project the matrix onto the sector before diagonalizing, never select eigenvalues by computational-basis indices. Sparse chemist-notation entries such as `two_body_chemist_nonzero` are symmetry representatives: an entry `[p, q, r, s, v]` is the chemist integral (pq|rs), so set `eri[p, q, r, s] = v` in that index order (never reorder the four indices), then fill the other seven eightfold-symmetric positions (`[q,p,r,s]`, `[p,q,s,r]`, `[q,p,s,r]`, `[r,s,p,q]`, `[s,r,p,q]`, `[r,s,q,p]`, `[s,r,q,p]`) and state that convention. Comparing configurations needs each configuration's scalar/core constant. If a constant is absent, derive it from the specified geometry/model when possible; for integral-only inputs with no recoverable scalar, request that scalar before reporting total energies or their difference. Electronic-sector energies may still be computed and explicitly labelled as excluding the unknown constant. Never silently set an unknown constant to zero or assume it cancels between geometries. | `03_chemistry_to_ground_state.py` |
 | Fermion transforms | `fermion.jordan_wigner(one_body, two_body, scalar_offset=0.0)`; `fermion.bravyi_kitaev(one_body, two_body, scalar_offset=0.0)` | see records |
 | Double factorization | `fac = df.explicit_double_factorization(eri)` or, from supplied leaves, `df.DoubleFactorization(num_orbitals=n, leaf_rotations=[U_t, ...], leaf_cores=[Z_t, ...], method="C-DF")`; `eri_rec = df.reconstruct_eri(fac)`; `df.factorization_error(target_eri, fac)` is the Frobenius residual; `kappa = df.modified_one_body_integrals(one_body, eri_rec)` (use the reconstructed ERI and say so in the answer); `df.double_factorization_one_norm(fac, np.linalg.eigvalsh(kappa), convention="lcu")` and `convention="burg"`; one-norms and any gate or query counts are formula-level proxies, not measured hardware cost | `double_factorization.py` |
 | State preparation kernels | `stateprep.hartree_fock(qubits, num_electrons)`; `stateprep.uccsd(qubits, thetas, num_electrons, spin)` (`spin` = 2·S_z, 0 for a closed shell; required); `stateprep.slater_determinant_kernel(stateprep.make_givens_rotation_schedule(coefficients))` | `hartree_fock_ucc.py`, `givens_slater_determinant.py` |
@@ -107,11 +109,11 @@ good subspace is the first `2**num_system` amplitudes because the system registe
 is allocated first. Pass array data to a kernel with `state_from(ket)`. Any
 `@cudaq.kernel` function must be defined in a `.py` file run with `python3 file.py`;
 CUDA-Q cannot compile kernels defined in a `python3 - << 'EOF'` heredoc or `-c` string.
-The deliverable is the executed script and its printed output; keep that script in
-the workspace (do not delete it, even if you consider it temporary), do not replace it
-with prose, and do not delete files you did not create. If the request refers to
-feedback, an implementation, or inputs that are not in the workspace after one
-directory listing, do not keep searching: list the missing items in bold and ask.
+For implementation requests, deliver a runnable script and the observed output when
+execution is available; keep the requested artifact in the workspace. For predictions
+or advice, supply the requested scientific result and sufficient evidence without
+claiming circuit execution. Preserve user files. If inputs remain unavailable after
+checking the named locations, identify what is missing and which work depends on it.
 
 Inside a `@cudaq.kernel` you may only allocate `cudaq.qvector`s, apply gates, and call
 kernels captured from the enclosing scope; Python objects and method calls (such as
@@ -157,6 +159,6 @@ H = sum(c * word_matrix(w) for c, w in terms); M = -H / enc.alpha
 T = [np.eye(len(psi)), M]
 for j in range(1, k):
     T.append(2 * M @ T[j] - T[j - 1])
-print("max |block - dense| =", np.max(np.abs(block - T[k] @ psi)))   # expect ~1e-15
+print("max |block - dense| =", np.max(np.abs(block - T[k] @ psi)))   # assess against the declared target/precision tolerance
 print("moment <T_k(H/alpha)> =", walk.moment(psi, k))
 ```

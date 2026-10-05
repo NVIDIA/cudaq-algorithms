@@ -4,7 +4,10 @@ Family operation + object: **encode** an **operator as a
 zero-flagged block of a unitary**.
 
 This front door owns the shared representation and capability records. The
-packaged concrete primitive is [PauliLCU](pauli-lcu.md).
+packaged concrete primitive is [PauliLCU](pauli-lcu.md). For scientific
+Hamiltonian application, heralding, or pruning tradeoffs, follow its
+[Workflow](pauli-lcu.md#workflow) and [Verification](pauli-lcu.md#verification);
+use this front door for protocol/provider contracts.
 
 ## Representation record — `BlockEncoding`
 

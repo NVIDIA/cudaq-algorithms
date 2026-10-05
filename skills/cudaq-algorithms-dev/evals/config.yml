@@ -2,12 +2,21 @@ schema_version: 1
 
 harbor:
   task_source: evals_json
-  n_attempts: 3
+  n_attempts: 1
   pass_threshold: 0.50
-  stop_on_pass: true
+  stop_on_pass: false
 
 grading:
   mode: default
 
 skill_workspace:
   mode: isolated
+
+# Reporting protocol metadata, not an implicit Harbor feature. An external runner
+# must loop these five paired repetitions itself and record its budgets in results.
+# Keep these fields separate from any configuration passed to the selected harness.
+evaluation_protocol:
+  seeds: [0, 1, 2, 3, 4]
+  skill_exposure: listed
+  time_regression_limit: null
+  token_regression_limit: null

@@ -23,13 +23,14 @@ This file is maintainer and reviewer policy. Scientific tasks normally begin at
 - `../../cudaq-algorithms/references/application-composition.md` describes application chains.
 - `../../cudaq-algorithms/references/workflow.md` shares advisory and implementation guidance.
 - This `authoring/` directory holds schemas, maintenance policy, and open design decisions.
-- `../coverage/` holds lifecycle/history and per-feature evaluation mappings;
+- `../coverage/` holds the live contract inventory and per-feature evaluation mappings;
   `../scripts/check_coverage.py` checks consistency.
 
 This development directory is not an application skill and has no `SKILL.md`.
-Evaluation harnesses, fixtures, and historical evidence remain under `../evals/`;
-do not package them as application guidance. Historical reports retain the paths
-and revisions used by their original runs.
+The canonical delivery suite, evaluator configuration, required fixtures and
+integrity checks live under `../evals/`; do not package them as application
+guidance. Historical campaigns and superseded harnesses are archived outside
+these delivery directories. Their results do not validate the current suite.
 
 Keep scientific family paths shallow, with no primitive subdirectories. Every
 focused record must be linked from its family selector or directly from the root
@@ -47,4 +48,5 @@ short records may combine adjacent headings when boundaries remain explicit.
   [representation](templates/representation-record-template.md),
   [capability](templates/capability-record-template.md),
   [convention](templates/convention-record-template.md).
-- [Coverage history](../coverage/history.md) and [feature registry](../coverage/features.json).
+- [Coverage policy](../coverage/policy.md), [feature registry](../coverage/features.json),
+  and [delivery evaluation](../evals/EVAL.md).

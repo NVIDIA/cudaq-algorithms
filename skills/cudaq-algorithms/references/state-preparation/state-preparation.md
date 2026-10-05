@@ -49,6 +49,100 @@ Eleven device-kernel entries in the operation table are public exports in
 imported into the public module and are addressable there, although omitted
 from `__all__`; their focused records preserve that surface qualification.
 
+## Workflow
+
+For an **orbital determinant**, first fix the particle number and mode order in
+`H = sum_pq h[p,q] a†_p a_q`. Build a Hermitian one-particle matrix, including
+oriented complex hoppings and boundary bonds. Its lowest occupied eigenspace
+gives the columns of `Q`; check the filling and any degeneracy at the Fermi
+level before calling a particular determinant the ground state. Spinless modes
+need one qubit each, without an extra spin expansion. Route `Q` through the
+[schedule](state-preparation-givens-schedule.md) and
+[preparation factory](state-preparation-slater-determinant-kernel.md), retaining
+complex phases. An occupied-space basis rotation changes only the overall
+determinant phase. The factory needs a fresh register of exactly `Q.shape[0]`
+qubits; constructing it is distinct from executing it.
+
+For an **ordered correlated preparation**, write the target product and the
+initial occupation before choosing a kernel. If `A = T - T†`, then
+`exp(theta*A) = exp(i*theta*G)` with Hermitian `G = -i*A`. Translate to the
+selected [UCC convention](ucc-parameterization.md), preserving excitation and
+term order. A product of Pauli exponentials equals the exponential of their
+sum when the terms commute; otherwise it is a product formula whose error
+needs assessment. Reversing excitation order is a different physical ansatz.
+An explicitly supplied generator need not coincide with a standard pool entry.
+
+For either route, connect the prepared state to the requested observables.
+Define density-matrix indices: `gamma[p,q] = <a†_p a_q> = (Q.conj() @ Q.T)[p,q]`
+for a determinant. A complex coherence `A` is obtained from the Hermitian
+observables `(A+A†)/2` and `(A-A†)/(2i)`. Keep boundary-bond orientation and
+fermionic parity strings consistent. Dense predictions are sufficient for
+advisory comparisons; a requested preparation circuit needs its own evidence.
+
+## Verification
+
+The checkpoint below uses NumPy/SciPy independently of the preparation gates.
+Inputs: `Q` has orthonormal occupied columns in little-endian mode order;
+`prepared` is the full normalized circuit state. For `ordered_reference`,
+`ket` is the normalized initial occupation-basis state, `generators` are dense
+anti-Hermitian fermionic matrices, and `angles` follow first-applied order.
+
+```python
+from itertools import combinations
+import numpy as np
+from scipy.linalg import expm
+
+def slater_checkpoint(Q, prepared):
+    Q, prepared = np.asarray(Q), np.asarray(prepared)
+    n, occupied = Q.shape
+    assert prepared.shape == (1 << n,)
+    reference = np.zeros(1 << n, dtype=complex)
+    for rows in combinations(range(n), occupied):
+        reference[sum(1 << p for p in rows)] = np.linalg.det(Q[list(rows), :])
+    norm2 = float(np.vdot(prepared, prepared).real)
+    fidelity = abs(np.vdot(reference, prepared))**2 / (
+        np.vdot(reference, reference).real * norm2)
+    leakage = sum(abs(a)**2 for j, a in enumerate(prepared)
+                  if j.bit_count() != occupied) / norm2
+    return {"norm2": norm2, "infidelity": float(1 - fidelity),
+            "sector_leakage": float(leakage)}
+
+def ordered_reference(ket, generators, angles):
+    state = np.asarray(ket, dtype=complex).copy()
+    for generator, angle in zip(generators, angles, strict=True):
+        state = expm(angle * generator) @ state
+    return state
+```
+
+When execution is needed, this separate checkpoint constructs and runs the
+library circuit for the same `Q` on the active CUDA-Q target:
+
+```python
+import cudaq
+import numpy as np
+from cudaq_algorithms import stateprep
+
+def run_slater(Q):
+    schedule = stateprep.make_givens_rotation_schedule(Q)
+    prep = stateprep.slater_determinant_kernel(schedule)
+    n = schedule.num_spin_orbitals
+    @cudaq.kernel
+    def entry():
+        qubits = cudaq.qvector(n)
+        prep(qubits)
+    return np.asarray(cudaq.get_state(entry))
+```
+
+Check normalization separately from fidelity; tiny negative infidelities can
+be roundoff, not super-unit fidelity. Compare ordered states with independently
+assembled creation/annihilation matrices; align global phase only when the
+requested metric permits it, never for phase-sensitive amplitudes. Test the
+requested particle/spin sector and complex observables, not only populations.
+Choose tolerances from active precision and the scientific error budget.
+Working oracles and launch patterns are in `tests/python/test_stateprep_givens.py`,
+`tests/python/test_stateprep_hf_ucc.py`, `tests/python/test_stateprep_kernels.py`,
+and `docs/sphinx/examples/python/givens_slater_determinant.py`.
+
 ## Resource estimator routing
 
 Resource estimation is independently selectable because its inputs, results,

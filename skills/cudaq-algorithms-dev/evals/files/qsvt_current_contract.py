@@ -1,5 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 """Representative public QSVT source at checkout revision current-fixture-r2.
 
 This small source excerpt is evidence for the version-drift evaluation. It is
@@ -8,14 +6,12 @@ not a complete or independently runnable CUDA-Q implementation.
 
 
 class PhaseSequence:
-
     def __init__(self, phases, *, convention="qsvt"):
         self.phases = tuple(phases)
         self.convention = convention
 
 
 class QSVT:
-
     def kernel(self, sequence: PhaseSequence, *, state_prep=None):
         """Build a kernel from an explicitly tagged PhaseSequence.
 

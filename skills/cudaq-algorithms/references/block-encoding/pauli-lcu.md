@@ -110,7 +110,91 @@ width `num_system + num_ancilla`, one PREPARE and UNPREPARE around SELECT for
 subcircuit counts, not decomposed gates, depth, runtime, memory, T count, or
 Toffoli count.
 
-## Validation
+## Workflow
+
+For a **heralded Hamiltonian application**, specify the normalized input, the
+full operator to apply, and the successful ancilla outcome. Keep the accepted
+branch `b = (H/alpha) @ psi` unnormalized: its squared norm is the success
+probability. Conditional observables use `b† O b / (b† b)` and are undefined
+when success has zero probability. Removing a scalar from `H` changes this
+filter; restoring an energy offset afterward does not restore the coherent
+action. The unused ancilla probability is expected block-encoding leakage.
+
+For **pruning and scalar-offset tradeoffs**, distinguish the physical model
+`H = c*I + H0` from the retained encoded operator. Collect duplicate Pauli words
+before applying a physical coefficient cutoff; iterable input is not collected
+automatically, and `alpha` sums absolute retained decomposition coefficients.
+Store `c` separately before pruning: a coefficient below the threshold is
+dropped before `constant_term` is accumulated. For an energy calculation, keep
+`c` classical and restore it once. Compare candidate energies in the requested
+physical sector and in energy units, not as eigenvalues of differently scaled
+`H/alpha` blocks. Report normalization, term count and register size as their
+own quantities. Circuit-cost claims require a declared decomposition model.
+
+Classical spectra and error bounds can answer a representation-choice question
+without launching a circuit. If validating an emitted encoding, execute its
+actual retained decomposition and distinguish that result from the prediction.
+
+## Verification
+
+Small independent checkpoint: `terms` is a nonempty list of real
+`(coefficient, word)` pairs with common positive width and positive total
+absolute coefficient sum; it already describes the retained operator. `ket`
+is normalized in little-endian order and `observable` is its dense Hermitian
+system observable. The default path is a classical prediction. Setting
+`run_circuit=True` additionally executes the library on the active target.
+
+```python
+import numpy as np
+
+def pauli_checkpoint(terms, ket, observable, *, run_circuit=False):
+    terms = list(terms)
+    paulis = {"I": np.eye(2), "X": np.array([[0, 1], [1, 0]]),
+              "Y": np.array([[0, -1j], [1j, 0]]), "Z": np.diag([1, -1])}
+    width = len(terms[0][1])
+    matrix = np.zeros((1 << width, 1 << width), dtype=complex)
+    for coefficient, word in terms:
+        product = np.ones((1, 1), dtype=complex)
+        for label in reversed(word):
+            product = np.kron(product, paulis[label])
+        matrix += coefficient * product
+    alpha = sum(abs(c) for c, _ in terms)
+    branch = matrix @ ket / alpha
+    probability = float(np.vdot(branch, branch).real)
+    conditional = (np.vdot(branch, observable @ branch).real / probability
+                   if probability > 0 else None)
+    result = {"alpha": alpha, "probability": probability,
+              "conditional": conditional}
+    if run_circuit:
+        from cudaq_algorithms import PauliLCU, sim_utils
+        encoding = PauliLCU(terms, coefficient_threshold=0.0)
+        actual = sim_utils.action(encoding, ket)
+        result["block_error"] = float(np.linalg.norm(actual - branch))
+        result["executed_probability"] = float(np.vdot(actual, actual).real)
+    return result
+```
+
+For a pruning checkpoint, `H_full` and `H_candidate` below are independently
+assembled physical matrices with all scalar offsets restored, restricted to
+the same physical sector when required:
+
+```python
+import numpy as np
+
+def pruning_checkpoint(H_full, H_candidate):
+    bias = abs(np.linalg.eigvalsh(H_candidate)[0]
+               - np.linalg.eigvalsh(H_full)[0])
+    bound = np.linalg.norm(H_candidate - H_full, ord=2)
+    return {"energy_bias": float(bias), "operator_bound": float(bound)}
+```
+
+The norm bound can certify an energy tolerance, but a bound above the budget
+does not establish that the actual bias fails. Separate pruning error from
+circuit numerical error. Conditional observables become sensitive to error
+when success is small; check the raw probability before normalizing. Helpers
+in `python/cudaq_algorithms/sim_utils.py` preserve the branch norm and do not
+implement hardware postselection. The source parser and threshold ordering
+are in `python/cudaq_algorithms/pauli_lcu.py`.
 
 - Independent oracle: build the dense Pauli matrix without calling
   `PauliLCU`, apply the emitted unitary, and extract the zero-ancilla block.
