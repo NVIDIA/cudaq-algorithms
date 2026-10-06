@@ -48,7 +48,7 @@ flip. Here `Z(l,h)` is the product of `Z` strictly between the endpoints.
 
 Use this provider only when an occupied/virtual partition fixed by electron
 count and `spin=2*S_z` is intended. It does not choose pool elements or
-amplitudes, prepare Hartree–Fock, or establish equivalence with the separately
+amplitudes, prepare Hartree-Fock, or establish equivalence with the separately
 parameterized `uccsd` device kernel.
 
 ## Inputs, rejection, and silent gap
@@ -67,7 +67,7 @@ integer". Guards then apply in this order:
 
 The implementation has no parity guard for `(num_electrons-spin)` in the
 open-shell branch. It silently floors the beta occupation, so `(8,4,1)` creates
-the same partition and pool as `(8,4,2)`. The Hartree–Fock occupation builder
+the same partition and pool as `(8,4,2)`. The Hartree-Fock occupation builder
 rejects the former. Report this mismatch; do not claim that `spin=1` is a
 supported physical UCCSD/HF composition merely because pool construction
 succeeds.
@@ -113,7 +113,7 @@ docstring is unverified because those paths were absent from the cited source; r
 
 - Independent absolute oracle: exact words, coefficients, order, and signs at
   `(4,2,0)` (`test_operator_pools.py:92-127`).
-- Independent fermionic oracle: dense Jordan–Wigner ladder matrices establish a
+- Independent fermionic oracle: dense Jordan-Wigner ladder matrices establish a
   full pool/generator bijection at `(8,4,2)`, including mixed doubles, within
   `atol=1e-10` (`:141-202,276-291`). It is intentionally agnostic to the
   overall `+/-i` sign.

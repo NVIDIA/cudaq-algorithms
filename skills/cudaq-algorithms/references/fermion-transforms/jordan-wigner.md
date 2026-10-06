@@ -1,7 +1,7 @@
-# Jordan–Wigner fermion transform
+# Jordan-Wigner fermion transform
 
 Operation + object: **transform** **fermionic ladder-coefficient
-tensors into a Jordan–Wigner Pauli operator**.
+tensors into a Jordan-Wigner Pauli operator**.
 
 ## Identity and classification
 
@@ -24,8 +24,8 @@ jordan_wigner(
 ```
 
 Mode `j` maps to qubit `j`; computational-basis occupation and the packaged
-Hartree–Fock/state-preparation ordering therefore align with this transform.
-Jordan–Wigner parity strings can have linear weight in the mode index.
+Hartree-Fock/state-preparation ordering therefore align with this transform.
+Jordan-Wigner parity strings can have linear weight in the mode index.
 
 Inputs use the shared literal ladder-coefficient representation in
 [fermion-transforms.md](fermion-transforms.md). Magnitudes below `tolerance`
@@ -51,7 +51,7 @@ result to a real-Hamiltonian consumer such as `PauliLCU` or `Trotter`, verify
 Hermiticity and real canonical Pauli coefficients; the transform does not
 establish those downstream conditions.
 
-Do not swap in Bravyi–Kitaev while retaining the same computational-basis state
+Do not swap in Bravyi-Kitaev while retaining the same computational-basis state
 preparation or expected Pauli words. The two encodings represent occupations
 differently even though they accept the same tensor form.
 
@@ -61,7 +61,7 @@ measured cost for a concrete input.
 
 ## Validation
 
-Build independent dense creation/annihilation matrices with Jordan–Wigner
+Build independent dense creation/annihilation matrices with Jordan-Wigner
 parity strings and compare the returned Pauli matrix. Include one-body,
 two-body, scalar-offset, complex coefficient, tolerance-pruning, invalid-rank,
 and mismatched-dimension cases. The runnable pointers are

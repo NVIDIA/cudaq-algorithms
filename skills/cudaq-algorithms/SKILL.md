@@ -1,13 +1,48 @@
 ---
 name: cudaq-algorithms
-description: Use when designing, implementing, debugging, reviewing, validating, or composing cudaq_algorithms / CUDA-Q Algorithms APIs and fault-tolerant primitives, including scientific requests expressed as molecular geometry/integrals to energies, lattice Hamiltonians to dynamics, or prepared states to spectral and conditional observables. Covers state preparation, Pauli/block encoding, qubitization, QSP/QSVT, Suzuki–Trotter evolution, fermion transforms, chemistry, double factorization, and statevector analysis. Not for CUDA-Q installation, backend setup, basic standalone kernels such as Bell states, or unrelated quantum-computing questions.
+description: Use when designing, debugging, or validating CUDA-Q Algorithms primitives for state preparation, simulation, and chemistry.
 license: Apache-2.0
+tags: [cuda-quantum, cudaq-algorithms, quantum-computing, fault-tolerant, simulation, chemistry, nvidia]
 metadata:
   author: CUDA-Q Algorithms Team <cuda-quantum@nvidia.com>
   version: "0.2.0"
+  tags:
+    - cuda-quantum
+    - cudaq-algorithms
+    - quantum-computing
+    - fault-tolerant
+    - simulation
+    - chemistry
+    - nvidia
 ---
 
 # CUDA-Q Algorithms
+
+## When to use
+
+Use when designing, implementing, debugging, reviewing, validating, or composing
+cudaq_algorithms / CUDA-Q Algorithms APIs and fault-tolerant primitives, including
+scientific requests expressed as molecular geometry/integrals to energies, lattice
+Hamiltonians to dynamics, or prepared states to spectral and conditional observables.
+Covers state preparation, Pauli/block encoding, qubitization, QSP/QSVT,
+Suzuki-Trotter evolution, fermion transforms, chemistry, double factorization, and
+statevector analysis. Not for CUDA-Q installation, backend setup, basic standalone
+kernels such as Bell states, or unrelated quantum-computing questions.
+
+## Prerequisites
+
+A local CUDA-Q Algorithms repository checkout matching the task's target version
+is required to verify API behavior against source and tests. Establish its root
+before following checkout-relative paths such as `python/cudaq_algorithms/`,
+`tests/python/`, and `docs/sphinx/examples/python/`. An installed copy of this skill
+alone does not include that source tree. If the checkout is unavailable, identify
+the missing source evidence and label version-dependent claims unverified.
+
+The routing script requires Python 3. Executing examples additionally requires
+CUDA-Q Algorithms and the dependencies of the selected workflow in the execution
+environment; the routing script itself does not import the package.
+
+## Using the skill
 
 Start from the researcher's inputs and desired output; they need not name APIs,
 repository files, or tests. Use the existing API contracts together with the
@@ -17,6 +52,15 @@ limitations. Cite the records used, check consequential premises, and identify
 unresolved inputs; do not turn every scientific result into a contract inventory.
 For a contract audit, organize these as Record consulted, Premise check, Boundaries,
 and Unknowns. A record sentence is source evidence, never an observed run.
+
+### Available scripts
+
+| Script | Invocation and inputs | Output |
+| --- | --- | --- |
+| [route.py](scripts/route.py) | `python3 <skill-dir>/scripts/route.py [--full] "<request>"`; reads standard input when request arguments are omitted or empty. `--help` shows usage. | At most three starting guide paths, section names, candidate premise rows, and focused record paths. `--full` prints complete selected guides. Unmatched requests return the catalog entry point. |
+
+Here, `<skill-dir>` is the directory containing this `SKILL.md`, independently of
+the repository checkout root.
 
 Route in-scope requests with
 `python3 <this skill's directory>/scripts/route.py "<the request>"`. It prints at most
@@ -102,7 +146,7 @@ from cudaq_algorithms import double_factorization as df
 | Chemistry integrals | `one_body, eri, constant = chemistry.from_pyscf(mf)` (also `from_psi4`, `from_fcidump(text)`); `chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=constant)`; `chemistry.spin_orbital_tensors(one_body, eri)`. Active-space energies are eigenvalues of the physical Hamiltonian in the requested electron/spin sector, with the scalar included exactly once. Use the Chemistry Workflow and Verification for frozen-core preprocessing and the fermion Verification checkpoint for a matrix at the intended spin-orbital width; operator support alone may omit idle orbitals. Project the matrix onto the sector before diagonalizing, never select eigenvalues by computational-basis indices. Sparse chemist-notation entries such as `two_body_chemist_nonzero` are symmetry representatives: an entry `[p, q, r, s, v]` is the chemist integral (pq|rs), so set `eri[p, q, r, s] = v` in that index order (never reorder the four indices), then fill the other seven eightfold-symmetric positions (`[q,p,r,s]`, `[p,q,s,r]`, `[q,p,s,r]`, `[r,s,p,q]`, `[s,r,p,q]`, `[r,s,q,p]`, `[s,r,q,p]`) and state that convention. Comparing configurations needs each configuration's scalar/core constant. If a constant is absent, derive it from the specified geometry/model when possible; for integral-only inputs with no recoverable scalar, request that scalar before reporting total energies or their difference. Electronic-sector energies may still be computed and explicitly labelled as excluding the unknown constant. Never silently set an unknown constant to zero or assume it cancels between geometries. | `03_chemistry_to_ground_state.py` |
 | Fermion transforms | `fermion.jordan_wigner(one_body, two_body, scalar_offset=0.0)`; `fermion.bravyi_kitaev(one_body, two_body, scalar_offset=0.0)` | see records |
 | Double factorization | `fac = df.explicit_double_factorization(eri)` or, from supplied leaves, `df.DoubleFactorization(num_orbitals=n, leaf_rotations=[U_t, ...], leaf_cores=[Z_t, ...], method="C-DF")`; `eri_rec = df.reconstruct_eri(fac)`; `df.factorization_error(target_eri, fac)` is the Frobenius residual; `kappa = df.modified_one_body_integrals(one_body, eri_rec)` (use the reconstructed ERI and say so in the answer); `df.double_factorization_one_norm(fac, np.linalg.eigvalsh(kappa), convention="lcu")` and `convention="burg"`; one-norms and any gate or query counts are formula-level proxies, not measured hardware cost | `double_factorization.py` |
-| State preparation kernels | `stateprep.hartree_fock(qubits, num_electrons)`; `stateprep.uccsd(qubits, thetas, num_electrons, spin)` (`spin` = 2·S_z, 0 for a closed shell; required); `stateprep.slater_determinant_kernel(stateprep.make_givens_rotation_schedule(coefficients))` | `hartree_fock_ucc.py`, `givens_slater_determinant.py` |
+| State preparation kernels | `stateprep.hartree_fock(qubits, num_electrons)`; `stateprep.uccsd(qubits, thetas, num_electrons, spin)` (`spin` = 2*S_z, 0 for a closed shell; required); `stateprep.slater_determinant_kernel(stateprep.make_givens_rotation_schedule(coefficients))` | `hartree_fock_ucc.py`, `givens_slater_determinant.py` |
 
 CUDA-Q statevectors are little-endian (`q[0]` is the least-significant bit); the
 good subspace is the first `2**num_system` amplitudes because the system register

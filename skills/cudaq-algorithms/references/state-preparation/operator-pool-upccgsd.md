@@ -25,7 +25,7 @@ and paired-doubles UpCCGSD pool**.
 For an interleaved alpha-even/beta-odd register, singles start from every pair
 `p>q` in ascending `p` then `q` order and retain only `p%2 == q%2`. Thus alpha
 mixes only with alpha and beta only with beta. Singles precede all doubles and
-map to the same two-term Jordan–Wigner generator as UCCGSD.
+map to the same two-term Jordan-Wigner generator as UCCGSD.
 
 For each spatial pair `p<q`, with `p` outer and `q` inner in ascending order,
 one paired double is emitted as
@@ -48,8 +48,9 @@ an even number of spin orbitals".
 `only_doubles` is documented as boolean but is not type-validated; ordinary
 truthiness suppresses the singles. Paired doubles are always emitted, so there
 is no `only_singles` switch and no combination of switches that suppresses
-doubles. Widths with fewer than two spatial orbitals return an empty pool
-without warning.
+doubles. For widths with fewer than two spatial orbitals,
+`make_upccgsd_operator_pool` returns an empty pool as a normal result; its Python
+implementation does not emit a diagnostic warning for that empty pool.
 
 ## Outputs, converter, and composition
 
@@ -61,8 +62,10 @@ carried.
 
 `get_upccgsd_pauli_lists` returns grouped full-width Pauli words and floats,
 one group per operator in pool order, with matching group lengths. Its shared
-converter retains all terms and takes only `coefficient.real` without checking
-the imaginary part. Packaged-pool coefficients are real under the cited
+converter retains every Pauli term and computes
+`float(term.evaluate_coefficient().real)`. This conversion discards any imaginary
+component; the converter implements neither an imaginary-magnitude test nor a
+corresponding rejection. Packaged-pool coefficients are real under the cited
 Hermiticity evidence; production of an imaginary coefficient is unverified.
 The generic fixed-parameter converter has stricter imaginary/tolerance rules.
 
@@ -87,7 +90,7 @@ unverified.
 
 ## Validation
 
-- Independent oracle: at `n=4`, dense Jordan–Wigner ladder matrices establish a
+- Independent oracle: at `n=4`, dense Jordan-Wigner ladder matrices establish a
   full bijection for the complete and doubles-only pools within `atol=1e-10`
   (`test_operator_pools.py:141-202,231-252`). It permits either global `+i` or
   `-i`, so it does not pin absolute generator sign.

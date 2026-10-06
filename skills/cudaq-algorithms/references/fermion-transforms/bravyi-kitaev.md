@@ -1,7 +1,7 @@
-# Bravyi–Kitaev fermion transform
+# Bravyi-Kitaev fermion transform
 
 Operation + object: **transform** **fermionic ladder-coefficient
-tensors into a Bravyi–Kitaev Pauli operator**.
+tensors into a Bravyi-Kitaev Pauli operator**.
 
 ## Identity and classification
 
@@ -14,12 +14,12 @@ tensors into a Bravyi–Kitaev Pauli operator**.
 ## Scientific contract
 
 The signature and literal tensor convention match
-[Jordan–Wigner](jordan-wigner.md), but qubits store Fenwick-tree partial sums
+[Jordan-Wigner](jordan-wigner.md), but qubits store Fenwick-tree partial sums
 of occupations. Resulting update/parity sets and Pauli words depend on the
 total number of modes; do not reuse words across mode counts.
 
 The current implementation compiles every two-body entry literally as
-`V[i,j,k,l] a†_i a†_j a_k a_l`, matching the Jordan–Wigner path. A retired
+`V[i,j,k,l] a_i^dagger a_j^dagger a_k a_l`, matching the Jordan-Wigner path. A retired
 binding antisymmetrized internally; callers that relied on that behavior must
 antisymmetrize before calling the current API.
 
@@ -27,7 +27,7 @@ antisymmetrize before calling the current API.
 
 Returns `cudaq.SpinOperator`. It may feed Pauli consumers after its basis
 contract, coefficient contract, and geometry are preserved. Packaged
-Hartree–Fock preparation is not documented as a Bravyi–Kitaev basis-state
+Hartree-Fock preparation is not documented as a Bravyi-Kitaev basis-state
 provider, so do not compose them as if only Pauli words changed.
 
 Output width tracks transformed Pauli support after pruning/cancellation rather

@@ -18,7 +18,7 @@ integrals into spin-orbital ladder-coefficient tensors**.
 
 The spin-orbital order is interleaved: `2p` is alpha/up and `2p+1` is
 beta/down. The returned two-body tensor is the coefficient of
-`a†_p a†_q a_r a_s` expected by the packaged fermion compilers. The spatial ERI
+`a_p^dagger a_q^dagger a_r a_s` expected by the packaged fermion compilers. The spatial ERI
 is reordered and multiplied by `1/2` before populating the four same/mixed-spin
 blocks.
 

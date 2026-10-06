@@ -15,7 +15,7 @@ though its runtime containers resemble the grouped UCC kernels.
 | Public symbols and import paths | `cudaq_algorithms.stateprep.ceo`; matching host provider `get_ceo_pauli_lists` |
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`ceo`); `python/cudaq_algorithms/stateprep/_pools.py` (CEO construction and `get_ceo_pauli_lists`); generic validator in `python/cudaq_algorithms/stateprep/_hartree_fock.py`; exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_ceo_kernel_matches_dense_exponential`); absolute provider oracle in `tests/python/test_operator_pools.py`; shapes and smoke use in `tests/python/test_stateprep.py` |
-| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable use in `tests/python/test_stateprep_kernels.py` |
+| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially "Ansatz kernels and operator pools"; runnable use in `tests/python/test_stateprep_kernels.py` |
 
 ## Classification
 
@@ -143,6 +143,6 @@ or measured cost.
 
 | Field | Contract |
 | --- | --- |
-| Literature conventions | source labels the provider “arXiv:2407.08696 conventions,” but that paper was not consulted; alignment is unverified |
+| Literature conventions | source labels the provider "arXiv:2407.08696 conventions," but that paper was not consulted; alignment is unverified |
 | External package translations | unverified; align spatial-orbital units, interleaved qubit mapping, generator content, group order, coefficient signs, and exponent convention |
 | Known semantic differences | CEO uses coupled-exchange Pauli products without Jordan-Wigner parity strings; it is not a fermionic UCC pool even when a grouped device signature looks identical |

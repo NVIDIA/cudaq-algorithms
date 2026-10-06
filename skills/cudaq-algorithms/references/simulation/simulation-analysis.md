@@ -1,4 +1,4 @@
-# Simulation analysis — family front door
+# Simulation analysis - family front door
 
 These helpers are packaged but statevector-oriented; none is a
 QPU substitute for the hardware-shaped kernel or observable contracts.
@@ -27,13 +27,13 @@ tests are authoritative and must be rechecked at use time.
    actual encoded scale: `H/alpha` and `H` have different branch probabilities.
    The [good-subspace contract](simulation-good-subspace.md) identifies the
    packaged zero-ancilla slice; other layouts require their own indexing.
-3. Keep the raw branch `b` and `p = b†b`. At `p > 0`, a conditional expectation
-   is `b† O b / p`; a conditional projector probability is `b† P b / p` and its
-   joint success-and-outcome probability is `b† P b`. At `p = 0` the conditional
+3. Keep the raw branch `b` and `p = b^dagger b`. At `p > 0`, a conditional expectation
+   is `b^dagger O b / p`; a conditional projector probability is `b^dagger P b / p` and its
+   joint success-and-outcome probability is `b^dagger P b`. At `p = 0` the conditional
    state is undefined. Immediate normalization loses successful-yield information.
 4. Discarding ancillas means tracing over every outcome. For the standard
    PREPARE/SELECT/UNPREPARE Pauli LCU of `H = sum_j c_j P_j`, the same reduced
-   state is `sum_j |c_j|/alpha * P_j rho P_j†`. UNPREPARE acts only on discarded
+   state is `sum_j |c_j|/alpha * P_j rho P_j^dagger`. UNPREPARE acts only on discarded
    ancillas, so it cannot change that reduced state. Coefficient signs cancel
    here but still interfere in the selected branch. This identity does not
    characterize an arbitrary dilation specified only by its encoded block.

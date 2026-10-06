@@ -1,7 +1,7 @@
 # Zero-argument Trotter kernel factory
 
 Operation + object: **evolve** a **newly allocated all-zero or
-injected-preparation quantum state under a stored Suzuki–Trotter plan**.
+injected-preparation quantum state under a stored Suzuki-Trotter plan**.
 
 ## Identity and classification
 

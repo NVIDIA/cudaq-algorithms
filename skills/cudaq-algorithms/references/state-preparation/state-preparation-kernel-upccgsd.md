@@ -15,7 +15,7 @@ the contract and cannot be inferred from the Python container types.
 | Public symbols and import paths | `cudaq_algorithms.stateprep.upccgsd`; matching host provider `get_upccgsd_pauli_lists` |
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`upccgsd`); `python/cudaq_algorithms/stateprep/_pools.py` (`make_upccgsd_operator_pool`, `get_upccgsd_pauli_lists`); generic validator in `python/cudaq_algorithms/stateprep/_hartree_fock.py`; exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_upccgsd_kernel_matches_dense_exponential`); `tests/python/test_operator_pools.py` (independent paired-pool oracle); shapes and smoke use in `tests/python/test_stateprep.py` |
-| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable use in `tests/python/test_stateprep_kernels.py` |
+| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially "Ansatz kernels and operator pools"; runnable use in `tests/python/test_stateprep_kernels.py` |
 
 ## Classification
 

@@ -1,4 +1,4 @@
-# Chemistry bridges — family front door
+# Chemistry bridges - family front door
 
 ## Selectable operation contracts
 
@@ -8,9 +8,9 @@
 | load / restricted PySCF mean field to chemist spatial integral triple | `chemistry.from_pyscf` | classical transformation; host/provider bridge; PySCF at call time | provides `cudaq-algorithms.chemistry-integrals.v1` | [PySCF loader](chemistry-from-pyscf.md) |
 | load / restricted C1 Psi4 wavefunction to chemist spatial integral triple | `chemistry.from_psi4` | classical transformation; host/provider bridge; Psi4 at call time | provides `cudaq-algorithms.chemistry-integrals.v1` | [Psi4 loader](chemistry-from-psi4.md) |
 | transform / spatial integrals to spin-orbital tensors | `chemistry.spin_orbital_tensors` | classical transformation; host | requires `cudaq-algorithms.chemistry-integrals.v1` | [spin expansion](chemistry-spin-orbital-tensors.md) |
-| transform / spatial integrals to Jordan–Wigner qubit Hamiltonian | `chemistry.qubit_hamiltonian` | classical driver; host | requires `cudaq-algorithms.chemistry-integrals.v1` | [qubit Hamiltonian bridge](chemistry-qubit-hamiltonian.md) |
+| transform / spatial integrals to Jordan-Wigner qubit Hamiltonian | `chemistry.qubit_hamiltonian` | classical driver; host | requires `cudaq-algorithms.chemistry-integrals.v1` | [qubit Hamiltonian bridge](chemistry-qubit-hamiltonian.md) |
 
-## Shared representation — chemist integral triple
+## Shared representation - chemist integral triple
 
 The exchanged object is `(one_body, eri, scalar_offset)`:
 
@@ -22,7 +22,7 @@ The real-orbital path expects the eightfold chemist permutation symmetry. The
 three loaders produce this representation; spin expansion, qubit conversion,
 and double factorization consume it.
 
-## Capability record — chemistry integral source
+## Capability record - chemistry integral source
 
 - Stable ID: `cudaq-algorithms.chemistry-integrals.v1`.
 - Contract type: documentation-only.
@@ -50,7 +50,7 @@ factorization, prepare a state, or submit quantum work.
 ## Workflow
 
 Start with geometry and its units, basis/ECP, charge, electron count and spin
-convention. For a provider calculation, converge the restricted Hartree–Fock reference
+convention. For a provider calculation, converge the restricted Hartree-Fock reference
 and retain its MO coefficients, occupations and orbital ordering before calling
 the loader. For FCIDUMP, retain electron/spin and orbital metadata separately:
 the returned triple alone does not identify the physical sector.
@@ -108,7 +108,7 @@ curve rather than assuming a single-reference description remains adequate.
 
 First check MO orthonormality in the AO overlap metric, SCF convergence, tensor
 dimensions, Hermiticity and chemist symmetries. A useful independent checkpoint
-is the determinant energy from spatial Slater–Condon terms versus the compiled
+is the determinant energy from spatial Slater-Condon terms versus the compiled
 Pauli operator. Here `occupied` contains distinct active spin-orbital indices,
 and `atol` is the chosen absolute energy-check tolerance, including pruning.
 

@@ -1,4 +1,4 @@
-# QSP and QSVT — family front door
+# QSP and QSVT - family front door
 
 Quantum signal processing (QSP) and quantum singular value transformation
 (QSVT): route supplied phase angles, QSPPACK conventions, and polynomial
@@ -33,8 +33,8 @@ time. [Source lookup](../source-provenance.md) gives shared current-source paths
 3. Evaluate each response at the actual scaled spectrum `lambda/alpha`.
    A changed Hamiltonian, normalization or evolution time can invalidate a
    calibration. Agreement at selected eigenvalues is not a uniform bound.
-4. For filtering, preserve the raw block `b`: success is `p = b†b` and a
-   band's conditional weight is `b† P_band b / p`. Compare with the unfiltered
+4. For filtering, preserve the raw block `b`: success is `p = b^dagger b` and a
+   band's conditional weight is `b^dagger P_band b / p`. Compare with the unfiltered
    weight; a high conditional weight can accompany a poor successful yield.
    The conditional state is undefined at zero success probability.
 5. For evolution, respect the [recovery domain](qsvt-recovery.md): the packaged

@@ -1,7 +1,7 @@
 # State-input Trotter kernel factory
 
 Operation + object: **evolve** a **caller-supplied
-`cudaq.State` under a stored Suzuki–Trotter plan**.
+`cudaq.State` under a stored Suzuki-Trotter plan**.
 
 ## Identity and classification
 

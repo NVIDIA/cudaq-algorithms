@@ -15,7 +15,7 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 | Public symbols and import paths | `cudaq_algorithms.stateprep.fixed_parameter_ucc`; host companions `get_fixed_parameter_ucc_pauli_lists`, `validate_fixed_parameter_ucc`, and `estimate_fixed_parameter_ucc_resources` |
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`fixed_parameter_ucc`); `python/cudaq_algorithms/stateprep/_hartree_fock.py` (converter, validator, estimator, and injectable factory); exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_hf_ucc.py` (converter, validation, resource fields, grouped-argument launch, and dense product); supporting grouped-kernel comparisons in `tests/python/test_stateprep_kernels.py` |
-| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Hartree-Fock references and fixed-parameter UCC”; runnable example `docs/sphinx/examples/python/05_state_prep_and_injection.py` and tests above |
+| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially "Hartree-Fock references and fixed-parameter UCC"; runnable example `docs/sphinx/examples/python/05_state_prep_and_injection.py` and tests above |
 
 ## Classification
 
@@ -54,7 +54,7 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 - **Why and when to use:** use inside a caller-written kernel for fixed,
   already-known amplitudes over grouped Pauli data from any operator pool.
 - **When not to use:** do not use on an all-zero register when a determinant
-  reference is scientifically required—the kernel source calls that result
+  reference is scientifically required - the kernel source calls that result
   physically meaningless. Do not use it as a direct one-register injectable
   provider; use [state-preparation-hf-ucc.md](state-preparation-hf-ucc.md) for
   the factory that captures validated data and prepares the reference.
@@ -148,6 +148,6 @@ hardware cost, and no such estimate is provided.
 
 | Field | Contract |
 | --- | --- |
-| Literature conventions | no paper was reviewed; “fixed-parameter UCC” here means the exact grouped ordered `+i` Pauli product above, not a universal UCC exponential convention |
+| Literature conventions | no paper was reviewed; "fixed-parameter UCC" here means the exact grouped ordered `+i` Pauli product above, not a universal UCC exponential convention |
 | External package translations | unverified; align pool definition, qubit/Pauli ordering, coefficient sign, amplitude scale, pruning, and product order before conversion |
 | Known semantic differences | same numeric amplitudes are not interchangeable with `uccsd`, whose committed oracle uses a local `-i*theta/2` pool-term relationship plus double-order signs; UCCGSD, UpCCGSD, and CEO groups retain distinct provider meanings even though this kernel can execute their shapes |

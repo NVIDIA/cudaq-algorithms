@@ -87,21 +87,25 @@ three groups of eight. The set removes no scientifically distinct pairing; it
 serves as the ordering device. These exact combinatorial host-output counts are
 not gates, depth, runtime, or memory, and no pool resource estimator exists.
 
-No truncation, screening, occupancy constraint, or spin adaptation is applied.
+The pool builder enumerates every excitation in the selected families; it applies
+neither excitation truncation nor screening, occupancy constraints, or spin
+adaptation.
 Per-operator overall signs outside source arithmetic are not independently
 pinned. Cross-implementation agreement with the absent C++ sources named by the
 module docstring remains unverified.
 
 ## Validation
 
-- Independent oracle: at `n=4`, dense Jordan–Wigner ladder matrices establish a
+- Independent oracle: at `n=4`, dense Jordan-Wigner ladder matrices establish a
   full bijection for the combined, singles-only, and doubles-only pools within
   `atol=1e-10` (`test_operator_pools.py:141-228`). It permits either overall
   `+i` or `-i`, so it pins content but not absolute generator sign.
 - Structural checks: exact counts through `n=8`, `op.qubit_count <= n`, and
   converter shape/order at `n=4`. The kernel dense-exponential comparison is
   supporting but self-derived because it converts the same pool on both sides.
-- Expected boundary: invalid counts reject; both subset switches truthy and
-  undersized families return empty without warning.
+- Expected boundary: invalid counts reject. When both subset switches are truthy,
+  `make_uccgsd_operator_pool` returns `[]`; an undersized requested family
+  contributes no operators. The builder's Python implementation does not emit
+  diagnostic warnings for either condition.
 - Evidence: the scientific assertions above are derived from cited source/tests;
   they require fresh execution before claiming numerical validation.

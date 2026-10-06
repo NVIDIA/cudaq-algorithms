@@ -1,4 +1,4 @@
-# Operator pools — family front door
+# Operator pools - family front door
 
 This file routes among independently selectable operator-pool
 constructors and owns the shared pool representation. It does not define a
@@ -11,7 +11,7 @@ combined construction contract.
 | Occupied-to-virtual UCC singles and doubles for a fixed electron count and spin | [`stateprep.make_uccsd_operator_pool`](operator-pool-uccsd.md) | `num_qubits`, `num_electrons`, `spin`; interleaved spin orbitals; order follows the five UCCSD excitation groups |
 | Generalized singles and/or doubles over all qubits | [`stateprep.make_uccgsd_operator_pool`](operator-pool-uccgsd.md) | `num_qubits`; no occupied/virtual partition; mixed-spin singles are included |
 | Spin-preserving singles plus paired doubles | [`stateprep.make_upccgsd_operator_pool`](operator-pool-upccgsd.md) | even `num_qubits`; complete spatial-orbital pairs; no singles-only mode |
-| Coupled-exchange operators without Jordan–Wigner parity strings | [`stateprep.make_ceo_operator_pool`](operator-pool-ceo.md) | `num_orbitals` counts spatial orbitals, so the pool acts on `2 * num_orbitals` qubits |
+| Coupled-exchange operators without Jordan-Wigner parity strings | [`stateprep.make_ceo_operator_pool`](operator-pool-ceo.md) | `num_orbitals` counts spatial orbitals, so the pool acts on `2 * num_orbitals` qubits |
 
 All four are exact, deterministic host preprocessors. They return ordered
 operator data; they do not select important excitations, optimize amplitudes,
@@ -39,7 +39,9 @@ non-equivalence of that path to the `uccsd` device kernel live in
   therefore unverified; check current public source and the named tests at use
   time.
 
-## Representation Record — operator pool
+<a id="representation-record--operator-pool"></a>
+
+## Representation Record - operator pool
 
 - **Object and structural form:** the ordered Python `list` returned by a
   `make_*_operator_pool` constructor. Each element is accepted by
@@ -49,7 +51,7 @@ non-equivalence of that path to the `uccsd` device kernel live in
 - **Mathematical meaning:** each element is one Hermitian Pauli-sum generator.
   For the three UCC families it is `G = (+/- i) * (T - T^dagger)` for the
   provider's fermionic excitation `T`. CEO is deliberately non-fermionic and
-  is not covered by that Jordan–Wigner statement.
+  is not covered by that Jordan-Wigner statement.
 - **Shape, layout, order, dtype, and units:** list position is semantically
   significant because consumers match one amplitude to each element in order.
   Packaged coefficients are real dyadic rationals. Qubit indices use qubit 0 as

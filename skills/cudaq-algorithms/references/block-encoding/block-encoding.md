@@ -1,4 +1,4 @@
-# Block encoding — family front door
+# Block encoding - family front door
 
 Family operation + object: **encode** an **operator as a
 zero-flagged block of a unitary**.
@@ -9,7 +9,7 @@ Hamiltonian application, heralding, or pruning tradeoffs, follow its
 [Workflow](pauli-lcu.md#workflow) and [Verification](pauli-lcu.md#verification);
 use this front door for protocol/provider contracts.
 
-## Representation record — `BlockEncoding`
+## Representation record - `BlockEncoding`
 
 - Canonical symbol: `cudaq_algorithms.BlockEncoding`, defined in
   `python/cudaq_algorithms/block_encoding.py`.
@@ -62,7 +62,7 @@ Consumers include `Walk`, `QSVT`, `reflection_observable`, and some
 simulation-only helpers; [simulation action](../simulation/simulation-action.md) is narrower
 because it calls `encode_kernel`, which the protocol does not declare.
 
-## Capability record — zero-flagged block access
+## Capability record - zero-flagged block access
 
 - Stable ID: `cudaq-algorithms.block-encoding.zero-flagged.v1`.
 - Contract type: backed by the source-level `BlockEncoding` protocol; the ID

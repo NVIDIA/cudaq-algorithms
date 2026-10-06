@@ -115,7 +115,7 @@ Toffoli count.
 For a **heralded Hamiltonian application**, specify the normalized input, the
 full operator to apply, and the successful ancilla outcome. Keep the accepted
 branch `b = (H/alpha) @ psi` unnormalized: its squared norm is the success
-probability. Conditional observables use `b† O b / (b† b)` and are undefined
+probability. Conditional observables use `b^dagger O b / (b^dagger b)` and are undefined
 when success has zero probability. Removing a scalar from `H` changes this
 filter; restoring an energy offset afterward does not restore the coherent
 action. The unused ancilla probability is expected block-encoding leakage.

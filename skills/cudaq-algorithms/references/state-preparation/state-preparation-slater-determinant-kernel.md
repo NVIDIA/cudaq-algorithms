@@ -53,7 +53,7 @@ not this record.
 ## Validation
 
 Independent oracles construct determinant amplitudes from dense minors and,
-separately, dense Jordan–Wigner creation operators. Compare up to global phase
+separately, dense Jordan-Wigner creation operators. Compare up to global phase
 and check particle number. Factory cases are
 `test_factory_matches_real_kernel_path`,
 `test_factory_matches_complex_kernel_path`,

@@ -1,4 +1,4 @@
-# Double factorization — family front door
+# Double factorization - family front door
 
 ## Selectable operation contracts
 
@@ -11,7 +11,7 @@
 | transform / one-body and ERI tensors to corrected one-body matrix | `double_factorization.modified_one_body_integrals` | classical transformation; host | consumes two dense chemist-basis tensors, not `DoubleFactorization` | [modified one-body integrals](double-factorization-modified-one-body.md) |
 | estimate / double-factorized Hamiltonian one-norm | `double_factorization.double_factorization_one_norm` | formula-level estimator; host | consumes `double_factorization.DoubleFactorization` plus Fock-like eigenvalues | [DF one-norm](double-factorization-one-norm.md) |
 
-## Shared representation — `cudaq_algorithms.double_factorization.DoubleFactorization`
+## Shared representation - `cudaq_algorithms.double_factorization.DoubleFactorization`
 
 The public dataclass contains `num_orbitals`, lists of orthogonal
 `leaf_rotations`, symmetric `leaf_cores`, method (`X-DF` or `C-DF`), and
@@ -133,7 +133,7 @@ Shared source is `python/cudaq_algorithms/double_factorization/`; tests are
 must be rechecked at use time.
 [Source lookup](../source-provenance.md) gives shared current-source paths.
 
-## Premise check (claim → verdict)
+## Premise check (claim -> verdict)
 
 Test every claim the request makes or assumes against this table before answering; a matching row is
 the answer to give, cited by the record path in its last cell, and the records named there are read

@@ -26,11 +26,11 @@ qubit_hamiltonian(
 
 The function calls [spin-orbital expansion](chemistry-spin-orbital-tensors.md)
 and then the packaged `fermion.jordan_wigner` transform. The transform choice is
-hard-wired: there is no Bravyi–Kitaev selector. `scalar_offset` becomes the
+hard-wired: there is no Bravyi-Kitaev selector. `scalar_offset` becomes the
 identity coefficient; `tolerance` prunes terms in the fermion compiler.
 
 Use this bridge when the downstream algorithms expect the package's
-Jordan–Wigner qubit and spin-orbital conventions. To choose Bravyi–Kitaev,
+Jordan-Wigner qubit and spin-orbital conventions. To choose Bravyi-Kitaev,
 invoke spin expansion and [that transform](../fermion-transforms/bravyi-kitaev.md) explicitly; do not
 pretend it is a `qubit_hamiltonian` option.
 

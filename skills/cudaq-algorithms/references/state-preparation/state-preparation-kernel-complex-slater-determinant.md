@@ -64,7 +64,7 @@ execution or measurement.
   ordered phase-aware Givens network acting on a contiguous `E`-particle
   reference with final number phases.
 - Guard meaning: if **any** of the three conditions is false, the whole body is
-  skipped — no reference occupation, no final phases, and no rotations. Extra
+  skipped - no reference occupation, no final phases, and no rotations. Extra
   `final_phases` beyond the first `E` are ignored. If an individual pair is
   non-adjacent after the outer guard passes, its real Givens component no-ops
   but its `rz(phi_i)` on `s_i` still executes.

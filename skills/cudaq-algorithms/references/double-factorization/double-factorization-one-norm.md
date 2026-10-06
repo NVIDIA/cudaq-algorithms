@@ -29,7 +29,7 @@ sum_k |F_k| + 1/4 sum_t sum_i |lambda^t_i|
 ```
 
 `one_body_eigenvalues` must be the diagonal/Fock-like one-body eigenvalues
-required by this DF normalization convention—not a raw one-body matrix or an
+required by this DF normalization convention - not a raw one-body matrix or an
 arbitrary vector. The helper converts the input to a real array and sums its
 absolute values, but validates neither its provenance nor that its length
 equals `factorization.num_orbitals`; a plausible scalar can therefore be

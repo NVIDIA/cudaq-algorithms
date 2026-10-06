@@ -113,9 +113,14 @@ def molecular_energy_checkpoint(mf, dimension, cutoff):
     estimate, gram_eigenvalues, rank = krylov_checkpoint(
         mu, encoding.alpha, dimension, cutoff, offset=nuclear)
     reference = float(fci.FCI(mf).kernel()[0])
-    return {"energy": estimate, "fci": reference,
-            "energy_error": abs(estimate-reference), "rank": rank,
-            "gram_eigenvalues": gram_eigenvalues, "moments": mu}
+    return {
+        "energy": estimate,
+        "fci": reference,
+        "energy_error": abs(estimate-reference),
+        "rank": rank,
+        "gram_eigenvalues": gram_eigenvalues,
+        "moments": mu,
+    }
 
 cudaq.set_target("qpp-cpu", precision="fp64")
 # result = molecular_energy_checkpoint(mf, dimension, cutoff)

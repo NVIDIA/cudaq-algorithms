@@ -23,7 +23,7 @@ determinant and is not the full UCCSD product documented in
 | --- | --- |
 | Operation + mathematical object (primary identity) | **apply** + **one Jordan-Wigner UCCSD single excitation** |
 | Kind | quantum operation |
-| Routine role | auxiliary — a lower-level building block of `uccsd` |
+| Routine role | auxiliary - a lower-level building block of `uccsd` |
 | Abstraction level | leaf operation |
 | Parameterization | runtime |
 | Execution layers | device kernel called from a caller-owned CUDA-Q kernel |

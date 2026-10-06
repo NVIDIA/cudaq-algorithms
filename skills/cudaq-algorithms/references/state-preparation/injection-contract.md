@@ -23,7 +23,7 @@
 
 ---
 
-## Representation Record — the injectable preparation kernel
+## Representation Record - the injectable preparation kernel
 
 - Object name and canonical symbol: the one-argument preparation kernel, passed
   as the `state_prep` argument of a consumer factory.
@@ -49,14 +49,14 @@
   `tests/python/test_state_prep_injection.py:24-33`.
 - Consumers: the four modules tabulated in the Capability Record below.
 - Invariants preserved across the boundary: all problem data is captured inside
-  the kernel at factory time — the *data erasure at the kernel boundary*
-  contract of `python/cudaq_algorithms/block_encoding.py` — so the signature
+  the kernel at factory time - the *data erasure at the kernel boundary*
+  contract of `python/cudaq_algorithms/block_encoding.py` - so the signature
   carries registers only and no status channel exists.
 - Observable symptom of a misinterpretation: a multi-argument kernel offered
   here is not the one-register injection representation. A wrong-width kernel
   may fail, no-op on part of the register, or prepare a plausible wrong state;
   the outcome is provider/consumer-dependent and unverified.
-- Unsupported or ambiguous forms: multi-argument device kernels — a different
+- Unsupported or ambiguous forms: multi-argument device kernels - a different
   representation routed through the
   [state-preparation family selector](state-preparation.md),
   not a variant of this one; kernels that allocate ancillas,
@@ -66,15 +66,17 @@
 
 ---
 
-## Capability Record — unitary state preparation
+<a id="capability-record--unitary-state-preparation"></a>
+
+## Capability Record - unitary state preparation
 
 - Stable ID: `cudaq-algorithms.state-preparation.unitary.v1` (documentation identifier).
 
-- Contract type: documentation/taxonomy only — not a Python `Protocol`, not an
+- Contract type: documentation/taxonomy only - not a Python `Protocol`, not an
   ABC, not a public symbol. Extraction is justified because **two packaged
   providers and four independent consumer modules** already exchange it.
 - Boundary representation and exact signature: the Representation Record
-  above — a kernel with the single parameter `(qubits: cudaq.qview)`.
+  above - a kernel with the single parameter `(qubits: cudaq.qview)`.
 - Semantic invariants, `derived` from the `state_prep` call sites and the
   documentation:
   1. **Fresh register in `|0...0>`, allocated by the calling consumer**, handed
@@ -89,12 +91,12 @@
   3. **Zero-argument consumer mode.** Given `state_prep`, the consumer
      factories return kernels taking no arguments; without it, the
      encoding/Walk/QSVT factories return a kernel taking one `cudaq.State`.
-     `Trotter.kernel` is zero-argument either way — it evolves `|0...0>` with
-     no preparation — and its `cudaq.State` twin is `Trotter.state_kernel`.
+     `Trotter.kernel` is zero-argument either way - it evolves `|0...0>` with
+     no preparation - and its `cudaq.State` twin is `Trotter.state_kernel`.
   4. **Unitary only.** No packaged provider kernel allocates an ancilla,
      measures, or resets. A `pass`-bodied kernel is a legal degenerate provider.
   5. **Controlled consumers run the preparation once, uncontrolled**, before
-     the control register exists — a consumer sequencing choice, not evidence
+     the control register exists - a consumer sequencing choice, not evidence
      of a controlled-preparation capability.
 - Register geometry and ownership: the current consumer allocates the fresh system
   register and requires exactly its own system width (invariants 1 and 2). This
@@ -112,7 +114,7 @@
   (`python/cudaq_algorithms/stateprep/_hartree_fock.py`, contract in
   [state-preparation-hf-ucc.md](state-preparation-hf-ucc.md)); caller-written
   one-argument kernels.
-- Consumers, with source paths — **four modules**, twelve public methods:
+- Consumers, with source paths - **four modules**, twelve public methods:
 
 | Consumer module | Symbols |
 | --- | --- |
@@ -134,7 +136,7 @@
 
 ## Shared unsupported and unverified boundaries
 
-Read each label literally — unsupported, absent, and unverified are three
+Read each label literally - unsupported, absent, and unverified are three
 different statements. These hold for the seam and for both providers;
 provider-specific limitations stay in the provider records.
 

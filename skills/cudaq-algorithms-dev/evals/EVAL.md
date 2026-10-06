@@ -7,6 +7,12 @@ case order, complete case records, source provenance and fixture hashes.
 Intentional future changes require explicit manifest review and rebaselining.
 Old 42- or 7-case measurements are not results for this delivery suite.
 
+The runtime skill also ships a standalone [catalog evaluation package](../../cudaq-algorithms/evals/EVAL.md)
+for NVIDIA SkillEvaluator. Its 62 cases and three negative controls decode to
+exactly this suite, with byte-identical local fixtures; `test_catalog_evals.py`
+guards against drift. The catalog config contains only supported SkillEvaluator
+keys. Keep this directory's campaign, grading, and reporting infrastructure here.
+
 ## Paired campaign protocol
 
 The maintained [multi-model runner](runner/README.md) provides endpoint preflight,

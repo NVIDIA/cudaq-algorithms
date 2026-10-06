@@ -1,18 +1,18 @@
-# Fermion-to-qubit transforms — family front door
+# Fermion-to-qubit transforms - family front door
 
 ## Selectable operation contracts
 
 | Operation + object | Public entry point | Kind / layer | Capabilities | Record |
 | --- | --- | --- | --- | --- |
-| transform / ladder tensors to Jordan–Wigner Pauli operator | `fermion.jordan_wigner` | classical transformation; host | none | [Jordan–Wigner](jordan-wigner.md) |
-| transform / ladder tensors to Bravyi–Kitaev Pauli operator | `fermion.bravyi_kitaev` | classical transformation; host | none | [Bravyi–Kitaev](bravyi-kitaev.md) |
+| transform / ladder tensors to Jordan-Wigner Pauli operator | `fermion.jordan_wigner` | classical transformation; host | none | [Jordan-Wigner](jordan-wigner.md) |
+| transform / ladder tensors to Bravyi-Kitaev Pauli operator | `fermion.bravyi_kitaev` | classical transformation; host | none | [Bravyi-Kitaev](bravyi-kitaev.md) |
 
 ## Shared input representation
 
 Both public transforms accept:
 
-- a rank-2 `(n,n)` tensor of coefficients for `a†_i a_j`, optionally followed
-  by a rank-4 `(n,n,n,n)` tensor for `a†_i a†_j a_k a_l`; or
+- a rank-2 `(n,n)` tensor of coefficients for `a_i^dagger a_j`, optionally followed
+  by a rank-4 `(n,n,n,n)` tensor for `a_i^dagger a_j^dagger a_k a_l`; or
 - the rank-4 tensor alone;
 - `scalar_offset` for the identity term;
 - `tolerance` for magnitude pruning before and after compilation.

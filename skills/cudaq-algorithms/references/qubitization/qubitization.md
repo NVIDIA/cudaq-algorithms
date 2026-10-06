@@ -1,4 +1,4 @@
-# Qubitization — family front door
+# Qubitization - family front door
 
 Qubitization exposes two independently selectable contracts:
 

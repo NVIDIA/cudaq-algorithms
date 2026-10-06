@@ -26,7 +26,7 @@ pool**.
 `2*num_orbitals` qubits. This differs from the spin-orbital/qubit units of the
 UCC providers. CEO is deliberately non-fermionic: its single is
 `0.5 Y_q X_p - 0.5 X_q Y_p`, and its doubles are plain four-Pauli products.
-There is no Jordan–Wigner `Z` parity string, so do not characterize this as a
+There is no Jordan-Wigner `Z` parity string, so do not characterize this as a
 fermionic-excitation pool or apply the UCC fermionic-generator oracle.
 
 Emission order is alpha singles, beta singles, alpha same-spin doubles, beta
@@ -46,9 +46,10 @@ optimization are outside the primitive.
 The sole count must be integral, non-negative, and not `bool`; negative,
 fractional, or boolean input raises `ValueError` with "must be a non-negative
 integer". There is no minimum-size rejection. `num_orbitals <= 1` returns an
-empty pool, same-spin doubles do not appear before `num_orbitals=4`, and these
-degenerate sizes produce no warning. Passing a qubit count as `num_orbitals`
-silently doubles the intended register.
+empty pool, and same-spin doubles do not appear before `num_orbitals=4`.
+`make_ceo_operator_pool` reports these degenerate sizes only through the returned
+pool; its Python implementation does not emit diagnostic warnings for them.
+Passing a qubit count as `num_orbitals` silently doubles the intended register.
 
 ## Outputs, converter, and composition
 
@@ -90,7 +91,7 @@ word or sign error.
 - Independent oracle: an absolute known answer at `M=2` pins all four
   operators, Pauli words, coefficients, order, and signs exactly
   (`test_operator_pools.py:255-273`). There is intentionally no fermionic
-  Jordan–Wigner oracle.
+  Jordan-Wigner oracle.
 - Structural checks: exact counts at `M=2,4`, width bounds, converter grouping,
   invalid-count rejection, and kernel dense-exponential agreement at `M=2,3,4`.
   The latter is supporting, not independent, because it reuses the same pool.

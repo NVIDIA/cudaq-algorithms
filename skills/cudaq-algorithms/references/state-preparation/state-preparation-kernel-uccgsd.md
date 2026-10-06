@@ -15,7 +15,7 @@ fixed-parameter UCC, or the one-register injection seam.
 | Public symbols and import paths | `cudaq_algorithms.stateprep.uccgsd`; matching host provider `get_uccgsd_pauli_lists` |
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`uccgsd`); `python/cudaq_algorithms/stateprep/_pools.py` (`make_uccgsd_operator_pool`, `get_uccgsd_pauli_lists`); generic validator in `python/cudaq_algorithms/stateprep/_hartree_fock.py`; exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_uccgsd_kernel_matches_dense_exponential`); `tests/python/test_operator_pools.py` (independent generalized-pool oracle); shape and smoke checks in `tests/python/test_stateprep.py` |
-| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable use in `tests/python/test_stateprep_kernels.py` |
+| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially "Ansatz kernels and operator pools"; runnable use in `tests/python/test_stateprep_kernels.py` |
 
 ## Classification
 

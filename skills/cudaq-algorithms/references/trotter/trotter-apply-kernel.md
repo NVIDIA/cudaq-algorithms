@@ -1,6 +1,6 @@
 # Low-level Trotter apply kernel
 
-Operation + object: **apply** a **Suzuki–Trotter product formula
+Operation + object: **apply** a **Suzuki-Trotter product formula
 to a caller-owned live qubit register**.
 
 ## Identity and classification
@@ -45,7 +45,7 @@ order 4: [S2(w1*dt) S2(w0*dt) S2(w1*dt)]^steps
 ```
 
 Here `w1 = 1 / (2 - 2**(1/3))` and `w0 = 1 - 2*w1`; the fourth-order branch is
-the Forest–Ruth composition. The negative angle passed to CUDA-Q `exp_pauli`
+the Forest-Ruth composition. The negative angle passed to CUDA-Q `exp_pauli`
 therefore implements the `exp(-i H' time)` convention. The result is an
 approximate product formula unless the relevant terms commute or another
 case-specific argument establishes exactness. No error bound or step selector

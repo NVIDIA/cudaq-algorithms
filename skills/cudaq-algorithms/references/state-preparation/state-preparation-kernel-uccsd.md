@@ -15,7 +15,7 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Public symbols and import paths | `cudaq_algorithms.stateprep.uccsd`; host companions `get_uccsd_excitations` and `get_num_uccsd_parameters` |
 | Contract-specific source paths | `python/cudaq_algorithms/stateprep/_kernels.py` (`uccsd`, `single_excitation`, `double_excitation`); `python/cudaq_algorithms/stateprep/_pools.py` (`get_uccsd_excitations`, `get_num_uccsd_parameters`, `make_uccsd_operator_pool`); exports in `python/cudaq_algorithms/stateprep/__init__.py` |
 | Authoritative tests | `tests/python/test_stateprep_kernels.py` (`test_uccsd_kernel_matches_dense_exponential`, `test_uccsd_interleaved_mixed_double_matches_dense_exponential`, host-invalid-input cases); `tests/python/test_operator_pools.py` (absolute and fermionic pool oracles); smoke/regression coverage in `tests/python/test_stateprep.py` |
-| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially “Ansatz kernels and operator pools”; runnable repository usage in `tests/python/test_stateprep_kernels.py` |
+| Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst`, especially "Ansatz kernels and operator pools"; runnable repository usage in `tests/python/test_stateprep_kernels.py` |
 
 ## Classification
 
@@ -82,7 +82,7 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Field | Contract |
 | --- | --- |
 | Return type or emitted kernel signature | returns nothing; mutates the supplied `cudaq.qview` in place |
-| Mathematical meaning | the ordered UCCSD product under “Scientific contract” applied to the register's incoming state |
+| Mathematical meaning | the ordered UCCSD product under "Scientific contract" applied to the incoming register state |
 | Shape/register geometry | register width is unchanged; no qubit, ancilla, control, or measurement register is allocated |
 | Normalization, sign, and phase | norm-preserving unitary with the tested `-i/2` pool-term scale and double-order sign `s_e`; do not substitute the `+i` grouped-kernel convention |
 | Observable or measurement interpretation | Not applicable: no measurement or observable is produced |
@@ -147,6 +147,6 @@ excitation endpoints and target lowering; no bound or measurement is claimed.
 
 | Field | Contract |
 | --- | --- |
-| Literature conventions | “UCCSD” names singles and doubles, but no paper was reviewed for this record; the precise local exponent, ordering, and spin conventions above control |
+| Literature conventions | "UCCSD" names singles and doubles, but no paper was reviewed for this record; the precise local exponent, ordering, and spin conventions above control |
 | External package translations | unverified; align orbital layout, generator sign, amplitude scale, excitation order, and double-endpoint sign before comparing or converting |
 | Known semantic differences | unlike the grouped UCCGSD/UpCCGSD/CEO/fixed-parameter kernels, this kernel enumerates excitations internally and the committed oracle uses the local `-i*theta/2` scale plus `s_e`; equal numeric amplitude lists do not establish equivalent states |
