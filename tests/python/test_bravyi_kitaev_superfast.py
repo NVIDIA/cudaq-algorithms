@@ -36,8 +36,8 @@ def _word_matrix(x, z, nq):
     m = np.array([[1.0 + 0j]])
     for q in range(nq):
         bit = 1 << q
-        p = ("Y" if (x & bit and z & bit) else "X" if x & bit
-             else "Z" if z & bit else "I")
+        p = ("Y" if (x & bit and z & bit) else "X" if x & bit else "Z" if z
+             & bit else "I")
         m = np.kron(_PAULI[p], m)
     return m
 
@@ -45,6 +45,7 @@ def _word_matrix(x, z, nq):
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
+
 
 def _dense(op):
     return np.asarray(op.to_matrix())
@@ -55,7 +56,7 @@ def _parity_sector_specs(h, V=None):
     op = jordan_wigner(h) if V is None else jordan_wigner(h, V)
     M = _dense(op)
     dim = M.shape[0]
-    parity = np.array([(-1) ** bin(k).count("1") for k in range(dim)])
+    parity = np.array([(-1)**bin(k).count("1") for k in range(dim)])
     out = {}
     for sval in (+1, -1):
         idx = np.where(parity == sval)[0]
@@ -72,22 +73,24 @@ def _codespace_spec(h, V=None, scalar_offset=0.0, interaction_graph=None):
     (coeff, x, z) words -- cudaq's ``to_matrix()`` compacts unused qubit
     indices, which would misalign the projection on graphs whose stabilizers
     do not touch qubit 0 (e.g. dense graphs)."""
-    args = (h,) if V is None else (h, V)
-    graph = _build_graph(np.asarray(h, dtype=complex),
-                         np.zeros((0, 0, 0, 0)) if V is None
-                         else np.asarray(V, dtype=complex), 1e-15,
-                         interaction_graph)
+    args = (h, ) if V is None else (h, V)
+    graph = _build_graph(
+        np.asarray(h, dtype=complex),
+        np.zeros((0, 0, 0, 0)) if V is None else np.asarray(V, dtype=complex),
+        1e-15, interaction_graph)
     nq = graph.num_qubits
     dim = 1 << nq
-    Hb = _dense(bravyi_kitaev_superfast(*args, scalar_offset=scalar_offset,
-                                        interaction_graph=interaction_graph))
-    if Hb.shape[0] < dim:                       # op did not touch every qubit
+    Hb = _dense(
+        bravyi_kitaev_superfast(*args,
+                                scalar_offset=scalar_offset,
+                                interaction_graph=interaction_graph))
+    if Hb.shape[0] < dim:  # op did not touch every qubit
         Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
     cols = np.eye(dim, dtype=complex)
     for coeff, (x, z) in _stabilizer_words(graph):
         S = cols.conj().T @ (coeff * _word_matrix(x, z, nq)) @ cols
         w, U = np.linalg.eigh(S)
-        cols = cols @ U[:, np.abs(w - 1) < 1e-7]   # project onto the +1 sector
+        cols = cols @ U[:, np.abs(w - 1) < 1e-7]  # project onto the +1 sector
     return np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
 
 
@@ -116,8 +119,8 @@ def _dense_fermion_hamiltonian(one_body, two_body, scalar_offset=0.0):
     m = one_body.shape[0]
 
     def annihilator(mode):
-        ops = ([_PAULI["Z"]] * mode + [_LOWER]
-               + [_PAULI["I"]] * (m - mode - 1))[::-1]
+        ops = ([_PAULI["Z"]] * mode + [_LOWER] + [_PAULI["I"]] *
+               (m - mode - 1))[::-1]
         out = np.array([[1.0 + 0j]])
         for op in ops:
             out = np.kron(out, op)
@@ -130,8 +133,8 @@ def _dense_fermion_hamiltonian(one_body, two_body, scalar_offset=0.0):
     for i, j in np.argwhere(one_body):
         h += one_body[i, j] * (raise_[i] @ lower[j])
     for i, j, k, l in np.argwhere(two_body):
-        h += two_body[i, j, k, l] * (raise_[i] @ raise_[j]
-                                     @ lower[k] @ lower[l])
+        h += two_body[i, j, k,
+                      l] * (raise_[i] @ raise_[j] @ lower[k] @ lower[l])
     return h
 
 
@@ -169,7 +172,7 @@ def _physical_system(n_spatial, seed):
 
 def _even_sector_spectrum(matrix):
     dim = matrix.shape[0]
-    parity = np.array([(-1) ** bin(k).count("1") for k in range(dim)])
+    parity = np.array([(-1)**bin(k).count("1") for k in range(dim)])
     idx = np.where(parity == +1)[0]
     return np.sort(np.linalg.eigvalsh(matrix[np.ix_(idx, idx)]))
 
@@ -195,13 +198,14 @@ def _random_tight_binding(seed, n, edges, coulomb=False):
     if coulomb:
         V = np.zeros((n, n, n, n))
         for (p, q) in edges:
-            V[p, q, q, p] += rng.normal()   # (i,j,j,i) -> + n_i n_j
+            V[p, q, q, p] += rng.normal()  # (i,j,j,i) -> + n_i n_j
     return h, V
 
 
 # ----------------------------------------------------------------------
 # Operator algebra
 # ----------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("name", list(_GRAPHS))
 def test_edge_vertex_algebra(name):
@@ -226,6 +230,7 @@ def test_edge_vertex_algebra(name):
 # ----------------------------------------------------------------------
 # Code-subspace spectrum equivalence with Jordan-Wigner
 # ----------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("name", list(_GRAPHS))
 @pytest.mark.parametrize("seed", [1, 7])
@@ -255,7 +260,7 @@ def test_molecular_hamiltonian_matches_exact_diagonalization(seed):
     eigenspace) against the exact Hamiltonian's even-parity sector. The general
     two-body integrals make a complete interaction graph, so this runs at 4
     spin-orbitals (6 qubits)."""
-    one_body, two_body = _physical_system(2, seed)      # 4 spin-orbitals
+    one_body, two_body = _physical_system(2, seed)  # 4 spin-orbitals
     offset = 0.317
     exact_even = _even_sector_spectrum(
         _dense_fermion_hamiltonian(one_body, two_body, offset))
@@ -263,7 +268,7 @@ def test_molecular_hamiltonian_matches_exact_diagonalization(seed):
         _dense(jordan_wigner(one_body, two_body, scalar_offset=offset)))
     import warnings
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")                 # dense (K4) graph warns
+        warnings.simplefilter("ignore")  # dense (K4) graph warns
         code = _codespace_spec(one_body, two_body, scalar_offset=offset)
     np.testing.assert_allclose(code, exact_even, atol=1e-10)
     np.testing.assert_allclose(code, jw_even, atol=1e-10)
@@ -279,15 +284,15 @@ def test_hubbard_dimer_ground_state():
     # spin orbitals: 0=1up 1=1dn 2=2up 3=2dn; hop within a spin, U on-site.
     t, U = 1.3, 4.0
     h = np.zeros((4, 4))
-    for a, b in [(0, 2), (1, 3)]:               # up-up, dn-dn hopping
+    for a, b in [(0, 2), (1, 3)]:  # up-up, dn-dn hopping
         h[a, b] = h[b, a] = -t
     V = np.zeros((4, 4, 4, 4))
-    for (p, q) in [(0, 1), (2, 3)]:             # U n_up n_dn per site
+    for (p, q) in [(0, 1), (2, 3)]:  # U n_up n_dn per site
         V[p, q, q, p] += U
-    e0 = 0.5 * (U - np.sqrt(U ** 2 + 16 * t ** 2))
+    e0 = 0.5 * (U - np.sqrt(U**2 + 16 * t**2))
     # the half-filled singlet lives in the even-parity sector (the code space)
     even = _parity_sector_specs(h, V)[+1]
-    assert abs(float(even[0]) - e0) < 1e-10     # tensor / convention sanity
+    assert abs(float(even[0]) - e0) < 1e-10  # tensor / convention sanity
     bksf_ground = float(_codespace_spec(h, V)[0])
     assert abs(bksf_ground - e0) < 1e-10
 
@@ -295,6 +300,7 @@ def test_hubbard_dimer_ground_state():
 # ----------------------------------------------------------------------
 # Stabilizers
 # ----------------------------------------------------------------------
+
 
 def test_stabilizers_count_and_properties():
     n, edges = _GRAPHS["2x2-lattice"]
@@ -307,9 +313,9 @@ def test_stabilizers_count_and_properties():
     for s in stabs:
         S = _dense(s)
         S = np.kron(np.eye(dim // S.shape[0]), S) if S.shape[0] < dim else S
-        assert np.allclose(S @ S, np.eye(dim), atol=1e-12)      # involutory
-        assert np.allclose(S, S.conj().T, atol=1e-12)           # Hermitian
-        assert np.allclose(S @ Hb, Hb @ S, atol=1e-12)          # commutes with H
+        assert np.allclose(S @ S, np.eye(dim), atol=1e-12)  # involutory
+        assert np.allclose(S, S.conj().T, atol=1e-12)  # Hermitian
+        assert np.allclose(S @ Hb, Hb @ S, atol=1e-12)  # commutes with H
 
 
 def test_tree_has_no_stabilizers():
@@ -332,7 +338,7 @@ def test_code_space_is_the_joint_plus_one_eigenspace(name):
         S = _dense(s)
         S = np.kron(np.eye(dim // S.shape[0]), S) if S.shape[0] < dim else S
         w, U = np.linalg.eigh(S)
-        cols = cols @ U[:, np.abs(w - 1) < 1e-7]        # +1 eigenspace
+        cols = cols @ U[:, np.abs(w - 1) < 1e-7]  # +1 eigenspace
     spec = np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
     even = _parity_sector_specs(h, V)[+1]
     assert len(spec) == len(even)
@@ -343,6 +349,7 @@ def test_code_space_is_the_joint_plus_one_eigenspace(name):
 # Locality (the point of BKSF)
 # ----------------------------------------------------------------------
 
+
 def test_bounded_weight_beats_jordan_wigner():
     """A graph-adjacent but index-distant hopping is O(N) weight under JW and
     degree-bounded under BKSF."""
@@ -351,13 +358,14 @@ def test_bounded_weight_beats_jordan_wigner():
     h = np.zeros((n, n))
     for (i, j) in edges:
         h[i, j] = h[j, i] = 1.0
-    assert _max_pauli_weight(jordan_wigner(h)) >= n - 1     # long Z-string
+    assert _max_pauli_weight(jordan_wigner(h)) >= n - 1  # long Z-string
     assert _max_pauli_weight(bravyi_kitaev_superfast(h)) <= 3
 
 
 # ----------------------------------------------------------------------
 # Structure / edge cases
 # ----------------------------------------------------------------------
+
 
 def test_qubit_count_is_edge_count():
     n, edges = _GRAPHS["ring-4"]
@@ -370,7 +378,7 @@ def test_interaction_graph_superset_override():
     qubit layout and still reproduces the fermionic spectrum."""
     n, edges = _GRAPHS["path-4"]
     h, _ = _random_tight_binding(1, n, edges)
-    extra = edges + [(0, 3)]                      # add a chord -> +1 qubit, +1 loop
+    extra = edges + [(0, 3)]  # add a chord -> +1 qubit, +1 loop
     op = bravyi_kitaev_superfast(h, interaction_graph=extra)
     assert op.qubit_count == len(extra)
     assert len(bravyi_kitaev_superfast_stabilizers(
@@ -393,14 +401,15 @@ def test_interaction_graph_missing_required_edge_raises():
     h[0, 1] = h[1, 0] = 1.0
     h[1, 2] = h[2, 1] = 1.0
     with pytest.raises(ValueError, match="missing edges"):
-        bravyi_kitaev_superfast(h, interaction_graph=[(0, 1)])   # (1,2) absent
+        bravyi_kitaev_superfast(h, interaction_graph=[(0, 1)])  # (1,2) absent
 
 
 def test_interaction_graph_out_of_range_raises():
     h, _ = _random_tight_binding(0, *_GRAPHS["path-4"])
     with pytest.raises(ValueError, match="out of range"):
-        bravyi_kitaev_superfast(h, interaction_graph=[(0, 1), (1, 2),
-                                                      (2, 3), (3, 9)])
+        bravyi_kitaev_superfast(h,
+                                interaction_graph=[(0, 1), (1, 2), (2, 3),
+                                                   (3, 9)])
 
 
 def test_isolated_number_mode_raises():
@@ -408,9 +417,9 @@ def test_isolated_number_mode_raises():
     (isolated) component -- BKSF cannot represent it in a global parity sector,
     so it raises rather than returning a wrong-sector operator."""
     h = np.zeros((4, 4))
-    for (i, j) in [(0, 1), (1, 2), (0, 2)]:      # connected triangle 0-1-2
+    for (i, j) in [(0, 1), (1, 2), (0, 2)]:  # connected triangle 0-1-2
         h[i, j] = h[j, i] = 1.0
-    h[3, 3] = 0.7                                 # isolated mode 3
+    h[3, 3] = 0.7  # isolated mode 3
     with pytest.raises(ValueError, match="connected|isolated"):
         bravyi_kitaev_superfast(h)
 
@@ -420,7 +429,7 @@ def test_disconnected_graph_raises():
     per component, which is not a single global-parity sector."""
     h = np.zeros((6, 6))
     for (i, j) in [(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5)]:
-        h[i, j] = h[j, i] = 1.0                   # two disjoint triangles
+        h[i, j] = h[j, i] = 1.0  # two disjoint triangles
     with pytest.raises(ValueError, match="connected|disconnected"):
         bravyi_kitaev_superfast(h)
 
@@ -430,21 +439,25 @@ def test_disconnected_graph_reconnected_via_override():
     Hamiltonian's graph connected; the result then matches JW's even sector."""
     n = 4
     h = np.zeros((n, n))
-    for (i, j) in [(0, 1), (2, 3)]:               # two disjoint edges
+    for (i, j) in [(0, 1), (2, 3)]:  # two disjoint edges
         h[i, j] = h[j, i] = 1.0
     for i in range(n):
         h[i, i] = 0.2 * (i + 1)
     with pytest.raises(ValueError, match="connected"):
-        bravyi_kitaev_superfast(h)                 # disconnected as-is
-    connected = [(0, 1), (2, 3), (1, 2)]           # bridge the two edges
+        bravyi_kitaev_superfast(h)  # disconnected as-is
+    connected = [(0, 1), (2, 3), (1, 2)]  # bridge the two edges
     assert _matches_jw_even(h, interaction_graph=connected) < 1e-10
 
 
-@pytest.mark.parametrize("edges", [
-    [(0, 1), (1, 2), (0, 2), (0, 3), (1, 3)],     # two triangles sharing edge (0,1)
-    [(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)],     # 4-ring with a chord (two cycles)
-    [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)],  # K4 (three cycles)
-])
+@pytest.mark.parametrize(
+    "edges",
+    [
+        [(0, 1), (1, 2), (0, 2), (0, 3),
+         (1, 3)],  # two triangles sharing edge (0,1)
+        [(0, 1), (1, 2), (2, 3), (3, 0),
+         (0, 2)],  # 4-ring with a chord (two cycles)
+        [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)],  # K4 (three cycles)
+    ])
 def test_multicycle_graphs_match_jordan_wigner(edges):
     """Connected graphs with several (possibly edge-sharing) independent cycles
     still match JW's even sector."""
@@ -494,6 +507,7 @@ def test_returns_spin_operator():
 # General one-body and two-body (the Majorana compiler)
 # ----------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("name", ["ring-4", "ring-5", "2x2-lattice"])
 @pytest.mark.parametrize("seed", [2, 8])
 def test_complex_hopping_matches_jordan_wigner(name, seed):
@@ -517,11 +531,11 @@ def test_general_two_body_matches_jordan_wigner(m, seed):
     rng = np.random.default_rng(seed)
     h = rng.normal(size=(m, m)) + 1j * rng.normal(size=(m, m))
     h = 0.5 * (h + h.conj().T)
-    V = 0.3 * (rng.normal(size=(m,) * 4) + 1j * rng.normal(size=(m,) * 4))
+    V = 0.3 * (rng.normal(size=(m, ) * 4) + 1j * rng.normal(size=(m, ) * 4))
     V = 0.5 * (V + V.transpose(3, 2, 1, 0).conj())
     import warnings
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")         # dense-graph warning expected
+        warnings.simplefilter("ignore")  # dense-graph warning expected
         assert _matches_jw_even(h, V) < 1e-10
 
 
@@ -537,7 +551,7 @@ def test_pair_hopping_on_a_lattice():
     V = np.zeros((n, n, n, n), dtype=complex)
     c = 0.4 + 0.1j
     V[0, 1, 2, 3] += c
-    V[3, 2, 1, 0] += np.conj(c)                 # Hermitian pair
+    V[3, 2, 1, 0] += np.conj(c)  # Hermitian pair
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -549,7 +563,7 @@ def test_dense_graph_warns():
     m = 4
     rng = np.random.default_rng(0)
     h = np.zeros((m, m))
-    V = 0.3 * rng.normal(size=(m,) * 4)
-    V = 0.5 * (V + V.transpose(3, 2, 1, 0))     # real symmetric-ish, dense
+    V = 0.3 * rng.normal(size=(m, ) * 4)
+    V = 0.5 * (V + V.transpose(3, 2, 1, 0))  # real symmetric-ish, dense
     with pytest.warns(UserWarning, match="dense interaction graph"):
         bravyi_kitaev_superfast(h, V)

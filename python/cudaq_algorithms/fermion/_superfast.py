@@ -48,10 +48,10 @@ import numpy as np
 
 from ._compilers import _word_product, _to_spin_operator, _validate_tensors
 
-
 # ---------------------------------------------------------------------------
 # (x, z)-word helpers  (a word is (x_mask, z_mask); coefficients are separate)
 # ---------------------------------------------------------------------------
+
 
 def _mask(qubits):
     m = 0
@@ -75,6 +75,7 @@ def _anticommute(w1, w2):
 # ---------------------------------------------------------------------------
 # Interaction graph
 # ---------------------------------------------------------------------------
+
 
 class _Graph:
     """Interaction graph with a fixed edge->qubit indexing and incidence.
@@ -110,8 +111,8 @@ def _required_structure(one_body, two_body, tolerance):
         if abs(one_body[i, i]) > tolerance:
             number_modes.add(i)
         for j in range(n):
-            if i < j and (abs(one_body[i, j]) > tolerance or
-                          abs(one_body[j, i]) > tolerance):
+            if i < j and (abs(one_body[i, j]) > tolerance
+                          or abs(one_body[j, i]) > tolerance):
                 edges.add((i, j))
 
     if two_body is not None and two_body.size:
@@ -203,8 +204,8 @@ def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
     components = _connected_components(active, edges)
     isolated = sorted(m for m in active if all(m not in e for e in edges))
     if len(components) > 1 or isolated:
-        detail = (f"isolated modes {isolated}" if isolated else
-                  "multiple disconnected components")
+        detail = (f"isolated modes {isolated}"
+                  if isolated else "multiple disconnected components")
         raise ValueError(
             "bravyi_kitaev_superfast requires a connected interaction "
             f"graph, but the Hamiltonian's graph has {detail}. BKSF fixes "
@@ -231,12 +232,15 @@ def _warn_if_dense(graph):
             f"({edges} edges over {k} modes, average degree > k/2); "
             "BKSF uses more qubits than modes with no locality advantage "
             "here -- jordan_wigner / bravyi_kitaev are cheaper for dense "
-            "Hamiltonians.", UserWarning, stacklevel=3)
+            "Hamiltonians.",
+            UserWarning,
+            stacklevel=3)
 
 
 # ---------------------------------------------------------------------------
 # Edge / vertex operators
 # ---------------------------------------------------------------------------
+
 
 def _b_word(graph, i):
     """Vertex operator B_i = product of Z over edges incident to i."""
@@ -257,6 +261,7 @@ def _a_word(graph, i, j):
 # ---------------------------------------------------------------------------
 # Loop (cycle) stabilizers -- they fix the BKSF code subspace
 # ---------------------------------------------------------------------------
+
 
 def _spanning_forest(graph):
     """Union-find spanning tree; returns the tree edge set and the list of
@@ -324,7 +329,7 @@ def _stabilizer_words(graph):
         word = (0, 0)
         for a, b in zip(cycle, cycle[1:]):
             _, word = _wmul(word, _a_word(graph, a, b))
-        stabilizers.append(((-1.0) ** backward, word))
+        stabilizers.append(((-1.0)**backward, word))
     return stabilizers
 
 
@@ -348,10 +353,10 @@ def _stabilizer_words(graph):
 # Every bilinear that arises has both modes coupled by the originating term,
 # hence an edge (see _build_graph), so no path routing is needed.
 
+
 def _ladder_majorana(mode, dagger):
     """a_i / a^dag_i as [(coeff, majorana_index), ...]."""
-    return [(0.5, 2 * mode),
-            (-0.5j if dagger else 0.5j, 2 * mode + 1)]
+    return [(0.5, 2 * mode), (-0.5j if dagger else 0.5j, 2 * mode + 1)]
 
 
 def _normal_order(sequence):
@@ -364,7 +369,7 @@ def _normal_order(sequence):
             sign = -sign
             pos -= 1
         if pos >= 0 and reduced[pos] == mu:
-            del reduced[pos]                   # gamma_mu^2 = I
+            del reduced[pos]  # gamma_mu^2 = I
         else:
             reduced.insert(pos + 1, mu)
     return sign, tuple(reduced)
@@ -383,16 +388,18 @@ def _majorana_terms(one_body, two_body, tolerance):
                 coeff *= factor_coeff
                 indices.append(index)
             sign, monomial = _normal_order(indices)
-            accumulator[monomial] = accumulator.get(monomial, 0j) + coeff * sign
+            accumulator[monomial] = accumulator.get(monomial,
+                                                    0j) + coeff * sign
 
     n = one_body.shape[0]
     for i, j in np.argwhere(np.abs(one_body) > tolerance):
         expand(complex(one_body[i, j]), [(int(i), True), (int(j), False)])
     if two_body is not None and two_body.size:
         for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
-            expand(complex(two_body[i, j, k, l]),
-                   [(int(i), True), (int(j), True),
-                    (int(k), False), (int(l), False)])
+            expand(complex(two_body[i, j, k, l]), [(int(i), True),
+                                                   (int(j), True),
+                                                   (int(k), False),
+                                                   (int(l), False)])
     return {m: c for m, c in accumulator.items() if abs(c) > tolerance}
 
 
@@ -401,20 +408,21 @@ def _bilinear_word(mu, nu, graph):
     # The four branches are the dictionary in the module docstring; a mode's
     # secondary Majorana gamma_{2a+1} = i gamma_{2a} B_a introduces a B factor.
     a, b = mu // 2, nu // 2
-    if a == b:                                 # gamma_{2a} gamma_{2a+1} =  i B_a
+    if a == b:  # gamma_{2a} gamma_{2a+1} =  i B_a
         return 1j, _b_word(graph, a)
-    A = _a_word(graph, a, b)                    # a < b since mu < nu
+    A = _a_word(graph, a, b)  # a < b since mu < nu
     mu_primary, nu_primary = (mu % 2 == 0), (nu % 2 == 0)
-    if mu_primary and nu_primary:              # gamma_{2a} gamma_{2b}   =  i A_ab
+    if mu_primary and nu_primary:  # gamma_{2a} gamma_{2b}   =  i A_ab
         return 1j, A
-    if mu_primary and not nu_primary:          # gamma_{2a} gamma_{2b+1} = -A_ab B_b
+    if mu_primary and not nu_primary:  # gamma_{2a} gamma_{2b+1} = -A_ab B_b
         phase, word = _wmul(A, _b_word(graph, b))
         return -phase, word
-    if not mu_primary and nu_primary:          # gamma_{2a+1} gamma_{2b} = -A_ab B_a
+    if not mu_primary and nu_primary:  # gamma_{2a+1} gamma_{2b} = -A_ab B_a
         phase, word = _wmul(A, _b_word(graph, a))
         return -phase, word
-    phase, word = _wmul(A, _b_word(graph, a))   # gamma_{2a+1} gamma_{2b+1}
-    phase2, word = _wmul(word, _b_word(graph, b))  #             = -i A_ab B_a B_b
+    phase, word = _wmul(A, _b_word(graph, a))  # gamma_{2a+1} gamma_{2b+1}
+    phase2, word = _wmul(word, _b_word(graph,
+                                       b))  #             = -i A_ab B_a B_b
     return -1j * phase * phase2, word
 
 
@@ -441,6 +449,7 @@ def _compile(graph, one_body, two_body, scalar_offset, tolerance):
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def bravyi_kitaev_superfast(one_body_or_two_body,
                             two_body=None,
@@ -510,5 +519,7 @@ def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
     graph = _build_graph(one_body, two_body_arr, tolerance, interaction_graph)
-    return [_to_spin_operator({word: coeff}, tolerance)
-            for coeff, word in _stabilizer_words(graph)]
+    return [
+        _to_spin_operator({word: coeff}, tolerance)
+        for coeff, word in _stabilizer_words(graph)
+    ]
