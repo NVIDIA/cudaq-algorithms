@@ -1,0 +1,634 @@
+{
+  "schema_version": 1,
+  "behavioral_eval_suites": [
+    "evals/evals.json"
+  ],
+  "features": [
+    {
+      "id": "state-preparation-givens-schedule",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-givens-schedule.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_givens_rotation_schedule"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ]
+    },
+    {
+      "id": "state-preparation-slater-determinant-kernel",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-slater-determinant-kernel.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.slater_determinant_kernel"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ]
+    },
+    {
+      "id": "state-preparation-hf-ucc",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-hf-ucc.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.hartree_fock_ucc_kernel"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection",
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-uccsd-open-shell-parity",
+        "state-preparation-width-mismatch-unknown"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-hartree-fock",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-hartree-fock.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.hartree_fock"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-hartree-fock-occupation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-hartree-fock-occupation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.hartree_fock_occupation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-single-excitation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-single-excitation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.single_excitation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-double-excitation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-double-excitation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.double_excitation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-reference-excitation-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-uccsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-uccsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.uccsd"
+      ],
+      "behavioral_evals": [
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-uccsd-open-shell-parity"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-uccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-uccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.uccgsd"
+      ],
+      "behavioral_evals": [
+        "state-preparation-grouped-ucc-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-upccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-upccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.upccgsd"
+      ],
+      "behavioral_evals": [
+        "state-preparation-grouped-ucc-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-ceo",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-ceo.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.ceo"
+      ],
+      "behavioral_evals": [
+        "state-preparation-grouped-ucc-device-boundary",
+        "operator-pool-ceo-units"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-fixed-parameter-ucc",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-fixed-parameter-ucc.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.fixed_parameter_ucc"
+      ],
+      "behavioral_evals": [
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-grouped-ucc-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-givens-rotation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-givens-rotation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.givens_rotation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-phase-givens-rotation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-phase-givens-rotation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.phase_givens_rotation"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-slater-determinant",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-slater-determinant.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.slater_determinant"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ]
+    },
+    {
+      "id": "state-preparation-kernel-complex-slater-determinant",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-kernel-complex-slater-determinant.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.complex_slater_determinant"
+      ],
+      "behavioral_evals": [
+        "state-preparation-givens-device-boundary"
+      ]
+    },
+    {
+      "id": "operator-pool-uccsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-uccsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_uccsd_operator_pool"
+      ],
+      "behavioral_evals": [
+        "state-preparation-ucc-parameterization-boundary",
+        "state-preparation-uccsd-open-shell-parity",
+        "operator-pool-selection-boundary"
+      ]
+    },
+    {
+      "id": "operator-pool-uccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-uccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_uccgsd_operator_pool"
+      ],
+      "behavioral_evals": [
+        "operator-pool-selection-boundary"
+      ]
+    },
+    {
+      "id": "operator-pool-upccgsd",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-upccgsd.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_upccgsd_operator_pool"
+      ],
+      "behavioral_evals": [
+        "operator-pool-selection-boundary"
+      ]
+    },
+    {
+      "id": "operator-pool-ceo",
+      "family": "state-preparation",
+      "record": "references/state-preparation/operator-pool-ceo.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.make_ceo_operator_pool"
+      ],
+      "behavioral_evals": [
+        "operator-pool-ceo-units"
+      ]
+    },
+    {
+      "id": "state-preparation-resources-givens",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-givens.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_givens_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ]
+    },
+    {
+      "id": "state-preparation-resources-hartree-fock",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-hartree-fock.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_hartree_fock_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ]
+    },
+    {
+      "id": "state-preparation-resources-hartree-fock-occupation",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-hartree-fock-occupation.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_hartree_fock_occupation_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection"
+      ]
+    },
+    {
+      "id": "state-preparation-resources-fixed-parameter-ucc",
+      "family": "state-preparation",
+      "record": "references/state-preparation/state-preparation-resources-fixed-parameter-ucc.md",
+      "symbols": [
+        "cudaq_algorithms.stateprep.estimate_fixed_parameter_ucc_resources"
+      ],
+      "behavioral_evals": [
+        "state-preparation-provider-selection",
+        "state-preparation-ucc-parameterization-boundary"
+      ]
+    },
+    {
+      "id": "pauli-lcu",
+      "family": "block-encoding",
+      "record": "references/block-encoding/pauli-lcu.md",
+      "symbols": [
+        "cudaq_algorithms.PauliLCU"
+      ],
+      "behavioral_evals": [
+        "block-encoding-capability-boundary"
+      ]
+    },
+    {
+      "id": "qubitization-walk",
+      "family": "qubitization",
+      "record": "references/qubitization/qubitization-walk.md",
+      "symbols": [
+        "cudaq_algorithms.Walk.kernel"
+      ],
+      "behavioral_evals": [
+        "qubitization-walk-moment-boundary"
+      ]
+    },
+    {
+      "id": "qubitization-moments",
+      "family": "qubitization",
+      "record": "references/qubitization/qubitization-moments.md",
+      "symbols": [
+        "cudaq_algorithms.Walk.moment",
+        "cudaq_algorithms.Walk.moments"
+      ],
+      "behavioral_evals": [
+        "state-preparation-injection-composition",
+        "qubitization-walk-moment-boundary",
+        "repository-implementation-third-moment"
+      ]
+    },
+    {
+      "id": "qsvt-sequence",
+      "family": "qsvt",
+      "record": "references/qsvt/qsvt-sequence.md",
+      "symbols": [
+        "cudaq_algorithms.PhaseSequence",
+        "cudaq_algorithms.QSVT.kernel",
+        "cudaq_algorithms.QSVT.controlled_kernel"
+      ],
+      "behavioral_evals": [
+        "qsvt-phase-and-recovery-boundary"
+      ]
+    },
+    {
+      "id": "qsvt-recovery",
+      "family": "qsvt",
+      "record": "references/qsvt/qsvt-recovery.md",
+      "symbols": [
+        "cudaq_algorithms.recover_real_time_evolution"
+      ],
+      "behavioral_evals": [
+        "qsvt-phase-and-recovery-boundary",
+        "qsvt-paraphrase-convention"
+      ]
+    },
+    {
+      "id": "trotter-planning",
+      "family": "trotter",
+      "record": "references/trotter/trotter-planning.md",
+      "symbols": [
+        "cudaq_algorithms.trotter.make_trotter_terms",
+        "cudaq_algorithms.TrotterOrdering"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ]
+    },
+    {
+      "id": "trotter-kernel-factory",
+      "family": "trotter",
+      "record": "references/trotter/trotter-kernel-factory.md",
+      "symbols": [
+        "cudaq_algorithms.Trotter.kernel",
+        "cudaq_algorithms.trotter.Trotter.kernel"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ]
+    },
+    {
+      "id": "trotter-state-kernel-factory",
+      "family": "trotter",
+      "record": "references/trotter/trotter-state-kernel-factory.md",
+      "symbols": [
+        "cudaq_algorithms.Trotter.state_kernel",
+        "cudaq_algorithms.trotter.Trotter.state_kernel"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ]
+    },
+    {
+      "id": "trotter-apply-kernel",
+      "family": "trotter",
+      "record": "references/trotter/trotter-apply-kernel.md",
+      "symbols": [
+        "cudaq_algorithms.trotter.apply_trotter"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ]
+    },
+    {
+      "id": "trotter-resources-planned",
+      "family": "trotter",
+      "record": "references/trotter/trotter-resources-planned.md",
+      "symbols": [
+        "cudaq_algorithms.Trotter.resources",
+        "cudaq_algorithms.trotter.Trotter.resources"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ]
+    },
+    {
+      "id": "trotter-resources-raw",
+      "family": "trotter",
+      "record": "references/trotter/trotter-resources-raw.md",
+      "symbols": [
+        "cudaq_algorithms.trotter.estimate_trotter_resources"
+      ],
+      "behavioral_evals": [
+        "trotter-evolution-resource-boundary"
+      ]
+    },
+    {
+      "id": "jordan-wigner",
+      "family": "fermion-transforms",
+      "record": "references/fermion-transforms/jordan-wigner.md",
+      "symbols": [
+        "cudaq_algorithms.fermion.jordan_wigner"
+      ],
+      "behavioral_evals": [
+        "fermion-transform-selection-boundary",
+        "chemistry-end-to-end-composition"
+      ]
+    },
+    {
+      "id": "bravyi-kitaev",
+      "family": "fermion-transforms",
+      "record": "references/fermion-transforms/bravyi-kitaev.md",
+      "symbols": [
+        "cudaq_algorithms.fermion.bravyi_kitaev"
+      ],
+      "behavioral_evals": [
+        "fermion-transform-selection-boundary"
+      ]
+    },
+    {
+      "id": "chemistry-from-fcidump",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-from-fcidump.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.from_fcidump"
+      ],
+      "behavioral_evals": [
+        "chemistry-end-to-end-composition"
+      ]
+    },
+    {
+      "id": "chemistry-from-pyscf",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-from-pyscf.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.from_pyscf"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary"
+      ]
+    },
+    {
+      "id": "chemistry-from-psi4",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-from-psi4.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.from_psi4"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary"
+      ]
+    },
+    {
+      "id": "chemistry-spin-orbital-tensors",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-spin-orbital-tensors.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.spin_orbital_tensors"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary",
+        "chemistry-end-to-end-composition"
+      ]
+    },
+    {
+      "id": "chemistry-qubit-hamiltonian",
+      "family": "chemistry",
+      "record": "references/chemistry/chemistry-qubit-hamiltonian.md",
+      "symbols": [
+        "cudaq_algorithms.chemistry.qubit_hamiltonian"
+      ],
+      "behavioral_evals": [
+        "chemistry-bridge-dependency-boundary"
+      ]
+    },
+    {
+      "id": "double-factorization-explicit",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-explicit.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.explicit_double_factorization"
+      ],
+      "behavioral_evals": [
+        "double-factorization-host-contracts"
+      ]
+    },
+    {
+      "id": "double-factorization-compressed",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-compressed.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.compressed_double_factorization"
+      ],
+      "behavioral_evals": [
+        "double-factorization-encoding-boundary",
+        "chemistry-end-to-end-composition"
+      ]
+    },
+    {
+      "id": "double-factorization-reconstruction",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-reconstruction.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.reconstruct_eri"
+      ],
+      "behavioral_evals": [
+        "double-factorization-encoding-boundary",
+        "chemistry-end-to-end-composition"
+      ]
+    },
+    {
+      "id": "double-factorization-error",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-error.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.factorization_error"
+      ],
+      "behavioral_evals": [
+        "double-factorization-encoding-boundary",
+        "chemistry-end-to-end-composition"
+      ]
+    },
+    {
+      "id": "double-factorization-modified-one-body",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-modified-one-body.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.modified_one_body_integrals"
+      ],
+      "behavioral_evals": [
+        "double-factorization-host-contracts"
+      ]
+    },
+    {
+      "id": "double-factorization-one-norm",
+      "family": "double-factorization",
+      "record": "references/double-factorization/double-factorization-one-norm.md",
+      "symbols": [
+        "cudaq_algorithms.double_factorization.double_factorization_one_norm"
+      ],
+      "behavioral_evals": [
+        "double-factorization-host-contracts"
+      ]
+    },
+    {
+      "id": "simulation-good-subspace",
+      "family": "simulation",
+      "record": "references/simulation/simulation-good-subspace.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.good_subspace"
+      ],
+      "behavioral_evals": [
+        "simulation-analysis-hardware-boundary",
+        "implicit-ftqc-application-advisory"
+      ]
+    },
+    {
+      "id": "simulation-action",
+      "family": "simulation",
+      "record": "references/simulation/simulation-action.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.action"
+      ],
+      "behavioral_evals": [
+        "block-encoding-capability-boundary",
+        "simulation-analysis-hardware-boundary"
+      ]
+    },
+    {
+      "id": "simulation-transform",
+      "family": "simulation",
+      "record": "references/simulation/simulation-transform.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.transform"
+      ],
+      "behavioral_evals": [
+        "qsvt-phase-and-recovery-boundary",
+        "simulation-analysis-hardware-boundary",
+        "qsvt-paraphrase-convention"
+      ]
+    },
+    {
+      "id": "simulation-evolve",
+      "family": "simulation",
+      "record": "references/simulation/simulation-evolve.md",
+      "symbols": [
+        "cudaq_algorithms.sim_utils.evolve"
+      ],
+      "behavioral_evals": [
+        "simulation-analysis-hardware-boundary"
+      ]
+    }
+  ],
+  "support_records": [
+    "references/application-composition.md",
+    "references/block-encoding/block-encoding.md",
+    "references/catalog.md",
+    "references/chemistry/chemistry-bridges.md",
+    "references/conventions.md",
+    "references/conventions/kernel-boundaries.md",
+    "references/conventions/numerical-comparison.md",
+    "references/conventions/ordering.md",
+    "references/conventions/resource-levels.md",
+    "references/conventions/spectral-processing.md",
+    "references/double-factorization/double-factorization.md",
+    "references/fermion-transforms/fermion-transforms.md",
+    "references/qsvt/qsvt.md",
+    "references/qubitization/qubitization.md",
+    "references/simulation/simulation-analysis.md",
+    "references/source-provenance.md",
+    "references/state-preparation/hf-ucc-validation.md",
+    "references/state-preparation/injection-contract.md",
+    "references/state-preparation/operator-pools.md",
+    "references/state-preparation/state-preparation.md",
+    "references/state-preparation/ucc-parameterization.md",
+    "references/trotter/trotter.md",
+    "references/validation.md",
+    "references/workflow.md"
+  ]
+}
