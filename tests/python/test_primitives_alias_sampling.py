@@ -18,10 +18,10 @@ full (index + garbage) register.
 
 The resource tests at the bottom hold the documented cost against the
 compiler: each PREPARE (and its adjoint) costs exactly
-``qrom.toffoli_count + 2 mu`` Toffolis plus ``num_index`` Fredkins
+``qrom.toffoli_count + 2 mu - 1`` Toffolis plus ``num_index`` Fredkins
 — the lookup at the QROM's *own reported* price (whatever variant
 ``"auto"`` minted) plus one CDKM register comparator
-(``cmp_ge_register``) on the ``mu``-bit operands at ``2 mu`` Toffolis.
+(``cmp_ge_register``) on the ``mu``-bit operands at ``2 mu - 1`` Toffolis.
 """
 
 import numpy as np
@@ -222,7 +222,7 @@ def test_alias_sampling_cost_is_qrom_price_plus_comparator(
     # The lookup cost is not re-derived here: it is asserted consistent
     # with the QROM's own reported count (whatever construction "auto"
     # priced in), on top of which sits exactly the one CDKM register
-    # comparator (cmp_ge_register) — 2 mu Toffolis on the mu-bit
+    # comparator (cmp_ge_register) — 2 mu - 1 Toffolis on the mu-bit
     # operands. The alias swap is num_index Fredkins (counted as cswap,
     # not ccx — ``count_controls`` is arity-aware; ``count("ccx")``
     # matches nothing).
@@ -231,7 +231,7 @@ def test_alias_sampling_cost_is_qrom_price_plus_comparator(
     # Not a tautology: qrom.toffoli_count is classical bookkeeping in
     # QROM, deliberately cross-pinned here against the compiled circuit.
     assert resources.count_controls("x", 2) == \
-        prep.qrom.toffoli_count + 2 * mu
+        prep.qrom.toffoli_count + 2 * mu - 1
     assert resources.count_controls("swap", 1) == prep.num_index
     # The mu reference Hadamards and the num_index bin Hadamards. (An
     # incidental property of the current QROM gate choices — the lookup
@@ -278,7 +278,7 @@ def test_alias_sampling_forced_select_swap_variant():
     for adjoint in (False, True):
         resources = _prepare_resources(prep, adjoint)
         assert resources.count_controls("x", 2) == \
-            prep.qrom.toffoli_count + 2 * prep.mu
+            prep.qrom.toffoli_count + 2 * prep.mu - 1
 
 
 def test_alias_sampling_passthrough_validation_propagates():

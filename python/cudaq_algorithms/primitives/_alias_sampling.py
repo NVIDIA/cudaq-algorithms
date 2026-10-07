@@ -68,9 +68,9 @@ contract stands) — consumers control SELECT, not PREPARE.
 
 Cost (pinned by ``tests/python/test_primitives_alias_sampling.py``
 against the compiler): each of ``kernel()`` / ``adjoint_kernel()`` costs
-exactly ``qrom.toffoli_count + 2 mu`` Toffolis — the lookup at the
+exactly ``qrom.toffoli_count + 2 mu - 1`` Toffolis — the lookup at the
 QROM's own reported price plus one CDKM register comparator on the
-``mu``-bit operands at ``2 mu`` — plus ``num_index`` controlled swaps
+``mu``-bit operands at ``2 mu - 1`` — plus ``num_index`` controlled swaps
 (Fredkins) for the alias swap.
 """
 
