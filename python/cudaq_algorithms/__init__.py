@@ -31,10 +31,11 @@ __version__ = _resolve_version()
 del _resolve_version
 
 from . import (block_encoding, chemistry, common_kernels, double_factorization,
-               fermion, pauli_lcu, qsvt, qubitization, sim_utils, stateprep,
-               trotter)
+               fermion, lcu, pauli_lcu, qsvt, qubitization, sim_utils,
+               stateprep, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
+from .lcu import LCUBlockEncoding
 from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
