@@ -6,12 +6,12 @@ on:
       version:
         type: string
         description: Version number to create wheels with.
-        default: 0.15.99
+        default: 0.16.99
         required: false
       cudaq_wheels:
         type: choice
         required: true
-        description: 'CUDA-Q wheel source: Custom = built from the pinned .cudaq_version commit (unreleased); PyPI = released cuda-quantum wheels from the public indices (resolves against released cuda-quantum >= 0.15.0).'
+        description: 'CUDA-Q wheel source: Custom = built from the pinned .cudaq_version commit (unreleased); PyPI = released cuda-quantum wheels from the public indices (resolves against released cuda-quantum >= 0.16.0).'
         default: 'Custom'
         options:
           - 'Custom'
@@ -35,7 +35,7 @@ on:
     inputs:
       version:
         type: string
-        default: 0.15.99
+        default: 0.16.99
         required: false
       cudaq_wheels:
         type: string
@@ -113,7 +113,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           bash scripts/ci/build_wheels.sh \
             --python-version ${{ matrix.python }} \
-            --version ${{ inputs.version || '0.15.99' }}
+            --version ${{ inputs.version || '0.16.99' }}
 
       - name: Upload CUDA-Q Algorithms wheels
         uses: actions/upload-artifact@v4
@@ -250,6 +250,6 @@ jobs:
             ${{ matrix.python }} \
             ${{ matrix.platform }} \
             ${{ matrix.cuda_version }} \
-            ${{ inputs.cudaq_wheels == 'Custom' && '0.15.99' || 'SKIP' }} \
-            ${{ inputs.version || '0.15.99' }} \
+            ${{ inputs.cudaq_wheels == 'Custom' && '0.16.99' || 'SKIP' }} \
+            ${{ inputs.version || '0.16.99' }} \
             ${{ matrix.device }}
