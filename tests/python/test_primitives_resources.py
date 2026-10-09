@@ -180,12 +180,12 @@ def test_qrom_select_swap_cost_matches_documented_formula():
 
 
 def test_qrom_auto_picks_the_cheaper_side_of_the_crossover():
-    # Above the crossover (large table, narrow output) select_swap must
-    # win and beat the plain walk...
+    # Above the crossover, blocked lookup beats the plain walk.
+    # At N=64 and b=1 the blocked variants tie; SELECT-COPY wins the tie.
     data = [int(v) % 2 for v in range(64)]
     auto = QROM(data, 6, 1)
     select = QROM(data, 6, 1, variant="select")
-    assert auto.variant == "select_swap"
+    assert auto.variant == "select_copy"
     assert auto.toffoli_count < select.toffoli_count
     # ...and below it (small table, wide output) the plain walk wins.
     data = [200, 3, 118, 25]

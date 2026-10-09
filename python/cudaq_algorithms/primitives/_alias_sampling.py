@@ -164,10 +164,16 @@ class AliasSamplingPrepare:
         size through ``qrom.num_ladder`` (see ``num_garbage``).
     block_size
         Keyword-only; forwarded verbatim to the :class:`QROM`
-        constructor (only meaningful with ``variant="select_swap"``;
+        constructor (for ``variant="select_swap"`` or ``"select_copy"``;
         ``None`` lets the QROM pick). Also shapes ``qrom.num_ladder``
         and hence ``num_garbage``. Invalid combinations raise the
         QROM's own ``ValueError``.
+    alpha
+        Optional SELECT-COPY packet count, forwarded to :class:`QROM`.
+    max_ancillas
+        Optional bound on the QROM's clean ladder and bank. This does
+        not bound the other alias-sampling garbage registers; use
+        ``num_garbage`` for their total size.
 
     Garbage caveat: the per-bin garbage vectors ``|g_k>`` are NOT
     mutually orthogonal, so the reduced state on the index register is
@@ -183,7 +189,9 @@ class AliasSamplingPrepare:
                  mu: int,
                  *,
                  variant: str = "auto",
-                 block_size: int | None = None) -> None:
+                 block_size: int | None = None,
+                 alpha: int | None = None,
+                 max_ancillas: int | None = None) -> None:
         values = [float(w) for w in weights]
         if len(values) == 0:
             raise ValueError("weights must be non-empty")
@@ -220,7 +228,7 @@ class AliasSamplingPrepare:
         #   bits [num_index, num_index+mu) = keep[k]  (the keep threshold)
         # so one lookup emits alias into garbage's alias register and keep
         # into its keep register (see the garbage-layout docstring).
-        # variant/block_size pass through verbatim (default "auto"
+        # QROM strategy options pass through verbatim (default "auto"
         # prices the constructions); the chosen variant's ladder width
         # shapes the garbage layout below. QROM validation errors
         # propagate as-is.
@@ -229,7 +237,9 @@ class AliasSamplingPrepare:
             address_bits=num_index,
             output_bits=num_index + mu,
             variant=variant,
-            block_size=block_size)
+            block_size=block_size,
+            alpha=alpha,
+            max_ancillas=max_ancillas)
         self._build_kernels()
 
     # ------------------------------------------------------------------

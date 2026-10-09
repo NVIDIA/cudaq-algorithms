@@ -5,7 +5,7 @@
 Correctness is pinned exhaustively: for random tables every address is
 read out via basis-state extraction (`cudaq.get_state`), including the
 out-of-range addresses of non-power-of-two tables (which must read
-zero), for both constructions. Both variants are exactly self-inverse —
+zero), for both constructions. Both variants are self-inverse on clean ancillas —
 that property is tested on superposed addresses instead of a duplicate
 adjoint kernel — and the SELECT-SWAP lookup is checked to be
 behaviorally identical to the plain unary-iteration lookup on the same
@@ -101,8 +101,7 @@ def test_qrom_select_swap_exhaustive_readout(address_bits, num_entries,
 @pytest.mark.parametrize("variant,block_size", [("select", None),
                                                 ("select_swap", 2)])
 def test_qrom_is_self_inverse(variant, block_size):
-    # X-only write phase: applying the lookup twice XORs the table twice
-    # (and the select_swap sandwich W S C S^-1 W squares to identity).
+    # From a clean ladder, applying the lookup twice XORs the table twice.
     # Run on all addresses at once (H on the address) with a non-zero
     # initial output word to pin |y XOR d XOR d> = |y>.
     data = [5, 3, 0, 6, 7]
@@ -174,25 +173,37 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
                                atol=1e-12)
 
 
-def test_qrom_auto_dispatch_picks_the_cheaper_variant():
+def test_qrom_auto_dispatch_picks_the_cheapest_variant():
     # Big table, narrow output: routing is cheap, the block walk is a
-    # fraction of the full walk -> select_swap wins.
+    # fraction of the full walk -> a blocked variant wins; at b = 1 and
+    # N = 64 select_copy and select_swap tie (both 28 at B = 8) and the
+    # tie-break prefers select_copy (no routing-CNOT storm).
     wide = QROM(list(range(2)) * 32, 6, 1)
-    assert wide.variant == "select_swap"
+    assert wide.variant == "select_copy"
     assert wide.block_size is not None
-    # Tiny table, wide output: every swapped register costs output_bits
-    # Toffolis per direction -> the plain walk wins.
+    # Tiny table, wide output: every routed bit costs Toffolis -> the
+    # plain walk wins.
     narrow = QROM([200, 3, 118, 25], 2, 8)
     assert narrow.variant == "select"
     assert narrow.block_size is None
+    # Multi-bit output: the copy's halved routing beats the swap network
+    # at every block size, so auto picks select_copy outright.
+    multi = QROM([int(v) % 4 for v in range(64)], 6, 2)
+    assert multi.variant == "select_copy"
+    # Single-bit output with a large optimal block: the coherent copy
+    # walk (3B/2 - 5) outgrows b (B - 1) at b = 1, B > 8 and select_swap
+    # is strictly cheapest again (see the module docstring).
+    single = QROM([int(v) % 2 for v in range(128)], 7, 1)
+    assert single.variant == "select_swap"
     # Whatever auto picks must be priced no worse than the alternatives.
-    for block_size in (2, 4, 8, 16, 32):
-        forced = QROM(list(range(2)) * 32,
-                      6,
-                      1,
-                      variant="select_swap",
-                      block_size=block_size)
-        assert wide.toffoli_count <= forced.toffoli_count
+    for variant in ("select_swap", "select_copy"):
+        for block_size in (2, 4, 8, 16, 32):
+            forced = QROM(list(range(2)) * 32,
+                          6,
+                          1,
+                          variant=variant,
+                          block_size=block_size)
+            assert wide.toffoli_count <= forced.toffoli_count
     assert wide.toffoli_count <= QROM(list(range(2)) * 32,
                                       6,
                                       1,

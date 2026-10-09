@@ -10,7 +10,11 @@ per-address body exactly when the address register equals ``k``.
 ``QROM`` builds coherent
 classical-table lookups on top of it, either as the plain
 unary-iteration SELECT or as the SELECT-SWAP / QROAM construction of
-Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`).
+Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`), or a clean,
+unitary SELECT-COPY with balanced bit packets inspired by Motlagh and
+Pocrnic (`arXiv:2605.20334`). ``max_ancillas`` constrains the complete
+clean workspace. ``QROMChain`` fuses adjacent unload/load pairs through
+XOR difference tables while preserving the public QROM kernel property.
 
 Everything here is strictly unitary: the papers' headline Toffoli counts
 assume measurement-based ancilla uncomputation, which this library does
@@ -51,11 +55,13 @@ from ._arithmetic import (add_constant, add_constant_qft, add_register,
                           subtract_constant, subtract_constant_qft,
                           subtract_register)
 from ._qrom import QROM
+from ._qrom_chain import QROMChain
 from ._unary_iteration import UnaryIterationKernels, unary_iteration_kernels
 
 __all__ = [
     "AliasSamplingPrepare",
     "QROM",
+    "QROMChain",
     "UnaryIterationKernels",
     "add_constant",
     "add_constant_qft",

@@ -23,6 +23,7 @@ kernels.
    guide/trotter
    guide/qubitization_qsvt
    guide/state_prep
+   guide/qrom
 
 .. toctree::
    :caption: Examples
