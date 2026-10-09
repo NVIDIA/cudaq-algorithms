@@ -21,7 +21,9 @@ from cudaq_algorithms.fermion import (jordan_wigner, bravyi_kitaev_superfast,
                                       bravyi_kitaev_superfast_stabilizers)
 from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
                                                  _anticommute, _build_graph,
-                                                 _stabilizer_words)
+                                                 _stabilizer_words,
+                                                 _encoding_backend, _word_mul,
+                                                 _error_correcting_local_modes)
 
 _PAULI = {
     "I": np.eye(2),
@@ -64,40 +66,51 @@ def _parity_sector_specs(h, V=None):
     return out
 
 
-def _codespace_spec(h, V=None, scalar_offset=0.0, interaction_graph=None):
-    """Spectrum of BKSF on the code subspace -- the *joint +1 eigenspace* of
-    the sign-fixed loop stabilizers (no sector search: the stabilizers are
-    sign-fixed so +1 is the physical sector).
+def _codespace_spec(h,
+                    V=None,
+                    scalar_offset=0.0,
+                    interaction_graph=None,
+                    local_modes="standard"):
+    """Spectrum of the Superfast encoding on the code subspace -- the *joint
+    +1 eigenspace* of the sign-fixed loop stabilizers (no sector search: the
+    stabilizers are sign-fixed so +1 is the physical sector).
 
-    Stabilizer matrices are built explicitly on ``nq`` qubits from their
-    (coeff, x, z) words -- cudaq's ``to_matrix()`` compacts unused qubit
-    indices, which would misalign the projection on graphs whose stabilizers
-    do not touch qubit 0 (e.g. dense graphs)."""
+    Stabilizer matrices are built explicitly on ``nq`` qubits from their raw
+    ``(coeff, (x, z))`` words (via the encoding backend) -- cudaq's
+    ``to_matrix()`` compacts unused qubit indices, which would misalign the
+    projection on graphs whose stabilizers do not touch qubit 0."""
     args = (h, ) if V is None else (h, V)
-    graph = _build_graph(
+    backend = _encoding_backend(
         np.asarray(h, dtype=complex),
         np.zeros((0, 0, 0, 0)) if V is None else np.asarray(V, dtype=complex),
-        1e-15, interaction_graph)
-    nq = graph.num_qubits
+        1e-15, interaction_graph, local_modes)
+    nq = backend.num_qubits
     dim = 1 << nq
     Hb = _dense(
         bravyi_kitaev_superfast(*args,
                                 scalar_offset=scalar_offset,
-                                interaction_graph=interaction_graph))
+                                interaction_graph=interaction_graph,
+                                local_modes=local_modes))
     if Hb.shape[0] < dim:  # op did not touch every qubit
         Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
     cols = np.eye(dim, dtype=complex)
-    for coeff, (x, z) in _stabilizer_words(graph):
+    for coeff, (x, z) in backend.stabilizers():
         S = cols.conj().T @ (coeff * _word_matrix(x, z, nq)) @ cols
         w, U = np.linalg.eigh(S)
         cols = cols @ U[:, np.abs(w - 1) < 1e-7]  # project onto the +1 sector
     return np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
 
 
-def _matches_jw_even(h, V=None, interaction_graph=None):
-    """Error between the BKSF code space and JW's even (code) parity sector."""
+def _matches_jw_even(h,
+                     V=None,
+                     interaction_graph=None,
+                     local_modes="standard"):
+    """Error between the Superfast code space and JW's even parity sector."""
     even = _parity_sector_specs(h, V)[+1]
-    spec = _codespace_spec(h, V, interaction_graph=interaction_graph)
+    spec = _codespace_spec(h,
+                           V,
+                           interaction_graph=interaction_graph,
+                           local_modes=local_modes)
     if len(spec) != len(even):
         return np.inf
     return float(np.max(np.abs(spec - even)))
@@ -305,10 +318,10 @@ def test_hubbard_dimer_ground_state():
 def test_stabilizers_count_and_properties():
     n, edges = _GRAPHS["2x2-lattice"]
     h, _ = _random_tight_binding(0, n, edges)
-    stabs = bravyi_kitaev_superfast_stabilizers(h)
+    stabs = bravyi_kitaev_superfast_stabilizers(h, local_modes="standard")
     # |E| - (N - 1) independent cycles for a connected graph
     assert len(stabs) == len(edges) - (n - 1)
-    Hb = _dense(bravyi_kitaev_superfast(h))
+    Hb = _dense(bravyi_kitaev_superfast(h, local_modes="standard"))
     dim = Hb.shape[0]
     for s in stabs:
         S = _dense(s)
@@ -321,7 +334,7 @@ def test_stabilizers_count_and_properties():
 def test_tree_has_no_stabilizers():
     n, edges = _GRAPHS["path-4"]
     h, _ = _random_tight_binding(0, n, edges)
-    assert bravyi_kitaev_superfast_stabilizers(h) == []
+    assert bravyi_kitaev_superfast_stabilizers(h, local_modes="standard") == []
 
 
 @pytest.mark.parametrize("name", ["ring-4", "ring-5", "2x2-lattice"])
@@ -331,10 +344,10 @@ def test_code_space_is_the_joint_plus_one_eigenspace(name):
     search needed."""
     n, edges = _GRAPHS[name]
     h, V = _random_tight_binding(5, n, edges, coulomb=True)
-    Hb = _dense(bravyi_kitaev_superfast(h, V))
+    Hb = _dense(bravyi_kitaev_superfast(h, V, local_modes="standard"))
     dim = Hb.shape[0]
     cols = np.eye(dim, dtype=complex)
-    for s in bravyi_kitaev_superfast_stabilizers(h, V):
+    for s in bravyi_kitaev_superfast_stabilizers(h, V, local_modes="standard"):
         S = _dense(s)
         S = np.kron(np.eye(dim // S.shape[0]), S) if S.shape[0] < dim else S
         w, U = np.linalg.eigh(S)
@@ -359,7 +372,8 @@ def test_bounded_weight_beats_jordan_wigner():
     for (i, j) in edges:
         h[i, j] = h[j, i] = 1.0
     assert _max_pauli_weight(jordan_wigner(h)) >= n - 1  # long Z-string
-    assert _max_pauli_weight(bravyi_kitaev_superfast(h)) <= 3
+    assert _max_pauli_weight(bravyi_kitaev_superfast(
+        h, local_modes="standard")) <= 3
 
 
 # ----------------------------------------------------------------------
@@ -370,7 +384,8 @@ def test_bounded_weight_beats_jordan_wigner():
 def test_qubit_count_is_edge_count():
     n, edges = _GRAPHS["ring-4"]
     h, _ = _random_tight_binding(0, n, edges)
-    assert bravyi_kitaev_superfast(h).qubit_count == len(edges)
+    assert bravyi_kitaev_superfast(
+        h, local_modes="standard").qubit_count == len(edges)
 
 
 def test_interaction_graph_superset_override():
@@ -379,15 +394,21 @@ def test_interaction_graph_superset_override():
     n, edges = _GRAPHS["path-4"]
     h, _ = _random_tight_binding(1, n, edges)
     extra = edges + [(0, 3)]  # add a chord -> +1 qubit, +1 loop
-    op = bravyi_kitaev_superfast(h, interaction_graph=extra)
+    op = bravyi_kitaev_superfast(h,
+                                 interaction_graph=extra,
+                                 local_modes="standard")
     assert op.qubit_count == len(extra)
-    assert len(bravyi_kitaev_superfast_stabilizers(
-        h, interaction_graph=extra)) == 1
+    assert len(
+        bravyi_kitaev_superfast_stabilizers(h,
+                                            interaction_graph=extra,
+                                            local_modes="standard")) == 1
     # spectrum on the (now cyclic) code space still matches JW's even sector
     Hb = _dense(op)
     dim = Hb.shape[0]
     cols = np.eye(dim, dtype=complex)
-    for s in bravyi_kitaev_superfast_stabilizers(h, interaction_graph=extra):
+    for s in bravyi_kitaev_superfast_stabilizers(h,
+                                                 interaction_graph=extra,
+                                                 local_modes="standard"):
         S = _dense(s)
         S = np.kron(np.eye(dim // S.shape[0]), S) if S.shape[0] < dim else S
         w, U = np.linalg.eigh(S)
@@ -492,15 +513,18 @@ def test_interaction_graph_self_loop_rejected():
 
 def test_scalar_offset_is_identity_term():
     h, _ = _random_tight_binding(0, *_GRAPHS["path-4"])
-    base = bravyi_kitaev_superfast(h)
-    shifted = bravyi_kitaev_superfast(h, scalar_offset=2.5)
+    base = bravyi_kitaev_superfast(h, local_modes="standard")
+    shifted = bravyi_kitaev_superfast(h,
+                                      scalar_offset=2.5,
+                                      local_modes="standard")
     diff = _dense(shifted) - _dense(base)
     assert np.allclose(diff, 2.5 * np.eye(diff.shape[0]), atol=1e-12)
 
 
 def test_returns_spin_operator():
     h, _ = _random_tight_binding(0, *_GRAPHS["path-4"])
-    assert isinstance(bravyi_kitaev_superfast(h), cudaq.SpinOperator)
+    assert isinstance(bravyi_kitaev_superfast(h, local_modes="standard"),
+                      cudaq.SpinOperator)
 
 
 # ----------------------------------------------------------------------
@@ -566,4 +590,275 @@ def test_dense_graph_warns():
     V = 0.3 * rng.normal(size=(m, ) * 4)
     V = 0.5 * (V + V.transpose(3, 2, 1, 0))  # real symmetric-ish, dense
     with pytest.warns(UserWarning, match="dense interaction graph"):
-        bravyi_kitaev_superfast(h, V)
+        bravyi_kitaev_superfast(h, V, local_modes="standard")
+
+
+# ======================================================================
+# Generalized Superfast Encodings (the local_modes parameter)
+# ======================================================================
+
+import math  # noqa: E402
+
+_EVEN_GRAPHS = {k: _GRAPHS[k] for k in ("ring-4", "ring-5", "2x2-lattice")}
+
+
+def test_default_local_modes_is_binary_tree():
+    n, edges = _GRAPHS["ring-4"]
+    h, _ = _random_tight_binding(1, n, edges)
+    default = _dense(bravyi_kitaev_superfast(h))
+    binary = _dense(bravyi_kitaev_superfast(h, local_modes="binary_tree"))
+    assert np.allclose(default, binary)
+
+
+def test_unknown_local_modes_raises():
+    n, edges = _GRAPHS["ring-4"]
+    h, _ = _random_tight_binding(0, n, edges)
+    with pytest.raises(ValueError, match="unknown local_modes"):
+        bravyi_kitaev_superfast(h, local_modes="bogus")
+
+
+# --- binary_tree: O(log d) weight generalized encoding -------------------
+
+
+@pytest.mark.parametrize("name", list(_EVEN_GRAPHS))
+@pytest.mark.parametrize("seed", [1, 7])
+def test_binary_tree_spectrum_matches_jordan_wigner(name, seed):
+    n, edges = _EVEN_GRAPHS[name]
+    h, _ = _random_tight_binding(seed, n, edges)
+    assert _matches_jw_even(h, local_modes="binary_tree") < 1e-10
+
+
+@pytest.mark.parametrize("name", list(_EVEN_GRAPHS))
+def test_binary_tree_density_density_matches_jordan_wigner(name):
+    n, edges = _EVEN_GRAPHS[name]
+    h, V = _random_tight_binding(3, n, edges, coulomb=True)
+    assert _matches_jw_even(h, V, local_modes="binary_tree") < 1e-10
+
+
+def test_binary_tree_complex_hopping_matches_jordan_wigner():
+    n, edges = _GRAPHS["ring-5"]
+    rng = np.random.default_rng(2)
+    h = np.zeros((n, n), dtype=complex)
+    for i in range(n):
+        h[i, i] = rng.normal()
+    for (i, j) in edges:
+        z = rng.normal() + 1j * rng.normal()
+        h[i, j] = z
+        h[j, i] = np.conj(z)
+    assert _matches_jw_even(h, local_modes="binary_tree") < 1e-10
+
+
+_MULTICYCLE_EVEN = {
+    "ring-6": (6, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (0, 5)]),
+    # two 4-cycles sharing vertex 0 -> two independent fundamental cycles
+    "two-squares": (7, [(0, 1), (1, 2), (2, 3), (0, 3), (0, 4), (4, 5), (5, 6),
+                        (0, 6)]),
+    # friendship graph F3: three triangles sharing vertex 0 -> three
+    # independent fundamental cycles (and all odd length), every vertex even
+    # degree (center 6, leaves 2), so no padding.
+    "friendship-3": (7, [(0, 1), (1, 2), (0, 2), (0, 3), (3, 4), (0, 4),
+                         (0, 5), (5, 6), (0, 6)]),
+}
+
+
+@pytest.mark.parametrize("name", list(_MULTICYCLE_EVEN))
+@pytest.mark.parametrize("seed", [1, 4])
+def test_binary_tree_orientation_general_on_multicycle_graphs(name, seed):
+    """The suitable-orientation fix generalizes beyond the small graphs: a
+    6-ring, two 4-cycles sharing a vertex (two independent fundamental cycles),
+    and the F3 friendship graph (three independent odd cycles), with complex
+    (Peierls) hopping, all match JW's even sector. The per-chord independence
+    of the orientation fix makes it general; these pin it across cycle counts."""
+    n, edges = _MULTICYCLE_EVEN[name]
+    rng = np.random.default_rng(seed)
+    h = np.zeros((n, n), dtype=complex)
+    for i in range(n):
+        h[i, i] = rng.normal()
+    for (i, j) in edges:
+        z = rng.normal() + 1j * rng.normal()
+        h[i, j] = z
+        h[j, i] = np.conj(z)
+    assert _matches_jw_even(h, local_modes="binary_tree") < 1e-10
+
+
+def test_binary_tree_hubbard_dimer_ground_state():
+    t, U = 1.3, 4.0
+    h = np.zeros((4, 4))
+    for a, b in [(0, 2), (1, 3)]:
+        h[a, b] = h[b, a] = -t
+    V = np.zeros((4, 4, 4, 4))
+    for (p, q) in [(0, 1), (2, 3)]:
+        V[p, q, q, p] += U
+    e0 = 0.5 * (U - np.sqrt(U**2 + 16 * t**2))
+    ground = float(_codespace_spec(h, V, local_modes="binary_tree")[0])
+    assert abs(ground - e0) < 1e-10
+
+
+def test_binary_tree_pads_odd_degree_graph():
+    """A graph with odd-degree vertices (a path) is padded with dummy
+    zero-coefficient edges to even degree -- adding qubits and a cycle -- and
+    the spectrum still matches JW's even sector."""
+    n, edges = _GRAPHS["path-4"]
+    h, _ = _random_tight_binding(7, n, edges)
+    # standard: a tree -> no stabilizers, qubits = |E| = 3.
+    assert bravyi_kitaev_superfast(h, local_modes="standard").qubit_count == 3
+    # binary_tree pads to even degree -> a cycle -> a stabilizer appears.
+    assert len(
+        bravyi_kitaev_superfast_stabilizers(h, local_modes="binary_tree")) >= 1
+    assert _matches_jw_even(h, local_modes="binary_tree") < 1e-10
+
+
+def test_binary_tree_weight_is_logarithmic_in_degree():
+    """On a degree-6 vertex the binary-tree Pauli weight is O(log d) -- below
+    the O(d) weight of the edge encoding."""
+    import warnings
+    size = 7
+    complete = [(i, j) for i in range(size) for j in range(i + 1, size)]
+    h = np.zeros((size, size))
+    for (i, j) in complete:
+        h[i, j] = h[j, i] = 1.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tree = _max_pauli_weight(
+            bravyi_kitaev_superfast(h,
+                                    interaction_graph=complete,
+                                    local_modes="binary_tree"))
+        edge = _max_pauli_weight(
+            bravyi_kitaev_superfast(h,
+                                    interaction_graph=complete,
+                                    local_modes="standard"))
+    assert tree <= 2 * math.ceil(math.log2(6))  # 2 ceil(log2 d), d = 6
+    assert tree < edge
+
+
+# --- custom local Majorana modes -----------------------------------------
+
+
+def test_custom_local_modes_spectrum_matches_jordan_wigner():
+    """A caller-supplied provider (X / Z Majoranas on a degree-2 vertex) also
+    reproduces JW's even sector."""
+
+    def provider(degree):
+        assert degree == 2
+        return ["X", "Z"]  # two anticommuting Hermitian Majoranas on one qubit
+
+    n, edges = _GRAPHS["ring-4"]
+    h, _ = _random_tight_binding(5, n, edges)
+    assert _matches_jw_even(h, local_modes=provider) < 1e-10
+
+
+def test_custom_local_modes_validation():
+    n, edges = _GRAPHS["ring-4"]
+    h, _ = _random_tight_binding(0, n, edges)
+    with pytest.raises(ValueError, match="expected 2 local"):
+        bravyi_kitaev_superfast(h, local_modes=lambda d: ["X"])
+    with pytest.raises(ValueError, match="anticommute"):
+        bravyi_kitaev_superfast(h, local_modes=lambda d: ["X", "X"])
+    with pytest.raises(ValueError, match="anticommute"):
+        bravyi_kitaev_superfast(h, local_modes=lambda d: ["X", "I"])
+
+
+# --- error_correcting generalized encoding -------------------------------
+
+
+def _weight(coeff_word):
+    x, z = coeff_word[1]
+    return bin(x | z).count("1")
+
+
+def test_error_correcting_degree6_modes_match_paper():
+    modes = _error_correcting_local_modes(6)
+
+    def to_str(cw):
+        x, z = cw[1]
+        s = ""
+        for q in range(3):
+            b = 1 << q
+            s += ("Y" if (x & b and z & b) else "X" if x & b else "Z" if z
+                  & b else "I")
+        return s
+
+    assert [to_str(m)
+            for m in modes] == ["ZXI", "ZYI", "IZX", "IZY", "XIZ", "YIZ"]
+
+
+def _k7_error_correcting_backend():
+    size = 7
+    complete = [(i, j) for i in range(size) for j in range(i + 1, size)]
+    one_body = np.zeros((size, size), dtype=complex)
+    backend = _encoding_backend(one_body, np.zeros((0, 0, 0, 0)), 1e-15,
+                                complete, "error_correcting")
+    return size, complete, backend
+
+
+def test_error_correcting_algebra_on_degree6():
+    """A/B operators of the error-correcting GSE satisfy the superfast algebra
+    (Eqs 6-10) on a degree-6 (complete, 7-vertex) graph."""
+    size, complete, backend = _k7_error_correcting_backend()
+    B = [backend.b_word(i) for i in range(size)]
+    A = {(i, j): backend.a_word(i, j) for (i, j) in complete}
+    for (i, j), a in A.items():
+        assert _anticommute(a[1], B[i][1]) and _anticommute(a[1], B[j][1])
+        for k in range(size):
+            if k not in (i, j):
+                assert not _anticommute(a[1], B[k][1])
+    es = list(A)
+    for u in range(len(es)):
+        for v in range(u + 1, len(es)):
+            shared = len(set(es[u]) & set(es[v]))
+            assert _anticommute(A[es[u]][1], A[es[v]][1]) == (shared == 1)
+
+
+def test_error_correcting_corrects_single_qubit_errors():
+    """The Theorem 1 / Eq 22 weight conditions hold -- which guarantee every
+    nontrivial logical operator has weight >= 3 (single-qubit error
+    correction)."""
+    size, _, backend = _k7_error_correcting_backend()
+    for i in range(size):
+        b_word = backend.b_word(i)
+        modes = backend._modes[i]
+        assert _weight(b_word) >= 3
+        for p in range(6):
+            assert _weight((1.0, modes[p][1])) >= 2
+            b_gamma = _word_mul(b_word[0], b_word[1], modes[p][0], modes[p][1])
+            assert _weight(b_gamma) >= 2
+            for q in range(p + 1, 6):
+                b_gamma_gamma = _word_mul(b_gamma[0], b_gamma[1], modes[q][0],
+                                          modes[q][1])
+                assert _weight(b_gamma_gamma) >= 2
+
+
+def test_error_correcting_weight_bounds_and_compiles():
+    """Degree-6 error-correcting weights (B = 3, A = 4, the paper's Hubbard
+    numbers); the Hamiltonian compiles to bounded-weight Paulis."""
+    import warnings
+    size, complete, backend = _k7_error_correcting_backend()
+    assert all(_weight(backend.b_word(i)) == 3 for i in range(size))
+    assert all(_weight(backend.a_word(i, j)) == 4 for (i, j) in complete)
+    h = np.zeros((size, size))
+    for (i, j) in complete:
+        h[i, j] = h[j, i] = 1.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        op = bravyi_kitaev_superfast(h,
+                                     interaction_graph=complete,
+                                     local_modes="error_correcting")
+    assert _max_pauli_weight(op) <= 8
+
+
+def test_error_correcting_graph_validation():
+    """error_correcting requires even degree >= 6 (a low-degree graph fails)."""
+    n, edges = _GRAPHS["ring-4"]
+    h, _ = _random_tight_binding(0, n, edges)
+    with pytest.raises(ValueError, match="degree"):
+        bravyi_kitaev_superfast(h, local_modes="error_correcting")
+
+
+def test_three_connected_helper():
+    from cudaq_algorithms.fermion._superfast import _is_three_connected
+    k4 = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+    assert _is_three_connected(4, k4)
+    assert not _is_three_connected(4, [(0, 1), (1, 2), (2, 3)])  # a path
+    # two triangles sharing a cut vertex (2) -> not even 2-connected
+    assert not _is_three_connected(5, [(0, 1), (1, 2), (0, 2), (2, 3), (3, 4),
+                                       (2, 4)])
