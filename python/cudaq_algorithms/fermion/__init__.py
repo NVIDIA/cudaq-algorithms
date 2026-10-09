@@ -3,5 +3,12 @@
 """Fermion-to-qubit transforms (pure Python, no compiled extension)."""
 
 from ._compilers import bravyi_kitaev, jordan_wigner
+from ._superfast import (bravyi_kitaev_superfast,
+                         bravyi_kitaev_superfast_stabilizers)
 
-__all__ = ["jordan_wigner", "bravyi_kitaev"]
+__all__ = [
+    "jordan_wigner",
+    "bravyi_kitaev",
+    "bravyi_kitaev_superfast",
+    "bravyi_kitaev_superfast_stabilizers",
+]
