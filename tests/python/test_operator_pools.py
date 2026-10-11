@@ -289,3 +289,30 @@ def test_uccsd_spin_two_pool_matches_fermionic_generators():
         algorithms.stateprep.make_uccsd_operator_pool(num_qubits,
                                                       num_electrons, spin),
         singles + doubles, num_qubits)
+
+
+def test_excitation_kernels_are_exported():
+    # single/double_excitation were importable but missing from __all__, so
+    # ``from cudaq_algorithms.stateprep import *`` dropped them.
+    for name in ("single_excitation", "double_excitation"):
+        assert name in algorithms.stateprep.__all__
+        assert hasattr(algorithms.stateprep, name)
+    for name in algorithms.stateprep.__all__:
+        assert hasattr(algorithms.stateprep, name), name
+
+
+def test_pauli_lists_reject_complex_pool_coefficients():
+    import cudaq
+    import pytest
+
+    from cudaq_algorithms.stateprep import _pools
+
+    real_pool = [
+        cudaq.spin.x(0) * cudaq.spin.y(1) - cudaq.spin.y(0) * cudaq.spin.x(1)
+    ]
+    words, coefficients = _pools._pauli_lists_from_pool(real_pool, 2)
+    assert coefficients == [[1.0, -1.0]] or coefficients == [[-1.0, 1.0]]
+
+    complex_pool = [1j * cudaq.spin.x(0) * cudaq.spin.y(1)]
+    with pytest.raises(ValueError, match="must be real"):
+        _pools._pauli_lists_from_pool(complex_pool, 2)
