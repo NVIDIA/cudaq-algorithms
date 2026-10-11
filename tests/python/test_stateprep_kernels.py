@@ -263,10 +263,11 @@ def test_ceo_kernel_matches_dense_exponential(num_orbitals):
 def test_invalid_inputs_raise():
     stateprep = algorithms.stateprep
 
-    # Error cases the C++ bindings also defined.
-    with pytest.raises(RuntimeError, match="should be even"):
+    # Error cases the C++ bindings also defined (as ValueError, like every
+    # other input guard in the package).
+    with pytest.raises(ValueError, match="should be even"):
         stateprep.get_uccsd_excitations(5, 2, 0)
-    with pytest.raises(RuntimeError, match="spin multiplicity"):
+    with pytest.raises(ValueError, match="spin multiplicity"):
         stateprep.get_uccsd_excitations(4, 3, 0)
     with pytest.raises(ValueError, match="even number"):
         stateprep.make_upccgsd_operator_pool(7)

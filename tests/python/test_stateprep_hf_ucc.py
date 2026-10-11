@@ -148,6 +148,13 @@ def test_hartree_fock_open_shell_occupation():
     # be accepted as an alias of (8, 4, 2).
     with pytest.raises(ValueError, match="must be even when spin > 0"):
         stateprep.make_hartree_fock_occupation(8, 4, 1)
+    # The excitation enumeration shares the layout, so it must share the
+    # guard: the pool for (8, 4, 1) must not silently be the (8, 4, 2) pool
+    # while the matching reference refuses to build.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.get_uccsd_excitations(8, 4, 1)
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.make_uccsd_operator_pool(8, 4, 1)
 
 
 # ----------------------------------------------------------------------------

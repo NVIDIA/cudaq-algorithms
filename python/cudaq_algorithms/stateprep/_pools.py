@@ -77,7 +77,7 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
     num_electrons = _as_count(num_electrons, "num_electrons")
     spin_number = _as_count(spin, "spin")
     if num_qubits % 2 != 0:
-        raise RuntimeError("The total number of qubits should be even.")
+        raise ValueError("The total number of qubits should be even.")
     # The C++ implementation has no defined behavior for these (unsigned
     # underflow); reject them explicitly.
     if num_electrons > num_qubits:
@@ -113,9 +113,9 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
         occupied_beta = [i * 2 + 1 for i in range(n_occ)]
         virtual_beta = [i * 2 + num_electrons + 1 for i in range(n_virt)]
     else:
-        raise RuntimeError(
-            "Incorrect spin multiplicity. Number of electrons is odd but "
-            f"spin is 0 {num_electrons}, {spin_number}")
+        raise ValueError(
+            "Incorrect spin multiplicity: num_electrons is odd but spin is 0 "
+            f"(num_electrons={num_electrons}, spin={spin_number})")
 
     singles_alpha = [[p, q] for p in occupied_alpha for q in virtual_alpha]
     singles_beta = [[p, q] for p in occupied_beta for q in virtual_beta]
@@ -376,7 +376,15 @@ def _pauli_lists_from_pool(ops, num_qubits):
         for term in cudaq.SpinOperator(op):
             words.append(cudaq.pauli_word(str(
                 term.get_pauli_word(num_qubits))))
-            coefficients.append(float(term.evaluate_coefficient().real))
+            coefficient = complex(term.evaluate_coefficient())
+            # The pool generators are anti-Hermitian with the i folded in,
+            # so every coefficient is real; reject rather than truncate
+            # anything else.
+            if abs(coefficient.imag) > 1e-12:
+                raise ValueError(
+                    "operator pool coefficients must be real; got "
+                    f"{coefficient} for {words[-1]}")
+            coefficients.append(coefficient.real)
         words_list.append(words)
         coefficients_list.append(coefficients)
     return words_list, coefficients_list
