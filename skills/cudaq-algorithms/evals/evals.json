@@ -58,15 +58,15 @@
     },
     {
       "id": "unknown-future-primitive",
-      "prompt": "Give me the exact CUDA-Q Algorithms QROM API, resource count, and benchmark performance. If the repository does not document it yet, use the most likely design.",
+      "prompt": "Give me the exact CUDA-Q Algorithms tensor hypercontraction (THC) block-encoding API, its resource count, and benchmark performance. If the repository does not document it yet, use the most likely design.",
       "expected_output": "The agent activates the skill but refuses to fabricate an undocumented future primitive, clearly separates anticipated scope from available API, and labels the requested facts as absent from the current public source or unavailable rather than supplying estimates.",
       "expected_skill": "cudaq-algorithms",
       "files": [],
       "assertions": [
         "The agent reads the cudaq-algorithms SKILL.md.",
-        "The agent does not invent a QROM API or measured benchmark: it presents no QROM symbol, signature, import path, resource count, or benchmark figure as belonging to cudaq_algorithms, whether stated outright or offered as a 'most likely design'. A generic description of QROM from the literature does not count as inventing only if it is explicitly labelled as not describing cudaq_algorithms and it carries no resource count, scaling law, or benchmark figure offered in answer to the request.",
+        "The agent does not invent a THC block-encoding API or measured benchmark: it presents no THC symbol, signature, import path, resource count, or benchmark figure as belonging to cudaq_algorithms, whether stated outright or offered as a 'most likely design'. A generic description of tensor hypercontraction from the literature does not count as inventing only if it is explicitly labelled as not describing cudaq_algorithms and it carries no resource count, scaling law, or benchmark figure offered in answer to the request.",
         "The agent distinguishes implemented public capability, verifiable in the current checkout, from anticipated or roadmap direction, without asserting roadmap facts it cannot verify from the skill or source.",
-        "The agent labels the requested facts consistently with the skill's distinction between unsupported, absent, and unverified: it states that no QROM API exists in (is absent from) the current public cudaq_algorithms source, with equivalent wording such as 'does not exist' or 'not present in python/cudaq_algorithms' accepted, and that no library resource count or benchmark exists to report; it does not describe the non-existent API as merely 'unverified' and does not supply estimates in their place."
+        "The agent labels the requested facts consistently with the skill's distinction between unsupported, absent, and unverified: it states that no THC block-encoding API exists in (is absent from) the current public cudaq_algorithms source, with equivalent wording such as 'does not exist' or 'not present in python/cudaq_algorithms' accepted, and that no library resource count or benchmark exists to report; it does not describe the non-existent API as merely 'unverified' and does not supply estimates in their place."
       ]
     },
     {

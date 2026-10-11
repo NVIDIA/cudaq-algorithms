@@ -804,10 +804,17 @@ def run(root, *, aliases=None, limit=None, emit=print):
         if settings.get("runtime_python") else None)
     if not capability.get("available") or not capability.get("isolated"):
         raise ValueError(f"Execution preflight failed: {capability}")
-    if any(contract['executable_check']
-           for key, contract in spec['case_contracts'].items()
-           if key in spec['selected_cases']):
-        verification.preflight(settings.get('runtime_python'))
+    executable = [
+        key for key, contract in spec['case_contracts'].items()
+        if key in spec['selected_cases'] and contract['executable_check']
+    ]
+    if executable:
+        unavailable = verification.preflight(settings.get('runtime_python'),
+                                             executable)
+        for name, blocked in sorted(unavailable.items()):
+            emit(
+                f"{name} unavailable in the runtime; {len(blocked)} executable "
+                "checks will be recorded not_run")
     cases = [
         c for c in read_json(root / "suite.json")["evals"]
         if c["id"] in spec["selected_cases"]

@@ -182,7 +182,10 @@ Missing/malformed artifacts or incorrect outputs fail verification. A budget
 exhausted before comparison, unavailable checker dependencies or an internal
 checker failure leaves verification `not_run`, with the reason retained.
 Unanswered attempts also remain `not_run`. Dependency checks happen before model
-requests. A completed check writes `verification.json` beside `result.json`:
+requests: NumPy and SciPy are required for every check, while PySCF is required
+only by the `checkers/chemistry.py` oracles, so a runtime without PySCF still
+runs the other checks and records the chemistry cases as `not_run` with the
+missing dependency named. A completed check writes `verification.json` beside `result.json`:
 
 - `status`: `passed`, `failed` or `not_run`;
 - `result_sha256` and `transcript_sha256` binding the checked observation;

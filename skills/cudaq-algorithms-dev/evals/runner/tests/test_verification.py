@@ -190,3 +190,48 @@ def third_moment(ket):
     exported = assessment._run(tmp_path, attempt, case, 0, 'baseline',
                                {'executable_check': True})
     assert exported['verification'] == 'passed'
+
+
+def test_preflight_requires_common_dependencies_and_isolates_pyscf(
+        monkeypatch):
+    from runner import checkers
+    chemistry = 'science-chemistry-reference-quality'
+    walk = 'science-block-encoding-heralded-observables'
+    assert checkers.dependencies(walk) == ('numpy', 'scipy')
+    assert checkers.dependencies(chemistry) == ('numpy', 'scipy', 'pyscf')
+    monkeypatch.setattr(
+        verification, '_import_failure',
+        lambda python, name: 'No module named ' + name
+        if name == 'pyscf' else None)
+    assert verification.preflight(None, [walk, chemistry]) == {
+        'pyscf': [chemistry]
+    }
+    monkeypatch.setattr(verification, '_import_failure',
+                        lambda python, name: 'No module named ' + name)
+    with pytest.raises(ValueError, match='numpy and scipy'):
+        verification.preflight(None, [walk])
+
+
+def test_missing_checker_dependency_leaves_verification_not_run(
+        tmp_path, monkeypatch):
+    worker = tmp_path / 'workspace'
+    worker.mkdir()
+    (worker / '.tmp').mkdir()
+    (worker / 'evaluation.py').write_text('print("{}")\n')
+    monkeypatch.setattr(
+        verification, '_import_failure',
+        lambda python, name: 'No module named ' + name
+        if name == 'pyscf' else None)
+    kwargs = dict(runtime_python=Path(sys.executable),
+                  isolation='trusted',
+                  deadline=time.monotonic() + 10)
+    result = verification.execute('science-chemistry-reference-quality',
+                                  worker, tmp_path, **kwargs)
+    evidence = json.loads((tmp_path / result['evidence_file']).read_text())
+    assert result['status'] == 'not_run'
+    assert 'pyscf' in evidence['reason']
+    assert 'artifact_execution' not in evidence
+    result = verification.execute(
+        'science-block-encoding-heralded-observables', worker, tmp_path,
+        **kwargs)
+    assert result['status'] == 'failed'

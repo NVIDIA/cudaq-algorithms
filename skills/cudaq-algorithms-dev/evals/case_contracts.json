@@ -22,7 +22,7 @@
   "unknown-future-primitive": {
     "executable_check": false,
     "implementation": false,
-    "rationale": "The task tests refusal to invent absent QROM APIs, counts or benchmarks; no executable QROM oracle exists for this question."
+    "rationale": "The task tests refusal to invent an absent THC block-encoding API, its counts or benchmarks; no executable THC oracle exists for this question."
   },
   "state-preparation-provider-selection": {
     "executable_check": false,

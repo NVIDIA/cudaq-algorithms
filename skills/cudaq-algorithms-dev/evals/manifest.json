@@ -14,7 +14,7 @@
         {"id": "implicit-composition-boundary", "sha256": "2facabbd7d2de64850de45a58a69dc07bb4c3aa8ad51aa9c833d72ae48ea58f2"},
         {"id": "contextual-existing-primitive", "sha256": "2c38ab47fda2ceb32b3e1cddf745723d679995e39ce44616adcbdabfccb20b79"},
         {"id": "unsupported-library-workflow", "sha256": "7fd48a65ef7fb2ad689e7ad7963c2d55684d143d9183e5226db063300040ea97"},
-        {"id": "unknown-future-primitive", "sha256": "4595352acad216ee6e544eaf7318ebeca5434136a3adc8a310289b2c98afabd6"},
+        {"id": "unknown-future-primitive", "sha256": "403f7d141b40eae5cbec740d4a0e57aa2af0ffce6ed4fcbff337cedc32b04d95"},
         {"id": "state-preparation-provider-selection", "sha256": "a4f11c3a1996548baa1c93b5fc503c0ce2702a5586329457b47241f884d73a6f"},
         {"id": "state-preparation-ucc-parameterization-boundary", "sha256": "e4308f940a6896b95c40e3715e13ff92f2f2f502a7f41d33816cf1ace7110584"},
         {"id": "state-preparation-reference-excitation-device-boundary", "sha256": "d055b6e2ac1465526ff761e34dec11f41200286b8b928bed53b96cd955d8f81e"},

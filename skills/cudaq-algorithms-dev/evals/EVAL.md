@@ -1,11 +1,16 @@
 # Delivery evaluation
 
-[`evals.json`](evals.json) is the single maintained suite: **62 unchanged cases**,
+[`evals.json`](evals.json) is the single maintained suite: **62 cases**,
 comprising 42 regression and 20 science cases. It has 59 positive skill cases
 and 3 negative controls. [`manifest.json`](manifest.json) pins the original
 case order, complete case records, source provenance and fixture hashes.
 Intentional future changes require explicit manifest review and rebaselining.
-Old 42- or 7-case measurements are not results for this delivery suite.
+One reviewed rebaseline is recorded: `unknown-future-primitive` probes a
+tensor hypercontraction (THC) block encoding, which is absent from
+`python/cudaq_algorithms`; its record hash in the manifest and its
+`case_contracts.json` rationale were regenerated together, and the 61 other
+case records are unchanged. Old 42- or 7-case measurements are not results
+for this delivery suite.
 
 The runtime skill also ships a standalone [catalog evaluation package](../../cudaq-algorithms/evals/EVAL.md)
 for NVIDIA SkillEvaluator. Its 62 cases and three negative controls decode to
@@ -19,7 +24,9 @@ The maintained [multi-model runner](runner/README.md) provides endpoint prefligh
 frozen campaigns, isolated execution, private grading and canonical export through
 `scripts/run_eval.py`. Its first backend supports OpenAI-compatible Chat
 Completions endpoints. Offline CI validates the infrastructure and all 24
-registered executable checks. Live endpoint health and actual model outcomes
+registered executable checks; the checker tests exercise each oracle against
+independent NumPy fixtures, not library runs, so agreement between the library
+and a checker is established only by a live campaign. Live endpoint health and actual model outcomes
 must still be established for each campaign; absent verification is explicitly
 reported as unassessed.
 

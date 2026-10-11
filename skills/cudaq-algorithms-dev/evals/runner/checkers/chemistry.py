@@ -13,6 +13,9 @@ import numpy as np
 
 from .common import CheckFailure, close, real_array, require
 
+# Only these oracles need PySCF; the other checker modules are NumPy/SciPy only.
+DEPENDENCIES = ('pyscf', )
+
 _DF_FIELDS = {
     "reference_ground_energy":
     "number, total uncompressed sector ground energy (Ha)",

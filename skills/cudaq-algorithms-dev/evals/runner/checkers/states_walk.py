@@ -69,7 +69,11 @@ CASES = {
             'probabilities':
             'Real [2] successful-branch probabilities, Neel then spiral input.',
             'magnetizations':
-            'Real [2] conditional staggered magnetizations, Neel then spiral input.'
+            'Real [2] conditional staggered magnetizations, Neel then spiral input.',
+            'num_terms':
+            'Optional integer count of the declared LCU terms.',
+            'num_ancilla':
+            'Optional integer exact-PREPARE ancilla count of the declared Pauli LCU, max(1, ceil(log2(num_terms))); omit it for any other PREPARE backend.'
         },
         'oracle':
         'Independent Pauli matrices, validation of the supplied LCU sum and its 1-norm, and direct H|psi> branch observables.',
@@ -82,7 +86,7 @@ CASES = {
             'candidates':
             'List of eight objects, one for every cutoff and offset choice. Each has cutoff (0,0.0005,0.001,0.01), offset_outside (boolean), lcu_terms ('
             + _LCU +
-            '), alpha (positive coefficient 1-norm), bias_kind ("observed" or "bound"), bias (nonnegative physical energy-bias magnitude or certified upper bound), certified (boolean indicating demonstrated bias <=1e-3). Observed-bias rows also contain ground_energy, with the scalar offset restored. Bounds need no eigensolve or ground_energy. Optional num_terms/num_ancilla describe the chosen Pauli LCU.',
+            '), alpha (positive coefficient 1-norm), bias_kind ("observed" or "bound"), bias (nonnegative physical energy-bias magnitude or certified upper bound), certified (boolean indicating demonstrated bias <=1e-3). Observed-bias rows also contain ground_energy, with the scalar offset restored. Bounds need no eigensolve or ground_energy. Optional num_terms/num_ancilla describe the chosen Pauli LCU; num_ancilla is the exact-PREPARE count max(1, ceil(log2(num_terms))), so omit it for any other PREPARE backend.',
             'recommendation':
             'Zero-based index into candidates of a configuration certified within the requested inclusive bias allowance.'
         },

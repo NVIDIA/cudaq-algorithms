@@ -4,6 +4,16 @@ from importlib import import_module
 
 MODULES = ('regression', 'states_walk', 'dynamics', 'chemistry')
 
+# Import statements that prove a private-reference dependency is usable in the
+# configured runtime. Every checker needs the common ones; a module declares
+# any further names in its own ``DEPENDENCIES`` tuple.
+IMPORT_PROBES = {
+    'numpy': 'import numpy',
+    'scipy': 'import scipy',
+    'pyscf': 'import pyscf; from pyscf import gto, scf, fci'
+}
+COMMON_DEPENDENCIES = ('numpy', 'scipy')
+
 
 def module_for(case_id):
     if not case_id.startswith('science-'):
@@ -22,6 +32,18 @@ def module_for(case_id):
         name = 'dynamics'
     module = import_module('.' + name, __name__)
     return module if case_id in module.CASES else None
+
+
+def dependencies(case_id):
+    """Private-reference dependencies of the registered checker for a case."""
+    module = module_for(case_id)
+    if module is None:
+        raise ValueError(f'No registered checker: {case_id}')
+    extra = tuple(getattr(module, 'DEPENDENCIES', ()))
+    for name in COMMON_DEPENDENCIES + extra:
+        if name not in IMPORT_PROBES:
+            raise ValueError(f'No import probe for dependency: {name}')
+    return COMMON_DEPENDENCIES + extra
 
 
 def specifications():

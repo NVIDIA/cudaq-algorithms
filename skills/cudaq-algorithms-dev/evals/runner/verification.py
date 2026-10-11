@@ -4,6 +4,7 @@ The candidate never imports a reference checker. A separate clean subprocess
 runs the trusted numerical code without the candidate's Python search path.
 """
 
+import functools
 import json
 import hashlib
 import os
@@ -20,20 +21,52 @@ from . import checkers, workspace
 MAX_PAYLOAD = 16 * 1024 * 1024
 
 
-def preflight(runtime_python):
-    """Check private-reference dependencies before consuming provider requests."""
+class DependencyUnavailable(Exception):
+    """A checker-specific private-reference dependency is missing from the runtime."""
+
+
+@functools.lru_cache(maxsize=None)
+def _import_failure(python, name):
+    """Return None when ``name`` imports in the runtime, else the failure line."""
+    process = subprocess.run(
+        [python, '-I', '-c', checkers.IMPORT_PROBES[name]],
+        capture_output=True,
+        text=True,
+        timeout=30)
+    if not process.returncode:
+        return None
+    lines = process.stderr.strip().splitlines()
+    return lines[-1] if lines else f'import {name} failed'
+
+
+def missing_dependencies(runtime_python, case_id):
+    """Names of the case's checker dependencies that the runtime cannot import."""
     python = str(runtime_python or sys.executable)
-    process = subprocess.run([
-        python, '-I', '-c',
-        'import numpy,scipy,pyscf; from pyscf import gto,scf,fci; print("reference dependencies available")'
-    ],
-                             capture_output=True,
-                             text=True,
-                             timeout=30)
-    if process.returncode:
-        raise ValueError(
-            'Private references require numpy, scipy and pyscf in the configured runtime'
-        )
+    return [
+        name for name in checkers.dependencies(case_id)
+        if _import_failure(python, name) is not None
+    ]
+
+
+def preflight(runtime_python, case_ids=()):
+    """Check private-reference dependencies before consuming provider requests.
+
+    NumPy and SciPy serve every checker and are required. A dependency that
+    only some checkers declare (PySCF for ``checkers.chemistry``) is probed per
+    case; a missing one is returned as ``{name: [case_id, ...]}`` so the
+    campaign can announce which checks will be recorded ``not_run``.
+    """
+    python = str(runtime_python or sys.executable)
+    for name in checkers.COMMON_DEPENDENCIES:
+        if _import_failure(python, name) is not None:
+            raise ValueError(
+                'Private references require numpy and scipy in the configured runtime'
+            )
+    missing = {}
+    for case_id in case_ids:
+        for name in missing_dependencies(runtime_python, case_id):
+            missing.setdefault(name, []).append(case_id)
+    return missing
 
 
 def output_payload(stdout):
@@ -196,6 +229,11 @@ def execute(case_id,
             module = checkers.module_for(case_id)
             if module is None:
                 raise ValueError('Missing preregistered checker')
+            missing = missing_dependencies(runtime_python, case_id)
+            if missing:
+                raise DependencyUnavailable(
+                    'Private reference dependency unavailable in the runtime: '
+                    + ', '.join(missing))
             filenames = {
                 'repository-implementation-third-moment': 'starter_app.py',
                 'implementation-scope-overreach': 'pauli_lcu_example.py',
@@ -256,7 +294,7 @@ def execute(case_id,
         except subprocess.TimeoutExpired:
             detail[
                 'reason'] = 'Private reference comparison exceeded task budget'
-        except workspace.IsolationUnavailable as exc:
+        except (workspace.IsolationUnavailable, DependencyUnavailable) as exc:
             detail['reason'] = str(exc)
         except (ValueError, OSError, KeyError) as exc:
             detail['reason'] = str(exc)
