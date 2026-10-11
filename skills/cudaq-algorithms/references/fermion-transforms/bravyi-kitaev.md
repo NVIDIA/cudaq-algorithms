@@ -36,7 +36,12 @@ absent, but Fenwick update sets can touch a higher qubit than the largest mode
 index appearing in a coefficient; do not infer width from active tensor indices.
 Fully pruned/all-zero input is empty, and a scalar-only result has zero
 non-identity extent. Preserve the intended `n` separately and satisfy each
-consumer's explicit-width or padding contract.
+consumer's explicit-width or padding contract. `to_matrix()` compacts every
+untouched qubit, interior ones included, and Fenwick ancestors make
+Bravyi-Kitaev output the most likely to carry such gaps; build dense
+comparisons from `term.get_pauli_word(n)` at the explicit width, as the
+[family checkpoint](fermion-transforms.md#verification) does, never by
+padding `to_matrix()`.
 
 Complex or non-Hermitian tensors are compiled literally. Verify Hermiticity
 and real canonical Pauli coefficients before using a real-Hamiltonian consumer

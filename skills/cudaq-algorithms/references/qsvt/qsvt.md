@@ -76,8 +76,12 @@ seq = PhaseSequence(phases, convention="qsp")
 
 def response(x):
     s = np.sqrt(max(0., 1. - x*x))
+    # reflect_about_zero @ block = diag(-1, 1) @ [[x, s], [s, -x]]: the QSVT
+    # kernel applies an explicit zero-state reflection after each apply_kernel
     step = np.array([[-x, -s], [s, -x]], complex)
     def phase(a):
+        # QSP model diag(e^{ia}, e^{-ia}); the circuit's doubled projector
+        # phase diag(e^{2ia}, 1) differs by e^{ia} per block
         return np.diag([np.exp(1j*a), np.exp(-1j*a)])
     matrix = phase(phases[0])
     for a in phases[1:]:
@@ -87,6 +91,7 @@ def response(x):
 eigenvalues, V = np.linalg.eigh(H)
 a = V.conj().T @ psi
 r = np.array([response(x/enc.alpha) for x in eigenvalues])
+# d+1 phase blocks, each off by e^{ia}: the circuit carries exp(i*sum(phases))
 reference = np.exp(1j*sum(phases)) * (V @ (r*a))
 b = sim.transform(QSVT(enc), psi, seq)
 error = np.linalg.norm(b - reference)

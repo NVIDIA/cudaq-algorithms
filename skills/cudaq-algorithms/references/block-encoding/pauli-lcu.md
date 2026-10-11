@@ -56,19 +56,29 @@ encoding = PauliLCU(
   and only `I/X/Y/Z`; position equals qubit index. Common width and characters
   are checked, but the current parser does not enforce positive width.
 - Spin-operator width is the largest targeted qubit plus one; an explicit
-  `num_qubits` may pad but cannot be smaller.
-- Coefficients must be real within the package's fixed complex-noise tolerance.
+  `num_qubits` may pad but cannot be smaller (`"num_qubits=1 is smaller than
+  the operator's register extent 2"`). For mapping/pair input `num_qubits`
+  must **equal** the word length; both an undersized and an oversized value
+  raise `ValueError` (`"num_qubits=3 does not match word length 2"`). Only
+  `SpinOperator` input tolerates padding.
+- Coefficients must be real: `common_kernels._real_coefficient` raises
+  `ValueError` when `abs(coefficient.imag) > 1e-10` (shared with `Trotter`),
+  so `0.5 + 1e-13j` is accepted as `0.5` and `0.5 + 0.3j` is rejected.
 - Terms below `coefficient_threshold` are dropped; an empty retained set is a
   `ValueError`.
 - A string is not an iterable Hamiltonian and is rejected with `TypeError`.
 - The number of ancillas is `max(1, ceil(log2(num_terms)))`; padding states
   have zero probability.
 
-Known zero-width gap: a mapping/pair word `""` passes the source's length and
-character loops, is not recognized as identity, and therefore gives incorrect
-`include_identity`/`constant_term` semantics; later kernel behavior is
-unverified. A scalar-only `cudaq.SpinOperator` without explicit `num_qubits`
-reaches the same empty-word representation. Do not use either form. For a
+Known zero-width gap (current behavior, library issue #58): a mapping/pair
+word `""` passes the source's length and character loops and is not
+recognized as identity, so `PauliLCU({"": 0.5})`, `PauliLCU([(0.5, "")])`,
+`PauliLCU(0.5 * cudaq.SpinOperator.identity())`, and
+`PauliLCU(cudaq.SpinOperator.empty() + 0.5)` all construct an encoding with
+`num_system = 0`, `alpha = 0.5`, `constant_term = 0.0`, and
+`terms = [(0.5, "")]`; later kernel behavior is unverified. Only the
+target-free scalar constructions reach this state: `0.5 * cudaq.spin.i(0)`
+gets width 1 and `constant_term = 0.5`. Do not use the zero-width forms. For a
 scalar-only spin operator, pass a positive explicit `num_qubits`; for mapping
 or pair input, provide an all-`I` word of the intended positive width.
 
@@ -124,6 +134,11 @@ For **pruning and scalar-offset tradeoffs**, distinguish the physical model
 `H = c*I + H0` from the retained encoded operator. Collect duplicate Pauli words
 before applying a physical coefficient cutoff; iterable input is not collected
 automatically, and `alpha` sums absolute retained decomposition coefficients.
+The dangerous case is cancelling duplicates: `PauliLCU([(0.5, "Z"), (-0.5,
+"Z")])` keeps two terms and encodes `H = 0` with `alpha = 1.0` (its action on
+any state is the zero vector). Equal-sign duplicates such as `[(0.5, "Z"),
+(0.5, "Z")]` also stay two terms but happen to give the same `alpha` as the
+collected input, which hides the omission.
 Store `c` separately before pruning: a coefficient below the threshold is
 dropped before `constant_term` is accumulated. For an energy calculation, keep
 `c` classical and restore it once. Compare candidate energies in the requested
@@ -206,8 +221,11 @@ are in `python/cudaq_algorithms/pauli_lcu.py`.
 - Runnable pointers: `tests/python/test_pauli_lcu.py` and
   `docs/sphinx/examples/python/01_quickstart_block_encoding.py`.
 - Expected failures: invalid nonempty words, inconsistent widths, complex
-  coefficients, no retained terms, and undersized explicit width. Empty-word
-  input is a known unguarded source gap, not a promised rejection.
+  coefficients, no retained terms, undersized explicit width for any input,
+  and oversized explicit width for mapping/pair input (`"num_qubits=3 does
+  not match word length 2"`); only `SpinOperator` input accepts an oversized
+  `num_qubits` as padding. Empty-word input is a known unguarded source gap,
+  not a promised rejection.
 
 ## External alignment
 

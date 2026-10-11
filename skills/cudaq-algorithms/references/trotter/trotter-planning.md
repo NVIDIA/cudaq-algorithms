@@ -23,14 +23,18 @@ into product-formula terms**.
 
 Words are common-width `I/X/Y/Z` strings with position equal to qubit index.
 Spin operators are padded to the widest targeted extent. Coefficients must be
-real within the shared fixed noise tolerance. Empty and zero-width Hamiltonians,
+real within the shared fixed noise tolerance: the package-wide
+`_real_coefficient` check raises `ValueError` when `abs(imag) > 1e-10`, and
+`coefficient_tolerance` does not change it. Empty and zero-width Hamiltonians,
 string-like inputs, mismatched word widths, invalid characters, and negative
-pruning tolerances are rejected.
+pruning tolerances are rejected; the zero-width rejection
+(`"hamiltonian must act on at least one qubit"`) is this planner's own check
+and `PauliLCU` does not perform it.
 
 Terms with exact zero or magnitude below the threshold are removed. Identity
-terms are accumulated separately because their circuit action is a global
-phase. This pruning changes the approximated Hamiltonian and must be included
-in the error budget.
+terms, detected as `set(word) <= {"I"}`, are accumulated separately because
+their circuit action is a global phase. This pruning changes the approximated
+Hamiltonian and must be included in the error budget.
 
 `Trotter` applies either `PRESERVE_INPUT` or
 `COEFFICIENT_MAGNITUDE_DESCENDING` ordering at construction. Ordering is a

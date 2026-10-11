@@ -36,7 +36,11 @@ fail for odd moments.
 - `state_prep` uses the one-register preparation seam; exact width is required,
   but mismatch behavior is unverified rather than guaranteed to fail.
 - `moment` returns `float`; `moments(..., count)` returns
-  `[<T_0>, ..., <T_{count-1}>]`.
+  `[<T_0>, ..., <T_{count-1}>]`. `moments` is a convenience loop that calls
+  `moment` once per order: `count` independent circuits and `cudaq.observe`
+  evaluations, with nothing shared between orders (only the encoding's minted
+  sub-kernels and the two observables are cached per `Walk`). A shot budget for `moments` is `count` times
+  the per-moment cost below.
 
 ## Composition and boundaries
 
@@ -48,6 +52,16 @@ tests use simulators.
 
 `reflection_observable` is `2|0...0><0...0| - I`, while the walk's reflection
 gate uses the opposite sign. Keep gate and observable conventions distinct.
+
+`reflection_observable` has no size guard beyond `num_ancilla >= 1`: it is
+the product of `num_ancilla` single-qubit projectors `(I + Z)/2`, so the
+`SpinOperator` has about `2**num_ancilla` Pauli terms (9 terms at three
+ancillas). For an encoding with a wide ancilla register, even-order
+`Walk.moment` is therefore impractical, and odd order raises unless the
+encoding supplies a working `select_observable`. In that situation take
+Chebyshev data from `Walk.kernel(power=k)` statevectors against a dense
+block instead (the flagged block is `T_k(-H/alpha)|psi>`; see
+[qubitization-walk.md](qubitization-walk.md)), not from `Walk.moment`.
 
 ## Resources and validation
 

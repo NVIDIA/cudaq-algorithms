@@ -52,8 +52,12 @@ factorization, prepare a state, or submit quantum work.
 Start with geometry and its units, basis/ECP, charge, electron count and spin
 convention. For a provider calculation, converge the restricted Hartree-Fock reference
 and retain its MO coefficients, occupations and orbital ordering before calling
-the loader. For FCIDUMP, retain electron/spin and orbital metadata separately:
-the returned triple alone does not identify the physical sector.
+the loader. Neither provider loader enforces Hartree-Fock: a restricted
+Kohn-Sham (DFT) reference is accepted and yields a Hartree-Fock-type
+Hamiltonian in the Kohn-Sham orbital basis with no exchange-correlation term,
+so its energies are not DFT energies and must not be reported as such. For
+FCIDUMP, retain electron/spin and orbital metadata separately: the returned
+triple alone does not identify the physical sector.
 
 Choose full-space or frozen-core/active-space physics before spin expansion.
 The loaders do not make this choice. In the real orthonormal spatial basis,
@@ -90,6 +94,11 @@ hamiltonian = chemistry.qubit_hamiltonian(
 
 Subtract `len(core)` from each spin's electron count. Remap occupied orbitals
 into the active list: spin orbitals are interleaved (`2*p` up, `2*p+1` down).
+Because unrestricted loader inputs are unsupported, an open-shell molecule
+(a radical or an open-shell transition-metal complex) is described only by
+restricted spatial orbitals with unequal up/down electron counts, an
+ROHF-style restricted-orbital approximation; state that up front rather than
+discovering it at a loader rejection.
 Retain the intended width `2*len(active)` even when operator pruning reduces its
 support. Prepare that determinant with the
 [state-preparation contracts](../state-preparation/state-preparation.md) when

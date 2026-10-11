@@ -31,7 +31,9 @@ added. For `spin > 0`, the function additionally requires:
 - `n_occ_alpha <= num_qubits // 2`, so the requested open-shell occupation fits.
 
 Failure of any condition raises `ValueError`. The `(0, 0, 0)` input is accepted
-and yields an empty occupation. Negative spin is not supported by this interface.
+and yields an empty occupation. Negative spin is rejected: `(8, 4, -1)` raises
+`ValueError("spin must be a non-negative integer")` through
+`make_hartree_fock_occupation`.
 
 ## Result formulas and status
 

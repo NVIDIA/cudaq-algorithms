@@ -116,7 +116,7 @@ capabilities.
 | Precision sensitivity | statevector agreement depends on active simulator precision; use the predeclared fp64/fp32 tolerances under Validation |
 | Unsupported inputs | non-adjacent pairs do not implement a Givens rotation; non-finite angles, non-integral values that do not marshal as annotated, and indices outside the register have no supported scientific contract |
 | Known implementation limitations | invalid adjacency is a silent no-op rather than a host error. Adjacent out-of-range indexing and the operation's action on a general superposition are not characterized by a direct test, although the source-level unitary defines the latter |
-| Unsupported, absent, and unverified behavior | non-adjacent rotation support is absent; host-side validation and status reporting are absent; adjacent out-of-range launch behavior, non-finite-angle behavior, and direct standalone execution of this public symbol are unverified |
+| Unsupported, absent, and unverified behavior | non-adjacent rotation support is absent; host-side validation and status reporting are absent; adjacent out-of-range launch behavior and non-finite-angle behavior are unverified. Direct standalone execution of this public symbol is executed on `qpp-cpu` fp64 for the usage example below, for the reversed pair `(1, 0)`, and for the in-range non-adjacent pair `(0, 2)` |
 
 ## Resources
 
@@ -140,8 +140,8 @@ converts them into transpiled depth, target cost, runtime, or memory.
 | Representative cases | proposed direct cases: `theta=0`, `theta=0.37` for `(0,1)` and `(1,0)`, and a two-qubit one-electron input. Committed transitive cases include the two-orbital analytic state, random real `4 x 2` and `5 x 3` determinants, and the real sign-convention case |
 | Predeclared tolerances | compare statevectors with `rtol=0` and `atol=1e-12` on fp64 or `5e-5` on fp32, selected at call time by `np.dtype(cudaq.complex())`; structural counts and guard predicates are exact |
 | Expected failure/adversarial case | an in-range non-adjacent pair must leave the register unchanged; an adjacent out-of-range pair must be reported as unsupported/unverified rather than promised to raise |
-| Runnable example or usage test | the source-derived standalone example below prepares one electron and compares indices 1 and 2 with the analytic rotation. It was authored here but not run. The repository's transitive runnable suite is `tests/python/test_stateprep_givens.py` |
-| Evidence status per claim | signatures, guards, call counts, and conventions are `derived` from source cited in the repository; the cited tests and docs are `derived` evidence from the cited assertions; this record is `unexecuted`, with compilation, numerical validation, and measurement `unverified` |
+| Runnable example or usage test | the source-derived standalone example below prepares one electron on qubit 0 and compares the `(0, 1)` rotation with the analytic map. It passes on `qpp-cpu` fp64 at `atol=1e-12`: the statevector is `[0, cos(0.37), sin(0.37), 0]`; the reversed pair `(1, 0)` gives `[0, cos(0.37), -sin(0.37), 0]`; and the in-range non-adjacent pair `(0, 2)` on a three-qubit register leaves `|001>` (index 1) unchanged. The repository's transitive runnable suite is `tests/python/test_stateprep_givens.py` |
+| Evidence status per claim | signatures, guards, call counts, and conventions are `derived` from source cited in the repository; the cited tests and docs are `derived` evidence from the cited assertions; the usage example, the reversed-pair orientation, and the non-adjacent no-op are `executed` on `qpp-cpu` fp64; fp32 execution, hardware execution, and measurement are `unverified` |
 
 ```python
 import numpy as np

@@ -18,10 +18,15 @@ qubitization walk**.
 
 ## Scientific contract
 
-`Walk(encoding)` sequences the encoding's PREPARE, walk-step, adjoint-step, and
-controlled-step factories. One walk step block-encodes `-H/alpha`. When
-`uncompute=True`, PREPARE is undone after the requested power; the flagged block
-is `T_power(-H/alpha)`.
+`Walk(encoding)` sequences whatever `prepare_kernel`, `walk_step_kernel`,
+`adjoint_walk_step_kernel`, `controlled_walk_step_kernel`, and
+`unprepare_kernel` the injected encoding returns. One walk step block-encodes
+`-H/alpha`. When `uncompute=True`, `unprepare_kernel` runs after the requested
+power; the flagged block is `T_power(-H/alpha)`. That `prepare_kernel` is a
+real PREPARE is a fact about `PauliLCU` (and the example encodings), not a
+protocol guarantee: the protocol fixes the signature only, so an encoding
+whose `prepare_kernel` is trivial still composes, and a model must not assert
+a PREPARE/UNPREPARE pair for an encoding it has not inspected.
 
 Use this when a circuit or controlled circuit is needed. Use
 [qubitization-moments.md](qubitization-moments.md) when the desired output is a
@@ -69,8 +74,10 @@ full-register identity is not generally valid.
 
 There is no walk resource estimator. Exact structural quantities are
 `num_system + num_ancilla` qubits (plus one for controlled kernels), one
-PREPARE/UNPREPARE pair when uncomputing, and `power` walk-step calls. These are
-not gate counts, depth, runtime, or memory.
+`prepare_kernel`/`unprepare_kernel` call pair when uncomputing (a PREPARE and
+UNPREPARE for `PauliLCU`; whatever those factories return for another
+encoding), and `power` walk-step calls. These are not gate counts, depth,
+runtime, or memory.
 
 Independent oracles:
 

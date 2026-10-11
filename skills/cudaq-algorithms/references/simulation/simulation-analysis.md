@@ -87,7 +87,7 @@ assert 0. < p <= 1. + 1e-10
 conditional = float(np.vdot(b, Z @ b).real/p)
 unconditioned = float(np.trace(rho @ Z).real)
 purity = float(np.trace(rho @ rho).real)
-assert 0.5 - 1e-10 <= purity <= 1. + 1e-10
+assert 0.5 - 1e-10 <= purity <= 1. + 1e-10  # floor is 1/2**num_system; 1 qubit here
 print("raw/channel errors:", raw_error, rho_error)
 print("success, conditional/discarded Z, discarded purity:",
       p, conditional, unconditioned, purity)

@@ -12,6 +12,7 @@ integral triple from FCIDUMP text**.
   `docs/sphinx/guide/preprocessing.rst` and the function docstring.
 - Kind/role/layer: classical transformation, computational leaf, host parser.
 - Dependency: NumPy; PySCF and Psi4 are not required.
+
 ## Input, rejection, and output
 
 `from_fcidump(contents)` consumes the file **contents as a string**, not a

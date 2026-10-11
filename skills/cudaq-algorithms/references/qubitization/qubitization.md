@@ -25,8 +25,12 @@ Start with a normalized reference, a physical-sector definition and an encoding
 of `H0` with normalization `alpha`; keep any separate scalar in `H = c*I + H0`.
 The [moment interface](qubitization-moments.md) returns
 `mu[k] = <T_k(H0/alpha)>`, despite the negative sign of the raw walk block.
-Odd moments need the encoding's SELECT observable. State the moment orders and
-budget, including how the analytically known zeroth moment is counted.
+Odd moments need the encoding's SELECT observable, and the even-moment
+observable has `~2**num_ancilla` terms, so for a wide-ancilla encoding
+Chebyshev data comes from `Walk.kernel` powers against a dense block rather
+than `Walk.moments` (see the [moments record](qubitization-moments.md)).
+State the moment orders and budget, including how the analytically known
+zeroth moment is counted.
 Constructing an encoding is not executing moments: `Walk.moments` evaluates
 observables; a dense recurrence is an independent classical prediction.
 
@@ -57,7 +61,9 @@ These small-system checkpoints take a dense Hermitian `H0`, normalized complex
 `mu` is the ordered array of moments beginning at zero. The first function
 executes library moments and compares them with an independent recurrence.
 The remaining functions are classical post-processing; `dimension` is positive
-and `cutoff` is a caller-chosen positive Gram eigenvalue threshold.
+and `cutoff` is a caller-chosen positive Gram eigenvalue threshold. The
+`cutoff` below is absolute; a relative threshold (a fraction of
+`values.max()`) is less sensitive to the overall scale of the moments.
 
 ```python
 import numpy as np

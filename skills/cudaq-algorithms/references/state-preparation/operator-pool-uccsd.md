@@ -67,10 +67,14 @@ integer". Guards then apply in this order:
 
 The implementation has no parity guard for `(num_electrons-spin)` in the
 open-shell branch. It silently floors the beta occupation, so `(8,4,1)` creates
-the same partition and pool as `(8,4,2)`. The Hartree-Fock occupation builder
-rejects the former. Report this mismatch; do not claim that `spin=1` is a
-supported physical UCCSD/HF composition merely because pool construction
-succeeds.
+the same partition and pool as `(8,4,2)`: three alpha and one beta occupied
+spin orbitals. The Hartree-Fock occupation builder rejects the former with
+`ValueError("(num_electrons - spin) must be even when spin > 0 (spin is
+2*S_z)")`. Mismatch symptom: the `uccsd` device kernel re-enumerates the same
+partition internally, so `uccsd(..., num_electrons=4, spin=1)` realizes the
+`spin=2` excitation set with no error anywhere. Report this mismatch; do not
+claim that `spin=1` is a supported physical UCCSD/HF composition merely
+because pool construction succeeds.
 
 ## Outputs and composition
 

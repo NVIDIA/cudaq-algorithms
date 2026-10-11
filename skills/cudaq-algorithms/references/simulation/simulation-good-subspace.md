@@ -24,8 +24,12 @@ conditional state, and preserve the original norm separately.
   `sim_utils.py`.
 - Kind/role: simulation-only analysis, computational leaf.
 - Execution: pure host array validation/slicing once a full statevector exists.
-- Input type annotation names `PauliLCU`, though the body uses only block
-  geometry. Compatibility with arbitrary foreign encodings is unverified.
+- Input type annotation names `PauliLCU`, though the body uses only
+  `num_system`, `num_ancilla`, and the slice `vector[:1 << num_system]`. It is
+  therefore correct for any encoding whose consumers allocate the system
+  register first (every packaged consumer does); the unverified case is an
+  encoding or circuit with a different register layout, for which the
+  zero-ancilla block is not the leading slice.
 - No shots, measurement protocol, QPU execution, or amplitude amplification is
   performed.
 

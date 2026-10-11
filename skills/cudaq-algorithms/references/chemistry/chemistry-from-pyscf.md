@@ -26,6 +26,11 @@ explicitly rejects only a coefficient array whose rank is not two, including
 the usual `(2, nao, nmo)` unrestricted/UHF form. It does not independently
 check convergence, real-valued coefficients, orbital orthonormality, or object
 class; missing/incompatible provider methods and PySCF failures propagate.
+A restricted Kohn-Sham object (RKS) passes the same rank check, but its
+integrals give a Hartree-Fock-type second-quantized Hamiltonian in the
+Kohn-Sham orbital basis with the exchange-correlation functional dropped, not
+a DFT energy; use an RHF reference for a Hamiltonian consistent with the
+mean-field energy.
 
 For `C = mean_field.mo_coeff`, the provider computes `C.T @ get_hcore() @ C`,
 uses `pyscf.ao2mo.full`, and restores symmetry storage to a dense chemist-order
@@ -47,6 +52,7 @@ and peak memory are provider- and input-dependent and are not measured here.
 The cited tests build restricted H2 and H4 mean fields, form qubit
 Hamiltonians, and compare their ground energies with PySCF FCI within `1e-8`.
 They also compare whole spectra with the Psi4 provider rather than raw MO
-coefficients, which may differ by orbital phase or ordering. Add a rank-3
-`mo_coeff` fixture for the explicit unrestricted rejection when validating
-that boundary independently.
+coefficients, which may differ by orbital phase or ordering. The rank-3
+`mo_coeff` rejection is source-checked but untested in-repo: no cited test
+exercises it, so add a rank-3 fixture when validating that boundary
+independently.

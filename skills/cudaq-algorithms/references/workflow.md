@@ -21,6 +21,13 @@ state conservative assumptions for harmless implementation details.
    conditional observable from an unconditional average. Preserve supplied
    Hamiltonians, phases, geometries, and operation order even when they produce
    an unhelpful result; assessing a failed candidate can satisfy the request.
+   Worked example, "compare LiH at two bond lengths in STO-3G with the Li 1s
+   core frozen": inputs = two geometries, STO-3G, frozen-core rule; model =
+   restricted singlet reference, 2 active electrons in 5 spatial orbitals (10
+   qubits) per geometry; quantity = signed total-energy difference including
+   each geometry's nuclear-plus-core constant, with the correlation part
+   reported separately from the mean-field part; accuracy = a declared
+   absolute tolerance (for example 1e-5 Ha) against a same-sector FCI reference.
 2. **Choose the execution level.** A numerical prediction can use dense/sparse
    linear algebra; circuit construction requires the library primitive; an
    executed quantum result additionally requires target-specific evidence.

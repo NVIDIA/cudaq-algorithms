@@ -20,8 +20,11 @@ shape is not a library contract.
 
 - Public symbol/source: `cudaq_algorithms.sim_utils.action`, `sim_utils.py`.
 - Kind/role: simulation-only analysis, driver.
-- Concrete input: `PauliLCU`. This helper calls `encode_kernel`, which is not a
-  member of the shared `BlockEncoding` protocol; do not advertise it for every
+- Concrete input: type-hinted `PauliLCU`. The real requirement is an encoding
+  that exposes `encode_kernel()` returning a `(state: cudaq.State)` kernel
+  plus `num_system`/`num_ancilla`, with the system register allocated first;
+  the body uses nothing else. `encode_kernel` is not a member of the shared
+  `BlockEncoding` protocol, so do not advertise `action` for every
   structurally conforming encoding.
 - Output: unnormalized NumPy complex vector.
 - No shots, QPU execution, postselection sampling, or success amplification.

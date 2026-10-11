@@ -25,7 +25,12 @@ The source explicitly rejects `nirrep() != 1` because the dense `Ca` path
 requires C1 symmetry, and rejects differing alpha/beta orbitals. It does not
 independently check convergence, the named RHF/RKS reference type, real-valued
 coefficients, or orbital orthonormality; incompatible provider objects and
-Psi4 failures propagate.
+Psi4 failures propagate. The rejection message names RKS as accepted, and a
+restricted Kohn-Sham wavefunction does pass both checks, but its integrals
+give a Hartree-Fock-type second-quantized Hamiltonian in the Kohn-Sham
+orbital basis with the exchange-correlation functional dropped, not a DFT
+energy; use an RHF reference for a Hamiltonian consistent with the mean-field
+energy.
 
 For the alpha-orbital coefficient matrix `C`, the provider computes
 `C.T @ wavefunction.H() @ C`. It constructs
@@ -48,5 +53,6 @@ peak memory are provider- and input-dependent and are not measured here.
 The cited test builds restricted C1 H2 and H4 wavefunctions and compares the
 resulting qubit-Hamiltonian spectra with independently extracted PySCF tensors
 using `np.allclose(..., atol=1e-6)` with NumPy's default relative tolerance.
-Validation of this provider must also exercise the two explicit failures:
-multiple irreps and unequal alpha/beta orbitals.
+The two explicit failures, multiple irreps and unequal alpha/beta orbitals,
+are source-checked but untested in-repo; validation of this provider must
+exercise both.

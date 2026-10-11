@@ -7,7 +7,13 @@ phase sequence**.
 
 - Public symbols: `cudaq_algorithms.PhaseSequence`, `cudaq_algorithms.QSVT`.
 - Source: `python/cudaq_algorithms/qsvt.py` and signal kernels in
-  `common_kernels.py`.
+  `common_kernels.py`. The whole sequence is also available as composable
+  device kernels for a user's own `@cudaq.kernel`:
+  `pauli_lcu.apply_phase_sequence(signal, system, phases, walk_directions,
+  *kernel_args)` and `pauli_lcu.apply_controlled_phase_sequence(
+  control_and_signal, system, ...)`, taking `PauliLCU.kernel_args` and
+  projector phases; `walk_directions` must be non-empty (pass one unused
+  entry for degree 0).
 - Tests: `test_qsvt.py`, `test_walk_qsvt_orchestration.py`,
   `test_block_encoding_protocol.py`, `test_df_encoding.py`.
 - Examples: `02_hamiltonian_simulation.py`, `07_matrix_inversion_qsvt.py`,
@@ -57,8 +63,14 @@ order. A degree-0 sequence is legal and applies only a signal phase.
 
 - Requires `cudaq-algorithms.block-encoding.zero-flagged.v1`.
 - Optionally consumes `cudaq-algorithms.state-preparation.unitary.v1`.
-- QSVT uses `apply_kernel`, not `walk_step_kernel`; a caller-side walk-sign
-  correction is wrong.
+- QSVT uses `apply_kernel`, not `walk_step_kernel`, and follows each
+  `apply_kernel` with its own explicit `reflect_about_zero(signal)` (the
+  order is swapped for an adjoint direction). The effective signal-model
+  step is therefore `diag(-1, 1) @ [[x, s], [s, -x]] = [[-x, -s], [s, -x]]`:
+  the minus sign on `x` in the front door's response model comes from this
+  reflection, not from a walk convention a caller reproduces. Supplying
+  `walk_step_kernel` or a caller-side walk-sign correction would reflect
+  twice and is wrong.
 - `BlockEncoding` conformance does not prove scientific semantics or
   `state_prep` support for an unchecked consumer.
 - Controlled kernels initialize their own control basis value; behavior with an

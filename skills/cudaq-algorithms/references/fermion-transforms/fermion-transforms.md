@@ -27,7 +27,12 @@ metadata. Its extent is set by non-identity qubits actually touched after
 pruning and cancellation; it can be narrower than `n`, and a fully pruned or
 all-zero Hamiltonian is empty. Identity-only output has zero non-identity
 extent. A downstream fixed-width application must restore/check the intended
-width rather than infer it from the operator.
+width rather than infer it from the operator. `to_matrix()` compacts every
+untouched qubit out of the dense matrix, interior or low ones as well as
+trailing ones (`spin.z(1).to_matrix()` is `2x2`), so padding that matrix with
+`kron(eye, ...)` misplaces the operator; build dense comparisons from
+`term.get_pauli_word(width)` at the explicit width, as the checkpoint below
+does.
 
 Both transforms accept complex tensors and can return complex or
 non-Hermitian operators. Consumers such as `PauliLCU` and `Trotter` require a
@@ -65,7 +70,11 @@ This small-system oracle assembles literal ladder coefficients without using
 either compiler. Supply `h` of shape `(m,m)`, `V` of shape `(m,m,m,m)` (zeros for
 a one-body model), `offset`, `prune_tol`, and the numerical-check budget `atol`.
 Mode zero is the least significant occupation bit. Dense storage grows as
-`4**m`; use a selected-sector/sparse reference for larger problems.
+`4**m`; use a selected-sector/sparse reference for larger problems. The
+`fixed_width_matrix` helper is defined here and copied verbatim into the
+[double-factorization checkpoint](../double-factorization/double-factorization.md#verification);
+an idle mode makes `to_matrix()` narrower than `2**m`, which this helper
+tolerates and `kron(eye, to_matrix())` padding does not.
 
 ```python
 import itertools
@@ -95,11 +104,17 @@ def occupation_matrix(h, V, offset=0.0):
     return out
 
 def fixed_width_matrix(operator, m):
-    matrix = np.asarray(operator.to_matrix())
-    if matrix.size == 0:
-        return np.zeros((1 << m, 1 << m), dtype=complex)
-    assert len(matrix) <= 1 << m
-    return np.kron(np.eye((1 << m) // len(matrix)), matrix)
+    # Explicit-width Pauli words: untouched qubits read "I". Never pad
+    # to_matrix(), which compacts unused qubits at any position.
+    P = {"I": np.eye(2), "X": [[0, 1], [1, 0]],
+         "Y": [[0, -1j], [1j, 0]], "Z": np.diag([1, -1])}
+    out = np.zeros((1 << m, 1 << m), dtype=complex)
+    for term in operator:
+        mat = np.array([[1.0]])
+        for ch in reversed(term.get_pauli_word(m)):  # word[0] = qubit 0 = LSB
+            mat = np.kron(mat, np.asarray(P[ch], dtype=complex))
+        out += complex(term.evaluate_coefficient()) * mat
+    return out
 
 m = len(h)
 H_occ = occupation_matrix(h, V, offset)

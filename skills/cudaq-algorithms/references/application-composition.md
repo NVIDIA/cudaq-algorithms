@@ -28,6 +28,8 @@ does not define new primitives or promise pairwise compatibility.
 | Product-formula evolution | state preparation or statevector -> `Trotter` -> kernel or simulation `evolve` | Identity terms are global phase and absent from device circuits; the simulation helper can restore them. |
 | Chemistry Hamiltonian for Pauli algorithms | integral loader -> either (A) `chemistry.qubit_hamiltonian` or (B) `chemistry.spin_orbital_tensors` -> `fermion.jordan_wigner` / `fermion.bravyi_kitaev` -> `PauliLCU`, `Walk`, QSVT, or `Trotter` | `qubit_hamiltonian` consumes spatial tensors and performs spin expansion plus Jordan-Wigner internally. Do not feed it spin-expanded tensors. Pass the loader's scalar offset to `qubit_hamiltonian` or the selected explicit transform. |
 | Compressed chemistry approximation | integral loader -> compressed double factorization -> reconstruction/error analysis -> qubit Hamiltonian | `DoubleFactorization` is host data, not a packaged quantum kernel; approximation and optimizer status remain visible. |
+| Quantum phase estimation | Hartree-Fock preparation -> counting register -> controlled oracle (`Trotter` product-formula evolution, or the block encoding's `controlled_walk_step_kernel`/`controlled_adjoint_walk_step_kernel` with `prepare_kernel` on the signal register) -> inverse QFT -> classical decoding | Not a packaged primitive; `docs/sphinx/examples/python/08_quantum_phase_estimation.py` is the self-verifying shell. Time-evolution oracles decode linearly in `t`; the walk decodes as `E = -alpha*cos(theta)`. QPE samples eigenvalues with the input state's spectral weights; it does not choose the ground state. |
+| Lookup-based SELECT/PREPARE components | `cudaq_algorithms.primitives`: `unary_iteration_kernels` or `QROM` for coherent table lookup; `AliasSamplingPrepare` for a weighted index marginal; reversible adders/comparators (see [circuit primitives](primitives/primitives.md)) | Strictly unitary kernels with exact logical Toffoli counts; alias-sampling garbage registers are not orthogonal, so only index-register amplitude magnitudes are guaranteed. |
 
 ## Example adaptation rules
 
@@ -55,7 +57,7 @@ precision, version, and tolerance actually used.
 
 ## Workflow
 
-The two paths below start from scientific inputs and terminate at a requested
+The three paths below start from scientific inputs and terminate at a requested
 quantity. Each arrow is a checked handoff, not a requirement to use every
 primitive. Read the relevant topic's Workflow and Verification as a stage is
 selected; API details remain in its focused contracts.
@@ -71,7 +73,7 @@ or reference-state overlaps with their tolerances.
 | Physical model | [Chemistry](chemistry/chemistry-bridges.md#workflow): converge the specified reference, load tensors, optionally freeze core/select active orbitals | Orthogonality, integral ordering, scalar/core contribution, electron counts, and consistent orbital character across geometries |
 | Representation | Chemistry's direct JW Hamiltonian, or [fermion transforms](fermion-transforms/fermion-transforms.md#workflow) for explicit JW/BK comparison | Independent determinant/sector energy; map the state and observables with the Hamiltonian |
 | Reference | [State preparation](state-preparation/state-preparation.md#workflow): determinant or supplied ordered correlated preparation | Occupations, sector, and state fidelity; quantify loss of reference overlap near crossings |
-| Estimator | [Pauli LCU](block-encoding/pauli-lcu.md#workflow) and [moments/Krylov](qubitization/qubitization.md#workflow) when that quantum path is requested | Raw block, moment sign/normalization, Gram rank, and energy versus an independent sector reference |
+| Estimator | [Pauli LCU](block-encoding/pauli-lcu.md#workflow) and [moments/Krylov](qubitization/qubitization.md#workflow) when that quantum path is requested; quantum phase estimation via the QPE chain above (`08_quantum_phase_estimation.py`), whose counting-register width sets the energy resolution | Raw block, moment sign/normalization, Gram rank, and energy versus an independent sector reference; for QPE, the modal bin within one phase cell of the reference and the reference-state overlap |
 | Optional approximation | [Double factorization](double-factorization/double-factorization.md#workflow) only when compression/cost is part of the task | Reconstructed physical spectrum and requested accuracy, separately from tensor residual and norm proxy |
 
 Adapt `docs/sphinx/examples/python/03_chemistry_to_ground_state.py` for the
@@ -82,26 +84,38 @@ cases, not a scalable guarantee. HF-supported Krylov convergence need not reach
 the lowest state of a different symmetry sector.
 
 The following parameterized checkpoint connects a **converged closed-shell RHF**
-object `mf` to executed moments and an independent PySCF FCI reference. Define
+object `mf` to executed moments and an independent PySCF FCI reference. The
+chain assumes a restricted closed-shell singlet reference: `chemistry.from_pyscf`
+and `chemistry.from_psi4` accept restricted references only and reject
+unrestricted (UHF) ones, and `from_fcidump` reads real RHF/ROHF-style files, so
+open-shell or unrestricted references are outside this checkpoint. Define
 `krylov_checkpoint` from the [qubitization Verification](qubitization/qubitization.md#verification)
 in the same `.py` script first. Choose positive `dimension`/`cutoff` and the
 energy/moment tolerances before running. For active-space tasks, replace the
 integrals, occupations, and FCI problem together using the chemistry workflow.
 
 ```python
+# requires krylov_checkpoint from qubitization/qubitization.md#verification,
+# defined in this same .py file before use
 import cudaq
 import numpy as np
 from pyscf import fci
 from cudaq_algorithms import chemistry, PauliLCU, Walk
 
-def molecular_energy_checkpoint(mf, dimension, cutoff):
-    assert mf.converged and mf.mol.spin == 0
+cudaq.set_target("qpp-cpu", precision="fp64")
+
+def molecular_energy_checkpoint(mf, dimension, cutoff, coefficient_tol=1e-10):
+    assert mf.converged and mf.mol.spin == 0   # restricted closed-shell singlet only
     h, eri, nuclear = chemistry.from_pyscf(mf)
     width = 2 * len(h)
     electronic = chemistry.qubit_hamiltonian(h, eri, scalar_offset=0.0)
     # Explicit word width retains idle orbitals; no scalar is counted twice.
-    terms = [(complex(t.evaluate_coefficient()).real,
-              t.get_pauli_word(width)) for t in electronic]
+    coefficients = [complex(t.evaluate_coefficient()) for t in electronic]
+    # A Hermitian chemistry Hamiltonian has real coefficients; an imaginary
+    # part signals a tensor-ordering or convention error, so fail loudly.
+    assert all(abs(c.imag) < coefficient_tol for c in coefficients)
+    terms = [(c.real, t.get_pauli_word(width))
+             for c, t in zip(coefficients, electronic)]
     encoding = PauliLCU(terms)
     psi = np.zeros(1 << width, complex)
     occupied = np.flatnonzero(np.asarray(mf.mo_occ) > 1.0)
@@ -122,9 +136,27 @@ def molecular_energy_checkpoint(mf, dimension, cutoff):
         "moments": mu,
     }
 
-cudaq.set_target("qpp-cpu", precision="fp64")
 # result = molecular_energy_checkpoint(mf, dimension, cutoff)
 ```
+
+### Lattice Hamiltonian to a ground or sector energy
+
+Inputs: lattice/boundaries and couplings (Hubbard `t`/`U`, Heisenberg/Ising
+couplings and fields) or an explicit Hamiltonian, the particle-number/spin
+sector (for example half filling, `S_z`), and the requested energy, gap, or
+spectrum with its tolerance.
+
+| Stage | Resource and action | Check before continuing |
+| --- | --- | --- |
+| Model | [Fermion transforms](fermion-transforms/fermion-transforms.md#workflow) for fermionic lattices (hopping and on-site tensors -> Pauli operator); spin models are already Pauli sums | Boundary signs, site/spin-orbital order, Hermiticity, and that the dense operator on a small instance reproduces the intended couplings |
+| Reference | [State preparation](state-preparation/state-preparation.md#workflow): a determinant or occupation state in the requested sector | Occupations, particle number, and `S_z`; the reference must overlap the sector ground state |
+| Estimator | [Pauli LCU](block-encoding/pauli-lcu.md#workflow) -> [moments/Krylov](qubitization/qubitization.md#workflow), or the QPE chain above with the same encoding | Moment sign/normalization and Gram rank, or QPE bin resolution; energy versus an exact diagonalization of the same sector on a tractable instance |
+| Decision | Sector/parity check as the handoff: project the dense Hamiltonian onto the requested sector before diagonalizing | A sector ground state need not be the global ground state; label the sector explicitly |
+
+The qubitization Verification `krylov_checkpoint` applies unchanged with
+`offset` equal to any separated scalar; `Walk.moments` on the sector reference
+supplies `mu`. No packaged lattice-model builder exists: the Hamiltonian is
+caller-supplied `(coefficient, word)` terms or fermion tensors.
 
 ### Lattice Hamiltonian to observable dynamics
 
@@ -204,3 +236,8 @@ were derived or source-checked, including optional dependencies and version.
 - Trotter end-to-end behavior: the executable reference cases in
   `tests/python/test_trotter.py`, plus `03_chemistry_to_ground_state.py` and
   `trotter_chemistry.py`.
+- Quantum phase estimation: `docs/sphinx/examples/python/08_quantum_phase_estimation.py`
+  (hand-written QPE shell and inverse QFT; the oracle kernels come from
+  `trotter.apply_trotter` and `PauliLCU`).
+- Circuit primitives: `tests/python/test_primitives_*.py` (QROM, unary
+  iteration, arithmetic, alias sampling, resource pins); no docs example.

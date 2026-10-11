@@ -67,6 +67,10 @@ eigenvalues for the norm helper, but do not feed `kappa` to
 `chemistry.qubit_hamiltonian`: that bridge already implements the ordinary
 two-electron Hamiltonian. Recompute this correction for each approximation;
 mixing the target correction with approximate factors changes the Hamiltonian.
+`double_factorization_one_norm` validates neither the provenance nor the
+length of `one_body_eigenvalues`, so the eigenvalues of `h`, of `kappa` built
+from the target `eri`, or of a vector of the wrong length are all accepted
+without raising; only the caller's bookkeeping keeps the norm honest.
 
 ## Verification
 
@@ -76,12 +80,27 @@ physical spatial `h`, target `eri`, `offset`, and JW occupation indices `sector`
 `reference_levels` are sorted eigenvalues from an independently assembled target
 Hamiltonian in that sector. Supply `check_atol` for reconstruction checks and
 `prune_tol` for qubit compilation; choose them below the scientific error budget.
-Use `fixed_width_matrix` from the
-[fermion checkpoint](../fermion-transforms/fermion-transforms.md#verification).
+`fixed_width_matrix` is the same helper as in the
+[fermion checkpoint](../fermion-transforms/fermion-transforms.md#verification),
+repeated here so the block runs as pasted: it builds the dense matrix from
+explicit-width Pauli words because `to_matrix()` compacts every untouched
+qubit (an idle or pruned-away spin orbital at any position), and padding that
+compacted matrix would diagonalize the wrong operator.
 
 ```python
 import numpy as np
 from cudaq_algorithms import chemistry, double_factorization as df
+
+def fixed_width_matrix(operator, m):
+    P = {"I": np.eye(2), "X": [[0, 1], [1, 0]],
+         "Y": [[0, -1j], [1j, 0]], "Z": np.diag([1, -1])}
+    out = np.zeros((1 << m, 1 << m), dtype=complex)
+    for term in operator:
+        mat = np.array([[1.0]])
+        for ch in reversed(term.get_pauli_word(m)):  # word[0] = qubit 0 = LSB
+            mat = np.kron(mat, np.asarray(P[ch], dtype=complex))
+        out += complex(term.evaluate_coefficient()) * mat
+    return out
 
 n = len(h)
 pair_matrix = np.zeros((n*n, n*n))

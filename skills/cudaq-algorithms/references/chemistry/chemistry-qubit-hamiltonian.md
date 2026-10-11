@@ -18,6 +18,7 @@ integrals into a Pauli Hamiltonian**.
 qubit_hamiltonian(
     one_body,
     eri,
+    *,
     scalar_offset=0.0,
     tolerance=1.0e-12,
     validate_symmetry=True,
@@ -27,7 +28,9 @@ qubit_hamiltonian(
 The function calls [spin-orbital expansion](chemistry-spin-orbital-tensors.md)
 and then the packaged `fermion.jordan_wigner` transform. The transform choice is
 hard-wired: there is no Bravyi-Kitaev selector. `scalar_offset` becomes the
-identity coefficient; `tolerance` prunes terms in the fermion compiler.
+identity coefficient; `tolerance` prunes terms in the fermion compiler. The
+three options are keyword-only; a positional third argument raises
+`TypeError`.
 
 Use this bridge when the downstream algorithms expect the package's
 Jordan-Wigner qubit and spin-orbital conventions. To choose Bravyi-Kitaev,

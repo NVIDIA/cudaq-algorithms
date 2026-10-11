@@ -47,6 +47,7 @@ where applicable. Dense references below are for tractable validation cases.
 | Conditional observable | `p = vdot(b, b).real`, then `vdot(b, O @ b).real / p` only for resolvably nonzero `p` | Normalizing first erases the success probability; conditioning is not tracing out a register |
 | Discarded-register state | Partial trace of the actual dilation, or independently justified Kraus operators; check trace, Hermiticity, positivity | Knowing only the good block does not determine an arbitrary dilation's discarded channel |
 | Model compression | Reconstruct the physical operator, then check the requested sector energy/gap/observable and cost | Tensor Frobenius residual, leaf count, or optimizer success alone does not certify physical accuracy |
+| Resource or cost claim | Name the level: a logical-operation proxy (formula counts, exact Toffoli counts of a minted kernel) is distinct from a transpiled gate count for a named target, which is distinct from measured runtime/memory; compare candidates at one declared level | Hardware cost; a proxy at one level does not establish the count at another, and one simulator run is not a measurement of device cost |
 
 For low-probability branches, finite shots, rank truncation, or near-degenerate
 levels, expose sensitivity instead of hiding it with normalization or a loose
