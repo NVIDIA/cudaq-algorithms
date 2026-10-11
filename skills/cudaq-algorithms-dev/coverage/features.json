@@ -603,6 +603,56 @@
       "behavioral_evals": [
         "simulation-analysis-hardware-boundary"
       ]
+    },
+    {
+      "id": "primitives-qrom",
+      "family": "primitives",
+      "record": "references/primitives/primitives-qrom.md",
+      "symbols": [
+        "cudaq_algorithms.primitives.QROM"
+      ],
+      "behavioral_evals": []
+    },
+    {
+      "id": "primitives-unary-iteration",
+      "family": "primitives",
+      "record": "references/primitives/primitives-unary-iteration.md",
+      "symbols": [
+        "cudaq_algorithms.primitives.UnaryIterationKernels",
+        "cudaq_algorithms.primitives.unary_iteration_kernels"
+      ],
+      "behavioral_evals": []
+    },
+    {
+      "id": "primitives-arithmetic",
+      "family": "primitives",
+      "record": "references/primitives/primitives-arithmetic.md",
+      "symbols": [
+        "cudaq_algorithms.primitives.add_constant",
+        "cudaq_algorithms.primitives.add_constant_qft",
+        "cudaq_algorithms.primitives.add_register",
+        "cudaq_algorithms.primitives.cmp_ge_constant",
+        "cudaq_algorithms.primitives.cmp_ge_constant_qft_shift",
+        "cudaq_algorithms.primitives.cmp_ge_constant_qft_shift_adj",
+        "cudaq_algorithms.primitives.cmp_ge_register",
+        "cudaq_algorithms.primitives.cmp_gt_register",
+        "cudaq_algorithms.primitives.iqft",
+        "cudaq_algorithms.primitives.phase_add_constant",
+        "cudaq_algorithms.primitives.qft",
+        "cudaq_algorithms.primitives.subtract_constant",
+        "cudaq_algorithms.primitives.subtract_constant_qft",
+        "cudaq_algorithms.primitives.subtract_register"
+      ],
+      "behavioral_evals": []
+    },
+    {
+      "id": "primitives-alias-sampling",
+      "family": "primitives",
+      "record": "references/primitives/primitives-alias-sampling.md",
+      "symbols": [
+        "cudaq_algorithms.primitives.AliasSamplingPrepare"
+      ],
+      "behavioral_evals": []
     }
   ],
   "support_records": [
@@ -618,6 +668,7 @@
     "references/conventions/spectral-processing.md",
     "references/double-factorization/double-factorization.md",
     "references/fermion-transforms/fermion-transforms.md",
+    "references/primitives/primitives.md",
     "references/qsvt/qsvt.md",
     "references/qubitization/qubitization.md",
     "references/simulation/simulation-analysis.md",

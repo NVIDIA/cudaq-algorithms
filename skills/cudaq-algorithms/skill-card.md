@@ -5,7 +5,9 @@
 Guides source-backed design, implementation, debugging, review, validation, and
 composition of CUDA-Q Algorithms primitives. It covers state preparation, block
 encoding, qubitization, QSP/QSVT, Suzuki-Trotter evolution, chemistry, fermion
-transforms, double factorization, and statevector analysis.
+transforms, double factorization, statevector analysis, and fault-tolerant
+circuit primitives (QROM, unary iteration, reversible arithmetic, alias
+sampling).
 
 The skill is distributed under Apache-2.0. Evaluation through nvskills-ci is
 pending; this card does not claim evaluation success or deployment readiness.

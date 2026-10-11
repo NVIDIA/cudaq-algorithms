@@ -18,15 +18,19 @@ establish a tested combination.
 - Package metadata: `pyproject.toml`, `.cudaq_version`.
 - Shared kernels and validation: `python/cudaq_algorithms/common_kernels.py`.
 - Scientific conventions: `docs/sphinx/conventions.rst`.
-- Default simulator fixture: `tests/python/conftest.py`.
+- Default simulator fixture: `tests/python/conftest.py` (`CUDAQ_DEFAULT_SIMULATOR`, default `qpp-cpu`).
 - Dense independent helpers: `tests/python/dense_references.py`.
 - Public API index: `docs/sphinx/api/python_api.rst`.
+- Package import/version: `tests/python/test_import.py`.
+- Examples' authoritative test: `tests/python/test_examples.py` runs every
+  self-verifying script under `docs/sphinx/examples/python/` (except the
+  imported module `df_encoding.py`) on the fp64 CPU simulator.
 
 ## Family source map
 
 | Family | Public source | Authoritative tests | Runnable examples/docs |
 | --- | --- | --- | --- |
-| State preparation | `python/cudaq_algorithms/stateprep/` | `test_stateprep_givens.py`, `test_stateprep_hf_ucc.py`, `test_state_prep_injection.py`, `test_stateprep.py`, `test_stateprep_kernels.py` | `guide/state_prep.rst`, `05_state_prep_and_injection.py` |
+| State preparation | `python/cudaq_algorithms/stateprep/` | `test_stateprep_givens.py`, `test_stateprep_hf_ucc.py`, `test_state_prep_injection.py`, `test_stateprep.py`, `test_stateprep_kernels.py` | `guide/state_prep.rst`, `05_state_prep_and_injection.py`, `givens_slater_determinant.py`, `hartree_fock_ucc.py` |
 | Operator pools | `python/cudaq_algorithms/stateprep/_pools.py` | `test_operator_pools.py` | `guide/state_prep.rst` |
 | Block encoding / Pauli LCU | `block_encoding.py`, `pauli_lcu.py` | `test_block_encoding_protocol.py`, `test_pauli_lcu.py`, `test_walk_qsvt_orchestration.py` | `guide/block_encodings.rst`, `01_quickstart_block_encoding.py`, `pauli_lcu_demo.py`, `06_bring_your_own_encoding.py` |
 | Qubitization | `qubitization.py` | `test_qubitization.py`, `test_walk_qsvt_orchestration.py` | `guide/qubitization_qsvt.rst` |
@@ -35,6 +39,7 @@ establish a tested combination.
 | Fermion transforms | `python/cudaq_algorithms/fermion/_compilers.py` | `test_fermion.py`, `test_fermion_compilers.py`, `test_jordan_wigner.py` | API docs |
 | Chemistry bridges | `chemistry.py` | `test_fcidump.py`, `test_psi4_conversion.py`, `test_df_qsvt_bridge.py` | `guide/preprocessing.rst`, `03_chemistry_to_ground_state.py`, `trotter_chemistry.py` |
 | Double factorization | `python/cudaq_algorithms/double_factorization/` | `test_double_factorization.py`, `test_df_encoding.py`, `test_df_qsvt_bridge.py` | `04_double_factorization_and_the_protocol.py`, `double_factorization.py`, `df_compression_to_qsvt.py`, `df_encoding.py`, `df_block_encoding.py`, `benchmarks/double_factorization/` |
+| Circuit primitives | `python/cudaq_algorithms/primitives/` (`_qrom.py`, `_unary_iteration.py`, `_arithmetic.py`, `_alias_sampling.py`) | `test_primitives_qrom.py`, `test_primitives_unary_iteration.py`, `test_primitives_arithmetic.py`, `test_primitives_alias_sampling.py`, `test_primitives_resources.py`, `test_primitives_body_gates.py`, `test_primitives_interpreter.py`, `test_primitives_payload_sum.py` | `api/python_api.rst` (Circuit primitives); no docs example |
 | Simulation analysis | `sim_utils.py` | `test_pauli_lcu.py`, `test_qsvt.py`, `test_trotter.py`, `test_df_encoding.py` | examples above that inspect statevectors |
 
 Paths under `docs/sphinx/examples/python/` are examples, not installed public

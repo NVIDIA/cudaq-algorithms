@@ -6,7 +6,7 @@ maintainers start at [authoring architecture](../authoring/architecture.md).
 
 ## Live registry
 
-[`features.json`](features.json) inventories 52 independently selectable
+[`features.json`](features.json) inventories 56 independently selectable
 operation/object contracts. Shared selectors, representations, conventions and
 workflows are `support_records`, not extra primitives. Register additions and
 renames together with their records and routing links.
