@@ -21,6 +21,9 @@ Block encodings
 .. autoclass:: cudaq_algorithms.block_encoding.BlockEncoding
    :members:
 
+.. automodule:: cudaq_algorithms.combinators
+   :members:
+
 Qubitization and QSVT
 =====================
 

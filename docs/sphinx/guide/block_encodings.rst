@@ -34,8 +34,10 @@ realizes an alias-sampled PREPARE and a unary-iteration SELECT. Encodings
 built from structured data (the double-factorized example below, the
 sparse-access encodings) program it directly. Any object satisfying the
 structural :class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol
-plugs into the same consumers, and the worked double-factorized encoding
-demonstrates the protocol at full scale.
+plugs into the same consumers. Two *combinators*, `SumEncoding` and
+`RotatedEncoding`, build new protocol-conforming encodings out of existing
+ones (see `Combining encodings`_), and the worked double-factorized
+encoding demonstrates the protocol at full scale.
 
 The block-encoding idea and ``PauliLCU``
 ----------------------------------------
@@ -260,3 +262,88 @@ Use the example file as the template for writing your own encoding; the
 construction, its normalization, and a six-molecule benchmark against
 `PauliLCU` are documented with the example itself (see
 :doc:`../examples_rst/block_encodings`).
+
+Combining encodings
+-------------------
+
+Two combinators in :mod:`cudaq_algorithms.combinators` take
+`BlockEncoding` objects and return `BlockEncoding` objects, so `Walk` and
+`QSVT` consume the result unchanged and the constructions nest:
+
+- `SumEncoding([(c_1, enc_1), ..., (c_K, enc_K)])` block-encodes
+  ``sum_i c_i H_i`` from encodings of the ``H_i`` with real, nonzero
+  coefficients (``K >= 1``; a single term is "scale by a constant").
+- `RotatedEncoding(inner, enter, exit)` block-encodes ``V H V^dagger``
+  from an encoding of ``H`` and two ``(system: qview)`` kernels
+  implementing ``V^dagger`` (``enter``) and ``V`` (``exit``).
+
+.. code-block:: python
+
+   from cudaq_algorithms import PauliLCU, RotatedEncoding, SumEncoding, Walk
+
+   hopping = RotatedEncoding.from_orbital_rotation(
+       PauliLCU(momentum_diagonal_words), modes)   # T, diagonal in momentum space
+   interaction = PauliLCU(interaction_words)       # U, diagonal in real space
+   combined = SumEncoding([(1.0, hopping), (1.0, interaction)])
+
+   combined.alpha            # == hopping.alpha + interaction.alpha
+   walk = Walk(combined)     # same consumers as PauliLCU
+   shifted = SumEncoding([(1.0, combined), (-e_ref, PauliLCU({"I" * n: 1.0}))])
+
+**Normalization.** The sum's subnormalization is the LCU triangle bound,
+``alpha = sum_i |c_i| alpha_i``; a rotation leaves ``alpha`` unchanged. The
+combinator itself therefore never lowers ``alpha`` — the saving comes from
+choosing *where* each piece is encoded. A hopping term encoded in momentum
+space costs ``sum_k |eps(k)|``, less than the one-norm of its Jordan-Wigner
+``XX + YY`` strings, so the sum of a rotated momentum-space ``T`` and a
+real-space ``U`` has a smaller ``alpha`` than one flat `PauliLCU` of the
+whole Hamiltonian.
+
+**Ancilla layout.** `SumEncoding` adds a *slot* register of
+``max(1, ceil(log2 K))`` qubits selecting the summand and one *flag* qubit,
+and the summands share one ancilla pool as wide as the widest of them:
+``num_ancilla = num_slots + 1 + max_i num_ancilla_i``, in the order
+``[slot][flag][shared pool]``. PREPARE puts amplitude
+``sqrt(|c_i| alpha_i / alpha)`` on slot ``|i>``; SELECT computes
+``flag <- (slot == i)`` and lets the flag drive summand ``i``'s own
+`controlled_apply_kernel` on the contiguous ``[flag | pool]`` view. Pool
+sharing works because every protocol-conforming encoding returns its
+ancillas to ``|0>``. `RotatedEncoding` adds no ancillas.
+
+**Negative coefficients.** A term with ``c_i < 0`` is phased by ``-1`` on
+its slot branch, so ``SumEncoding([(1.0, encoding), (-e_ref, identity)])``
+with ``identity = PauliLCU({"I" * n: 1.0})`` block-encodes
+``H - e_ref I`` at ``alpha + |e_ref|`` — the spectral shift ground-state
+filters and QPE decoders need.
+
+**Nesting.** Operands may themselves be sums or rotations: a
+`SumEncoding` of a `RotatedEncoding` of a `PauliLCU` is one
+`BlockEncoding`, and the walk's reflection acts on the outermost ancilla
+register as a whole.
+
+**The orbital-rotation constructor.** `RotatedEncoding.from_orbital_rotation(inner, orthogonal)`
+takes a real orthogonal ``n x n`` matrix whose columns are the target
+modes, with ``2 n == inner.num_system`` in the interleaved spin-orbital
+layout (``2p`` up, ``2p + 1`` down), and compiles it to a network of
+adjacent Givens rotations applied to both spin sectors. The network
+reproduces ``V`` *up to a sign per mode*. That is immaterial when the inner
+encoding is diagonal in the rotated modes (number operators, the intended
+use) and must be accounted for otherwise; for an arbitrary ``V``, supply
+your own ``enter``/``exit`` kernels.
+
+**Not available: the odd-moment observable.** Both combinators raise
+``NotImplementedError`` from `select_observable`. The sum's SELECT drives
+each summand's full block encoding — PREPARE trees included — so it is not
+a finite Pauli sum and no composite `cudaq.SpinOperator` exists; a rotated
+encoding's terms are not computational-frame Pauli words. Even moments
+(`Walk.moment` with even order), `Walk.kernel` statevectors at any power,
+and QSVT sequences are all available. For an odd order on a statevector
+simulator, take the good-subspace block of
+``Walk(encoding).kernel(power=k)``, which applies ``T_k(-H/alpha)``.
+
+The worked example ``09_hubbard_combined_encoding.py``
+(:doc:`../examples_rst/getting_started`) builds the Fermi-Hubbard
+Hamiltonian this way — ``T`` in the analytic momentum basis, ``U`` in real
+space — and verifies every block, the controlled variants, the walk
+moments, a negative-coefficient shift, and a QSVT sequence against an
+independent sparse Jordan-Wigner reference.
