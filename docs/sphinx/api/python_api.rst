@@ -44,6 +44,12 @@ Trotter
 .. automodule:: cudaq_algorithms.trotter
    :members:
 
+Circuit primitives
+==================
+
+.. automodule:: cudaq_algorithms.primitives
+   :members:
+
 Preprocessing
 =============
 
