@@ -70,10 +70,12 @@ def _codespace_spec(h,
                     V=None,
                     scalar_offset=0.0,
                     interaction_graph=None,
-                    local_modes="standard"):
+                    local_modes="standard",
+                    parity=0):
     """Spectrum of the Superfast encoding on the code subspace -- the *joint
     +1 eigenspace* of the sign-fixed loop stabilizers (no sector search: the
-    stabilizers are sign-fixed so +1 is the physical sector).
+    stabilizers are sign-fixed so +1 is the physical sector, whose fermion
+    parity is selected by ``parity``).
 
     Stabilizer matrices are built explicitly on ``nq`` qubits from their raw
     ``(coeff, (x, z))`` words (via the encoding backend) -- cudaq's
@@ -83,14 +85,15 @@ def _codespace_spec(h,
     backend = _encoding_backend(
         np.asarray(h, dtype=complex),
         np.zeros((0, 0, 0, 0)) if V is None else np.asarray(V, dtype=complex),
-        1e-15, interaction_graph, local_modes)
+        1e-15, interaction_graph, local_modes, parity)
     nq = backend.num_qubits
     dim = 1 << nq
     Hb = _dense(
         bravyi_kitaev_superfast(*args,
                                 scalar_offset=scalar_offset,
                                 interaction_graph=interaction_graph,
-                                local_modes=local_modes))
+                                local_modes=local_modes,
+                                parity=parity))
     if Hb.shape[0] < dim:  # op did not touch every qubit
         Hb = np.kron(np.eye(dim // Hb.shape[0]), Hb)
     cols = np.eye(dim, dtype=complex)
@@ -101,19 +104,30 @@ def _codespace_spec(h,
     return np.sort(np.linalg.eigvalsh(cols.conj().T @ Hb @ cols))
 
 
+def _matches_jw(h,
+                V=None,
+                interaction_graph=None,
+                local_modes="standard",
+                parity=0):
+    """Error between the Superfast code space at ``parity`` and the matching
+    Jordan-Wigner fermion-parity sector (+1 even, -1 odd)."""
+    sector = _parity_sector_specs(h, V)[+1 if parity == 0 else -1]
+    spec = _codespace_spec(h,
+                           V,
+                           interaction_graph=interaction_graph,
+                           local_modes=local_modes,
+                           parity=parity)
+    if len(spec) != len(sector):
+        return np.inf
+    return float(np.max(np.abs(spec - sector)))
+
+
 def _matches_jw_even(h,
                      V=None,
                      interaction_graph=None,
                      local_modes="standard"):
     """Error between the Superfast code space and JW's even parity sector."""
-    even = _parity_sector_specs(h, V)[+1]
-    spec = _codespace_spec(h,
-                           V,
-                           interaction_graph=interaction_graph,
-                           local_modes=local_modes)
-    if len(spec) != len(even):
-        return np.inf
-    return float(np.max(np.abs(spec - even)))
+    return _matches_jw(h, V, interaction_graph, local_modes, parity=0)
 
 
 def _max_pauli_weight(op):
@@ -862,3 +876,94 @@ def test_three_connected_helper():
     # two triangles sharing a cut vertex (2) -> not even 2-connected
     assert not _is_three_connected(5, [(0, 1), (1, 2), (0, 2), (2, 3), (3, 4),
                                        (2, 4)])
+
+
+# ----------------------------------------------------------------------
+# Fermion-parity sector selection (parity=)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", list(_GRAPHS))
+@pytest.mark.parametrize("seed", [1, 7])
+def test_odd_sector_onebody_matches_jordan_wigner(name, seed):
+    n, edges = _GRAPHS[name]
+    h, _ = _random_tight_binding(seed, n, edges)
+    assert _matches_jw(h, parity=1) < 1e-10
+
+
+@pytest.mark.parametrize("name", ["path-4", "ring-4", "ring-5", "2x2-lattice"])
+@pytest.mark.parametrize("seed", [3, 9])
+def test_odd_sector_density_density_matches_jordan_wigner(name, seed):
+    n, edges = _GRAPHS[name]
+    h, V = _random_tight_binding(seed, n, edges, coulomb=True)
+    assert _matches_jw(h, V, parity=1) < 1e-10
+
+
+@pytest.mark.parametrize("name", list(_EVEN_GRAPHS))
+@pytest.mark.parametrize("parity", [0, 1])
+def test_binary_tree_both_sectors_match_jordan_wigner(name, parity):
+    n, edges = _EVEN_GRAPHS[name]
+    h, V = _random_tight_binding(5, n, edges, coulomb=True)
+    assert _matches_jw(h, V, local_modes="binary_tree", parity=parity) < 1e-10
+
+
+@pytest.mark.parametrize("name", list(_MULTICYCLE_EVEN))
+@pytest.mark.parametrize("local_modes", ["standard", "binary_tree"])
+def test_odd_sector_multicycle_graphs_match_jordan_wigner(name, local_modes):
+    n, edges = _MULTICYCLE_EVEN[name]
+    h, V = _random_tight_binding(4, n, edges, coulomb=True)
+    assert _matches_jw(h, V, local_modes=local_modes, parity=1) < 1e-10
+
+
+def test_odd_sector_is_the_union_of_odd_particle_numbers():
+    """Three electrons on a 5-site ring: the odd code space carries exactly
+    the N = 1, 3, 5 sectors of the exact Fock-space Hamiltonian, so the
+    N = 3 ground energy is in it and the even-sector energies are not."""
+    n, edges = _GRAPHS["ring-5"]
+    h, V = _random_tight_binding(11, n, edges, coulomb=True)
+    exact = _dense_fermion_hamiltonian(h, V)
+    dim = exact.shape[0]
+    number = np.array([bin(k).count("1") for k in range(dim)])
+    sector_energies = {
+        N: np.linalg.eigvalsh(exact[np.ix_(number == N, number == N)])
+        for N in range(n + 1)
+    }
+    odd = np.sort(np.concatenate([sector_energies[N] for N in (1, 3, 5)]))
+    spec = _codespace_spec(h, V, parity=1)
+    assert np.max(np.abs(spec - odd)) < 1e-10
+    ground_n3 = sector_energies[3].min()
+    assert np.min(np.abs(spec - ground_n3)) < 1e-10
+    even = np.concatenate([sector_energies[N] for N in (0, 2, 4)])
+    # the even and odd spectra of a generic model are disjoint
+    assert np.min(np.abs(spec[:, None] - even[None, :])) > 1e-6
+
+
+def test_parity_selects_disjoint_sectors_and_leaves_stabilizers_alone():
+    n, edges = _GRAPHS["ring-4"]
+    h, V = _random_tight_binding(2, n, edges, coulomb=True)
+    even = _codespace_spec(h, V, parity=0)
+    odd = _codespace_spec(h, V, parity=1)
+    assert np.min(np.abs(even[:, None] - odd[None, :])) > 1e-6
+    for local_modes in ("standard", "binary_tree"):
+        words = [
+            sorted((str(t.get_pauli_word(op.qubit_count)),
+                    complex(t.evaluate_coefficient())) for t in op)
+            for op in bravyi_kitaev_superfast_stabilizers(
+                h, V, local_modes=local_modes, parity=0)
+        ]
+        flipped = [
+            sorted((str(t.get_pauli_word(op.qubit_count)),
+                    complex(t.evaluate_coefficient())) for t in op)
+            for op in bravyi_kitaev_superfast_stabilizers(
+                h, V, local_modes=local_modes, parity=1)
+        ]
+        assert words == flipped
+
+
+def test_parity_validation():
+    h = np.array([[0.0, 1.0], [1.0, 0.0]])
+    for bad in (2, -1, True, 0.5, "odd"):
+        with pytest.raises(ValueError, match="parity must be 0"):
+            bravyi_kitaev_superfast(h, parity=bad)
+    with pytest.raises(ValueError, match="parity must be 0"):
+        bravyi_kitaev_superfast_stabilizers(h, parity=2)

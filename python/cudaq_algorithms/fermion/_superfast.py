@@ -320,8 +320,9 @@ def _stabilizer_words(graph):
     fermionic loop operator is a scalar on the code space; this orientation
     count is exactly the sign that makes that scalar ``+1`` (the raw product's
     ``i``/``-i`` phases and the cycle length drop out). The resulting operator
-    is a Hermitian involution whose ``+1`` eigenspace is the physical (even
-    fermion-parity / vacuum) sector."""
+    is a Hermitian involution whose ``+1`` eigenspace is the physical sector
+    (even fermion parity by default; ``parity=1`` moves the sector through
+    the vertex operators, not through these words)."""
     tree, chords = _spanning_forest(graph)
     stabilizers = []
     for (i, j) in chords:
@@ -466,21 +467,44 @@ def _compile(backend, one_body, two_body, scalar_offset, tolerance):
 # spanning-forest cycle machinery can build the stabilizers.
 
 
+def _validate_parity(parity) -> int:
+    if isinstance(parity, bool) or parity not in (0, 1):
+        raise ValueError(
+            f"parity must be 0 (even particle number) or 1 (odd), got "
+            f"{parity!r}")
+    return int(parity)
+
+
+def _parity_vertex(edges, parity):
+    """The vertex whose operator is negated to select the odd sector.
+
+    The code space fixes ``prod_i B_i`` (the encoded fermion parity) to a
+    constant; negating one vertex operator flips that constant and so
+    selects the odd-particle-number sector while leaving the edge operators,
+    their orientation and the loop stabilizers untouched. The lowest active
+    mode is the designated vertex (any vertex works)."""
+    if parity == 0:
+        return None
+    return min(m for edge in edges for m in edge)
+
+
 class _StandardBackend:
     """The original edge encoding: one qubit per edge (Setia-Whitfield,
     arXiv:1712.00446). A/B are real Hermitian Pauli words (coeff 1)."""
 
-    def __init__(self, graph):
+    def __init__(self, graph, parity=0):
         self.graph = graph
         self.num_modes = graph.num_modes
         self.num_qubits = graph.num_qubits
         self.edges = graph.edges
+        self._flip_vertex = _parity_vertex(graph.edges, parity)
 
     def a_word(self, i, j):
         return 1.0, _a_word(self.graph, i, j)
 
     def b_word(self, i):
-        return 1.0, _b_word(self.graph, i)
+        sign = -1.0 if i == self._flip_vertex else 1.0
+        return sign, _b_word(self.graph, i)
 
     def stabilizers(self):
         return _stabilizer_words(self.graph)
@@ -645,13 +669,16 @@ class _GSEBackend:
     ``i = N(j, q)`` (Eq 21). The edge orientation ``eps_{i,j} = +-1`` (for
     ``i < j``; ``A_{j,i} = -A_{i,j}`` fixes the other direction) is the paper's
     "suitable choice": a fixed sign would leave a spurious flux on some loops
-    that flips the encoded fermion-parity sector, so each fundamental cycle's
-    chord orientation is set (``_fix_orientation``) to make the loop operator
-    ``+1`` on the physical (even-parity) code space."""
+    that would move the code space off the physical sector, so each
+    fundamental cycle's chord orientation is set (``_fix_orientation``) to make
+    the loop operator ``+1`` on it. The fermion parity of that sector is a
+    separate choice: ``parity=1`` negates one vertex operator (``b_word``),
+    which no orientation or stabilizer-sign pattern can emulate."""
 
-    def __init__(self, graph, local_modes):
+    def __init__(self, graph, local_modes, parity=0):
         self.num_modes = graph.num_modes
         self.edges = graph.edges
+        self._flip_vertex = _parity_vertex(graph.edges, parity)
         neighbors = [[] for _ in range(graph.num_modes)]
         for (i, j) in graph.edges:
             neighbors[i].append(j)
@@ -702,9 +729,9 @@ class _GSEBackend:
 
     def _fix_orientation(self, graph):
         """Set each chord's orientation so its fundamental loop operator is
-        ``+1`` on the even-parity code space -- the paper's "suitable choice"
-        of edge orientations. Each chord lies in exactly one fundamental cycle,
-        so the choices are independent."""
+        ``+1`` on the physical code space -- the paper's "suitable choice" of
+        edge orientations. Each chord lies in exactly one fundamental cycle, so
+        the choices are independent (and independent of ``parity``)."""
         tree, chords = _spanning_forest(graph)
         for (i, j) in chords:
             cycle = _tree_path(tree, graph.num_modes, j, i) + [j]
@@ -716,6 +743,8 @@ class _GSEBackend:
         for c, w in self._modes[i]:
             coeff, word = _word_mul(coeff, word, c, w)
         coeff *= (-1j)**(self._degree[i] // 2)
+        if i == self._flip_vertex:
+            coeff = -coeff
         return coeff, word
 
     def stabilizers(self):
@@ -830,12 +859,17 @@ def _validate_error_correcting_graph(graph):
             "(Theorem 1); supply interaction_graph to make it 3-connected.")
 
 
-def _encoding_backend(one_body, two_body, tolerance, interaction_graph,
-                      local_modes):
+def _encoding_backend(one_body,
+                      two_body,
+                      tolerance,
+                      interaction_graph,
+                      local_modes,
+                      parity=0):
+    parity = _validate_parity(parity)
     if local_modes == "standard":
         graph = _build_graph(one_body, two_body, tolerance, interaction_graph)
         _warn_if_dense(graph)
-        return _StandardBackend(graph)
+        return _StandardBackend(graph, parity)
     base = _build_graph(one_body, two_body, tolerance, interaction_graph)
     min_degree = 6 if local_modes == "error_correcting" else 2
     graph = _Graph(
@@ -844,7 +878,7 @@ def _encoding_backend(one_body, two_body, tolerance, interaction_graph,
     if local_modes == "error_correcting":
         _validate_error_correcting_graph(graph)
     _warn_if_dense(graph)
-    return _GSEBackend(graph, local_modes)
+    return _GSEBackend(graph, local_modes, parity)
 
 
 # ---------------------------------------------------------------------------
@@ -857,7 +891,8 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
                             scalar_offset: float = 0.0,
                             tolerance: float = 1e-15,
                             interaction_graph=None,
-                            local_modes="binary_tree"):
+                            local_modes="binary_tree",
+                            parity: int = 0):
     """Bravyi-Kitaev Superfast transform of fermionic integrals.
 
     A locality-preserving fermion-to-qubit mapping that places the qubits by
@@ -904,6 +939,19 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     ``interaction_graph`` to add connecting edges. Hermiticity of the input is
     the caller's responsibility, as for :func:`jordan_wigner`.
 
+    ``parity`` selects the fermion-parity sector the code subspace
+    represents: ``0`` (default) for an even number of particles, ``1`` for
+    an odd number. The encoding maps the even operator algebra only, so the
+    encoded parity ``prod_i (-1)^{n_i} = prod_i B_i`` is a constant on the
+    code subspace rather than an operator with both eigenvalues; ``parity=1``
+    negates the vertex operator of one designated mode (the lowest active
+    one), which flips that constant and leaves the edge operators, their
+    orientation and the loop stabilizers unchanged. Restricting the mapped
+    Hamiltonian to the stabilizers' joint ``+1`` eigenspace then recovers the
+    spectrum of the selected Jordan-Wigner parity sector. The mapping of a
+    state with the other parity is not defined; pass the parity of the
+    particle number of the states you intend to prepare.
+
     Dense two-body couplings densify the interaction graph and emit a
     ``UserWarning`` (no locality advantage there). Use
     :func:`bravyi_kitaev_superfast_stabilizers` for the loop stabilizers that
@@ -912,7 +960,7 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
     backend = _encoding_backend(one_body, two_body_arr, tolerance,
-                                interaction_graph, local_modes)
+                                interaction_graph, local_modes, parity)
     return _compile(backend, one_body, two_body_arr, scalar_offset, tolerance)
 
 
@@ -920,24 +968,28 @@ def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
                                         two_body=None,
                                         tolerance: float = 1e-15,
                                         interaction_graph=None,
-                                        local_modes="binary_tree"):
+                                        local_modes="binary_tree",
+                                        parity: int = 0):
     """Loop stabilizers of the Superfast code subspace for the given integrals.
 
     Returns one ``cudaq.SpinOperator`` per independent cycle of the interaction
     graph (empty for a tree graph). Each is a Hermitian involution, commutes
     with the mapped Hamiltonian, and is sign-fixed so that the **code subspace
-    is their joint +1 eigenspace** -- the physical (even fermion-parity /
-    vacuum) sector, matching the same sector under Jordan-Wigner. Restricting
-    the mapped Hamiltonian to that eigenspace recovers the fermionic spectrum.
+    is their joint +1 eigenspace** -- the fermion-parity sector selected by
+    ``parity`` (even by default), matching that sector under Jordan-Wigner.
+    Restricting the mapped Hamiltonian to that eigenspace recovers the
+    fermionic spectrum of the sector.
 
-    ``local_modes`` and ``interaction_graph`` are as in
+    ``local_modes``, ``interaction_graph`` and ``parity`` are as in
     :func:`bravyi_kitaev_superfast` (use the same values for both so the
-    stabilizers act on the matching qubits).
+    stabilizers act on the matching qubits). The stabilizer words themselves
+    do not depend on ``parity``: the sector is selected by the vertex
+    operators the Hamiltonian compiles to.
     """
     one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
                                                   two_body)
     backend = _encoding_backend(one_body, two_body_arr, tolerance,
-                                interaction_graph, local_modes)
+                                interaction_graph, local_modes, parity)
     return [
         _to_spin_operator({word: coeff}, tolerance)
         for coeff, word in backend.stabilizers()
