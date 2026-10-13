@@ -20,7 +20,11 @@ with separate phase-correction oracles are not implemented.
 Resource properties describe emitted logical operations, not physical
 hardware cost or compiled T gates. A 4T temporary-AND model applies only
 to ``tree_and_count`` after a compatible synthesis; the implementation
-emits ordinary Toffolis, and routing targets need not be clean.
+emits ordinary Toffolis. Tree lines must always start clean. The routing
+network's targets are bank lines, so a bank need not be clean for the
+circuit to be well defined, but only ``dirty_banks=True`` restores a
+non-clean bank and keeps its word out of the output; with the default, a
+non-clean bank is restored while its selected word leaks into the output.
 
 Construction follows Babbush et al., arXiv:1805.03662, Sec. III.A,
 Gidney, arXiv:1709.06648, Fig. 3, and the clean SELECT-SWAP composition
@@ -33,13 +37,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ._qrom import _ADDRESS_OPERANDS
-from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CX_LADDER_LADDER,
-                               _OP_CX_LADDER_TARGET, _TOFFOLI_OPCODES)
-from ._unary_iteration_measured import (_MEASURED_OPCODES, _OP_MEAS_UNCOMPUTE,
-                                        _OP_MEAS_UNCOMPUTE_CTRL,
-                                        _emit_measured_walk,
+from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CCX_CTRL,
+                               _OP_CX_LADDER_LADDER, _OP_CX_LADDER_TARGET,
+                               _OP_DESCRIPTIONS, _OP_MEAS_UNCOMPUTE,
+                               _OP_MEAS_UNCOMPUTE_CTRL, _TOFFOLI_OPCODES,
+                               _mint_interpreter)
+from ._unary_iteration_measured import (_MEASURED_OPCODES, _emit_measured_walk,
                                         _measured_walk_toffoli_count,
-                                        _mint_measured_interpreter,
                                         measured_unary_iteration_kernels)
 
 __all__ = ["MeasuredQROM"]
@@ -79,16 +83,19 @@ class MeasuredQROM:
     this specified workspace subspace. Automatic
     ``cudaq.control`` and ``cudaq.adjoint`` are outside this contract.
 
-    Parameters match :class:`QROM`: nonempty nonnegative integer ``data``,
-    positive ``address_bits`` and ``output_bits``, ``variant`` in
-    ``{"auto", "select", "select_swap"}``, and optional power-of-two
-    ``block_size`` for SELECT-SWAP. A block leaves at least one high
-    address bit. ``auto`` minimizes the emitted Toffoli count, preferring
-    SELECT on ties, then the smaller block. ``controlled`` constructs the
-    control into the tree instead of controlling measurements.
-    ``dirty_banks=True`` is supported only for explicit SELECT-SWAP and
-    adds a restored-bank copy echo; the borrowed bank may be entangled
-    with any other input. Default ``False`` requires a clean bank.
+    Parameters follow :class:`QROM`'s SELECT and SELECT-SWAP options:
+    nonempty nonnegative integer ``data``, positive ``address_bits`` and
+    ``output_bits``, ``variant`` in ``{"auto", "select", "select_swap"}``,
+    and optional power-of-two ``block_size`` for SELECT-SWAP. The coherent
+    class's SELECT-COPY variant, packet counts and ancilla budget have no
+    measured counterpart. A block leaves at least one high address bit.
+    ``auto`` minimizes the emitted Toffoli count, preferring SELECT on
+    ties, then the smaller block. ``controlled`` and ``dirty_banks`` must
+    be plain ``bool`` values. ``controlled`` constructs the control into the
+    tree instead of controlling measurements. ``dirty_banks=True`` is
+    supported only for explicit SELECT-SWAP and adds a restored-bank copy
+    echo; the borrowed bank may be entangled with any other input. Default
+    ``False`` requires a clean bank. ``describe()`` lists the emitted tape.
 
     See the module and measured-QROM guide for executor requirements,
     resource conventions, and the clean-workspace restriction.
@@ -131,6 +138,12 @@ class MeasuredQROM:
         if variant not in _VARIANTS:
             raise ValueError(
                 f"variant must be one of {_VARIANTS}, got {variant!r}")
+        if not isinstance(controlled, bool):
+            raise ValueError("controlled must be a bool (pass bool(flag) for "
+                             "numpy booleans)")
+        if not isinstance(dirty_banks, bool):
+            raise ValueError("dirty_banks must be a bool (pass bool(flag) for "
+                             "numpy booleans)")
         if dirty_banks and variant != "select_swap":
             raise ValueError("dirty_banks=True requires variant='select_swap'")
         if variant == "select_swap" and address_bits < 2:
@@ -154,7 +167,6 @@ class MeasuredQROM:
                     f"index address bit: max is 2^(address_bits - 1) = "
                     f"{1 << (address_bits - 1)}")
 
-        controlled = bool(controlled)
         select_cost = _measured_walk_toffoli_count(address_bits, len(entries),
                                                    controlled)
         swap_candidates = [1 << s for s in range(1, address_bits)
@@ -162,7 +174,7 @@ class MeasuredQROM:
         swap_costs = {
             size:
             _select_swap_cost(address_bits, len(entries), output_bits, size,
-                              controlled, bool(dirty_banks))
+                              controlled, dirty_banks)
             for size in swap_candidates
         }
         if variant == "auto":
@@ -179,7 +191,7 @@ class MeasuredQROM:
             block_size = min(swap_costs,
                              key=lambda size: (swap_costs[size], size))
 
-        self._dirty_banks = bool(dirty_banks)
+        self._dirty_banks = dirty_banks
         self._controlled = controlled
         self._data = tuple(entries)
         self._num_address = address_bits
@@ -209,6 +221,8 @@ class MeasuredQROM:
         self._num_ladder = walk.num_ladder
         self._toffoli_count = walk.toffoli_count
         self._num_measurements = walk.num_measurements
+        self._ops = tuple(walk.ops)
+        self._tree_and_count = walk.tree_and_count
 
     def _build_select_swap(self) -> None:
         entries = self._data
@@ -244,6 +258,8 @@ class MeasuredQROM:
                 operands[position] += low_bits
             ops.append((opcode, *operands))
         walk_ops = ops
+        tree_ands = sum(1 for op in walk_ops
+                        if op[0] in (_OP_CCX, _OP_CCX_CTRL))
 
         # Binary routing network: after stage s (controlled on
         # address[s]), block slot i (i = 0 mod 2^(s+1)) holds the entry
@@ -268,20 +284,23 @@ class MeasuredQROM:
 
         # W S C S^-1 W: write, route, copy, unroute, unwrite. The default
         # clean bank gives the logical XOR directly.
-        ops = (walk_ops + swap_ops + copy_ops + list(reversed(swap_ops)) +
-               walk_ops)
+        echo = swap_ops + copy_ops + list(reversed(swap_ops))
+        ops = walk_ops + echo + walk_ops
         if self._dirty_banks:
-            # W R W restores the bank, but copies its original selected word
-            # along with the data. A final R cancels exactly that borrowed
-            # contribution, even for entangled banks and coherent controls.
-            ops += swap_ops + copy_ops + list(reversed(swap_ops))
-        self._kernel = _mint_measured_interpreter(ops,
-                                                  controlled=self._controlled,
-                                                  has_work=False)
+            # W (S C S^-1) W restores the bank but copies its original
+            # selected word along with the data; a second S C S^-1 cancels
+            # exactly that borrowed contribution, even for entangled banks
+            # and coherent controls (W S C S^-1 W S C S^-1 in circuit order).
+            ops += echo
+        self._kernel = _mint_interpreter(ops,
+                                         controlled=self._controlled,
+                                         has_work=False)
         self._num_ladder = high_bits + size * b
         self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
         self._num_measurements = sum(1 for op in ops
                                      if op[0] in _MEASURED_OPCODES)
+        self._ops = tuple(ops)
+        self._tree_and_count = 2 * tree_ands
 
     @property
     def data(self) -> tuple[int, ...]:
@@ -340,8 +359,10 @@ class MeasuredQROM:
 
     @property
     def tree_and_count(self) -> int:
-        """Temporary clean-tree ANDs; excludes coherent routing Toffolis."""
-        return self._num_measurements
+        """Temporary clean-tree ANDs, counted from the walk tape (opcodes
+        ``_OP_CCX`` and ``_OP_CCX_CTRL``); excludes coherent routing
+        Toffolis and is independent of ``num_measurements``."""
+        return self._tree_and_count
 
     @property
     def num_measurements(self) -> int:
@@ -354,6 +375,17 @@ class MeasuredQROM:
         clean-prefix/borrowed-suffix workspace contract.
         """
         return self._kernel
+
+    def describe(self) -> str:
+        """Decode the minted lookup into a gate listing, one line per
+        instruction in execution order. Lines tagged ``# Toffoli`` are what
+        ``toffoli_count`` counts; lines tagged ``# measured uncompute`` are
+        the gadgets ``num_measurements`` counts."""
+        lines = [
+            _OP_DESCRIPTIONS[op].format(a=a, b=b, c=c)
+            for op, a, b, c in self._ops
+        ]
+        return "\n".join([f"MeasuredQROM lookup: {self!r}"] + lines)
 
     def __repr__(self) -> str:
         return (f"MeasuredQROM(entries={len(self._data)}, "

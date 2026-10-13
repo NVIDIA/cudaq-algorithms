@@ -18,10 +18,11 @@ Toffoli cost: exactly ``3 N / 2 - 5`` uncontrolled for a full tree of
 (``num_items < N``) cost less, and the emitter reports the exact number
 as ``toffoli_count``. Babbush et al. reach ``N - 1`` Toffolis by pricing
 the AND uncomputation at zero via measurement-and-fixup (Gidney,
-arXiv:1709.06648); this library keeps every primitive strictly unitary
-(statevector-testable, inverse-composable, ``cudaq.control``-safe), and
-under that constraint the fused walk is the standard construction. The
-naive compute/uncompute walk costs ``2 N - 4``.
+arXiv:1709.06648); the coherent primitives in this module stay strictly
+unitary (statevector-testable, inverse-composable, ``cudaq.control``-safe),
+and under that constraint the fused walk is the standard construction. The
+measured walk in ``_unary_iteration_measured`` trades those properties for
+the ``N - 1`` count. The naive compute/uncompute walk costs ``2 N - 4``.
 
 T-count caveat (so the comparison stays honest under either metric):
 roughly a third of this walk's Toffolis are the fused ones, whose
@@ -29,8 +30,9 @@ target is a *dirty* ladder line and therefore cost the generic 7 T,
 while a compute-from-``|0>`` AND costs 4 T (Gidney, arXiv:1709.06648).
 In T gates the fused walk is therefore ~7.5 N against the naive
 unitary walk's ~8 N — a ~6% advantage, not the 25% the Toffoli count
-suggests. Both numbers beat nothing measured: the measured walk of
-Babbush et al. is 4 N T.
+suggests. The 7 T figure is the ancilla-free, measurement-free Toffoli;
+with Jones-style measured Toffolis the fused walk is about 6 N T, still
+above the 4 N T of the measured walk of Babbush et al.
 
 The callback pattern (READ THIS — it is the template for QROM and for
 factory-composed SELECTs)
@@ -44,10 +46,11 @@ tree walk (ladder gadgets + body gates) into parallel opcode/operand
 integer lists, and the minted kernel is a single flat interpreter loop
 over those captured lists, pruned to the dispatch arms whose opcodes the
 tape actually uses (see ``_mint_interpreter``). Flatness is load-bearing:
-CUDA-Q's
-control-variant generation rejects kernels that call other kernels, so
-anything built this way stays ``cudaq.control``-compatible and can sit
-inside a controlled SELECT.
+the QROM builders rewrite walk tapes operand by operand, and a flat tape
+keeps every coherent walk ``cudaq.control``-compatible on every CUDA-Q
+release this library supports (0.15 rejected control variants of kernels
+that call other kernels; 0.16 accepts them), so anything built this way
+can sit inside a controlled SELECT.
 
 Body instruction set. Each item is a tuple whose head names the gate;
 ``target``/``work`` operands index the target/work registers. The three
@@ -143,9 +146,13 @@ __all__ = ["UnaryIterationKernels", "unary_iteration_kernels"]
 # same-named factory kernel is created at a recycled ``id()`` of a dead
 # one, the stale module collides with the new kernel and compilation fails
 # with arbitrary errors. Pinning every minted kernel for the process
-# lifetime keeps the ids from recycling; the cost is a few KB per factory
-# call. The kernel names below are unique to this subpackage so they can
-# never collide with other subpackages' registries.
+# lifetime keeps the ids from recycling. The cost is real: each pinned
+# kernel keeps roughly 0.1 MB of Python objects plus about 130 bytes per
+# tape instruction, and because CUDA-Q's decorator keeps its defining
+# frame, it also pins the caller's stack frames and their locals for the
+# process lifetime (build lookups in a short-lived helper, or expect that
+# retention). The kernel names below are unique to this subpackage so they
+# can never collide with other subpackages' registries.
 _LIVE_KERNELS: list = []
 
 
@@ -175,6 +182,14 @@ _OP_Z_LADDER = 17  # z(ladder[a])
 _OP_CX_ADDR_ADDR = 18  # cx(address[a], address[b])
 _OP_CCX_ADDR_ADDR = 19  # x.ctrl(address[a], address[b], ladder[c])
 _OP_CX_LADDER_TARGET = 20  # cx(ladder[a], target[b])
+# 21 is reserved for the coherent SELECT-COPY extension (pr/qrom-select-copy).
+# Measured-uncompute gadgets (measured_unary_iteration_kernels). Both erase
+# ladder[a] in the X basis: h(ladder[a]); fired = mz(ladder[a]); on outcome
+# one, x(ladder[a]) resets the line to |0> and a CZ against the two inputs
+# the AND was computed from repairs the phase kick (any X-conjugation of the
+# address wire is emitted around the gadget by the measured emitter).
+_OP_MEAS_UNCOMPUTE = 22  # fixup z.ctrl(ladder[b], address[c])
+_OP_MEAS_UNCOMPUTE_CTRL = 23  # fixup z.ctrl(control[0], address[c])
 
 _BODY_OPCODES = {"x": _OP_BODY_X, "y": _OP_BODY_Y, "z": _OP_BODY_Z}
 
@@ -211,6 +226,12 @@ _BASE_OPS = frozenset({
 _CONTROL_OPS = frozenset({_OP_CX_CTRL_LADDER, _OP_CCX_CTRL})
 _WORK_OPS = frozenset(
     {_OP_AND_TT, _OP_AND_WT, _OP_COPY_TW, _OP_BODY_X_W, _OP_BODY_Z_W})
+# Measured gadgets: the plain gadget is dispatched by every variant, the
+# control-rooted gadget by the controlled variants. They stay out of
+# _BASE_OPS so test_primitives_interpreter.py keeps pinning the coherent
+# set exactly; the measured tests pin these two.
+_MEASURED_OPS = frozenset({_OP_MEAS_UNCOMPUTE})
+_MEASURED_CONTROL_OPS = frozenset({_OP_MEAS_UNCOMPUTE_CTRL})
 
 # Opcode -> operand positions (within (a, b, c)) that index the work
 # register, used to infer the required work width from the emitted ops.
@@ -247,6 +268,15 @@ _OP_DESCRIPTIONS = {
     "ccx(address[{a}], address[{b}] -> ladder[{c}])  # Toffoli",
     _OP_CX_LADDER_TARGET: "cx(ladder[{a}] -> target[{b}])",
 }
+# The measured gadgets' templates are added after the literal: a
+# multi-line value inside the literal makes yapf split every entry of
+# the table.
+_OP_DESCRIPTIONS[_OP_MEAS_UNCOMPUTE] = (
+    "h(ladder[{a}]); mz -> x(ladder[{a}]), "
+    "fixup z.ctrl(ladder[{b}], address[{c}])  # measured uncompute")
+_OP_DESCRIPTIONS[_OP_MEAS_UNCOMPUTE_CTRL] = (
+    "h(ladder[{a}]); mz -> x(ladder[{a}]), "
+    "fixup z.ctrl(control[0], address[{c}])  # measured uncompute")
 
 
 @dataclass(frozen=True)
@@ -278,7 +308,7 @@ class UnaryIterationKernels:
     controlled: bool
     toffoli_count: int
     num_work: int = 0
-    ops: Any = None
+    ops: Any = ()
 
     def describe(self) -> str:
         """Decode the instruction tape into a human-readable gate listing.
@@ -588,10 +618,21 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     through 0.15, a hard "linear-typed result is used more than once"
     compile error once fixed); it also shrinks every minted module to
     the arms it actually replays.
+
+    Measured gadgets. The two measured-uncompute opcodes (``_OP_MEAS_UNCOMPUTE``
+    and its control-rooted twin) are dispatched here as well, behind the
+    same captured guards; a coherent tape never contains them, so their
+    arms are pruned from every coherent module, and the measured walk in
+    ``_unary_iteration_measured`` is their only producer. On CUDA-Q 0.16
+    the captured guards are lifted into kernel arguments, so the generic
+    kernel source still mentions ``mz`` for coherent walks; the runtime's
+    measurement-feedback checks look at entry kernels, and the tests pin
+    that ``cudaq.sample``, ``cudaq.control`` and ``cudaq.adjoint`` of
+    coherent tapes keep working.
     """
-    supported = _BASE_OPS
+    supported = _BASE_OPS | _MEASURED_OPS
     if controlled:
-        supported = supported | _CONTROL_OPS
+        supported = supported | _CONTROL_OPS | _MEASURED_CONTROL_OPS
     if has_work:
         supported = supported | _WORK_OPS
     present = {op[0] for op in ops}
@@ -662,6 +703,11 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     use_ccx_addr_addr = _OP_CCX_ADDR_ADDR in present
     use_cx_ladder_target = _OP_CX_LADDER_TARGET in present
 
+    op_meas_uncompute = _OP_MEAS_UNCOMPUTE
+    op_meas_uncompute_ctrl = _OP_MEAS_UNCOMPUTE_CTRL
+    use_meas_uncompute = _OP_MEAS_UNCOMPUTE in present
+    use_meas_uncompute_ctrl = _OP_MEAS_UNCOMPUTE_CTRL in present
+
     if controlled and has_work:
 
         @cudaq.kernel
@@ -670,6 +716,7 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                                             ladder: cudaq.qview,
                                             target: cudaq.qview,
                                             work: cudaq.qview):
+            fired = False
             for i in range(num_ops):
                 op = opcodes[i]
                 a = ops_a[i]
@@ -738,6 +785,20 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 if use_cx_ladder_target:
                     if op == op_cx_ladder_target:
                         cx(ladder[a], target[b])
+                if use_meas_uncompute:
+                    if op == op_meas_uncompute:
+                        h(ladder[a])
+                        fired = mz(ladder[a])
+                        if fired:
+                            x(ladder[a])
+                            z.ctrl(ladder[b], address[c])
+                if use_meas_uncompute_ctrl:
+                    if op == op_meas_uncompute_ctrl:
+                        h(ladder[a])
+                        fired = mz(ladder[a])
+                        if fired:
+                            x(ladder[a])
+                            z.ctrl(control[0], address[c])
 
         _retain(primitives_unary_walk_work_ctrl)
         return primitives_unary_walk_work_ctrl
@@ -748,6 +809,7 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
         def primitives_unary_walk_work(address: cudaq.qview,
                                        ladder: cudaq.qview,
                                        target: cudaq.qview, work: cudaq.qview):
+            fired = False
             for i in range(num_ops):
                 op = opcodes[i]
                 a = ops_a[i]
@@ -810,6 +872,13 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 if use_cx_ladder_target:
                     if op == op_cx_ladder_target:
                         cx(ladder[a], target[b])
+                if use_meas_uncompute:
+                    if op == op_meas_uncompute:
+                        h(ladder[a])
+                        fired = mz(ladder[a])
+                        if fired:
+                            x(ladder[a])
+                            z.ctrl(ladder[b], address[c])
 
         _retain(primitives_unary_walk_work)
         return primitives_unary_walk_work
@@ -821,6 +890,7 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                                        address: cudaq.qview,
                                        ladder: cudaq.qview,
                                        target: cudaq.qview):
+            fired = False
             for i in range(num_ops):
                 op = opcodes[i]
                 a = ops_a[i]
@@ -874,6 +944,20 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 if use_cx_ladder_target:
                     if op == op_cx_ladder_target:
                         cx(ladder[a], target[b])
+                if use_meas_uncompute:
+                    if op == op_meas_uncompute:
+                        h(ladder[a])
+                        fired = mz(ladder[a])
+                        if fired:
+                            x(ladder[a])
+                            z.ctrl(ladder[b], address[c])
+                if use_meas_uncompute_ctrl:
+                    if op == op_meas_uncompute_ctrl:
+                        h(ladder[a])
+                        fired = mz(ladder[a])
+                        if fired:
+                            x(ladder[a])
+                            z.ctrl(control[0], address[c])
 
         _retain(primitives_unary_walk_ctrl)
         return primitives_unary_walk_ctrl
@@ -881,6 +965,7 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     @cudaq.kernel
     def primitives_unary_walk(address: cudaq.qview, ladder: cudaq.qview,
                               target: cudaq.qview):
+        fired = False
         for i in range(num_ops):
             op = opcodes[i]
             a = ops_a[i]
@@ -928,6 +1013,13 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
             if use_cx_ladder_target:
                 if op == op_cx_ladder_target:
                     cx(ladder[a], target[b])
+            if use_meas_uncompute:
+                if op == op_meas_uncompute:
+                    h(ladder[a])
+                    fired = mz(ladder[a])
+                    if fired:
+                        x(ladder[a])
+                        z.ctrl(ladder[b], address[c])
 
     _retain(primitives_unary_walk)
     return primitives_unary_walk

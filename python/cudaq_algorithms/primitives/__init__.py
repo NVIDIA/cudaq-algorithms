@@ -14,11 +14,14 @@ Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`).
 
 ``QROM`` and the original unary-iteration factory stay strictly unitary.
 ``MeasuredQROM`` and ``measured_unary_iteration_kernels`` explicitly opt
-into measurement-based tree uncomputation, with clean ancillas and
-factory-built controls. Their logical action preserves coherence on the
-clean-input subspace; automatic control/adjoint and sampling are outside
-the measured API contract. See :doc:`../guide/measured_qrom` for execution
-and resource conventions.
+into measurement-based tree uncomputation on clean tree ancillas, with
+factory-built controls and, for SELECT-SWAP, an optional borrowed bank
+that may start in any state, entangled or not. Their logical action is
+unitary on the declared workspace subspace (clean prefix at zero, bank
+arbitrary) — for ``MeasuredQROM`` a basis permutation — so coherence and
+entanglement of the inputs are preserved; automatic control/adjoint and
+sampling are outside the measured API contract. See
+:doc:`../guide/measured_qrom` for execution and resource conventions.
 
 The reversible integer arithmetic device kernels (:mod:`._arithmetic`)
 are the in-place little-endian adders and comparators the lookup-based

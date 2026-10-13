@@ -5,6 +5,7 @@
 Repeated native trajectories complement the independent exhaustive Kraus
 checks in test_primitives_measured_channel.py; they are not a proof by
 sampling alone. Execution uses the explicitly constructed control path.
+The trajectory tests seed CUDA-Q's generator so a failure reproduces.
 """
 
 import numpy as np
@@ -13,10 +14,16 @@ import pytest
 import cudaq
 from cudaq import spin
 
-from cudaq_algorithms.primitives import (measured_unary_iteration_kernels,
+from cudaq_algorithms.primitives import (MeasuredUnaryIterationKernels,
+                                         measured_unary_iteration_kernels,
                                          unary_iteration_kernels)
+from cudaq_algorithms.primitives._unary_iteration import (
+    _OP_AND_TT, _OP_CCX, _OP_CCX_CTRL, _OP_MEAS_UNCOMPUTE_CTRL,
+    _TOFFOLI_OPCODES, _mint_interpreter)
 from cudaq_algorithms.primitives._unary_iteration_measured import (
-    _MEASURED_OPCODES, _measured_walk_toffoli_count)
+    _MEASURED_OPCODES, _emit_measured_walk, _measured_walk_toffoli_count)
+from dense_references import dense_matrix
+from measured_harness import resources_of
 
 _BODIES = {
     0: [("x", 0), ("y", 1)],
@@ -31,13 +38,15 @@ def _body(k):
     return _BODIES.get(k, [])
 
 
-def _superposed_states(num_bits, controlled, kernel):
-    """Run ``kernel`` on the superposed reference input (uniform address
-    with per-bit phases, rotated control and targets — COMPLEX amplitudes:
-    a misplaced fix-up CZ is a relative phase, invisible on real-amplitude
-    states) and return the statevector."""
-
-    if controlled:
+def _harness(num_bits, controlled, first, second=None):
+    """Compile one entry kernel that prepares the superposed reference
+    input (uniform address with per-bit phases, rotated control and
+    targets, so amplitudes are complex and a misplaced fix-up CZ shows up
+    as a sign flip on part of the superposition) and then applies
+    ``first`` and, when given, ``second``. Compile once, launch many
+    times: each launch re-samples the measurements independently."""
+    two = second is not None
+    if controlled and two:
 
         @cudaq.kernel
         def run():
@@ -54,7 +63,42 @@ def _superposed_states(num_bits, controlled, kernel):
             rz(0.57, target[0])
             ry(1.1, target[1])
             rz(1.37, target[1])
-            kernel(control, address_reg, ladder, target)
+            first(control, address_reg, ladder, target)
+            second(control, address_reg, ladder, target)
+    elif controlled:
+
+        @cudaq.kernel
+        def run():
+            control = cudaq.qvector(1)
+            address_reg = cudaq.qvector(num_bits)
+            ladder = cudaq.qvector(num_bits)
+            target = cudaq.qvector(2)
+            ry(0.7, control[0])
+            rz(0.41, control[0])
+            for i in range(num_bits):
+                h(address_reg[i])
+                rz(0.23 + 0.31 * i, address_reg[i])
+            ry(0.3, target[0])
+            rz(0.57, target[0])
+            ry(1.1, target[1])
+            rz(1.37, target[1])
+            first(control, address_reg, ladder, target)
+    elif two:
+
+        @cudaq.kernel
+        def run():
+            address_reg = cudaq.qvector(num_bits)
+            ladder = cudaq.qvector(num_bits)
+            target = cudaq.qvector(2)
+            for i in range(num_bits):
+                h(address_reg[i])
+                rz(0.23 + 0.31 * i, address_reg[i])
+            ry(0.3, target[0])
+            rz(0.57, target[0])
+            ry(1.1, target[1])
+            rz(1.37, target[1])
+            first(address_reg, ladder, target)
+            second(address_reg, ladder, target)
     else:
 
         @cudaq.kernel
@@ -69,9 +113,20 @@ def _superposed_states(num_bits, controlled, kernel):
             rz(0.57, target[0])
             ry(1.1, target[1])
             rz(1.37, target[1])
-            kernel(address_reg, ladder, target)
+            first(address_reg, ladder, target)
 
-    return np.array(cudaq.get_state(run))
+    return run
+
+
+def _prepared_reference(num_bits, controlled):
+    """The reference input alone (a one-address walk with an empty body is
+    the identity)."""
+    identity = unary_iteration_kernels(num_bits,
+                                       1,
+                                       lambda k: [],
+                                       controlled=controlled,
+                                       include_adjoint=False).kernel
+    return np.array(cudaq.get_state(_harness(num_bits, controlled, identity)))
 
 
 # ----------------------------------------------------------------------
@@ -80,13 +135,15 @@ def _superposed_states(num_bits, controlled, kernel):
 
 
 @pytest.mark.parametrize("controlled", [False, True])
-@pytest.mark.parametrize("num_bits,num_items", [(1, 2), (2, 3), (3, 8), (3, 5),
+@pytest.mark.parametrize("num_bits,num_items", [(2, 4), (2, 3), (3, 8), (3, 5),
                                                 (4, 11)])
 def test_measured_walk_equals_coherent_walk_on_superpositions(
         num_bits, num_items, controlled):
     # Superposed address x superposed target (x rotated control): the
     # fix-up CZ placement is invisible on computational-basis inputs and
-    # shows up here as a relative sign. 1e-12, bitwise across runs.
+    # shows up here as a relative sign. Absolute tolerance 1e-12 on the
+    # raw complex vector; six independently sampled trajectories.
+    cudaq.set_random_seed(1000 * num_bits + num_items)
     coherent = unary_iteration_kernels(num_bits,
                                        num_items,
                                        _body,
@@ -97,36 +154,36 @@ def test_measured_walk_equals_coherent_walk_on_superpositions(
                                                 _body,
                                                 controlled=controlled,
                                                 include_adjoint=False)
-    reference = _superposed_states(num_bits, controlled, coherent.kernel)
-    # Repeated runs: the measurement outcomes differ, the state must not
-    # (this is also the repeated-run determinism pin — both outcomes of
-    # every gadget are steered to the same final state).
+    assert measured.num_measurements > 0
+    reference = np.array(
+        cudaq.get_state(_harness(num_bits, controlled, coherent.kernel)))
+    run = _harness(num_bits, controlled, measured.kernel)
     for _ in range(6):
-        state = _superposed_states(num_bits, controlled, measured.kernel)
-        np.testing.assert_allclose(state, reference, atol=1e-12)
+        state = np.array(cudaq.get_state(run))
+        np.testing.assert_allclose(state, reference, atol=1e-12, rtol=0)
 
 
 def test_measured_walk_ladder_returns_to_zero_mid_walk_branches():
     # A partial tree whose transitions exercise multi-level retraces
     # (fix-ups firing mid-walk) on a basis input: amplitude must sit
-    # entirely in the ladder-|0> block afterwards. (Given the
-    # equivalence test this is implied; asserted directly for locality.)
-    walk = measured_unary_iteration_kernels(3, 6, _body)
+    # entirely in the ladder-|0> block afterwards. One compiled harness
+    # launched per address (CUDA-Q does not re-specialize per int value).
+    cudaq.set_random_seed(36)
+    walk = measured_unary_iteration_kernels(3, 6, _body, include_adjoint=False)
     kernel = walk.kernel
 
+    @cudaq.kernel
+    def run(address: int):
+        address_reg = cudaq.qvector(3)
+        ladder = cudaq.qvector(3)
+        target = cudaq.qvector(2)
+        for i in range(3):
+            if ((address >> i) & 1) == 1:
+                x(address_reg[i])
+        kernel(address_reg, ladder, target)
+
     for address in range(8):
-
-        @cudaq.kernel
-        def run():
-            address_reg = cudaq.qvector(3)
-            ladder = cudaq.qvector(3)
-            target = cudaq.qvector(2)
-            for i in range(3):
-                if ((address >> i) & 1) == 1:
-                    x(address_reg[i])
-            kernel(address_reg, ladder, target)
-
-        state = np.array(cudaq.get_state(run))
+        state = np.array(cudaq.get_state(run, address))
         # Layout: address [0,3), ladder [3,6), target [6,8).
         for index in np.nonzero(np.abs(state) > 1e-12)[0]:
             assert (index >> 3) & 0b111 == 0, (
@@ -139,29 +196,32 @@ def test_measured_walk_ladder_returns_to_zero_mid_walk_branches():
 
 
 def test_measured_walk_toffoli_and_measurement_accounting():
+    # Emit-only: the tape, not a minted kernel, carries the counts. With an
+    # empty body every Toffoli is a tree AND, so measurements == Toffolis
+    # is the load-bearing identity on every tree shape.
     for num_bits in range(1, 8):
         capacity = 1 << num_bits
         for controlled in (False, True):
-            walk = measured_unary_iteration_kernels(num_bits,
-                                                    capacity,
-                                                    lambda k: [("x", 0)],
-                                                    controlled=controlled,
-                                                    include_adjoint=False)
-            expected = capacity - 2 + (1 if controlled else 0)
-            assert walk.toffoli_count == expected
-            assert walk.num_measurements == walk.toffoli_count
-            assert walk.toffoli_count == _measured_walk_toffoli_count(
-                num_bits, capacity, controlled)
-        # Partial trees: the analytic counter matches the emitted tape.
-        for num_items in range(1, capacity + 1):
-            walk = measured_unary_iteration_kernels(num_bits,
-                                                    num_items,
-                                                    lambda k: [],
-                                                    include_adjoint=False)
-            assert walk.toffoli_count == _measured_walk_toffoli_count(
-                num_bits, num_items, False)
-            assert walk.num_measurements == sum(1 for op in walk.ops
-                                                if op[0] in _MEASURED_OPCODES)
+            for num_items in range(1, capacity + 1):
+                ops = _emit_measured_walk(num_bits, num_items, controlled,
+                                          [[] for _ in range(num_items)],
+                                          False)
+                toffolis = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
+                measurements = sum(1 for op in ops
+                                   if op[0] in _MEASURED_OPCODES)
+                assert toffolis == measurements == _measured_walk_toffoli_count(
+                    num_bits, num_items, controlled)
+                if num_items == capacity:
+                    assert toffolis == capacity - 2 + int(controlled)
+    # The minted record carries the same numbers.
+    for controlled in (False, True):
+        walk = measured_unary_iteration_kernels(3,
+                                                8,
+                                                lambda k: [("x", 0)],
+                                                controlled=controlled,
+                                                include_adjoint=False)
+        assert walk.toffoli_count == walk.num_measurements == 6 + int(
+            controlled)
 
 
 def test_measured_walk_costs_match_the_compiler():
@@ -171,19 +231,105 @@ def test_measured_walk_costs_match_the_compiler():
                                             16,
                                             lambda k: [("x", 0)],
                                             include_adjoint=False)
-    kernel = walk.kernel
-
-    @cudaq.kernel
-    def harness():
-        address_reg = cudaq.qvector(4)
-        ladder = cudaq.qvector(4)
-        target = cudaq.qvector(1)
-        kernel(address_reg, ladder, target)
-
-    resources = cudaq.estimate_resources(harness)
+    resources = resources_of(walk.kernel, 4, 4, 1)
     assert resources.count_controls("x", 2) == walk.toffoli_count == 14
     assert resources.count("mz") == walk.num_measurements == 14
     assert 0 <= resources.count_controls("z", 1) <= walk.num_measurements
+
+
+# ----------------------------------------------------------------------
+# 3. The framework boundary: cudaq.control / cudaq.sample on measuring
+#    kernels
+# ----------------------------------------------------------------------
+
+
+def test_cudaq_control_on_measuring_kernel_is_not_the_controlled_channel():
+    # The physics allows controlled measured uncomputation (fold the
+    # control into the tree root: nothing measured is ever controlled, and
+    # the fix-up CZ is the identity on the control-off branch, which is
+    # exactly what controlled=True mints). The framework path is the
+    # problem: on CUDA-Q 0.16 cudaq.control on a measuring kernel compiles
+    # and runs, but mz has no controlled form, so each run measures the
+    # control register and the state differs from the controlled channel
+    # (and from run to run). Pin whichever failure mode this CUDA-Q
+    # exhibits: an outright rejection, or the wrong channel.
+    cudaq.set_random_seed(5)
+    measured = measured_unary_iteration_kernels(2,
+                                                4,
+                                                _body,
+                                                include_adjoint=False)
+    inner = measured.kernel
+    correct = measured_unary_iteration_kernels(2,
+                                               4,
+                                               _body,
+                                               controlled=True,
+                                               include_adjoint=False)
+    reference = np.array(cudaq.get_state(_harness(2, True, correct.kernel)))
+
+    @cudaq.kernel
+    def naive_controlled():
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        ry(0.7, control[0])
+        rz(0.41, control[0])
+        for i in range(2):
+            h(address_reg[i])
+            rz(0.23 + 0.31 * i, address_reg[i])
+        ry(0.3, target[0])
+        rz(0.57, target[0])
+        ry(1.1, target[1])
+        rz(1.37, target[1])
+        cudaq.control(inner, control[0], address_reg, ladder, target)
+
+    try:
+        for _ in range(6):
+            state = np.array(cudaq.get_state(naive_controlled))
+            assert not np.allclose(state, reference, atol=1e-9), (
+                "cudaq.control on a measuring kernel now implements the "
+                "controlled channel: revisit the explicit controlled "
+                "construction and this pin")
+    except RuntimeError:
+        # Also acceptable: a CUDA-Q that rejects the construction
+        # outright (the boundary enforced instead of silent).
+        pass
+
+
+@cudaq.kernel
+def _direct_feedback():
+    q = cudaq.qvector(2)
+    h(q[0])
+    fired = mz(q[0])
+    if fired:
+        x(q[1])
+
+
+def test_cudaq_sample_rejects_measurement_branching_kernel():
+    # cudaq.sample refuses kernels that branch on measurement results. The
+    # check is CUDA-Q's, not this package's; pin it where it is enforced.
+    with pytest.raises(RuntimeError, match="feedback|measurement"):
+        cudaq.sample(_direct_feedback, shots_count=10)
+
+
+def test_cudaq_sample_rejects_nested_measurement_feedback():
+    # CUDA-Q 0.16 also rejects the feedback when it sits in a minted
+    # sub-kernel of a sampled entry kernel (older releases let it through
+    # and returned samples that were not the logical lookup).
+    walk = measured_unary_iteration_kernels(2, 4, _body, include_adjoint=False)
+    kernel = walk.kernel
+
+    @cudaq.kernel
+    def entry():
+        address_reg = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        h(address_reg[0])
+        kernel(address_reg, ladder, target)
+        mz(target)
+
+    with pytest.raises(RuntimeError, match="feedback|measurement"):
+        cudaq.sample(entry, shots_count=10)
 
 
 # ----------------------------------------------------------------------
@@ -196,70 +342,19 @@ def test_measured_walk_adjoint_composes_to_identity(controlled):
     # Non-commuting multi-gate bodies so the walk is not an involution;
     # only the reverse-order walk with reversed bodies restores the
     # state. Superposed inputs, repeated runs.
+    cudaq.set_random_seed(11)
+
     def body(k):
         if k % 2 == 1:
             return [("x", 0), ("z", 0), ("y", 1)]
         return [("x", 1)]
 
     walk = measured_unary_iteration_kernels(3, 6, body, controlled=controlled)
-    kernel = walk.kernel
-    kernel_adj = walk.kernel_adj
-
-    if controlled:
-
-        @cudaq.kernel
-        def run():
-            control = cudaq.qvector(1)
-            address_reg = cudaq.qvector(3)
-            ladder = cudaq.qvector(3)
-            target = cudaq.qvector(2)
-            ry(0.7, control[0])
-            for i in range(3):
-                h(address_reg[i])
-            ry(0.3, target[0])
-            ry(1.1, target[1])
-            kernel(control, address_reg, ladder, target)
-            kernel_adj(control, address_reg, ladder, target)
-
-        @cudaq.kernel
-        def prepare_only():
-            control = cudaq.qvector(1)
-            address_reg = cudaq.qvector(3)
-            ladder = cudaq.qvector(3)
-            target = cudaq.qvector(2)
-            ry(0.7, control[0])
-            for i in range(3):
-                h(address_reg[i])
-            ry(0.3, target[0])
-            ry(1.1, target[1])
-    else:
-
-        @cudaq.kernel
-        def run():
-            address_reg = cudaq.qvector(3)
-            ladder = cudaq.qvector(3)
-            target = cudaq.qvector(2)
-            for i in range(3):
-                h(address_reg[i])
-            ry(0.3, target[0])
-            ry(1.1, target[1])
-            kernel(address_reg, ladder, target)
-            kernel_adj(address_reg, ladder, target)
-
-        @cudaq.kernel
-        def prepare_only():
-            address_reg = cudaq.qvector(3)
-            ladder = cudaq.qvector(3)
-            target = cudaq.qvector(2)
-            for i in range(3):
-                h(address_reg[i])
-            ry(0.3, target[0])
-            ry(1.1, target[1])
-
-    reference = np.array(cudaq.get_state(prepare_only))
+    reference = _prepared_reference(3, controlled)
+    run = _harness(3, controlled, walk.kernel, walk.kernel_adj)
     for _ in range(5):
         state = np.array(cudaq.get_state(run))
-        np.testing.assert_allclose(state, reference, atol=1e-12)
+        np.testing.assert_allclose(state, reference, atol=1e-12, rtol=0)
 
 
 # ----------------------------------------------------------------------
@@ -282,7 +377,10 @@ def test_measured_walk_validation_raises():
 
 
 def test_measured_describe_decodes_the_tape():
-    walk = measured_unary_iteration_kernels(2, 4, lambda k: [("x", 0)])
+    walk = measured_unary_iteration_kernels(2,
+                                            4,
+                                            lambda k: [("x", 0)],
+                                            include_adjoint=False)
     text = walk.describe()
     lines = text.splitlines()
     assert lines[0].startswith("measured unary-iteration walk: 4 addresses")
@@ -300,6 +398,8 @@ def test_measured_walk_extended_body_vocabulary_ports():
     # The extended gates are unitary gates on target/work and orthogonal
     # to the uncompute strategy: a body using the AND-ladder gadgets and
     # the sign leaf must agree with the coherent walk gate for gate.
+    cudaq.set_random_seed(13)
+
     def body(k):
         if k == 1:
             return [("sign", )]
@@ -343,7 +443,7 @@ def test_measured_walk_extended_body_vocabulary_ports():
     reference = np.array(cudaq.get_state(run_coherent))
     for _ in range(4):
         state = np.array(cudaq.get_state(run_measured))
-        np.testing.assert_allclose(state, reference, atol=1e-12)
+        np.testing.assert_allclose(state, reference, atol=1e-12, rtol=0)
 
 
 # ----------------------------------------------------------------------
@@ -359,80 +459,26 @@ def test_measured_walk_then_coherent_adjoint_is_identity(controlled):
     # implementations' channels AND their global-phase conventions in one
     # assertion (a same-implementation round trip would cancel a shared
     # phase error; this cannot).
+    cudaq.set_random_seed(17)
     measured = measured_unary_iteration_kernels(3,
                                                 8,
                                                 _body,
-                                                controlled=controlled)
+                                                controlled=controlled,
+                                                include_adjoint=False)
     coherent = unary_iteration_kernels(3, 8, _body, controlled=controlled)
-    m_kernel = measured.kernel
-    c_adj = coherent.kernel_adj
-    num_bits = 3
-
-    if controlled:
-
-        @cudaq.kernel
-        def roundtrip():
-            control = cudaq.qvector(1)
-            address_reg = cudaq.qvector(num_bits)
-            ladder = cudaq.qvector(num_bits)
-            target = cudaq.qvector(2)
-            ry(0.7, control[0])
-            rz(0.41, control[0])
-            for i in range(num_bits):
-                h(address_reg[i])
-                rz(0.23 + 0.31 * i, address_reg[i])
-            ry(0.3, target[0])
-            rz(0.57, target[0])
-            m_kernel(control, address_reg, ladder, target)
-            c_adj(control, address_reg, ladder, target)
-
-        @cudaq.kernel
-        def prep_only():
-            control = cudaq.qvector(1)
-            address_reg = cudaq.qvector(num_bits)
-            ladder = cudaq.qvector(num_bits)
-            target = cudaq.qvector(2)
-            ry(0.7, control[0])
-            rz(0.41, control[0])
-            for i in range(num_bits):
-                h(address_reg[i])
-                rz(0.23 + 0.31 * i, address_reg[i])
-            ry(0.3, target[0])
-            rz(0.57, target[0])
-    else:
-
-        @cudaq.kernel
-        def roundtrip():
-            address_reg = cudaq.qvector(num_bits)
-            ladder = cudaq.qvector(num_bits)
-            target = cudaq.qvector(2)
-            for i in range(num_bits):
-                h(address_reg[i])
-                rz(0.23 + 0.31 * i, address_reg[i])
-            ry(0.3, target[0])
-            rz(0.57, target[0])
-            m_kernel(address_reg, ladder, target)
-            c_adj(address_reg, ladder, target)
-
-        @cudaq.kernel
-        def prep_only():
-            address_reg = cudaq.qvector(num_bits)
-            ladder = cudaq.qvector(num_bits)
-            target = cudaq.qvector(2)
-            for i in range(num_bits):
-                h(address_reg[i])
-                rz(0.23 + 0.31 * i, address_reg[i])
-            ry(0.3, target[0])
-            rz(0.57, target[0])
-
-    reference = np.array(cudaq.get_state(prep_only))
+    reference = _prepared_reference(3, controlled)
+    run = _harness(3, controlled, measured.kernel, coherent.kernel_adj)
     for _ in range(3):
-        state = np.array(cudaq.get_state(roundtrip))
-        np.testing.assert_allclose(state, reference, atol=1e-12)
+        state = np.array(cudaq.get_state(run))
+        np.testing.assert_allclose(state, reference, atol=1e-12, rtol=0)
 
 
 def test_cudaq_observe_accepts_measured_walk_and_agrees():
-    measured = measured_unary_iteration_kernels(2, 4, _body)
+    cudaq.set_random_seed(19)
+    measured = measured_unary_iteration_kernels(2,
+                                                4,
+                                                _body,
+                                                include_adjoint=False)
     m_kernel = measured.kernel
 
     @cudaq.kernel
@@ -475,8 +521,8 @@ def test_cudaq_observe_accepts_measured_walk_and_agrees():
                 np.eye(2), paulis[name])
             target = gate @ target
         expected[address::4] = target
-    observable_dense = np.kron(
-        np.eye(2), np.kron(paulis["z"], np.kron(np.eye(2), paulis["x"])))
+    # Logical qubits: address0, address1, target0, target1 (little-endian).
+    observable_dense = dense_matrix([(1.0, "XIZI")], 4)
     reference = np.vdot(expected, observable_dense @ expected).real
     assert abs(reference) > 0.2  # A non-vacuous address-coherence witness.
     observable = spin.x(0) * spin.z(4)
@@ -492,30 +538,55 @@ def test_tree_and_count_excludes_body_toffolis():
             return [("and_tt", 0, 1, 0), ("x_w", 0, 2), ("and_tt", 0, 1, 0)]
         return []
 
-    walk = measured_unary_iteration_kernels(2, 4, body)
+    walk = measured_unary_iteration_kernels(2, 4, body, include_adjoint=False)
     assert walk.toffoli_count == 5
     assert walk.tree_and_count == walk.num_measurements == 2
     assert walk.body_toffoli_count == 3
 
 
+def test_tree_and_count_is_counted_from_the_tape():
+    # Full tree, empty body: every Toffoli is a tree AND and every tree AND
+    # is measured away exactly once. The two numbers are computed from
+    # different opcodes, so this is not a tautology.
+    for controlled in (False, True):
+        walk = measured_unary_iteration_kernels(3,
+                                                8,
+                                                lambda k: [],
+                                                controlled=controlled,
+                                                include_adjoint=False)
+        ands = sum(1 for op in walk.ops if op[0] in (_OP_CCX, _OP_CCX_CTRL))
+        assert walk.tree_and_count == ands == walk.num_measurements
+        assert walk.tree_and_count == 6 + int(controlled)
+
+
+def test_describe_tolerates_a_hand_built_record():
+    record = MeasuredUnaryIterationKernels(kernel=None,
+                                           kernel_adj=None,
+                                           num_address=2,
+                                           num_ladder=2,
+                                           num_items=4,
+                                           controlled=False,
+                                           toffoli_count=0,
+                                           num_measurements=0)
+    assert record.describe().startswith("measured unary-iteration walk")
+    assert record.tree_and_count == 0
+
+
 @pytest.mark.parametrize("controlled,has_work", [(False, False), (True, False),
                                                  (False, True), (True, True)])
-def test_measured_interpreter_rejects_unsupported_opcodes(
+def test_shared_interpreter_rejects_out_of_set_measured_tapes(
         controlled, has_work):
-    from cudaq_algorithms.primitives._unary_iteration_measured import _mint_measured_interpreter
-    for opcode in (21, 999):  # Coherent-only extension or unknown opcode.
-        with pytest.raises(ValueError,
-                           match="outside the interpreter variant"):
-            _mint_measured_interpreter([(opcode, 0, 0, 0)], controlled,
-                                       has_work)
+    with pytest.raises(ValueError, match="outside the interpreter variant"):
+        _mint_interpreter([(999, 0, 0, 0)], controlled, has_work)
     if not controlled:
         with pytest.raises(ValueError,
                            match="outside the interpreter variant"):
-            _mint_measured_interpreter([(23, 0, 0, 0)], controlled, has_work)
+            _mint_interpreter([(_OP_MEAS_UNCOMPUTE_CTRL, 0, 0, 0)], controlled,
+                              has_work)
     if not has_work:
         with pytest.raises(ValueError,
                            match="outside the interpreter variant"):
-            _mint_measured_interpreter([(12, 0, 1, 0)], controlled, has_work)
+            _mint_interpreter([(_OP_AND_TT, 0, 1, 0)], controlled, has_work)
 
 
 @pytest.mark.parametrize("n,m,c,expected", [(4, 1, False, 3), (4, 5, False, 6),

@@ -30,11 +30,13 @@ arbitrary measurement channel, nor a reversed measurement tape.
 
 Use ``cudaq.get_state`` or ``cudaq.observe`` on a compatible dynamic-circuit
 target. ``cudaq.run`` needs an enclosing kernel that returns a classical
-value. CUDA-Q 0.16 rejects measurement-feedback kernels under
-``cudaq.sample``; nested acceptance on older releases is not support. Automatic
-``cudaq.control`` and ``cudaq.adjoint`` are outside the contract; request
-``controlled=True`` and use ``kernel_adj`` explicitly. The tests exercise
-CUDA-Q 0.16 on qpp-cpu. See the measured-QROM guide for runnable examples.
+value. CUDA-Q 0.16's compiler rejects measurement-feedback kernels, direct or
+nested, under ``cudaq.sample``; this package adds no check of its own, and
+older releases accepted nested feedback while returning samples that are not
+the logical lookup. Automatic ``cudaq.control`` and ``cudaq.adjoint`` are
+outside the contract; request ``controlled=True`` and use ``kernel_adj``
+explicitly. The tests exercise CUDA-Q 0.16 on qpp-cpu. See the measured-QROM
+guide for runnable examples.
 """
 
 from __future__ import annotations
@@ -42,59 +44,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
-import cudaq
-
 from ._unary_iteration import (
-    _BODY_OPCODES, _CONTROL_OPS, _EXTENDED_BODY_GATES, _OP_AND_TT, _OP_AND_WT,
-    _OP_BODY_X, _OP_BODY_X_W, _OP_BODY_Y, _OP_BODY_Z, _OP_BODY_Z_W, _OP_CCX,
-    _OP_CCX_ADDR_ADDR, _OP_CCX_CTRL, _OP_COPY_TW, _OP_CX_ADDR_ADDR,
+    _BODY_OPCODES, _EXTENDED_BODY_GATES, _OP_CCX, _OP_CCX_CTRL,
     _OP_CX_ADDR_LADDER, _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER,
-    _OP_CX_LADDER_TARGET, _OP_DESCRIPTIONS, _OP_FREE_CX, _OP_FREE_X,
-    _OP_X_ADDR, _OP_X_LADDER, _OP_Z_LADDER, _TOFFOLI_OPCODES, _WORK_OPERANDS,
-    _WORK_OPS)
+    _OP_DESCRIPTIONS, _OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL, _OP_X_ADDR,
+    _OP_X_LADDER, _TOFFOLI_OPCODES, _WORK_OPERANDS, _mint_interpreter)
 
 __all__ = ["MeasuredUnaryIterationKernels", "measured_unary_iteration_kernels"]
 
-# Keep-alive registry (see _unary_iteration for the rationale); the
-# minted kernel names below (measured_walk*) are unique to this module.
-_LIVE_KERNELS: list = []
-
-
-def _retain(*kernels) -> None:
-    _LIVE_KERNELS.extend(kernels)
-
-
-# Measured-uncompute opcodes, separate from coherent dispatch.
-# Both erase ladder[a]: h(ladder[a]); m = mz(ladder[a]); on outcome 1,
-# x(ladder[a]) resets the line to |0> and the CZ repairs the phase kick
-# against the same two inputs the AND was computed from (any needed
-# X-conjugation of the address wire is emitted around the gadget).
-# Keep 21 available for coherent SELECT-COPY; these descriptions never
-# mutate the shared coherent dictionary.
-_OP_MEAS_UNCOMPUTE = 22  # ... fixup z.ctrl(ladder[b], address[c])
-_OP_MEAS_UNCOMPUTE_CTRL = 23  # ... fixup z.ctrl(control[0], address[c])
-
+# Measured-uncompute opcodes; defined next to the coherent table so the two
+# dispatch sets can never collide.
 _MEASURED_OPCODES = (_OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL)
-
-# List this interpreter's actual dispatch, rather than inheriting new
-# coherent-only opcodes when that interpreter gains constructions.
-_MEASURED_BASE_OPS = frozenset({
-    _OP_X_ADDR, _OP_X_LADDER, _OP_CX_ADDR_LADDER, _OP_CX_LADDER_LADDER,
-    _OP_CCX, _OP_BODY_X, _OP_BODY_Y, _OP_BODY_Z, _OP_FREE_X, _OP_FREE_CX,
-    _OP_Z_LADDER, _OP_CX_ADDR_ADDR, _OP_CCX_ADDR_ADDR, _OP_CX_LADDER_TARGET,
-    _OP_MEAS_UNCOMPUTE
-})
-
-# Display order matches kernel execution (reset X, then fixup CZ; the two
-# commute). The _CTRL template takes no ladder operand: b is emitted as 0
-# and unused — the fixup control is the external control line.
-_OP_DESCRIPTIONS_MEASURED = dict(_OP_DESCRIPTIONS)
-_OP_DESCRIPTIONS_MEASURED[_OP_MEAS_UNCOMPUTE] = (
-    "h(ladder[{a}]); mz -> x(ladder[{a}]), "
-    "fixup z.ctrl(ladder[{b}], address[{c}])  # measured uncompute")
-_OP_DESCRIPTIONS_MEASURED[_OP_MEAS_UNCOMPUTE_CTRL] = (
-    "h(ladder[{a}]); mz -> x(ladder[{a}]), "
-    "fixup z.ctrl(control[0], address[{c}])  # measured uncompute")
 
 
 @dataclass(frozen=True)
@@ -135,12 +95,14 @@ class MeasuredUnaryIterationKernels:
     toffoli_count: int
     num_measurements: int
     num_work: int = 0
-    ops: Any = None
+    ops: Any = ()
 
     @property
     def tree_and_count(self) -> int:
-        """Temporary clean-tree AND computes, excluding body Toffolis."""
-        return self.num_measurements
+        """Temporary clean-tree AND computes, counted from the tape (opcodes
+        ``_OP_CCX`` and ``_OP_CCX_CTRL``) independently of
+        ``num_measurements``; body Toffolis are excluded."""
+        return sum(1 for op in self.ops if op[0] in (_OP_CCX, _OP_CCX_CTRL))
 
     @property
     def body_toffoli_count(self) -> int:
@@ -162,7 +124,7 @@ class MeasuredUnaryIterationKernels:
                   f"{self.toffoli_count} Toffolis, "
                   f"{self.num_measurements} measurements")
         lines = [
-            _OP_DESCRIPTIONS_MEASURED[op].format(a=a, b=b, c=c)
+            _OP_DESCRIPTIONS[op].format(a=a, b=b, c=c)
             for op, a, b, c in self.ops
         ]
         return "\n".join([header] + lines)
@@ -368,7 +330,10 @@ def measured_unary_iteration_kernels(
         involution (commuting self-inverse body, e.g. X-only QROM).
     num_work
         Width of the trailing clean ``work`` view. ``None`` (default)
-        infers the width from the body's work usage.
+        infers the width from the body's work usage. An explicit value
+        must be at least that usage, and any positive value adds the
+        ``work`` view to the kernel signature even when the body never
+        touches it.
     """
     if int(num_address_bits) != num_address_bits or num_address_bits < 1:
         raise ValueError("num_address_bits must be a positive integer")
@@ -400,7 +365,7 @@ def measured_unary_iteration_kernels(
 
     toffolis = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
     measurements = sum(1 for op in ops if op[0] in _MEASURED_OPCODES)
-    kernel = _mint_measured_interpreter(ops, bool(controlled), num_work > 0)
+    kernel = _mint_interpreter(ops, bool(controlled), num_work > 0)
     kernel_adj = None
     if include_adjoint:
         adj_ops = _emit_measured_walk(num_address_bits,
@@ -408,8 +373,7 @@ def measured_unary_iteration_kernels(
                                       bool(controlled),
                                       bodies,
                                       reverse=True)
-        kernel_adj = _mint_measured_interpreter(adj_ops, bool(controlled),
-                                                num_work > 0)
+        kernel_adj = _mint_interpreter(adj_ops, bool(controlled), num_work > 0)
     return MeasuredUnaryIterationKernels(kernel=kernel,
                                          kernel_adj=kernel_adj,
                                          num_address=num_address_bits,
@@ -420,405 +384,3 @@ def measured_unary_iteration_kernels(
                                          num_measurements=measurements,
                                          num_work=num_work,
                                          ops=tuple(ops))
-
-
-def _mint_measured_interpreter(ops: list, controlled: bool, has_work: bool):
-    """Mint a measured interpreter with the coherent dispatch safeguards.
-
-    Unsupported opcodes are rejected before compilation. Captured per-opcode
-    booleans prune absent arms, avoiding invalid dead multi-control IR.
-    """
-    supported = _MEASURED_BASE_OPS
-    if controlled:
-        supported = supported | _CONTROL_OPS | {_OP_MEAS_UNCOMPUTE_CTRL}
-    if has_work:
-        supported = supported | _WORK_OPS
-    present = {op[0] for op in ops}
-    unsupported = sorted(present - supported)
-    if unsupported:
-        raise ValueError(
-            f"instruction tape contains opcodes {unsupported} outside the "
-            f"interpreter variant's dispatch set (controlled={controlled}, "
-            f"has_work={has_work}); the dispatch loop would silently skip "
-            "them")
-    num_ops = len(ops)
-    opcodes = [op[0] for op in ops]
-    ops_a = [op[1] for op in ops]
-    ops_b = [op[2] for op in ops]
-    ops_c = [op[3] for op in ops]
-    if num_ops == 0:
-        # An empty list must never cross the kernel boundary
-        # (cuda-quantum#4847): pad with one never-dispatched entry.
-        opcodes, ops_a, ops_b, ops_c = [-1], [0], [0], [0]
-
-    # Kernel-visible opcode names: kernel code cannot reference Python
-    # enums or module globals, but it does capture enclosing-scope ints,
-    # so the module's _OP_* constants are bound as locals here to keep
-    # the dispatch below readable.
-    op_x_addr = _OP_X_ADDR
-    op_x_ladder = _OP_X_LADDER
-    op_cx_addr_ladder = _OP_CX_ADDR_LADDER
-    op_cx_ladder_ladder = _OP_CX_LADDER_LADDER
-    op_ccx = _OP_CCX
-    op_body_x = _OP_BODY_X
-    op_body_y = _OP_BODY_Y
-    op_body_z = _OP_BODY_Z
-    op_cx_ctrl_ladder = _OP_CX_CTRL_LADDER
-    op_ccx_ctrl = _OP_CCX_CTRL
-    op_free_x = _OP_FREE_X
-    op_free_cx = _OP_FREE_CX
-    op_and_tt = _OP_AND_TT
-    op_and_wt = _OP_AND_WT
-    op_copy_tw = _OP_COPY_TW
-    op_body_x_w = _OP_BODY_X_W
-    op_body_z_w = _OP_BODY_Z_W
-    op_z_ladder = _OP_Z_LADDER
-    op_cx_addr_addr = _OP_CX_ADDR_ADDR
-    op_ccx_addr_addr = _OP_CCX_ADDR_ADDR
-    op_cx_ladder_target = _OP_CX_LADDER_TARGET
-
-    # Per-arm pruning flags (see the docstring): captured bools fold at
-    # kernel-compile time, so a False flag removes its arm entirely.
-    use_x_addr = _OP_X_ADDR in present
-    use_x_ladder = _OP_X_LADDER in present
-    use_cx_addr_ladder = _OP_CX_ADDR_LADDER in present
-    use_cx_ladder_ladder = _OP_CX_LADDER_LADDER in present
-    use_ccx = _OP_CCX in present
-    use_body_x = _OP_BODY_X in present
-    use_body_y = _OP_BODY_Y in present
-    use_body_z = _OP_BODY_Z in present
-    use_cx_ctrl_ladder = _OP_CX_CTRL_LADDER in present
-    use_ccx_ctrl = _OP_CCX_CTRL in present
-    use_free_x = _OP_FREE_X in present
-    use_free_cx = _OP_FREE_CX in present
-    use_and_tt = _OP_AND_TT in present
-    use_and_wt = _OP_AND_WT in present
-    use_copy_tw = _OP_COPY_TW in present
-    use_body_x_w = _OP_BODY_X_W in present
-    use_body_z_w = _OP_BODY_Z_W in present
-    use_z_ladder = _OP_Z_LADDER in present
-    use_cx_addr_addr = _OP_CX_ADDR_ADDR in present
-    use_ccx_addr_addr = _OP_CCX_ADDR_ADDR in present
-    use_cx_ladder_target = _OP_CX_LADDER_TARGET in present
-
-    op_meas_uncompute = _OP_MEAS_UNCOMPUTE
-    op_meas_uncompute_ctrl = _OP_MEAS_UNCOMPUTE_CTRL
-    use_meas_uncompute = _OP_MEAS_UNCOMPUTE in present
-    use_meas_uncompute_ctrl = _OP_MEAS_UNCOMPUTE_CTRL in present
-
-    if controlled and has_work:
-
-        @cudaq.kernel
-        def primitives_measured_walk_work_ctrl(control: cudaq.qview,
-                                               address: cudaq.qview,
-                                               ladder: cudaq.qview,
-                                               target: cudaq.qview,
-                                               work: cudaq.qview):
-            fired = False
-            for i in range(num_ops):
-                op = opcodes[i]
-                a = ops_a[i]
-                b = ops_b[i]
-                c = ops_c[i]
-                if use_x_addr:
-                    if op == op_x_addr:
-                        x(address[a])
-                if use_x_ladder:
-                    if op == op_x_ladder:
-                        x(ladder[a])
-                if use_cx_addr_ladder:
-                    if op == op_cx_addr_ladder:
-                        cx(address[a], ladder[b])
-                if use_cx_ladder_ladder:
-                    if op == op_cx_ladder_ladder:
-                        cx(ladder[a], ladder[b])
-                if use_ccx:
-                    if op == op_ccx:
-                        x.ctrl(ladder[a], address[b], ladder[c])
-                if use_body_x:
-                    if op == op_body_x:
-                        x.ctrl(ladder[a], target[b])
-                if use_body_y:
-                    if op == op_body_y:
-                        y.ctrl(ladder[a], target[b])
-                if use_body_z:
-                    if op == op_body_z:
-                        z.ctrl(ladder[a], target[b])
-                if use_cx_ctrl_ladder:
-                    if op == op_cx_ctrl_ladder:
-                        cx(control[0], ladder[b])
-                if use_ccx_ctrl:
-                    if op == op_ccx_ctrl:
-                        x.ctrl(control[0], address[b], ladder[c])
-                if use_free_x:
-                    if op == op_free_x:
-                        x(target[a])
-                if use_free_cx:
-                    if op == op_free_cx:
-                        cx(target[a], target[b])
-                if use_and_tt:
-                    if op == op_and_tt:
-                        x.ctrl(target[a], target[b], work[c])
-                if use_and_wt:
-                    if op == op_and_wt:
-                        x.ctrl(work[a], target[b], work[c])
-                if use_copy_tw:
-                    if op == op_copy_tw:
-                        cx(target[a], work[b])
-                if use_body_x_w:
-                    if op == op_body_x_w:
-                        x.ctrl(ladder[a], work[b], target[c])
-                if use_body_z_w:
-                    if op == op_body_z_w:
-                        z.ctrl(ladder[a], work[b])
-                if use_z_ladder:
-                    if op == op_z_ladder:
-                        z(ladder[a])
-                if use_cx_addr_addr:
-                    if op == op_cx_addr_addr:
-                        cx(address[a], address[b])
-                if use_ccx_addr_addr:
-                    if op == op_ccx_addr_addr:
-                        x.ctrl(address[a], address[b], ladder[c])
-                if use_cx_ladder_target:
-                    if op == op_cx_ladder_target:
-                        cx(ladder[a], target[b])
-                if use_meas_uncompute:
-                    if op == op_meas_uncompute:
-                        h(ladder[a])
-                        fired = mz(ladder[a])
-                        if fired:
-                            x(ladder[a])
-                            z.ctrl(ladder[b], address[c])
-                if use_meas_uncompute_ctrl:
-                    if op == op_meas_uncompute_ctrl:
-                        h(ladder[a])
-                        fired = mz(ladder[a])
-                        if fired:
-                            x(ladder[a])
-                            z.ctrl(control[0], address[c])
-
-        _retain(primitives_measured_walk_work_ctrl)
-        return primitives_measured_walk_work_ctrl
-
-    if has_work:
-
-        @cudaq.kernel
-        def primitives_measured_walk_work(address: cudaq.qview,
-                                          ladder: cudaq.qview,
-                                          target: cudaq.qview,
-                                          work: cudaq.qview):
-            fired = False
-            for i in range(num_ops):
-                op = opcodes[i]
-                a = ops_a[i]
-                b = ops_b[i]
-                c = ops_c[i]
-                if use_x_addr:
-                    if op == op_x_addr:
-                        x(address[a])
-                if use_x_ladder:
-                    if op == op_x_ladder:
-                        x(ladder[a])
-                if use_cx_addr_ladder:
-                    if op == op_cx_addr_ladder:
-                        cx(address[a], ladder[b])
-                if use_cx_ladder_ladder:
-                    if op == op_cx_ladder_ladder:
-                        cx(ladder[a], ladder[b])
-                if use_ccx:
-                    if op == op_ccx:
-                        x.ctrl(ladder[a], address[b], ladder[c])
-                if use_body_x:
-                    if op == op_body_x:
-                        x.ctrl(ladder[a], target[b])
-                if use_body_y:
-                    if op == op_body_y:
-                        y.ctrl(ladder[a], target[b])
-                if use_body_z:
-                    if op == op_body_z:
-                        z.ctrl(ladder[a], target[b])
-                if use_free_x:
-                    if op == op_free_x:
-                        x(target[a])
-                if use_free_cx:
-                    if op == op_free_cx:
-                        cx(target[a], target[b])
-                if use_and_tt:
-                    if op == op_and_tt:
-                        x.ctrl(target[a], target[b], work[c])
-                if use_and_wt:
-                    if op == op_and_wt:
-                        x.ctrl(work[a], target[b], work[c])
-                if use_copy_tw:
-                    if op == op_copy_tw:
-                        cx(target[a], work[b])
-                if use_body_x_w:
-                    if op == op_body_x_w:
-                        x.ctrl(ladder[a], work[b], target[c])
-                if use_body_z_w:
-                    if op == op_body_z_w:
-                        z.ctrl(ladder[a], work[b])
-                if use_z_ladder:
-                    if op == op_z_ladder:
-                        z(ladder[a])
-                if use_cx_addr_addr:
-                    if op == op_cx_addr_addr:
-                        cx(address[a], address[b])
-                if use_ccx_addr_addr:
-                    if op == op_ccx_addr_addr:
-                        x.ctrl(address[a], address[b], ladder[c])
-                if use_cx_ladder_target:
-                    if op == op_cx_ladder_target:
-                        cx(ladder[a], target[b])
-                if use_meas_uncompute:
-                    if op == op_meas_uncompute:
-                        h(ladder[a])
-                        fired = mz(ladder[a])
-                        if fired:
-                            x(ladder[a])
-                            z.ctrl(ladder[b], address[c])
-
-        _retain(primitives_measured_walk_work)
-        return primitives_measured_walk_work
-
-    if controlled:
-
-        @cudaq.kernel
-        def primitives_measured_walk_ctrl(control: cudaq.qview,
-                                          address: cudaq.qview,
-                                          ladder: cudaq.qview,
-                                          target: cudaq.qview):
-            fired = False
-            for i in range(num_ops):
-                op = opcodes[i]
-                a = ops_a[i]
-                b = ops_b[i]
-                c = ops_c[i]
-                if use_x_addr:
-                    if op == op_x_addr:
-                        x(address[a])
-                if use_x_ladder:
-                    if op == op_x_ladder:
-                        x(ladder[a])
-                if use_cx_addr_ladder:
-                    if op == op_cx_addr_ladder:
-                        cx(address[a], ladder[b])
-                if use_cx_ladder_ladder:
-                    if op == op_cx_ladder_ladder:
-                        cx(ladder[a], ladder[b])
-                if use_ccx:
-                    if op == op_ccx:
-                        x.ctrl(ladder[a], address[b], ladder[c])
-                if use_body_x:
-                    if op == op_body_x:
-                        x.ctrl(ladder[a], target[b])
-                if use_body_y:
-                    if op == op_body_y:
-                        y.ctrl(ladder[a], target[b])
-                if use_body_z:
-                    if op == op_body_z:
-                        z.ctrl(ladder[a], target[b])
-                if use_cx_ctrl_ladder:
-                    if op == op_cx_ctrl_ladder:
-                        cx(control[0], ladder[b])
-                if use_ccx_ctrl:
-                    if op == op_ccx_ctrl:
-                        x.ctrl(control[0], address[b], ladder[c])
-                if use_free_x:
-                    if op == op_free_x:
-                        x(target[a])
-                if use_free_cx:
-                    if op == op_free_cx:
-                        cx(target[a], target[b])
-                if use_z_ladder:
-                    if op == op_z_ladder:
-                        z(ladder[a])
-                if use_cx_addr_addr:
-                    if op == op_cx_addr_addr:
-                        cx(address[a], address[b])
-                if use_ccx_addr_addr:
-                    if op == op_ccx_addr_addr:
-                        x.ctrl(address[a], address[b], ladder[c])
-                if use_cx_ladder_target:
-                    if op == op_cx_ladder_target:
-                        cx(ladder[a], target[b])
-                if use_meas_uncompute:
-                    if op == op_meas_uncompute:
-                        h(ladder[a])
-                        fired = mz(ladder[a])
-                        if fired:
-                            x(ladder[a])
-                            z.ctrl(ladder[b], address[c])
-                if use_meas_uncompute_ctrl:
-                    if op == op_meas_uncompute_ctrl:
-                        h(ladder[a])
-                        fired = mz(ladder[a])
-                        if fired:
-                            x(ladder[a])
-                            z.ctrl(control[0], address[c])
-
-        _retain(primitives_measured_walk_ctrl)
-        return primitives_measured_walk_ctrl
-
-    @cudaq.kernel
-    def primitives_measured_walk(address: cudaq.qview, ladder: cudaq.qview,
-                                 target: cudaq.qview):
-        fired = False
-        for i in range(num_ops):
-            op = opcodes[i]
-            a = ops_a[i]
-            b = ops_b[i]
-            c = ops_c[i]
-            if use_x_addr:
-                if op == op_x_addr:
-                    x(address[a])
-            if use_x_ladder:
-                if op == op_x_ladder:
-                    x(ladder[a])
-            if use_cx_addr_ladder:
-                if op == op_cx_addr_ladder:
-                    cx(address[a], ladder[b])
-            if use_cx_ladder_ladder:
-                if op == op_cx_ladder_ladder:
-                    cx(ladder[a], ladder[b])
-            if use_ccx:
-                if op == op_ccx:
-                    x.ctrl(ladder[a], address[b], ladder[c])
-            if use_body_x:
-                if op == op_body_x:
-                    x.ctrl(ladder[a], target[b])
-            if use_body_y:
-                if op == op_body_y:
-                    y.ctrl(ladder[a], target[b])
-            if use_body_z:
-                if op == op_body_z:
-                    z.ctrl(ladder[a], target[b])
-            if use_free_x:
-                if op == op_free_x:
-                    x(target[a])
-            if use_free_cx:
-                if op == op_free_cx:
-                    cx(target[a], target[b])
-            if use_z_ladder:
-                if op == op_z_ladder:
-                    z(ladder[a])
-            if use_cx_addr_addr:
-                if op == op_cx_addr_addr:
-                    cx(address[a], address[b])
-            if use_ccx_addr_addr:
-                if op == op_ccx_addr_addr:
-                    x.ctrl(address[a], address[b], ladder[c])
-            if use_cx_ladder_target:
-                if op == op_cx_ladder_target:
-                    cx(ladder[a], target[b])
-            if use_meas_uncompute:
-                if op == op_meas_uncompute:
-                    h(ladder[a])
-                    fired = mz(ladder[a])
-                    if fired:
-                        x(ladder[a])
-                        z.ctrl(ladder[b], address[c])
-
-    _retain(primitives_measured_walk)
-    return primitives_measured_walk

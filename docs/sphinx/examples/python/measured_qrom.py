@@ -5,13 +5,17 @@
 Run as a file with CUDA-Q 0.16: ``python measured_qrom.py``.
 """
 
+# [Begin Documentation]
+import os
+
 import numpy as np
 import cudaq
+from cudaq_algorithms import state_from
 from cudaq_algorithms.primitives import MeasuredQROM
 
 
 def main():
-    cudaq.set_target("qpp-cpu")
+    cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     data = [3, 0, 1, 2, 1]
     lookup = MeasuredQROM(data, 3, 2, variant="select_swap", block_size=2)
     apply_lookup = lookup.kernel
@@ -19,7 +23,7 @@ def main():
     rng = np.random.default_rng(27)
     psi = rng.normal(size=32) + 1j * rng.normal(size=32)
     psi /= np.linalg.norm(psi)
-    initial = cudaq.State.from_data(psi)
+    initial = state_from(psi)
 
     @cudaq.kernel
     def experiment(state: cudaq.State):

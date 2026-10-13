@@ -19,56 +19,43 @@ Existing ``QROM`` consumers continue to use unitary kernels.
 Construct and execute
 ---------------------
 
-.. code-block:: python
-
-   from cudaq_algorithms.primitives import MeasuredQROM
-
-   qrom = MeasuredQROM([3, 0, 1, 2, 1], 3, 2,
-                       variant="select_swap", block_size=2)
-   lookup = qrom.kernel
-   num_ladder = qrom.num_ladder
-
-   @cudaq.kernel
-   def read_bit() -> bool:
-       address = cudaq.qvector(3)
-       ladder = cudaq.qvector(num_ladder)
-       output = cudaq.qvector(2)
-       x(address[0])
-       x(address[1])
-       lookup(address, ladder, output)
-       return mz(output[1])
-
-   bits = cudaq.run(read_bit, shots_count=16)  # data[3] == 2
-
-Add ``import cudaq`` and run kernels from a real Python file. The complete
-example below also compares the raw complex output vector, including clean
-workspace, to an independent classical XOR permutation.
+Mint the lookup outside the kernel and pass its kernel in. The complete
+example below checks the raw complex output vector, including the clean
+workspace, against an independent classical XOR permutation and then reads
+one classical bit back with ``cudaq.run``:
 
 .. literalinclude:: ../examples/python/measured_qrom.py
    :language: python
-   :lines: 8-
+   :start-after: [Begin Documentation]
 
 ``cudaq.get_state`` and ``cudaq.observe`` are tested on CUDA-Q 0.16's
 ``qpp-cpu`` target. ``cudaq.run`` requires an entry kernel with a classical
-return value, as above. CUDA-Q 0.16 rejects both direct and nested
-measurement-feedback kernels under ``cudaq.sample``. Older versions could
-accept nested feedback without providing the intended logical samples.
-A backend must support mid-circuit measurement and classical feedback;
-these tests do not establish support on other backends or hardware.
+return value, as above. ``cudaq.sample`` rejects measurement-feedback
+kernels, direct or nested, on CUDA-Q 0.16; that rejection is CUDA-Q's
+compiler check, not a check this package performs, and older CUDA-Q
+releases accepted nested feedback while returning samples that are not the
+logical lookup. A backend must support mid-circuit measurement and classical
+feedback; these tests do not establish support on other backends or
+hardware. Do not name your own kernels ``h`` or ``mz``: CUDA-Q 0.16 resolves
+bare gate names against kernel decorators visible from the defining frame,
+so a user kernel with one of those names breaks the library kernels'
+compilation.
 
 For a coherent external control, construct with ``controlled=True`` and call
 ``lookup(control, address, ladder, output)``, where ``control`` is a one-qubit
-view. The control is part of the tree construction. Do not apply
-``cudaq.control`` to a measured kernel: identical-input checks on CUDA-Q 0.16
-show that automatic control can change relative amplitudes. This version
-behavior is recorded as a limitation, not a required failure mode in the tests.
+view; the control is folded into the tree root. Do not apply ``cudaq.control``
+to a measured kernel: on CUDA-Q 0.16 it compiles and runs without any error,
+but the mid-circuit measurements cannot be controlled, so each run measures
+the caller's control register in the Z basis, and on a superposed control the
+resulting state differs from the controlled lookup and from run to run.
+``cudaq.adjoint`` of a measured kernel raises. ``controlled=True`` and the
+walker's ``kernel_adj`` are the only supported forms.
 
-Applying the lookup twice restores the logical state when workspace satisfies
-the declared clean-prefix and borrowed-suffix contract.
+Applying the lookup twice restores the logical state when the workspace
+satisfies the declared clean-prefix and borrowed-suffix contract.
 ``measured_unary_iteration_kernels`` also exposes ``kernel_adj`` for
 noncommuting bodies. That kernel reverses the logical SELECT map on clean
 workspace. It does not invert a quantum channel on arbitrary dirty inputs.
-Use the explicit inverse; automatic ``cudaq.adjoint`` is outside this API.
 
 Constructions and resource counts
 ---------------------------------
@@ -128,11 +115,14 @@ The general walker additionally exposes ``body_toffoli_count``. Its body
 instructions can target data rather than clean ancillas.
 
 The four-T temporary-AND estimate applies only to the tree count, and only
-under a compatible synthesis. These kernels emit ordinary Toffolis; neither
-compiled T counts nor physical hardware costs are claimed. Routing Toffolis
-are coherent and are counted separately. Conditional CZ fixup counts depend
-on measurement outcomes; unconditional Toffoli and measurement counts are
-checked against CUDA-Q's resource estimator.
+under a compatible synthesis. These kernels emit ordinary Toffolis for both
+the tree ANDs and the routing network; a synthesis may realise a routing
+Toffoli as a temporary AND as well, at the price of an extra ancilla, so
+neither compiled T counts nor physical hardware costs are claimed.
+Conditional CZ fixup counts depend on measurement outcomes.
+``cudaq.estimate_resources`` reports no T gates for these kernels and follows
+its own branch choice for the conditional fixups, so only the unconditional
+Toffoli and measurement counts are checked against it.
 
 On a full tree, ``C = 2**n - 2 + c``. For a partial table, this implementation
 preserves the full address space, including a no-op outside the table. The

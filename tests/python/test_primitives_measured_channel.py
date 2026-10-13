@@ -12,7 +12,17 @@ removed. Thus relative phases, reset, and outcome probabilities are tested.
 import pytest
 import cudaq
 import numpy as np
+
+from cudaq_algorithms import state_from
+from cudaq_algorithms.primitives import MeasuredQROM
+from cudaq_algorithms.primitives._unary_iteration import (
+    _OP_AND_TT, _OP_AND_WT, _OP_BODY_X, _OP_BODY_X_W, _OP_BODY_Y, _OP_BODY_Z,
+    _OP_BODY_Z_W, _OP_CCX, _OP_CCX_CTRL, _OP_COPY_TW, _OP_CX_ADDR_LADDER,
+    _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER, _OP_CX_LADDER_TARGET,
+    _OP_FREE_CX, _OP_FREE_X, _OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL,
+    _OP_X_ADDR, _OP_X_LADDER, _OP_Z_LADDER)
 from cudaq_algorithms.primitives._unary_iteration_measured import _emit_measured_walk
+from dense_references import random_ket
 
 
 def body(k):
@@ -42,7 +52,8 @@ def verify(n, m, controlled, reverse, extended=False, oracle_only=False):
     init[np.arange(logical), np.arange(logical)] = 1
     bb = [list((extended_body if extended else body)(k)) for k in range(m)]
     ops = _emit_measured_walk(n, m, controlled, bb, reverse)
-    measurements = sum(o[0] in (22, 23) for o in ops)
+    measurements = sum(o[0] in (_OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL)
+                       for o in ops)
 
     def gate(v, g, target, controls=(), addr=None):
         active = np.ones(dim, bool)
@@ -106,7 +117,7 @@ def verify(n, m, controlled, reverse, extended=False, oracle_only=False):
         nonlocal leaves, worst
         for j in range(idx, len(ops)):
             op, a, b, c = ops[j]
-            if op in (22, 23):
+            if op in (_OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL):
                 gate(v, 'h', ll + a)
                 for outcome in (0, 1):
                     branch = v.copy()
@@ -114,36 +125,47 @@ def verify(n, m, controlled, reverse, extended=False, oracle_only=False):
                     if outcome:
                         gate(branch, 'x', ll + a)
                         gate(branch, 'z', na + c,
-                             [ll + b] if op == 22 else [0])
+                             [ll + b] if op == _OP_MEAS_UNCOMPUTE else [0])
                     visit(branch, j + 1)
                 return
-            if op == 0: gate(v, 'x', na + a)
-            elif op == 1: gate(v, 'x', ll + a)
-            elif op == 2: gate(v, 'x', ll + b, [na + a])
-            elif op == 3: gate(v, 'x', ll + b, [ll + a])
-            elif op == 4: gate(v, 'x', ll + c, [ll + a, na + b])
-            elif op in (5, 6, 7):
-                gate(v, {5: 'x', 6: 'y', 7: 'z'}[op], tt + b, [ll + a])
-            elif op == 8:
+            if op == _OP_X_ADDR:
+                gate(v, 'x', na + a)
+            elif op == _OP_X_LADDER:
+                gate(v, 'x', ll + a)
+            elif op == _OP_CX_ADDR_LADDER:
+                gate(v, 'x', ll + b, [na + a])
+            elif op == _OP_CX_LADDER_LADDER:
+                gate(v, 'x', ll + b, [ll + a])
+            elif op == _OP_CCX:
+                gate(v, 'x', ll + c, [ll + a, na + b])
+            elif op in (_OP_BODY_X, _OP_BODY_Y, _OP_BODY_Z):
+                gate(v, {
+                    _OP_BODY_X: 'x',
+                    _OP_BODY_Y: 'y',
+                    _OP_BODY_Z: 'z'
+                }[op], tt + b, [ll + a])
+            elif op == _OP_CX_CTRL_LADDER:
                 gate(v, 'x', ll + b, [0])
-            elif op == 9:
+            elif op == _OP_CCX_CTRL:
                 gate(v, 'x', ll + c, [0, na + b])
-            elif op == 10:
+            elif op == _OP_FREE_X:
                 gate(v, 'x', tt + a)
-            elif op == 11:
+            elif op == _OP_FREE_CX:
                 gate(v, 'x', tt + b, [tt + a])
-            elif op == 12:
+            elif op == _OP_AND_TT:
                 gate(v, 'x', ww + c, [tt + a, tt + b])
-            elif op == 13:
+            elif op == _OP_AND_WT:
                 gate(v, 'x', ww + c, [ww + a, tt + b])
-            elif op == 14:
+            elif op == _OP_COPY_TW:
                 gate(v, 'x', ww + b, [tt + a])
-            elif op == 15:
+            elif op == _OP_BODY_X_W:
                 gate(v, 'x', tt + c, [ll + a, ww + b])
-            elif op == 16:
+            elif op == _OP_BODY_Z_W:
                 gate(v, 'z', ww + b, [ll + a])
-            elif op == 17:
+            elif op == _OP_Z_LADDER:
                 gate(v, 'z', ll + a)
+            elif op == _OP_CX_LADDER_TARGET:
+                gate(v, 'x', tt + b, [ll + a])
             else:
                 raise ValueError(op)
         leaves += 1
@@ -170,6 +192,7 @@ def test_extended_body_all_histories_and_native(controlled, reverse):
     # Exercises work+control together, free-gate compute/action/uncompute,
     # noncommuting Pauli bodies, and inverse leaf/body order.
     from cudaq_algorithms.primitives import measured_unary_iteration_kernels
+    cudaq.set_random_seed(442)
     verify(2, 3, controlled, reverse, extended=True)
     expected_map = verify(2,
                           3,
@@ -177,17 +200,14 @@ def test_extended_body_all_histories_and_native(controlled, reverse):
                           reverse,
                           extended=True,
                           oracle_only=True)
-    rng = np.random.default_rng(442)
-    logical = rng.normal(size=expected_map.shape[1]) + 1j * rng.normal(
-        size=expected_map.shape[1])
-    logical /= np.linalg.norm(logical)
+    logical = random_ket(int(np.log2(expected_map.shape[1])), 442)
     expected = expected_map @ logical
     walk = measured_unary_iteration_kernels(2,
                                             3,
                                             extended_body,
                                             controlled=controlled)
     kernel = walk.kernel_adj if reverse else walk.kernel
-    state = cudaq.State.from_data(logical)
+    state = state_from(logical)
     if controlled:
 
         @cudaq.kernel
@@ -208,4 +228,125 @@ def test_extended_body_all_histories_and_native(controlled, reverse):
     for _ in range(3):
         np.testing.assert_allclose(np.asarray(cudaq.get_state(run, state)),
                                    expected,
-                                   atol=1e-12)
+                                   atol=1e-12,
+                                   rtol=0)
+
+
+def _qrom_histories(qrom, controlled):
+    """Enumerate every measurement history of a MeasuredQROM tape and check
+    each unnormalized branch against the XOR permutation on the logical
+    (control, address, output) sector, with the clean ladder prefix at zero
+    and the bank arbitrary when borrowed. Layout: control | address |
+    ladder (clean prefix, then bank) | output."""
+    n, b = qrom.num_address, qrom.num_output
+    nc = int(controlled)
+    clean = qrom.num_clean
+    na = nc
+    ll = nc + n
+    tt = ll + qrom.num_ladder
+    dim = 1 << (tt + b)
+    ids = np.arange(dim)
+    inputs = ids[((ids >> ll) & ((1 << clean) - 1)) == 0]
+    init = np.zeros((dim, len(inputs)), complex)
+    init[inputs, np.arange(len(inputs))] = 1
+    expected = np.zeros_like(init)
+    for col, src in enumerate(inputs):
+        address = (src >> na) & ((1 << n) - 1)
+        enabled = (not controlled) or (src & 1)
+        word = qrom.data[address] if enabled and address < len(
+            qrom.data) else 0
+        expected[src ^ (word << tt), col] = 1
+    ops = list(qrom._ops)
+    measurements = sum(op[0] in (_OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL)
+                       for op in ops)
+    assert measurements == qrom.num_measurements
+
+    def gate(v, g, target, controls=()):
+        active = np.ones(dim, bool)
+        for c in controls:
+            active &= ((ids >> c) & 1) != 0
+        lo = ids[active & (((ids >> target) & 1) == 0)]
+        hi = lo ^ (1 << target)
+        if g == 'x':
+            a = v[lo].copy()
+            v[lo] = v[hi]
+            v[hi] = a
+        elif g == 'z':
+            v[hi] *= -1
+        elif g == 'h':
+            a = v[lo].copy()
+            c = v[hi].copy()
+            v[lo] = (a + c) / np.sqrt(2)
+            v[hi] = (a - c) / np.sqrt(2)
+
+    leaves = 0
+
+    def visit(v, idx):
+        nonlocal leaves
+        for j in range(idx, len(ops)):
+            op, a, bb, c = ops[j]
+            if op in (_OP_MEAS_UNCOMPUTE, _OP_MEAS_UNCOMPUTE_CTRL):
+                gate(v, 'h', ll + a)
+                for outcome in (0, 1):
+                    branch = v.copy()
+                    branch[((ids >> (ll + a)) & 1) != outcome] = 0
+                    if outcome:
+                        gate(branch, 'x', ll + a)
+                        gate(branch, 'z', na + c,
+                             [ll + bb] if op == _OP_MEAS_UNCOMPUTE else [0])
+                    visit(branch, j + 1)
+                return
+            if op == _OP_X_ADDR:
+                gate(v, 'x', na + a)
+            elif op == _OP_X_LADDER:
+                gate(v, 'x', ll + a)
+            elif op == _OP_CX_ADDR_LADDER:
+                gate(v, 'x', ll + bb, [na + a])
+            elif op == _OP_CX_LADDER_LADDER:
+                gate(v, 'x', ll + bb, [ll + a])
+            elif op == _OP_CCX:
+                gate(v, 'x', ll + c, [ll + a, na + bb])
+            elif op == _OP_BODY_X:
+                gate(v, 'x', tt + bb, [ll + a])
+            elif op == _OP_CX_CTRL_LADDER:
+                gate(v, 'x', ll + bb, [0])
+            elif op == _OP_CCX_CTRL:
+                gate(v, 'x', ll + c, [0, na + bb])
+            elif op == _OP_CX_LADDER_TARGET:
+                gate(v, 'x', tt + bb, [ll + a])
+            else:
+                raise ValueError(op)
+        leaves += 1
+        err = np.max(np.abs(v * 2**(measurements / 2) - expected))
+        assert err < 2e-14, (qrom, controlled, err)
+
+    visit(init, 0)
+    assert leaves == 2**measurements
+    return leaves
+
+
+@pytest.mark.parametrize("variant,block_size,n,m,b,dirty",
+                         [("select", None, 3, 5, 2, False),
+                          ("select_swap", 2, 3, 5, 2, False),
+                          ("select_swap", 4, 4, 9, 1, False),
+                          ("select_swap", 2, 3, 5, 1, True),
+                          ("select_swap", 4, 4, 9, 1, True)])
+@pytest.mark.parametrize("controlled", [False, True])
+def test_all_measured_qrom_histories_match_the_xor_map(variant, block_size, n,
+                                                       m, b, dirty,
+                                                       controlled):
+    # The lookup-level twin of the walk-tape oracle above: it covers the
+    # SELECT-SWAP rebase of the fix-up operands, the routing network and
+    # the dirty-bank echo, which the native trajectory tests reach only
+    # with probability 1/2 per gadget.
+    data = [(3 * i + 1) % (1 << b) for i in range(m)]
+    qrom = MeasuredQROM(data,
+                        n,
+                        b,
+                        variant=variant,
+                        block_size=block_size,
+                        controlled=controlled,
+                        dirty_banks=dirty)
+    assert qrom.num_measurements > 0
+    leaves = _qrom_histories(qrom, controlled)
+    assert leaves == 2**qrom.num_measurements
