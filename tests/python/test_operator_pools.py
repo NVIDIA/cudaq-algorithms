@@ -105,14 +105,14 @@ def test_uccsd_operator_pool_correctness():
                              [complex(-0.5, 0),
                               complex(0.5, 0)],
                              [
+                                 complex(0.125, 0),
+                                 complex(0.125, 0),
+                                 complex(-0.125, 0),
+                                 complex(0.125, 0),
                                  complex(-0.125, 0),
                                  complex(-0.125, 0),
-                                 complex(0.125, 0),
                                  complex(-0.125, 0),
-                                 complex(0.125, 0),
-                                 complex(0.125, 0),
-                                 complex(0.125, 0),
-                                 complex(-0.125, 0)
+                                 complex(0.125, 0)
                              ]]
 
     assert len(generated) == len(expected_operators)
@@ -316,3 +316,26 @@ def test_pauli_lists_reject_complex_pool_coefficients():
     complex_pool = [1j * cudaq.spin.x(0) * cudaq.spin.y(1)]
     with pytest.raises(ValueError, match="must be real"):
         _pools._pauli_lists_from_pool(complex_pool, 2)
+
+
+def test_uccsd_double_pool_negates_one_pair_swap():
+    # tau changes sign when one pair is swapped. [0, 1, 3, 2] is that swap
+    # of [0, 1, 2, 3], and it is the only double get_uccsd_excitations
+    # emits for H2. The pool must return the negated Pauli sum. The +/-
+    # match in test_uccsd_spin_two_pool_matches_fermionic_generators does
+    # not catch this: a missing minus still hits one of the two phases.
+    from cudaq_algorithms.stateprep._pools import _uccsd_double
+
+    def coefficients(operator):
+        return {
+            term.get_pauli_word(4): complex(term.evaluate_coefficient())
+            for term in operator
+        }
+
+    swapped = coefficients(_uccsd_double(0, 1, 3, 2))
+    ordered = coefficients(_uccsd_double(0, 1, 2, 3))
+    # Same words on both operators.
+    assert set(swapped) == set(ordered)
+    for word, coefficient in ordered.items():
+        # Each coefficient flips with the swapped pair.
+        assert swapped[word] == -coefficient
