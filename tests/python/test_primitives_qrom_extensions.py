@@ -95,17 +95,75 @@ def test_controlled_packets_match_complex_permutation(block_size, alpha):
         lookup(q[0:3], q[3:shift], q[shift:control])
 
     actual = np.asarray(cudaq.get_state(run, state_from(initial)))
-    np.testing.assert_allclose(actual, expected, atol=1e-12)
+    np.testing.assert_allclose(actual, expected, atol=1e-12, rtol=0)
     np.testing.assert_allclose(np.asarray(
         cudaq.get_state(twice, state_from(initial))),
                                initial,
-                               atol=1e-12)
+                               atol=1e-12,
+                               rtol=0)
 
     compiled = _compiled_toffolis_of(lookup, 3, qrom.num_ladder, 3)
     assert compiled == qrom.toffoli_count
     assert qrom.describe().count("# Toffoli") == compiled
     if (block_size, alpha) == (4, 2):
         assert compiled == 13
+
+
+@pytest.mark.parametrize(
+    "address_bits,num_entries,output_bits,block_size,alpha",
+    [(3, 8, 3, 2, 2), (3, 5, 5, 2, 3), (4, 11, 5, 4, 3), (4, 16, 4, 8, 4)])
+def test_select_copy_packets_on_superposed_addresses(address_bits, num_entries,
+                                                     output_bits, block_size,
+                                                     alpha):
+    # Packet shapes the single-table test above does not reach: alpha equal
+    # to the word width, widths that do not divide evenly ([2, 1] and
+    # [2, 2, 1]), a block wider than the pool (B=8) and a partial last
+    # block. One compiled kernel per shape reads every address at once.
+    rng = np.random.default_rng(11 * address_bits + num_entries + alpha)
+    data = [int(v) for v in rng.integers(0, 1 << output_bits, num_entries)]
+    qrom = QROM(data,
+                address_bits,
+                output_bits,
+                variant="select_copy",
+                block_size=block_size,
+                alpha=alpha)
+    assert qrom.alpha == alpha
+    lookup = qrom.kernel
+    ladder = qrom.num_ladder
+    shift = address_bits + ladder
+
+    @cudaq.kernel
+    def once():
+        address = cudaq.qvector(address_bits)
+        workspace = cudaq.qvector(ladder)
+        output = cudaq.qvector(output_bits)
+        h(address)
+        lookup(address, workspace, output)
+
+    @cudaq.kernel
+    def twice():
+        address = cudaq.qvector(address_bits)
+        workspace = cudaq.qvector(ladder)
+        output = cudaq.qvector(output_bits)
+        h(address)
+        lookup(address, workspace, output)
+        lookup(address, workspace, output)
+
+    total = shift + output_bits
+    expected = np.zeros(1 << total, dtype=np.complex128)
+    for k in range(1 << address_bits):
+        word = data[k] if k < len(data) else 0
+        expected[k | (word << shift)] = 1 / np.sqrt(1 << address_bits)
+    np.testing.assert_allclose(np.asarray(cudaq.get_state(once)),
+                               expected,
+                               atol=1e-12,
+                               rtol=0)
+    uniform = np.zeros(1 << total, dtype=np.complex128)
+    uniform[:1 << address_bits] = 1 / np.sqrt(1 << address_bits)
+    np.testing.assert_allclose(np.asarray(cudaq.get_state(twice)),
+                               uniform,
+                               atol=1e-12,
+                               rtol=0)
 
 
 def _xor_table(state, table, shift, num_address=3, control=None):
@@ -178,7 +236,8 @@ def test_chain_with_output_mutations_matches_independent_circuit(fused):
     np.testing.assert_allclose(np.asarray(
         cudaq.get_state(run, state_from(initial))),
                                expected,
-                               atol=1e-12)
+                               atol=1e-12,
+                               rtol=0)
     assert chain.toffoli_count == (20 if fused else 28)
 
 
@@ -281,7 +340,8 @@ def test_alias_sampling_accepts_select_copy_property():
                                            max_ancillas=2)
     np.testing.assert_allclose(_circuit_marginal(prep),
                                _brute_force_marginal(prep),
-                               atol=1e-12)
+                               atol=1e-12,
+                               rtol=0)
     prepare, unprepare = prep.kernel(), prep.adjoint_kernel()
     width = prep.num_garbage
 
@@ -295,7 +355,7 @@ def test_alias_sampling_accepts_select_copy_property():
     state = np.asarray(cudaq.get_state(inverse))
     expected = np.zeros_like(state)
     expected[0] = 1
-    np.testing.assert_allclose(state, expected, atol=1e-12)
+    np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
     for adjoint in (False, True):
         resources = _prepare_resources(prep, adjoint)
         assert resources.count_controls("x", 2) == prep.qrom.toffoli_count + 1
@@ -350,11 +410,13 @@ def test_controlled_lookup_restores_entangled_borrowed_bank(
     np.testing.assert_allclose(np.asarray(
         cudaq.get_state(run, state_from(initial))),
                                expected,
-                               atol=1e-12)
+                               atol=1e-12,
+                               rtol=0)
     np.testing.assert_allclose(np.asarray(
         cudaq.get_state(twice, state_from(initial))),
                                initial,
-                               atol=1e-12)
+                               atol=1e-12,
+                               rtol=0)
 
     compiled = _compiled_toffolis_of(lookup, 3, qrom.num_ladder, 3)
     assert qrom.toffoli_count == compiled
@@ -436,7 +498,9 @@ def test_budget_error_names_the_requested_variant_only():
     "block_size": True
 }])
 def test_integer_options_reject_bools(options):
-    with pytest.raises(ValueError):
+    # Each guard names the parameter and echoes the rejected value, which
+    # separates it from the budget or power-of-two errors a True used to hit.
+    with pytest.raises(ValueError, match="must be.*got True"):
         QROM([0, 1, 2, 3], 2, 2, **options)
 
 

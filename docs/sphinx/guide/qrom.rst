@@ -79,12 +79,13 @@ workspace qubits, auto chooses ``B=16, alpha=4`` at 591 Toffolis on 21.
 These are logical circuit counts, not measured hardware cost.
 ``describe()`` lists the emitted gates and identifies counted Toffolis.
 
-``auto`` minimises the Toffoli count alone, so with SELECT-COPY in the
+``auto`` minimizes the Toffoli count alone, so with SELECT-COPY in the
 search it now returns ``select_copy`` for most table shapes and may spend
 more workspace than the SELECT-SWAP or SELECT pick it replaces: the table
 above costs 302 Toffolis on 70 workspace qubits with SELECT-SWAP. The
 optimum sits on a flat curve (for that table the best cost against the
-budget runs 591 at 21 qubits, 371 at 36, 261 at 66 and 253 at 129, so the
+budget runs 591 at 21 qubits, 409 at 35, 371 at 36, 261 at 66 and 253 at
+129, so the
 last 63 qubits buy 8 Toffolis). Pass ``max_ancillas`` for any real qubit
 budget, or force ``variant="select_swap"`` or ``"select"`` to keep an
 earlier footprint; ``AliasSamplingPrepare.num_garbage`` follows the same

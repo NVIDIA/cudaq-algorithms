@@ -36,7 +36,7 @@ different choices are priced per step, with no fixed reduction promised.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 
 import cudaq
 
@@ -98,7 +98,7 @@ class QROMChain:
     """
 
     def __init__(self,
-                 tables: Sequence[Sequence[int]],
+                 tables: Iterable[Iterable[int]],
                  address_bits: int,
                  output_bits: int,
                  *,

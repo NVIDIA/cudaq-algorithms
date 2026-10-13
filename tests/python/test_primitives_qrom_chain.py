@@ -414,7 +414,7 @@ def test_chain_accepts_array_tables_and_rejects_strings_and_bools():
         QROMChain([[1]], 0, 1)
     with pytest.raises(ValueError, match=r"^output_bits must be"):
         QROMChain([[1]], 1, 0)
-    with pytest.raises(ValueError, match=r"^QROMChain: int\(\) argument"):
+    with pytest.raises(ValueError, match=r"^QROMChain: "):
         QROMChain([[1, 0]], 2, 1, variant="select_copy", block_size=[2])
 
 

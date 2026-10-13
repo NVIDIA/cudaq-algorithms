@@ -53,9 +53,9 @@ against the same budget.
 
 ``auto`` prices Toffolis alone, so it may return a blocked construction
 with more workspace than SELECT or SELECT-SWAP would use; bound it with
-``max_ancillas``. At one output bit the copy walk ``W(l, B) = 3B/2 - 5``
-outgrows the routing it replaces, ``b (B - 1)``, above ``B = 8`` (tie at
-8), so SELECT-SWAP is strictly cheaper there.
+``max_ancillas``. At one output bit the copy walk, ``W(l, B) = 3B/2 - 5``
+for ``B >= 8``, outgrows the routing it replaces, ``b (B - 1)``, above
+``B = 8`` (tie at 8), so SELECT-SWAP is strictly cheaper there.
 
 Logical resource model
 ----------------------
@@ -218,7 +218,7 @@ class QROM:
     variant
         ``"auto"`` (default), ``"select"``, ``"select_swap"`` or
         ``"select_copy"`` — see the module docstring for the
-        constructions and their exact prices. ``"auto"`` minimises the
+        constructions and their exact prices. ``"auto"`` minimizes the
         logical Toffoli count alone and may choose more workspace than
         an explicit SELECT or SELECT-SWAP; see ``max_ancillas``.
     block_size

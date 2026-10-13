@@ -63,7 +63,7 @@ def _exhaustive_readout(qrom: QROM, data):
         expected_word = data[address] if address < len(data) else 0
         state = _qrom_readout_state(qrom, address)
         expected = _basis(address + (expected_word << shift), total)
-        np.testing.assert_allclose(state, expected, atol=1e-12)
+        np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
 
 
 @pytest.mark.parametrize("address_bits,num_entries", [(1, 2), (2, 4), (2, 3),
@@ -153,7 +153,7 @@ def test_qrom_is_self_inverse(variant, block_size):
     expected = np.zeros(1 << total, dtype=np.complex128)
     for address in range(8):
         expected[address + (initial << (3 + num_ladder))] = 1.0 / np.sqrt(8.0)
-    np.testing.assert_allclose(state, expected, atol=1e-12)
+    np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
 
 
 def test_qrom_select_swap_equals_select_on_superposed_addresses():
@@ -181,7 +181,8 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
         # Ancillas must be exactly |0>.
         np.testing.assert_allclose(np.delete(tensor, 0, axis=1),
                                    0.0,
-                                   atol=1e-12)
+                                   atol=1e-12,
+                                   rtol=0)
         return tensor[:, 0, :]
 
     select = QROM(data, address_bits, output_bits, variant="select")
@@ -192,7 +193,8 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
                 block_size=2)
     np.testing.assert_allclose(joint_amplitudes(select),
                                joint_amplitudes(swap),
-                               atol=1e-12)
+                               atol=1e-12,
+                               rtol=0)
 
 
 def test_qrom_variants_agree_on_superposed_addresses():
@@ -220,7 +222,8 @@ def test_qrom_variants_agree_on_superposed_addresses():
         # Ancillas must be exactly |0>.
         np.testing.assert_allclose(np.delete(tensor, 0, axis=1),
                                    0.0,
-                                   atol=1e-12)
+                                   atol=1e-12,
+                                   rtol=0)
         return tensor[:, 0, :]
 
     select = QROM(data, address_bits, output_bits, variant="select")
@@ -234,7 +237,8 @@ def test_qrom_variants_agree_on_superposed_addresses():
                          block_size=block_size)
             np.testing.assert_allclose(reference,
                                        joint_amplitudes(other),
-                                       atol=1e-12)
+                                       atol=1e-12,
+                                       rtol=0)
 
 
 def test_qrom_auto_dispatch_picks_the_cheapest_variant():

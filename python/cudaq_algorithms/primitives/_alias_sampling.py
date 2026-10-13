@@ -287,7 +287,9 @@ class AliasSamplingPrepare:
         @cudaq.kernel
         def primitives_alias_prepare_adj(index: cudaq.qview,
                                          garbage: cudaq.qview):
-            """Hand-written gate-reversal of ``primitives_alias_prepare``."""
+            """Hand-written inverse of ``primitives_alias_prepare``: the gate
+            sequence reversed block by block, with the self-inverse QROM
+            lookup re-applied on the clean-ladder sector."""
             for j in range(m):
                 b = m - 1 - j
                 swap.ctrl(garbage[flag], index[b], garbage[b])

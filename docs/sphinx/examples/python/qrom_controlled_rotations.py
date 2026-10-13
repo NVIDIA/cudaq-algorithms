@@ -72,4 +72,4 @@ if __name__ == "__main__":
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     separate = rotation_chain(False)
     fused = rotation_chain(True)
-    np.testing.assert_allclose(fused, separate, atol=1e-12)
+    np.testing.assert_allclose(fused, separate, atol=1e-12, rtol=0)
