@@ -9,6 +9,13 @@ import cudaq
 from cudaq_algorithms import state_from
 from cudaq_algorithms import primitives
 from cudaq_algorithms.primitives import QROM
+from cudaq_algorithms.primitives._qrom import (_select_copy_ancillas,
+                                               _select_copy_cost,
+                                               _select_swap_ancillas,
+                                               _select_swap_cost)
+
+from dense_references import random_ket
+from test_primitives_resources import _compiled_toffolis_of
 
 
 def _chain(*args, **kwargs):
@@ -68,17 +75,13 @@ def test_controlled_packets_match_complex_permutation(block_size, alpha):
     ladder = qrom.num_ladder
     shift = 3 + ladder
     control = shift + 3
-    rng = np.random.default_rng(443)
-    compact = rng.normal(size=128) + 1j * rng.normal(size=128)
-    compact /= np.linalg.norm(compact)
+    compact = random_ket(7, 443)
     initial = np.zeros(1 << (control + 1), dtype=np.complex128)
-    expected = np.zeros_like(initial)
     for j, amplitude in enumerate(compact):
         address, output, enabled = j & 7, (j >> 3) & 7, j >> 6
         source = address | (output << shift) | (enabled << control)
-        word = data[address] if enabled and address < len(data) else 0
         initial[source] = amplitude
-        expected[source ^ (word << shift)] = amplitude
+    expected = _xor_table(initial, data, shift, control=control)
 
     @cudaq.kernel
     def run(state: cudaq.State):
@@ -98,22 +101,21 @@ def test_controlled_packets_match_complex_permutation(block_size, alpha):
                                initial,
                                atol=1e-12)
 
-    @cudaq.kernel
-    def resources():
-        q = cudaq.qvector(control)
-        lookup(q[0:3], q[3:shift], q[shift:control])
-
-    compiled = cudaq.estimate_resources(resources).count_controls("x", 2)
+    compiled = _compiled_toffolis_of(lookup, 3, qrom.num_ladder, 3)
     assert compiled == qrom.toffoli_count
     assert qrom.describe().count("# Toffoli") == compiled
     if (block_size, alpha) == (4, 2):
         assert compiled == 13
 
 
-def _xor_table(state, table, shift):
+def _xor_table(state, table, shift, num_address=3, control=None):
+    """XOR table[address] into the output slice at ``shift`` for every
+    amplitude; with ``control`` set, only where that qubit is one."""
     indices = np.arange(len(state))
-    values = np.array(
-        [table[j & 7] if (j & 7) < len(table) else 0 for j in indices])
+    address = indices & ((1 << num_address) - 1)
+    values = np.array([table[a] if a < len(table) else 0 for a in address])
+    if control is not None:
+        values = values * ((indices >> control) & 1)
     result = np.empty_like(state)
     result[indices ^ (values << shift)] = state
     return result
@@ -138,9 +140,7 @@ def test_chain_with_output_mutations_matches_independent_circuit(fused):
     k0, k1, k2, k3 = chain.kernels()
     shift = 3 + chain.num_ladder
     reference = shift + 2
-    rng = np.random.default_rng(193)
-    compact = rng.normal(size=64) + 1j * rng.normal(size=64)
-    compact /= np.linalg.norm(compact)
+    compact = random_ket(6, 193)
     initial = np.zeros(1 << (reference + 1), dtype=np.complex128)
     for j, amplitude in enumerate(compact):
         initial[(j & 7) | ((j >> 3) << shift)] = amplitude
@@ -328,19 +328,13 @@ def test_controlled_lookup_restores_entangled_borrowed_bank(
     bank_start = 3 + qrom.num_clean
     shift = 3 + qrom.num_ladder
     control, reference = shift + 3, shift + 4
-    rng = np.random.default_rng(718)
     # Bank, output, address, control and spectator are generally entangled.
-    size = 1 << (3 + qrom.num_dirty + 3 + 2)
-    compact = rng.normal(size=size) + 1j * rng.normal(size=size)
-    compact /= np.linalg.norm(compact)
+    compact = random_ket(3 + qrom.num_dirty + 3 + 2, 718)
     initial = np.zeros(1 << (reference + 1), dtype=np.complex128)
-    expected = np.zeros_like(initial)
     for j, amplitude in enumerate(compact):
         source = (j & 7) | ((j >> 3) << bank_start)
-        address, enabled = source & 7, (source >> control) & 1
-        word = data[address] if enabled and address < len(data) else 0
         initial[source] = amplitude
-        expected[source ^ (word << shift)] = amplitude
+    expected = _xor_table(initial, data, shift, control=control)
 
     @cudaq.kernel
     def run(state: cudaq.State):
@@ -362,12 +356,7 @@ def test_controlled_lookup_restores_entangled_borrowed_bank(
                                initial,
                                atol=1e-12)
 
-    @cudaq.kernel
-    def resources():
-        q = cudaq.qvector(control)
-        lookup(q[0:3], q[3:shift], q[shift:control])
-
-    compiled = cudaq.estimate_resources(resources).count_controls("x", 2)
+    compiled = _compiled_toffolis_of(lookup, 3, qrom.num_ladder, 3)
     assert qrom.toffoli_count == compiled
     assert qrom.describe().count("# Toffoli") == compiled
     if variant == "select_copy":
@@ -417,3 +406,69 @@ def test_borrowed_strategy_search_prices_echo_and_total_budget(variant):
                       max_ancillas=budget)
         assert chosen.toffoli_count == min(eligible)
         assert chosen.num_clean + chosen.num_dirty <= budget
+
+
+def test_auto_prices_sparse_wide_tables_without_walking_the_capacity():
+    # Pricing is polynomial in address_bits: the closed-form walk count
+    # makes this instantaneous where a per-address loop took minutes.
+    lookup = QROM([1], 40, 1)
+    assert lookup.variant == "select"
+    assert lookup.toffoli_count == 2 * (40 - 1)
+    assert QROM([1], 40, 1, max_ancillas=40).variant == "select"
+
+
+def test_budget_error_names_the_requested_variant_only():
+    with pytest.raises(ValueError,
+                       match=r"^no construction fits max_ancillas=1: "):
+        QROM([0, 1, 2, 3], 2, 2, max_ancillas=1)
+    with pytest.raises(ValueError,
+                       match=r"^no 'select_swap' construction fits"):
+        QROM([0, 1, 2, 3], 2, 2, variant="select_swap", max_ancillas=1)
+
+
+@pytest.mark.parametrize("options", [{
+    "variant": "select_copy",
+    "alpha": True
+}, {
+    "max_ancillas": True
+}, {
+    "variant": "select_copy",
+    "block_size": True
+}])
+def test_integer_options_reject_bools(options):
+    with pytest.raises(ValueError):
+        QROM([0, 1, 2, 3], 2, 2, **options)
+
+
+@pytest.mark.parametrize("dirty", [False, True])
+@pytest.mark.parametrize("variant,block_size,alpha", [
+    ("select_swap", 2, None),
+    ("select_swap", 4, None),
+    ("select_swap", 8, None),
+    ("select_copy", 2, 1),
+    ("select_copy", 2, 2),
+    ("select_copy", 4, 1),
+    ("select_copy", 4, 2),
+    ("select_copy", 4, 3),
+    ("select_copy", 8, 2),
+    ("select_copy", 8, 3),
+])
+def test_closed_form_prices_match_the_minted_tape(variant, block_size, alpha,
+                                                  dirty):
+    data = [3, 0, 5, 6, 1, 7, 2, 2, 4, 1, 6]
+    qrom = QROM(data,
+                4,
+                3,
+                variant=variant,
+                block_size=block_size,
+                alpha=alpha,
+                dirty_banks=dirty)
+    if variant == "select_swap":
+        price = _select_swap_cost(4, len(data), 3, block_size, dirty)
+        ancillas = _select_swap_ancillas(4, 3, block_size)
+    else:
+        price = _select_copy_cost(4, len(data), 3, block_size, alpha, dirty)
+        ancillas = _select_copy_ancillas(4, 3, block_size, alpha)
+    assert qrom.toffoli_count == price
+    assert qrom.num_ladder == ancillas
+    assert qrom.describe().count("# Toffoli") == price

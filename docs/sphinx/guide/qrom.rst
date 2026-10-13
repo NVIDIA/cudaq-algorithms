@@ -27,11 +27,15 @@ zero. Mint the kernel outside the enclosing CUDA-Q kernel:
        # Use output bits as controls on other registers here.
        apply_lookup(address, ladder, output)
 
-``kernel`` is a property. The three register views must be disjoint and
-have the requested widths. The ladder, including any block bank, must
-start in zero; repeating a lookup then uncomputes it. This promise does
-not extend to dirty walk ancillas or to caller operations that change
-the output word between applications.
+``kernel`` is a property on ``QROM``; ``QROMChain.kernels()`` on the chain
+class is a method returning the step tuple. The three register views must
+be disjoint. The address view has exactly ``address_bits`` lines, while the
+ladder and output views may be wider than ``num_ladder`` and ``output_bits``
+(unused lines are never touched, which is how ``QROMChain`` shares one
+ladder across steps of different widths). The ladder, including any block
+bank, must start in zero; repeating a lookup then uncomputes it. This
+promise does not extend to dirty walk ancillas or to caller operations that
+change the output word between applications.
 
 Choosing a construction
 -----------------------
@@ -59,8 +63,9 @@ walk count, including partial trees:
      - ``(alpha+1) W(h,ceil(N/B)) + alpha W(l,B) + b (B-1)``
      - ``max(h,l) + (B-1) ceil(b/alpha)``
 
-``max_ancillas`` bounds the whole clean workspace, excluding address
-and output. For SELECT-COPY, ``alpha`` divides the output into that many
+``max_ancillas`` bounds the whole ladder (``num_ladder``: the clean walk
+lines plus the block bank, borrowed or not), excluding address and
+output. For SELECT-COPY, ``alpha`` divides the output into that many
 balanced packets, widest first; divisibility is unnecessary. Adjacent
 packet bank unload/load walks are already fused. Auto searches all valid
 block sizes and packet counts, and rejects an impossible budget. Ties
@@ -69,10 +74,21 @@ count and smaller block size. Explicit block sizes require a blocked
 variant and at least two address bits.
 
 For 1,024 entries of four bits, the unconstrained choice costs 253
-Toffolis (``B=32, alpha=1``). With a budget of 24 clean workspace qubits,
-auto chooses ``B=16, alpha=4`` at 591 Toffolis. These are logical circuit
-counts, not measured hardware cost. ``describe()`` lists the emitted
-gates and identifies counted Toffolis.
+Toffolis on 129 workspace qubits (``B=32, alpha=1``). With a budget of 24
+workspace qubits, auto chooses ``B=16, alpha=4`` at 591 Toffolis on 21.
+These are logical circuit counts, not measured hardware cost.
+``describe()`` lists the emitted gates and identifies counted Toffolis.
+
+``auto`` minimises the Toffoli count alone, so with SELECT-COPY in the
+search it now returns ``select_copy`` for most table shapes and may spend
+more workspace than the SELECT-SWAP or SELECT pick it replaces: the table
+above costs 302 Toffolis on 70 workspace qubits with SELECT-SWAP. The
+optimum sits on a flat curve (for that table the best cost against the
+budget runs 591 at 21 qubits, 371 at 36, 261 at 66 and 253 at 129, so the
+last 63 qubits buy 8 Toffolis). Pass ``max_ancillas`` for any real qubit
+budget, or force ``variant="select_swap"`` or ``"select"`` to keep an
+earlier footprint; ``AliasSamplingPrepare.num_garbage`` follows the same
+default.
 
 ``AliasSamplingPrepare`` accepts the same ``variant``, ``block_size``,
 ``alpha`` and ``max_ancillas`` options. Its budget applies only to the
@@ -110,14 +126,14 @@ final table. All steps share one clean ladder of ``num_ladder`` qubits.
 Every original table must be nonempty and valid before XOR preprocessing;
 different lengths are supported by zero padding.
 
-Interleave operations after each load. When the address and ladder are
-unchanged, the fused circuit is equivalent to separate
-load/operate/unload circuits, including arbitrary operations on output
-and other data registers. The output holds each table value and finishes
-at zero only when callers preserve the encoded word, for example by
-using it as controls for rotations on a separate register. An operation
-such as ``h(output[0])`` changes that word and removes this stronger
-guarantee.
+Interleave operations after each load. The fused circuit is equivalent to
+separate load/operate/unload circuits whenever the ladder is clean at each
+step kernel, including arbitrary operations on output and other data
+registers in between. The output holds each table value and finishes at
+zero only when callers also leave the address unchanged and preserve the
+encoded word, for example by using it as controls for rotations on a
+separate register. An operation such as ``h(output[0])`` changes that word
+and removes this stronger guarantee without breaking the equivalence.
 
 ``fused=False`` provides the separate-lookup reference. With equal-length
 tables and per-lookup cost ``C``, fused cost is ``(m+1) C`` versus
@@ -132,6 +148,7 @@ ladder registers:
 
 .. literalinclude:: ../examples/python/qrom_controlled_rotations.py
    :language: python
+   :start-after: [Begin Documentation]
 
 Relationship to the original construction
 -----------------------------------------

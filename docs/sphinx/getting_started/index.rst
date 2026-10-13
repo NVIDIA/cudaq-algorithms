@@ -98,5 +98,7 @@ Where to go next
   Hamiltonian-simulation routes.
 - :doc:`../guide/preprocessing` — molecule / integrals to a qubit Hamiltonian.
 - :doc:`../guide/state_prep` — Hartree-Fock, UCC, and Givens state preparation.
+- :doc:`../guide/qrom` — coherent QROM lookups: SELECT, SELECT-SWAP,
+  SELECT-COPY, borrowed banks, and fused lookup chains.
 - :doc:`../conventions` — qubit ordering, integral tensors, and normalization
   conventions (read this before validating any numerics).

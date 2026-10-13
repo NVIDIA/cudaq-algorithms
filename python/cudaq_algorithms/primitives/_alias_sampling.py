@@ -56,7 +56,8 @@ flag | ladder(qrom.num_ladder) | carry]`` — i.e.
 ``"select"`` walk (``num_ladder = num_index``; always the case for the
 small tables where select wins ``"auto"``'s pricing). Both registers
 must be ``|0...0>`` on entry to ``kernel()``; ``adjoint_kernel()`` is the
-literal gate-reversal (no ``cudaq.adjoint``, cuda-quantum#4897/#4898) and
+block-wise reversal of ``kernel()`` with the self-inverse lookup
+re-applied (no ``cudaq.adjoint``, cuda-quantum#4897/#4898) and
 returns them to ``|0...0>``. The QROM lookup uncomputes itself on the clean
 ladder sector the adjoint provides, whatever the variant (the ladder is
 restored by the compute pass and untouched in between, so re-applying
@@ -161,7 +162,9 @@ class AliasSamplingPrepare:
         Keyword-only; forwarded verbatim to the :class:`QROM`
         constructor (default ``"auto"``: price the variants and mint
         the cheapest). The chosen variant controls the garbage-register
-        size through ``qrom.num_ladder`` (see ``num_garbage``).
+        size through ``qrom.num_ladder`` (see ``num_garbage``). The
+        default may now choose a blocked construction with a bank, which
+        widens ``num_garbage``; see the QROM guide and ``max_ancillas``.
     block_size
         Keyword-only; forwarded verbatim to the :class:`QROM`
         constructor (for ``variant="select_swap"`` or ``"select_copy"``;
@@ -171,8 +174,8 @@ class AliasSamplingPrepare:
     alpha
         Optional SELECT-COPY packet count, forwarded to :class:`QROM`.
     max_ancillas
-        Optional bound on the QROM's clean ladder and bank. This does
-        not bound the other alias-sampling garbage registers; use
+        Optional bound on ``qrom.num_ladder``, the lookup's workspace. It
+        does not bound the other alias-sampling garbage registers; use
         ``num_garbage`` for their total size.
 
     Garbage caveat: the per-bin garbage vectors ``|g_k>`` are NOT
@@ -404,5 +407,6 @@ class AliasSamplingPrepare:
         return self._prepare
 
     def adjoint_kernel(self):
-        """PREPARE^dagger ``(index, garbage)`` — the exact inverse."""
+        """PREPARE^dagger ``(index, garbage)`` — the exact inverse on the
+        clean-ladder sector ``kernel()`` leaves behind."""
         return self._prepare_adj

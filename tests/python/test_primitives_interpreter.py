@@ -68,6 +68,9 @@ _SPECS = {
     "ccx_ladder_ladder_target":
     (_OP_CCX_LADDER_LADDER_TARGET, (0, 1, 1), "ccx", [("l", 0), ("l", 1),
                                                       ("t", 1)]),
+    "ccx_ladder_ladder_target_t0":
+    (_OP_CCX_LADDER_LADDER_TARGET, (0, 1, 0), "ccx", [("l", 0), ("l", 1),
+                                                      ("t", 0)]),
 }
 
 _ALL_VARIANTS = [(False, False), (True, False), (False, True), (True, True)]

@@ -338,20 +338,32 @@ def _walk_toffoli_count(num_address_bits: int,
                         controlled: bool = False) -> int:
     """Exact Toffoli count of the fused walk, without emitting it.
 
-    Cross-checked against the emitted instruction stream by the resource
-    tests; used by ``QROM`` to price variants before minting anything.
+    Closed form of the per-address recurrence, cross-checked against the
+    emitted instruction stream and against the explicit loop by the
+    resource tests: among the transitions ``k = 0 .. m-2`` exactly
+    ``floor((m - 1 + 2^t) / 2^(t+1))`` have ``t`` trailing ones, and a
+    transition with ``t >= 1`` trailing ones costs ``2t - 1`` Toffolis,
+    except the uncontrolled root crossing (``t == n - 1``) at
+    ``max(2t - 3, 0)``. Valid for ``1 <= num_items <= 2^num_address_bits``,
+    which the factory enforces. ``QROM`` prices every candidate
+    construction with this before minting anything, so it must stay
+    O(num_address_bits): a per-address loop made wide, sparse tables take
+    seconds per address bit.
     """
     n = num_address_bits
-    extra = 1 if controlled else 0
-    total = 2 * (n - 1 + extra)  # descent + unwind
-    for k in range(num_items - 1):
-        t = _trailing_ones(k)
-        if t == 0:
-            continue
+    m = num_items
+    if not 1 <= m <= (1 << n):
+        raise ValueError(
+            f"num_items must be in [1, 2^{n}] for the walk count, got {m}")
+    total = 2 * (n - 1 + (1 if controlled else 0))  # descent + unwind
+    for t in range(1, n):
+        transitions = (m - 1 + (1 << t)) >> (t + 1)
+        if transitions == 0:
+            break
         if n - t == 1 and not controlled:  # unguarded root crossing
-            total += max(2 * t - 3, 0)
+            total += transitions * max(2 * t - 3, 0)
         else:
-            total += 2 * t - 1
+            total += transitions * (2 * t - 1)
     return total
 
 

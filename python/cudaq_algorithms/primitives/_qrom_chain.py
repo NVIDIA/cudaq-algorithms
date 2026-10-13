@@ -9,19 +9,20 @@ kernels via ``kernels()`` for ``m`` tables. All use the QROM signature
 With ``fused=True``, the first kernel loads table zero, each interior
 kernel XOR-loads the difference of consecutive tables, and the last
 unloads the final table. Shorter tables are zero-padded before XOR.
-With ``fused=False``, each interior kernel performs the two lookups
-separately. Both modes therefore implement the same circuit when
-arbitrary operations on output and other data registers are interleaved,
-provided the caller leaves address and ladder unchanged.
+With ``fused=False``, each interior kernel calls the two step lookups
+back to back. Both modes implement the same unitary on the clean-ladder
+sector whatever the caller interleaves on the output and other data
+registers between steps; the ladder must be clean at each step kernel.
 
-The stronger table-value invariant requires that callers preserve the
-encoded output word, for example by using its bits as controls for
-rotations on a separate register. Starting with zero output, step j
-then holds ``tables[j][address]`` and the final step restores zero.
-If a caller changes the output (for example with a Hadamard), this
-invariant and final-zero guarantee do not hold; equivalence to separate
-load/operate/unload circuits still does. Phases or entanglement created
-by controlled operations on other registers are preserved.
+The stronger table-value invariant, in which the output holds
+``tables[j][address]`` after step ``j`` and returns to zero after the
+last step, additionally needs the address unchanged and the encoded
+word preserved between steps (for example used only as controls on a
+separate register). An operation that changes the word, such as a
+Hadamard on an output bit, or a change of address between steps removes
+that invariant, while the equivalence to separate load/operate/unload
+circuits still holds. Phases or entanglement created by controlled
+operations on other registers are preserved.
 
 This is whole-lookup XOR fusion, inspired by Section II.C of
 `arXiv:2605.20334 <https://arxiv.org/abs/2605.20334>`_. Each step restores
@@ -34,12 +35,38 @@ different choices are priced per step, with no fixed reduction promised.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import itertools
+from collections.abc import Iterable, Sequence
+
+import cudaq
 
 from ._qrom import QROM, _normalize_table
-from ._unary_iteration import _mint_interpreter
+from ._unary_iteration import _retain
 
 __all__ = ["QROMChain"]
+
+_NOT_A_TABLE = (str, bytes, bytearray, memoryview)
+
+
+def _pair_kernel(first, second):
+    """Mint ``(address, ladder, output) -> first(...); second(...)``.
+
+    The naive chain replays the previous lookup (the unload) and the next
+    one (the load) back to back. Calling the two already-minted step
+    kernels, instead of minting a third interpreter over their
+    concatenated tapes, lets CUDA-Q share each step's tape between its two
+    call sites in the caller's circuit; the concatenated form roughly
+    doubled first-execution compile time and QIR size for 8k-op steps.
+    """
+
+    @cudaq.kernel
+    def primitives_qrom_chain_pair(address: cudaq.qview, ladder: cudaq.qview,
+                                   output: cudaq.qview):
+        first(address, ladder, output)
+        second(address, ladder, output)
+
+    _retain(primitives_qrom_chain_pair)
+    return primitives_qrom_chain_pair
 
 
 class QROMChain:
@@ -48,10 +75,11 @@ class QROMChain:
     Parameters
     ----------
     tables
-        The lookup tables, one per step: each a non-empty sequence of
-        non-negative integers fitting in ``output_bits`` bits. Lengths
-        may differ (each at most ``2^address_bits``); addresses beyond a
-        table's length read as zero.
+        The lookup tables, one per step: each a non-empty iterable (list,
+        tuple or numpy array) of non-negative integers fitting in
+        ``output_bits`` bits. Lengths may differ (each at most
+        ``2^address_bits``); addresses beyond a table's length read as
+        zero.
     address_bits, output_bits
         Shared address register width and the single shared output
         register width (every table is read into the same register, so
@@ -59,7 +87,8 @@ class QROMChain:
     fused
         ``True`` (default): ``m + 1`` lookups via difference tables
         (`arXiv:2605.20334`, Sec. II.C). ``False``: the naive
-        ``2 m``-lookup reference with identical behavior.
+        ``2 m``-lookup reference (pair kernels over the per-table
+        lookups) with identical behavior.
     variant, block_size, alpha, max_ancillas
         Forwarded to every step's :class:`QROM` (default: each step
         auto-priced independently).
@@ -79,69 +108,84 @@ class QROMChain:
                  alpha: int | None = None,
                  max_ancillas: int | None = None) -> None:
         if isinstance(tables,
-                      (str, bytes)) or not isinstance(tables, Sequence):
+                      _NOT_A_TABLE) or not isinstance(tables, Iterable):
             raise ValueError(
                 "tables must be a sequence of lookup tables (one table "
                 f"per chain step), got {type(tables).__name__}")
         tables = list(tables)
         if len(tables) == 0:
             raise ValueError("tables must contain at least one table")
+        if not isinstance(fused, bool):
+            raise ValueError("fused must be a bool (pass bool(flag) for "
+                             "numpy booleans)")
+        # The register widths are chain-wide, not table properties:
+        # validate them once, before any table is read.
+        if (isinstance(address_bits, bool) or int(address_bits) != address_bits
+                or address_bits < 1):
+            raise ValueError("address_bits must be a positive integer")
+        if (isinstance(output_bits, bool) or int(output_bits) != output_bits
+                or output_bits < 1):
+            raise ValueError("output_bits must be a positive integer")
+        address_bits = int(address_bits)
+        output_bits = int(output_bits)
         cleaned = []
         for j, table in enumerate(tables):
             if isinstance(table,
-                          (str, bytes)) or not isinstance(table, Sequence):
+                          _NOT_A_TABLE) or not isinstance(table, Iterable):
                 raise ValueError(
                     f"tables[{j}] must be a sequence of integers, got "
                     f"{type(table).__name__}")
             try:
-                entries, address_bits, output_bits = _normalize_table(
-                    table, address_bits, output_bits)
+                entries, _, _ = _normalize_table(table, address_bits,
+                                                 output_bits)
             except (ValueError, TypeError, OverflowError) as error:
                 raise ValueError(f"QROMChain table {j}: {error}") from error
             cleaned.append(entries)
-        # Original tables were validated before XOR; strategy errors below
-        # are annotated with the step where they arise.
         qrom_options = dict(variant=variant,
                             block_size=block_size,
                             alpha=alpha,
                             max_ancillas=max_ancillas)
 
-        def mint(table, label):
+        def mint(table):
+            # Strategy errors do not depend on the table (the options are
+            # shared and the budget filter ignores entries), so they carry
+            # a chain-level prefix rather than a step index.
             try:
                 return QROM(table, address_bits, output_bits, **qrom_options)
-            except ValueError as error:
-                raise ValueError(f"QROMChain {label}: {error}") from error
+            except (ValueError, TypeError, OverflowError) as error:
+                raise ValueError(f"QROMChain: {error}") from error
 
-        self._fused = bool(fused)
-        if self._fused:
+        self._fused = fused
+        if fused:
             # Load tables[0]; transition j XOR-loads the difference
             # tables[j - 1] ^ tables[j] (shorter tables zero-padded, as
             # out-of-range addresses read zero); unload tables[m - 1].
             step_tables = [cleaned[0]]
             for j in range(1, len(cleaned)):
-                prev, this = cleaned[j - 1], cleaned[j]
-                length = max(len(prev), len(this))
-                step_tables.append([(prev[k] if k < len(prev) else 0) ^
-                                    (this[k] if k < len(this) else 0)
-                                    for k in range(length)])
+                step_tables.append([
+                    p ^ t for p, t in itertools.zip_longest(
+                        cleaned[j - 1], cleaned[j], fillvalue=0)
+                ])
             step_tables.append(cleaned[-1])
-            self._steps = tuple(
-                mint(table, f"fused step {j} of {len(step_tables)}")
-                for j, table in enumerate(step_tables))
+            first = mint(step_tables[0])
+            if len(cleaned) == 1:
+                # One table loads and unloads with the same lookup.
+                self._steps = (first, first)
+            else:
+                self._steps = (first, ) + tuple(
+                    mint(table) for table in step_tables[1:])
             self._kernels = tuple(step.kernel for step in self._steps)
             step_toffolis = tuple(step.toffoli_count for step in self._steps)
         else:
-            self._steps = tuple(
-                mint(table, f"table {j} of {len(cleaned)}")
-                for j, table in enumerate(cleaned))
+            self._steps = tuple(mint(table) for table in cleaned)
             # Transition j replays the previous lookup (the unload) then
-            # the next one (the load) inside one flat interpreter kernel.
+            # the next one (the load) through a pair kernel.
             kernels = [self._steps[0].kernel]
             step_toffolis = [self._steps[0].toffoli_count]
             for j in range(1, len(self._steps)):
-                ops = list(self._steps[j - 1]._ops) + list(self._steps[j]._ops)
                 kernels.append(
-                    _mint_interpreter(ops, controlled=False, has_work=False))
+                    _pair_kernel(self._steps[j - 1].kernel,
+                                 self._steps[j].kernel))
                 step_toffolis.append(self._steps[j - 1].toffoli_count +
                                      self._steps[j].toffoli_count)
             kernels.append(self._steps[-1].kernel)
@@ -150,7 +194,7 @@ class QROMChain:
             step_toffolis = tuple(step_toffolis)
 
         self._num_tables = len(cleaned)
-        self._num_address = self._steps[0].num_address
+        self._num_address = address_bits
         self._output_bits = output_bits
         self._num_ladder = max(step.num_ladder for step in self._steps)
         self._step_toffolis = step_toffolis

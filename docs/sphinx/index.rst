@@ -34,6 +34,7 @@ kernels.
    examples_rst/block_encodings
    examples_rst/state_prep
    examples_rst/hamiltonian_simulation
+   examples_rst/qrom
 
 .. toctree::
    :caption: Reference

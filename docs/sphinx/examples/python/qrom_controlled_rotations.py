@@ -5,6 +5,9 @@
 Run from the checkout with PYTHONPATH=python python3
 docs/sphinx/examples/python/qrom_controlled_rotations.py.
 """
+# [Begin Documentation]
+
+import os
 
 import cudaq
 import numpy as np
@@ -66,7 +69,7 @@ def rotation_chain(fused):
 
 
 if __name__ == "__main__":
-    cudaq.set_target("qpp-cpu")
+    cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     separate = rotation_chain(False)
     fused = rotation_chain(True)
     np.testing.assert_allclose(fused, separate, atol=1e-12)

@@ -9,8 +9,10 @@ Addresses beyond the table read zero. By default all ``num_ladder``
 ancillas start clean. ``dirty_banks=True`` permits an arbitrary bank
 suffix while requiring the walk prefix to start clean. Arbitrary output
 states and external controls are supported in both modes.
-The views need not be contiguous, but must be disjoint and sufficiently
-wide. Reapplying the kernel uncomputes a lookup on its required sector.
+The views need not be contiguous, but must be disjoint; the address view
+is exactly ``address_bits`` wide, the ladder and output views at least
+``num_ladder`` and ``output_bits`` wide. Reapplying the kernel uncomputes
+a lookup on its required sector.
 No involution guarantee is made for dirty walk ancillas.
 
 Constructions and register layout
@@ -48,6 +50,12 @@ SELECT, then SELECT-COPY, then SELECT-SWAP, then smaller ``alpha`` and
 smaller blocks. The budget counts the whole ladder, including the bank,
 but excludes address and output registers. Forced choices are validated
 against the same budget.
+
+``auto`` prices Toffolis alone, so it may return a blocked construction
+with more workspace than SELECT or SELECT-SWAP would use; bound it with
+``max_ancillas``. At one output bit the copy walk ``W(l, B) = 3B/2 - 5``
+outgrows the routing it replaces, ``b (B - 1)``, above ``B = 8`` (tie at
+8), so SELECT-SWAP is strictly cheaper there.
 
 Logical resource model
 ----------------------
@@ -210,7 +218,9 @@ class QROM:
     variant
         ``"auto"`` (default), ``"select"``, ``"select_swap"`` or
         ``"select_copy"`` — see the module docstring for the
-        constructions and their exact prices.
+        constructions and their exact prices. ``"auto"`` minimises the
+        logical Toffoli count alone and may choose more workspace than
+        an explicit SELECT or SELECT-SWAP; see ``max_ancillas``.
     block_size
         SELECT-SWAP / SELECT-COPY block size: a power of two in
         ``[2, 2^(address_bits - 1)]``. Only valid with
@@ -274,13 +284,12 @@ class QROM:
                 raise ValueError(
                     "block_size is only valid with variant='select_swap' or "
                     f"variant='select_copy', got variant={variant!r}")
-            if int(block_size) != block_size or block_size < 2:
+            if (isinstance(block_size, bool) or int(block_size) != block_size
+                    or block_size < 2
+                    or int(block_size) & (int(block_size) - 1)):
                 raise ValueError("block_size must be a power of two >= 2, got "
                                  f"{block_size}")
             block_size = int(block_size)
-            if block_size & (block_size - 1):
-                raise ValueError("block_size must be a power of two >= 2, got "
-                                 f"{block_size}")
             if block_size > (1 << (address_bits - 1)):
                 raise ValueError(
                     f"block_size {block_size} needs at least one block-"
@@ -291,56 +300,66 @@ class QROM:
                 raise ValueError(
                     "alpha (bit packets) is only valid with "
                     f"variant='select_copy', got variant={variant!r}")
-            if int(alpha) != alpha or not 1 <= alpha <= output_bits:
+            if (isinstance(alpha, bool) or int(alpha) != alpha
+                    or not 1 <= alpha <= output_bits):
                 raise ValueError(
                     f"alpha must be an integer in [1, output_bits = "
                     f"{output_bits}], got {alpha}")
             alpha = int(alpha)
         if max_ancillas is not None:
-            if int(max_ancillas) != max_ancillas or max_ancillas < 1:
+            if (isinstance(max_ancillas, bool)
+                    or int(max_ancillas) != max_ancillas or max_ancillas < 1):
                 raise ValueError("max_ancillas must be a positive integer, "
                                  f"got {max_ancillas}")
             max_ancillas = int(max_ancillas)
 
-        # Enumerate the full strategy space (variant, block_size, alpha),
-        # price every candidate with the exact documented models, filter
-        # by the ancilla bound, and take the cheapest. Ties: select
-        # (no bank allocation), then select_copy over select_swap (no
-        # routing-CNOT storm), then smaller alpha, then smaller blocks.
+        # Enumerate the strategy space (variant, block_size, alpha). The
+        # ancilla formulas are O(1), so candidates over the budget are
+        # dropped before anything is priced; the prices are closed forms
+        # too (see _walk_toffoli_count). Ties: select (no bank
+        # allocation), then select_copy over select_swap (no routing-CNOT
+        # storm), then smaller alpha, then smaller blocks.
         block_candidates = [1 << s for s in range(1, address_bits)
                             ] if block_size is None else [block_size]
         alpha_candidates = list(range(1, output_bits +
                                       1)) if alpha is None else [alpha]
         candidates = []  # (cost, rank, alpha, block, variant, ancillas)
-        if variant in ("auto", "select"):
+        enumerated = []  # every candidate's ancilla count, for the error
+
+        def admit(ancillas: int) -> bool:
+            enumerated.append(ancillas)
+            return max_ancillas is None or ancillas <= max_ancillas
+
+        if variant in ("auto", "select") and admit(address_bits):
             candidates.append((_walk_toffoli_count(address_bits, len(entries)),
                                0, 0, 0, "select", address_bits))
         if variant in ("auto", "select_copy"):
             for size in block_candidates:
                 for a in alpha_candidates:
-                    candidates.append(
-                        (_select_copy_cost(address_bits, len(entries),
-                                           output_bits, size, a, dirty_banks),
-                         1, a, size, "select_copy",
-                         _select_copy_ancillas(address_bits, output_bits, size,
-                                               a)))
+                    ancillas = _select_copy_ancillas(address_bits, output_bits,
+                                                     size, a)
+                    if admit(ancillas):
+                        candidates.append(
+                            (_select_copy_cost(address_bits, len(entries),
+                                               output_bits, size, a,
+                                               dirty_banks), 1, a, size,
+                             "select_copy", ancillas))
         if variant in ("auto", "select_swap"):
             for size in block_candidates:
-                candidates.append(
-                    (_select_swap_cost(address_bits, len(entries), output_bits,
-                                       size,
-                                       dirty_banks), 2, 0, size, "select_swap",
-                     _select_swap_ancillas(address_bits, output_bits, size)))
-        if max_ancillas is not None:
-            fitting = [c for c in candidates if c[5] <= max_ancillas]
-            if not fitting:
-                cheapest_fit = min(c[5] for c in candidates)
-                raise ValueError(
-                    f"no {variant!r} construction fits max_ancillas="
-                    f"{max_ancillas}: the smallest candidate needs "
-                    f"{cheapest_fit} workspace qubits")
-            candidates = fitting
-        _, _, best_alpha, best_size, variant, _ = min(candidates)
+                ancillas = _select_swap_ancillas(address_bits, output_bits,
+                                                 size)
+                if admit(ancillas):
+                    candidates.append(
+                        (_select_swap_cost(address_bits, len(entries),
+                                           output_bits, size, dirty_banks), 2,
+                         0, size, "select_swap", ancillas))
+        if not candidates:
+            requested = "" if variant == "auto" else f"{variant!r} "
+            raise ValueError(f"no {requested}construction fits max_ancillas="
+                             f"{max_ancillas}: the smallest candidate needs "
+                             f"{min(enumerated)} workspace qubits")
+        (best_cost, _, best_alpha, best_size, variant,
+         best_ancillas) = min(candidates)
 
         self._data = tuple(entries)
         self._num_address = address_bits
@@ -355,6 +374,12 @@ class QROM:
             self._build_select_swap()
         else:
             self._build_select_copy()
+        if (self._toffoli_count, self._num_ladder) != (best_cost,
+                                                       best_ancillas):
+            raise RuntimeError(  # pricer/builder drift is a library bug
+                f"internal error: priced {best_cost} Toffolis on "
+                f"{best_ancillas} workspace qubits but built "
+                f"{self._toffoli_count} on {self._num_ladder}")
 
     def _build_select(self) -> None:
         entries = self._data
@@ -464,35 +489,32 @@ class QROM:
             word = entries[k] if k < len(entries) else 0
             return (word >> offsets[s]) & ((1 << widths[s]) - 1)
 
-        def register_word(s: int, j: int, i: int) -> int:
-            # Block register i - 1's content while packet s is loaded:
-            # packet s of entry (j, i) XOR'd against entry (j, 0)
-            # (arXiv:2605.20334's Sel1 refinement, Sec. II.B).
-            return packet_word(s, j * size + i) ^ packet_word(s, j * size)
-
         def block_body(prev: int | None, nxt: int | None):
             # Body for one block-index walk: direct-write the next
             # packet's entry (j, 0) into its output slice (tokens < b)
             # and XOR-transition the register bank from packet ``prev``'s
-            # contents to packet ``nxt``'s (tokens >= b) — the paper's
-            # Sec. II.C sequential fusion: unwrite and write share one
+            # contents to packet ``nxt``'s (tokens >= b): the paper's
+            # Sec. II.C sequential fusion, unwrite and write sharing one
             # walk. prev=None is the first write, nxt=None the final
-            # unwrite.
+            # unwrite. Block register i - 1 holds packet s of entry (j, i)
+            # XOR'd against entry (j, 0) (the Sel1 refinement, Sec. II.B).
             def body(j: int) -> list[tuple[str, int]]:
                 gates = []
+                base_prev = 0 if prev is None else packet_word(prev, j * size)
+                base_nxt = 0 if nxt is None else packet_word(nxt, j * size)
                 if nxt is not None:
-                    base = packet_word(nxt, j * size)
                     gates.extend(("x", offsets[nxt] + t)
                                  for t in range(widths[nxt])
-                                 if (base >> t) & 1)
+                                 if (base_nxt >> t) & 1)
                 for i in range(1, size):
                     word = 0
                     if prev is not None:
-                        word ^= register_word(prev, j, i)
+                        word ^= packet_word(prev, j * size + i) ^ base_prev
                     if nxt is not None:
-                        word ^= register_word(nxt, j, i)
-                    gates.extend(("x", b + (i - 1) * packet + t)
-                                 for t in range(packet) if (word >> t) & 1)
+                        word ^= packet_word(nxt, j * size + i) ^ base_nxt
+                    if word:
+                        gates.extend(("x", b + (i - 1) * packet + t)
+                                     for t in range(packet) if (word >> t) & 1)
                 return gates
 
             return body
