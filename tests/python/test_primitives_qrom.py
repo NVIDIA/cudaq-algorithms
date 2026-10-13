@@ -216,6 +216,20 @@ def test_qrom_toffoli_count_bound():
     assert short.toffoli_count < qrom.toffoli_count
 
 
+def test_qrom_select_single_address_bit():
+    # Regression for cuda-quantum#5280: a one-address-bit select lookup
+    # has a Toffoli-free walk, so the interpreter's Toffoli dispatch arm
+    # is classically dead — and CUDA-Q's CSE aliased the dead arm's
+    # control/target wires into illegal IR (an infinite compiler loop
+    # through 0.15, a hard compile error once fixed upstream). Dispatch
+    # pruning removes the dead arm at mint time; this pins that the
+    # minted lookup constructs and reads out correctly.
+    data = [5, 2]
+    qrom = QROM(data, address_bits=1, output_bits=3, variant="select")
+    assert qrom.toffoli_count == 0
+    _exhaustive_readout(qrom, data)
+
+
 def test_qrom_validation_raises():
     with pytest.raises(ValueError, match="data must be non-empty"):
         QROM([], address_bits=2, output_bits=2)

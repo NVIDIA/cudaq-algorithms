@@ -39,12 +39,22 @@ AUTO_GPU_MIN_ORBITALS_EXPLICIT = 56
 
 
 def cupy_gpu_available() -> bool:
-    """Return True when CuPy is importable and at least one GPU is visible."""
+    """Return True when CuPy can run a kernel on a visible GPU.
+
+    ``getDeviceCount`` only talks to the driver, so a driver-only install
+    (no NVRTC / CUDA toolkit) would otherwise look usable and then fail on
+    the first compiled kernel. The tiny ``arange`` forces that compile, and
+    ``.sum()`` into a host ``float`` waits for the device so a fault that
+    only appears at synchronization is not missed.
+    """
     if _cupy is None:
         return False
     try:
-        return _cupy.cuda.runtime.getDeviceCount() > 0
-    except Exception:  # pragma: no cover - driver/runtime issues
+        if _cupy.cuda.runtime.getDeviceCount() <= 0:
+            return False
+        float((_cupy.arange(1) + 1).sum())
+        return True
+    except Exception:  # pragma: no cover - driver/runtime/NVRTC issues
         return False
 
 
@@ -53,22 +63,26 @@ def resolve_backend(backend: str = "auto",
                     gpu_min_size: int = 0) -> tuple[ArrayModule, str]:
     """Return ``(array_module, name)`` for the requested backend.
 
-    ``"auto"`` selects CuPy when a GPU is available *and* the problem is large
-    enough to amortize GPU launch/sync overhead -- i.e. ``problem_size`` (the
-    orbital count ``n``) is at least ``gpu_min_size`` -- otherwise NumPy. With no
-    ``problem_size`` hint it keeps the legacy behavior: CuPy whenever a GPU is
-    present. ``"cupy"`` / ``"numpy"`` force the backend regardless of size.
+    ``"auto"`` selects CuPy when the problem is large enough to amortize GPU
+    launch/sync overhead -- i.e. ``problem_size`` (the orbital count ``n``) is
+    at least ``gpu_min_size`` -- *and* a GPU is available; otherwise NumPy. The
+    size check is evaluated first so a below-threshold problem does not create
+    a CUDA context. With no ``problem_size`` hint it keeps the legacy behavior:
+    CuPy whenever a GPU is present. ``"cupy"`` / ``"numpy"`` force the backend
+    regardless of size.
     """
     if backend == "numpy":
         return np, "numpy"
     if backend == "cupy":
         if not cupy_gpu_available():
-            raise RuntimeError("the 'cupy' backend was requested but no "
-                               "CuPy/GPU is available.")
+            raise RuntimeError(
+                "the 'cupy' backend was requested but CuPy/GPU is not "
+                "usable (not installed, no device, or the kernel probe "
+                "failed).")
         return _cupy, "cupy"
     if backend == "auto":
-        if cupy_gpu_available() and (problem_size is None
-                                     or problem_size >= gpu_min_size):
+        if ((problem_size is None or problem_size >= gpu_min_size)
+                and cupy_gpu_available()):
             return _cupy, "cupy"
         return np, "numpy"
     raise ValueError(f"unknown backend '{backend}'; expected 'auto', 'cupy', "

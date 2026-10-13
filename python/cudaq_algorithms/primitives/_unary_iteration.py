@@ -42,7 +42,9 @@ time**: ``body(k)`` is called once per address on the host and must return
 the gate list for that address as data. The emitter flattens the whole
 tree walk (ladder gadgets + body gates) into parallel opcode/operand
 integer lists, and the minted kernel is a single flat interpreter loop
-over those captured lists. Flatness is load-bearing: CUDA-Q's
+over those captured lists, pruned to the dispatch arms whose opcodes the
+tape actually uses (see ``_mint_interpreter``). Flatness is load-bearing:
+CUDA-Q's
 control-variant generation rejects kernels that call other kernels, so
 anything built this way stays ``cudaq.control``-compatible and can sit
 inside a controlled SELECT.
@@ -575,13 +577,25 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     (``_BASE_OPS`` plus the control/work bundles the signature carries):
     the dispatch loop would silently skip an unknown opcode — the worst
     failure mode available — so an out-of-set tape is a mint-time error.
+
+    Dispatch pruning: each dispatch arm is guarded by a captured bool
+    (``use_*``) that is True only when the opcode occurs in this tape.
+    Captured Python constants are folded at kernel-compile time, so a
+    False guard statically removes the arm from the minted module. This
+    matters twice: an arm whose opcode never occurs is classically dead
+    code, and CUDA-Q's CSE can alias a dead multi-control arm's wires
+    into illegal IR (cuda-quantum#5280 — an infinite compiler loop
+    through 0.15, a hard "linear-typed result is used more than once"
+    compile error once fixed); it also shrinks every minted module to
+    the arms it actually replays.
     """
     supported = _BASE_OPS
     if controlled:
         supported = supported | _CONTROL_OPS
     if has_work:
         supported = supported | _WORK_OPS
-    unsupported = sorted({op[0] for op in ops} - supported)
+    present = {op[0] for op in ops}
+    unsupported = sorted(present - supported)
     if unsupported:
         raise ValueError(
             f"instruction tape contains opcodes {unsupported} outside the "
@@ -624,6 +638,30 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     op_ccx_addr_addr = _OP_CCX_ADDR_ADDR
     op_cx_ladder_target = _OP_CX_LADDER_TARGET
 
+    # Per-arm pruning flags (see the docstring): captured bools fold at
+    # kernel-compile time, so a False flag removes its arm entirely.
+    use_x_addr = _OP_X_ADDR in present
+    use_x_ladder = _OP_X_LADDER in present
+    use_cx_addr_ladder = _OP_CX_ADDR_LADDER in present
+    use_cx_ladder_ladder = _OP_CX_LADDER_LADDER in present
+    use_ccx = _OP_CCX in present
+    use_body_x = _OP_BODY_X in present
+    use_body_y = _OP_BODY_Y in present
+    use_body_z = _OP_BODY_Z in present
+    use_cx_ctrl_ladder = _OP_CX_CTRL_LADDER in present
+    use_ccx_ctrl = _OP_CCX_CTRL in present
+    use_free_x = _OP_FREE_X in present
+    use_free_cx = _OP_FREE_CX in present
+    use_and_tt = _OP_AND_TT in present
+    use_and_wt = _OP_AND_WT in present
+    use_copy_tw = _OP_COPY_TW in present
+    use_body_x_w = _OP_BODY_X_W in present
+    use_body_z_w = _OP_BODY_Z_W in present
+    use_z_ladder = _OP_Z_LADDER in present
+    use_cx_addr_addr = _OP_CX_ADDR_ADDR in present
+    use_ccx_addr_addr = _OP_CCX_ADDR_ADDR in present
+    use_cx_ladder_target = _OP_CX_LADDER_TARGET in present
+
     if controlled and has_work:
 
         @cudaq.kernel
@@ -637,48 +675,69 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 a = ops_a[i]
                 b = ops_b[i]
                 c = ops_c[i]
-                if op == op_x_addr:
-                    x(address[a])
-                if op == op_x_ladder:
-                    x(ladder[a])
-                if op == op_cx_addr_ladder:
-                    cx(address[a], ladder[b])
-                if op == op_cx_ladder_ladder:
-                    cx(ladder[a], ladder[b])
-                if op == op_ccx:
-                    x.ctrl(ladder[a], address[b], ladder[c])
-                if op == op_body_x:
-                    x.ctrl(ladder[a], target[b])
-                if op == op_body_y:
-                    y.ctrl(ladder[a], target[b])
-                if op == op_body_z:
-                    z.ctrl(ladder[a], target[b])
-                if op == op_cx_ctrl_ladder:
-                    cx(control[0], ladder[b])
-                if op == op_ccx_ctrl:
-                    x.ctrl(control[0], address[b], ladder[c])
-                if op == op_free_x:
-                    x(target[a])
-                if op == op_free_cx:
-                    cx(target[a], target[b])
-                if op == op_and_tt:
-                    x.ctrl(target[a], target[b], work[c])
-                if op == op_and_wt:
-                    x.ctrl(work[a], target[b], work[c])
-                if op == op_copy_tw:
-                    cx(target[a], work[b])
-                if op == op_body_x_w:
-                    x.ctrl(ladder[a], work[b], target[c])
-                if op == op_body_z_w:
-                    z.ctrl(ladder[a], work[b])
-                if op == op_z_ladder:
-                    z(ladder[a])
-                if op == op_cx_addr_addr:
-                    cx(address[a], address[b])
-                if op == op_ccx_addr_addr:
-                    x.ctrl(address[a], address[b], ladder[c])
-                if op == op_cx_ladder_target:
-                    cx(ladder[a], target[b])
+                if use_x_addr:
+                    if op == op_x_addr:
+                        x(address[a])
+                if use_x_ladder:
+                    if op == op_x_ladder:
+                        x(ladder[a])
+                if use_cx_addr_ladder:
+                    if op == op_cx_addr_ladder:
+                        cx(address[a], ladder[b])
+                if use_cx_ladder_ladder:
+                    if op == op_cx_ladder_ladder:
+                        cx(ladder[a], ladder[b])
+                if use_ccx:
+                    if op == op_ccx:
+                        x.ctrl(ladder[a], address[b], ladder[c])
+                if use_body_x:
+                    if op == op_body_x:
+                        x.ctrl(ladder[a], target[b])
+                if use_body_y:
+                    if op == op_body_y:
+                        y.ctrl(ladder[a], target[b])
+                if use_body_z:
+                    if op == op_body_z:
+                        z.ctrl(ladder[a], target[b])
+                if use_cx_ctrl_ladder:
+                    if op == op_cx_ctrl_ladder:
+                        cx(control[0], ladder[b])
+                if use_ccx_ctrl:
+                    if op == op_ccx_ctrl:
+                        x.ctrl(control[0], address[b], ladder[c])
+                if use_free_x:
+                    if op == op_free_x:
+                        x(target[a])
+                if use_free_cx:
+                    if op == op_free_cx:
+                        cx(target[a], target[b])
+                if use_and_tt:
+                    if op == op_and_tt:
+                        x.ctrl(target[a], target[b], work[c])
+                if use_and_wt:
+                    if op == op_and_wt:
+                        x.ctrl(work[a], target[b], work[c])
+                if use_copy_tw:
+                    if op == op_copy_tw:
+                        cx(target[a], work[b])
+                if use_body_x_w:
+                    if op == op_body_x_w:
+                        x.ctrl(ladder[a], work[b], target[c])
+                if use_body_z_w:
+                    if op == op_body_z_w:
+                        z.ctrl(ladder[a], work[b])
+                if use_z_ladder:
+                    if op == op_z_ladder:
+                        z(ladder[a])
+                if use_cx_addr_addr:
+                    if op == op_cx_addr_addr:
+                        cx(address[a], address[b])
+                if use_ccx_addr_addr:
+                    if op == op_ccx_addr_addr:
+                        x.ctrl(address[a], address[b], ladder[c])
+                if use_cx_ladder_target:
+                    if op == op_cx_ladder_target:
+                        cx(ladder[a], target[b])
 
         _retain(primitives_unary_walk_work_ctrl)
         return primitives_unary_walk_work_ctrl
@@ -694,44 +753,63 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 a = ops_a[i]
                 b = ops_b[i]
                 c = ops_c[i]
-                if op == op_x_addr:
-                    x(address[a])
-                if op == op_x_ladder:
-                    x(ladder[a])
-                if op == op_cx_addr_ladder:
-                    cx(address[a], ladder[b])
-                if op == op_cx_ladder_ladder:
-                    cx(ladder[a], ladder[b])
-                if op == op_ccx:
-                    x.ctrl(ladder[a], address[b], ladder[c])
-                if op == op_body_x:
-                    x.ctrl(ladder[a], target[b])
-                if op == op_body_y:
-                    y.ctrl(ladder[a], target[b])
-                if op == op_body_z:
-                    z.ctrl(ladder[a], target[b])
-                if op == op_free_x:
-                    x(target[a])
-                if op == op_free_cx:
-                    cx(target[a], target[b])
-                if op == op_and_tt:
-                    x.ctrl(target[a], target[b], work[c])
-                if op == op_and_wt:
-                    x.ctrl(work[a], target[b], work[c])
-                if op == op_copy_tw:
-                    cx(target[a], work[b])
-                if op == op_body_x_w:
-                    x.ctrl(ladder[a], work[b], target[c])
-                if op == op_body_z_w:
-                    z.ctrl(ladder[a], work[b])
-                if op == op_z_ladder:
-                    z(ladder[a])
-                if op == op_cx_addr_addr:
-                    cx(address[a], address[b])
-                if op == op_ccx_addr_addr:
-                    x.ctrl(address[a], address[b], ladder[c])
-                if op == op_cx_ladder_target:
-                    cx(ladder[a], target[b])
+                if use_x_addr:
+                    if op == op_x_addr:
+                        x(address[a])
+                if use_x_ladder:
+                    if op == op_x_ladder:
+                        x(ladder[a])
+                if use_cx_addr_ladder:
+                    if op == op_cx_addr_ladder:
+                        cx(address[a], ladder[b])
+                if use_cx_ladder_ladder:
+                    if op == op_cx_ladder_ladder:
+                        cx(ladder[a], ladder[b])
+                if use_ccx:
+                    if op == op_ccx:
+                        x.ctrl(ladder[a], address[b], ladder[c])
+                if use_body_x:
+                    if op == op_body_x:
+                        x.ctrl(ladder[a], target[b])
+                if use_body_y:
+                    if op == op_body_y:
+                        y.ctrl(ladder[a], target[b])
+                if use_body_z:
+                    if op == op_body_z:
+                        z.ctrl(ladder[a], target[b])
+                if use_free_x:
+                    if op == op_free_x:
+                        x(target[a])
+                if use_free_cx:
+                    if op == op_free_cx:
+                        cx(target[a], target[b])
+                if use_and_tt:
+                    if op == op_and_tt:
+                        x.ctrl(target[a], target[b], work[c])
+                if use_and_wt:
+                    if op == op_and_wt:
+                        x.ctrl(work[a], target[b], work[c])
+                if use_copy_tw:
+                    if op == op_copy_tw:
+                        cx(target[a], work[b])
+                if use_body_x_w:
+                    if op == op_body_x_w:
+                        x.ctrl(ladder[a], work[b], target[c])
+                if use_body_z_w:
+                    if op == op_body_z_w:
+                        z.ctrl(ladder[a], work[b])
+                if use_z_ladder:
+                    if op == op_z_ladder:
+                        z(ladder[a])
+                if use_cx_addr_addr:
+                    if op == op_cx_addr_addr:
+                        cx(address[a], address[b])
+                if use_ccx_addr_addr:
+                    if op == op_ccx_addr_addr:
+                        x.ctrl(address[a], address[b], ladder[c])
+                if use_cx_ladder_target:
+                    if op == op_cx_ladder_target:
+                        cx(ladder[a], target[b])
 
         _retain(primitives_unary_walk_work)
         return primitives_unary_walk_work
@@ -748,38 +826,54 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 a = ops_a[i]
                 b = ops_b[i]
                 c = ops_c[i]
-                if op == op_x_addr:
-                    x(address[a])
-                if op == op_x_ladder:
-                    x(ladder[a])
-                if op == op_cx_addr_ladder:
-                    cx(address[a], ladder[b])
-                if op == op_cx_ladder_ladder:
-                    cx(ladder[a], ladder[b])
-                if op == op_ccx:
-                    x.ctrl(ladder[a], address[b], ladder[c])
-                if op == op_body_x:
-                    x.ctrl(ladder[a], target[b])
-                if op == op_body_y:
-                    y.ctrl(ladder[a], target[b])
-                if op == op_body_z:
-                    z.ctrl(ladder[a], target[b])
-                if op == op_cx_ctrl_ladder:
-                    cx(control[0], ladder[b])
-                if op == op_ccx_ctrl:
-                    x.ctrl(control[0], address[b], ladder[c])
-                if op == op_free_x:
-                    x(target[a])
-                if op == op_free_cx:
-                    cx(target[a], target[b])
-                if op == op_z_ladder:
-                    z(ladder[a])
-                if op == op_cx_addr_addr:
-                    cx(address[a], address[b])
-                if op == op_ccx_addr_addr:
-                    x.ctrl(address[a], address[b], ladder[c])
-                if op == op_cx_ladder_target:
-                    cx(ladder[a], target[b])
+                if use_x_addr:
+                    if op == op_x_addr:
+                        x(address[a])
+                if use_x_ladder:
+                    if op == op_x_ladder:
+                        x(ladder[a])
+                if use_cx_addr_ladder:
+                    if op == op_cx_addr_ladder:
+                        cx(address[a], ladder[b])
+                if use_cx_ladder_ladder:
+                    if op == op_cx_ladder_ladder:
+                        cx(ladder[a], ladder[b])
+                if use_ccx:
+                    if op == op_ccx:
+                        x.ctrl(ladder[a], address[b], ladder[c])
+                if use_body_x:
+                    if op == op_body_x:
+                        x.ctrl(ladder[a], target[b])
+                if use_body_y:
+                    if op == op_body_y:
+                        y.ctrl(ladder[a], target[b])
+                if use_body_z:
+                    if op == op_body_z:
+                        z.ctrl(ladder[a], target[b])
+                if use_cx_ctrl_ladder:
+                    if op == op_cx_ctrl_ladder:
+                        cx(control[0], ladder[b])
+                if use_ccx_ctrl:
+                    if op == op_ccx_ctrl:
+                        x.ctrl(control[0], address[b], ladder[c])
+                if use_free_x:
+                    if op == op_free_x:
+                        x(target[a])
+                if use_free_cx:
+                    if op == op_free_cx:
+                        cx(target[a], target[b])
+                if use_z_ladder:
+                    if op == op_z_ladder:
+                        z(ladder[a])
+                if use_cx_addr_addr:
+                    if op == op_cx_addr_addr:
+                        cx(address[a], address[b])
+                if use_ccx_addr_addr:
+                    if op == op_ccx_addr_addr:
+                        x.ctrl(address[a], address[b], ladder[c])
+                if use_cx_ladder_target:
+                    if op == op_cx_ladder_target:
+                        cx(ladder[a], target[b])
 
         _retain(primitives_unary_walk_ctrl)
         return primitives_unary_walk_ctrl
@@ -792,34 +886,48 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
             a = ops_a[i]
             b = ops_b[i]
             c = ops_c[i]
-            if op == op_x_addr:
-                x(address[a])
-            if op == op_x_ladder:
-                x(ladder[a])
-            if op == op_cx_addr_ladder:
-                cx(address[a], ladder[b])
-            if op == op_cx_ladder_ladder:
-                cx(ladder[a], ladder[b])
-            if op == op_ccx:
-                x.ctrl(ladder[a], address[b], ladder[c])
-            if op == op_body_x:
-                x.ctrl(ladder[a], target[b])
-            if op == op_body_y:
-                y.ctrl(ladder[a], target[b])
-            if op == op_body_z:
-                z.ctrl(ladder[a], target[b])
-            if op == op_free_x:
-                x(target[a])
-            if op == op_free_cx:
-                cx(target[a], target[b])
-            if op == op_z_ladder:
-                z(ladder[a])
-            if op == op_cx_addr_addr:
-                cx(address[a], address[b])
-            if op == op_ccx_addr_addr:
-                x.ctrl(address[a], address[b], ladder[c])
-            if op == op_cx_ladder_target:
-                cx(ladder[a], target[b])
+            if use_x_addr:
+                if op == op_x_addr:
+                    x(address[a])
+            if use_x_ladder:
+                if op == op_x_ladder:
+                    x(ladder[a])
+            if use_cx_addr_ladder:
+                if op == op_cx_addr_ladder:
+                    cx(address[a], ladder[b])
+            if use_cx_ladder_ladder:
+                if op == op_cx_ladder_ladder:
+                    cx(ladder[a], ladder[b])
+            if use_ccx:
+                if op == op_ccx:
+                    x.ctrl(ladder[a], address[b], ladder[c])
+            if use_body_x:
+                if op == op_body_x:
+                    x.ctrl(ladder[a], target[b])
+            if use_body_y:
+                if op == op_body_y:
+                    y.ctrl(ladder[a], target[b])
+            if use_body_z:
+                if op == op_body_z:
+                    z.ctrl(ladder[a], target[b])
+            if use_free_x:
+                if op == op_free_x:
+                    x(target[a])
+            if use_free_cx:
+                if op == op_free_cx:
+                    cx(target[a], target[b])
+            if use_z_ladder:
+                if op == op_z_ladder:
+                    z(ladder[a])
+            if use_cx_addr_addr:
+                if op == op_cx_addr_addr:
+                    cx(address[a], address[b])
+            if use_ccx_addr_addr:
+                if op == op_ccx_addr_addr:
+                    x.ctrl(address[a], address[b], ladder[c])
+            if use_cx_ladder_target:
+                if op == op_cx_ladder_target:
+                    cx(ladder[a], target[b])
 
     _retain(primitives_unary_walk)
     return primitives_unary_walk
