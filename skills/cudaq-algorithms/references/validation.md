@@ -60,9 +60,12 @@ are reported accurately.
 Record enough run provenance to reproduce the result in the artifact: package
 versions, target/precision, inputs or their provenance, settings, reference,
 and errors. Summarize routine checks in the answer; do not reproduce every
-command or fill context with unrelated records. A small checkpoint passing does
-not demonstrate improved model pass rates, time, or token usage; those require
-separate paired evaluations on the same tasks and budgets.
+command or fill context with unrelated records. Offline execution against an
+independent oracle can establish numerical correctness for the checked cases;
+static link, coverage, and source checks alone cannot. Neither establishes
+improved model pass rates, time, or token usage. Those claims require separate
+paired model evaluations on the same tasks, grading, environments, and budgets,
+with the skill revision and suite identity recorded.
 
 ## Evidence labels
 

@@ -48,8 +48,12 @@ ladder_offset = num_index + 2 mu + 1
 
 The realized index marginal is exactly `table_probabilities[k] =
 W_k / (K 2^mu)`; its per-bin distance from the ideal `probabilities =
-w / lambda` is bounded by `discretization_bound = 1.5 / (K 2^mu)`. Dyadic
-and uniform weights are realized exactly.
+w / lambda` is bounded by `discretization_bound = 1.5 / (K 2^mu)`. The table
+distribution equals the ideal normalized distribution when every ideal
+probability is an integer multiple of `1 / (K 2^mu)` (up to floating-point
+arithmetic). Dyadic probabilities require sufficient precision; uniform
+weights over a non-power-of-two number of entries are not exact after
+normalization, because their probabilities are not on that grid.
 
 **The output is not `sum_k sqrt(w_k / lambda) |k>|0...0>`.** The alias,
 keep, reference, and flag registers remain entangled with the index, and the

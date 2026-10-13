@@ -26,11 +26,13 @@ requires C1 symmetry, and rejects differing alpha/beta orbitals. It does not
 independently check convergence, the named RHF/RKS reference type, real-valued
 coefficients, or orbital orthonormality; incompatible provider objects and
 Psi4 failures propagate. The rejection message names RKS as accepted, and a
-restricted Kohn-Sham wavefunction does pass both checks, but its integrals
-give a Hartree-Fock-type second-quantized Hamiltonian in the Kohn-Sham
-orbital basis with the exchange-correlation functional dropped, not a DFT
-energy; use an RHF reference for a Hamiltonian consistent with the mean-field
-energy.
+restricted Kohn-Sham wavefunction does pass both checks. Its integrals define
+the core-plus-bare-ERI electronic Hamiltonian in the Kohn-Sham orbital basis,
+without a DFT exchange-correlation functional. They support correlated solvers
+and do not impose a Hartree-Fock approximation; a KS determinant's expectation
+of this Hamiltonian does not reproduce the provider's DFT total energy.
+Compare an HF determinant with the provider's HF total energy only when the
+integrals, scalar and occupations describe the same model.
 
 For the alpha-orbital coefficient matrix `C`, the provider computes
 `C.T @ wavefunction.H() @ C`. It constructs

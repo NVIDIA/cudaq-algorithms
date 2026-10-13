@@ -44,9 +44,11 @@ basic gates are implicitly controlled on the address-`k` leaf line):
 
 An unsupported gate name, wrong operand count, or negative index raises
 `ValueError` at factory time. Any body using `work` operands adds a trailing
-clean `work` view; `num_work=None` infers the width from the body, an
-explicit value must cover that usage (else `ValueError`) and forces the view
-into the signature even when unused.
+clean `work` view; `num_work=None` infers the width from the body. An explicit
+value must cover that usage (else `ValueError`). The trailing view is present
+only when the resolved `num_work > 0`, including a positive explicit width
+unused by the body. Explicit `num_work=0` keeps the work-less signature when
+the body needs no work.
 
 Kernel signatures, all little-endian (qubit 0 = LSB):
 

@@ -91,12 +91,20 @@ STATE_PREP_OBJECT = r"hartree|givens|slater|\buccs?d?\b|occupation|determinant|s
 # "energy", "time", or "geometry" alone should not choose an application.
 # Rows: (object regex, goal regex, records, compose) where compose adds the
 # application-composition guide after the stage records.
+# A chemical atom name qualifies a molecular dimer; bare "dimer" also names
+# spin systems and is not by itself a chemistry cue.
+ATOMIC_DIMER = (
+    r"\b(?:hydrogen|helium|lithium|beryllium|boron|carbon|nitrogen|oxygen|"
+    r"fluorine|neon|sodium|magnesium|aluminium|aluminum|silicon|phosphorus|"
+    r"sulfur|sulphur|chlorine|argon|potassium|calcium|titanium|vanadium|"
+    r"chromium|manganese|iron|cobalt|nickel|copper|zinc|bromine|krypton|"
+    r"iodine|xenon)[\s-]+dimers?\b")
 MOLECULE_OBJECT = (
     r"geometr|bond.length|bond.angle|bond.stretch|atomic.coordinates|\batoms\b|"
     r"gaussian.basis|orbital.basis|basis.set|sto-3g|6-31g|cc-pv[dtq]z|def2-|"
     r"molecul|frozen.core|active.space|mean.field|nuclear.repulsion|"
-    r"\bwater\b|ammonia|methane|benzene|ethylene|hydride|hydrogen fluoride|dimer"
-)
+    r"\bwater\b|ammonia|methane|benzene|ethylene|hydride|hydrogen fluoride|" +
+    ATOMIC_DIMER)
 LATTICE_OBJECT = r"spin.chain|spin.lattice|lattice|domain.wall|hubbard|ising|heisenberg|xxz|magneti[sz]|hopping|half.filling"
 SCIENCE_ROUTES = [
     (MOLECULE_OBJECT,
@@ -113,9 +121,9 @@ SCIENCE_ROUTES = [
 MAX_RECORDS = 3
 
 # Chemical formulas (LiH, H2O, N2, CH4) are molecular objects. Tokens parse
-# fully into these element symbols with optional counts and have at least two
-# symbols or one count; library and method acronyms that happen to parse are
-# excluded explicitly.
+# fully into these element symbols with optional positive counts and contain
+# at least two atoms. Thus Hamiltonian labels H0 and H1 are not molecules;
+# library and method acronyms that happen to parse are excluded explicitly.
 ELEMENTS = {
     "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al",
     "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Ti", "V", "Cr", "Mn", "Fe", "Co",
@@ -126,16 +134,17 @@ NOT_FORMULAS = {
     "KS", "SCF", "CNN", "NN", "SO", "NO", "ON", "CO", "SNR", "BF"
 }
 _FORMULA_TOKEN = re.compile(r"^(?:[A-Z][a-z]?\d*)+$")
-_FORMULA_PART = re.compile(r"[A-Z][a-z]?\d*")
+_FORMULA_PART = re.compile(r"([A-Z][a-z]?)(\d*)")
 
 
 def is_chemical_formula(token: str) -> bool:
     if token in NOT_FORMULAS or not _FORMULA_TOKEN.match(token):
         return False
     parts = _FORMULA_PART.findall(token)
-    if any(part.rstrip("0123456789") not in ELEMENTS for part in parts):
+    if any(symbol not in ELEMENTS for symbol, _ in parts):
         return False
-    return len(parts) >= 2 or any(ch.isdigit() for ch in token)
+    counts = [int(count) if count else 1 for _, count in parts]
+    return all(count > 0 for count in counts) and sum(counts) >= 2
 
 
 def mentions_molecule(text: str) -> bool:
@@ -210,9 +219,16 @@ def route(text: str) -> list[str]:
             compose = compose or chain
     # A named method takes priority over a default scientific path: a quench
     # with supplied QSP phases must not silently become a Trotter task.
-    explicit = [
-        rec for pattern, rec in EXPLICIT_ROUTES if re.search(pattern, low)
-    ]
+    explicit = []
+    for pattern, rec in EXPLICIT_ROUTES:
+        if re.search(pattern, low):
+            explicit.append(rec)
+            if rec == "primitives/primitives.md":
+                # Keep a named primitive's contract ahead of generic words
+                # such as PREPARE before the three-record limit is applied.
+                explicit.extend(leaf
+                                for leaf_pattern, leaf in PRIMITIVES_LEAVES
+                                if re.search(leaf_pattern, low))
     if science:
         # Composition points to the remaining stage guides; do not dump an
         # entire dependency tree into context for every scientific request.
@@ -222,7 +238,11 @@ def route(text: str) -> list[str]:
                 for rec in explicit):
             science = [rec for rec in science if rec != "trotter/trotter.md"]
         out = explicit + science + chain + out
-    elif explicit and not re.search(STATE_PREP_OBJECT, low):
+    elif explicit and ("primitives/primitives.md" in explicit
+                       or not re.search(STATE_PREP_OBJECT, low)):
+        # A named primitive is more specific than generic state preparation
+        # or injection wording. Keep ordinary state-preparation priority when
+        # no primitive was named.
         out = explicit + out
     return list(dict.fromkeys(out))[:MAX_RECORDS]
 

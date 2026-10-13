@@ -73,7 +73,7 @@ or reference-state overlaps with their tolerances.
 | Physical model | [Chemistry](chemistry/chemistry-bridges.md#workflow): converge the specified reference, load tensors, optionally freeze core/select active orbitals | Orthogonality, integral ordering, scalar/core contribution, electron counts, and consistent orbital character across geometries |
 | Representation | Chemistry's direct JW Hamiltonian, or [fermion transforms](fermion-transforms/fermion-transforms.md#workflow) for explicit JW/BK comparison | Independent determinant/sector energy; map the state and observables with the Hamiltonian |
 | Reference | [State preparation](state-preparation/state-preparation.md#workflow): determinant or supplied ordered correlated preparation | Occupations, sector, and state fidelity; quantify loss of reference overlap near crossings |
-| Estimator | [Pauli LCU](block-encoding/pauli-lcu.md#workflow) and [moments/Krylov](qubitization/qubitization.md#workflow) when that quantum path is requested; quantum phase estimation via the QPE chain above (`08_quantum_phase_estimation.py`), whose counting-register width sets the energy resolution | Raw block, moment sign/normalization, Gram rank, and energy versus an independent sector reference; for QPE, the modal bin within one phase cell of the reference and the reference-state overlap |
+| Estimator | [Pauli LCU](block-encoding/pauli-lcu.md#workflow) and [moments/Krylov](qubitization/qubitization.md#workflow) when that quantum path is requested; quantum phase estimation via the QPE chain above (`08_quantum_phase_estimation.py`), whose counting-register width sets the phase grid | Raw block, moment sign/normalization, Gram rank, and energy versus an independent sector reference; for QPE, phase-to-energy decoding, oracle error, sampling uncertainty, and overlap with the requested eigenstate |
 | Optional approximation | [Double factorization](double-factorization/double-factorization.md#workflow) only when compression/cost is part of the task | Reconstructed physical spectrum and requested accuracy, separately from tensor residual and norm proxy |
 
 Adapt `docs/sphinx/examples/python/03_chemistry_to_ground_state.py` for the
@@ -83,12 +83,24 @@ retain supplied electron/orbital metadata. Dense FCI is an oracle on tractable
 cases, not a scalable guarantee. HF-supported Krylov convergence need not reach
 the lowest state of a different symmetry sector.
 
+For QPE with `m` counting qubits, the angular phase spacing is
+`2*pi/2**m`. For `U = exp(-i*H*t)`, the corresponding energy spacing is
+`2*pi/(abs(t)*2**m)` after choosing an unambiguous spectral window. For a
+qubitization walk, decode the folded phase-cell edges through
+`E = -alpha*cos(theta)`; energy cells are not uniformly spaced. A phase cell
+is a discretization scale, not an energy-error guarantee: budget oracle
+approximation (for example Trotter error) and sampling uncertainty separately,
+and check overlap with the desired eigenstate. The modal-bin check in the
+QPE example relies on its particular reference state and parameters; a general
+input need not give a ground-state modal bin.
+
 The following parameterized checkpoint connects a **converged closed-shell RHF**
 object `mf` to executed moments and an independent PySCF FCI reference. The
-chain assumes a restricted closed-shell singlet reference: `chemistry.from_pyscf`
-and `chemistry.from_psi4` accept restricted references only and reject
-unrestricted (UHF) ones, and `from_fcidump` reads real RHF/ROHF-style files, so
-open-shell or unrestricted references are outside this checkpoint. Define
+checkpoint constructs a doubly occupied reference determinant, so open-shell
+references require adapting its occupations and reference solver. This example
+restriction is distinct from the loaders' common-spatial-orbital requirement:
+restricted-orbital integrals also support correlated and open-shell states;
+unrestricted provider objects remain unsupported. Define
 `krylov_checkpoint` from the [qubitization Verification](qubitization/qubitization.md#verification)
 in the same `.py` script first. Choose positive `dimension`/`cutoff` and the
 energy/moment tolerances before running. For active-space tasks, replace the
@@ -151,7 +163,17 @@ spectrum with its tolerance.
 | Model | [Fermion transforms](fermion-transforms/fermion-transforms.md#workflow) for fermionic lattices (hopping and on-site tensors -> Pauli operator); spin models are already Pauli sums | Boundary signs, site/spin-orbital order, Hermiticity, and that the dense operator on a small instance reproduces the intended couplings |
 | Reference | [State preparation](state-preparation/state-preparation.md#workflow): a determinant or occupation state in the requested sector | Occupations, particle number, and `S_z`; the reference must overlap the sector ground state |
 | Estimator | [Pauli LCU](block-encoding/pauli-lcu.md#workflow) -> [moments/Krylov](qubitization/qubitization.md#workflow), or the QPE chain above with the same encoding | Moment sign/normalization and Gram rank, or QPE bin resolution; energy versus an exact diagonalization of the same sector on a tractable instance |
-| Decision | Sector/parity check as the handoff: project the dense Hamiltonian onto the requested sector before diagonalizing | A sector ground state need not be the global ground state; label the sector explicitly |
+| Decision | Verify that the Hamiltonian preserves the requested sector, then project the dense Hamiltonian before diagonalizing | A sector ground state need not be the global ground state; label the sector explicitly |
+
+For a sector projector `P`, verify that `(I-P) @ H @ P` vanishes within a
+declared tolerance on a tractable instance, or establish conservation
+analytically. Hermitian `H` then leaves that subspace invariant. Particle
+number or `S_z` labels alone do not establish conservation; transverse fields
+or pairing terms can break the proposed symmetry. If the test fails, the
+eigenvalues of `P @ H @ P` restricted to `range(P)` describe a constrained
+projected model, not a sector of the original Hamiltonian. Diagonalizing the
+full-size projected matrix would add spurious zeros outside that subspace.
+Use the full model or explicitly justify the constrained approximation.
 
 The qubitization Verification `krylov_checkpoint` applies unchanged with
 `offset` equal to any separated scalar; `Walk.moments` on the sector reference

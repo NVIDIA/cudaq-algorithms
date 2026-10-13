@@ -26,11 +26,13 @@ explicitly rejects only a coefficient array whose rank is not two, including
 the usual `(2, nao, nmo)` unrestricted/UHF form. It does not independently
 check convergence, real-valued coefficients, orbital orthonormality, or object
 class; missing/incompatible provider methods and PySCF failures propagate.
-A restricted Kohn-Sham object (RKS) passes the same rank check, but its
-integrals give a Hartree-Fock-type second-quantized Hamiltonian in the
-Kohn-Sham orbital basis with the exchange-correlation functional dropped, not
-a DFT energy; use an RHF reference for a Hamiltonian consistent with the
-mean-field energy.
+A restricted Kohn-Sham object (RKS) passes the same rank check. Its integrals
+define the core-plus-bare-ERI electronic Hamiltonian in the Kohn-Sham orbital
+basis, without a DFT exchange-correlation functional. They support correlated
+solvers and do not impose a Hartree-Fock approximation; a KS determinant's
+expectation of this Hamiltonian does not reproduce the provider's DFT total
+energy. Compare an HF determinant with the provider's HF total energy only
+when the integrals, scalar and occupations describe the same model.
 
 For `C = mean_field.mo_coeff`, the provider computes `C.T @ get_hcore() @ C`,
 uses `pyscf.ao2mo.full`, and restores symmetry storage to a dense chemist-order

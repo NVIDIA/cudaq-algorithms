@@ -59,18 +59,20 @@ optimum. Additional starts are warranted by optimization uncertainty, not by an
 assumption that compression must beat X-DF. A tie or no feasible candidate is a
 valid outcome; a claimed minimum needs a stated search domain and evidence.
 
-Keep two one-body roles distinct. The approximate physical Hamiltonian uses
-the original `h`, reconstructed `eri_approx`, and the original scalar. The
-number-operator DF representation instead uses
-`kappa[p,q] = h[p,q] - 0.5*sum_r eri_approx[p,r,q,r]`. Compute its one-body
-eigenvalues for the norm helper, but do not feed `kappa` to
-`chemistry.qubit_hamiltonian`: that bridge already implements the ordinary
-two-electron Hamiltonian. Recompute this correction for each approximation;
+Keep the one-body roles distinct. The approximate physical Hamiltonian uses
+the original `h`, reconstructed `eri_rec`, and the original scalar. The
+number-operator DF representation uses
+`kappa[p,q] = h[p,q] - 0.5*sum_r eri_rec[p,r,q,r]`, returned by
+`modified_one_body_integrals`. The norm helper instead needs eigenvalues of
+`F[p,q] = kappa[p,q] + sum_r eri_rec[p,q,r,r]`; see the
+[one-norm record](double-factorization-one-norm.md). Do not feed `kappa` or `F`
+to `chemistry.qubit_hamiltonian`: that bridge already implements the ordinary
+two-electron Hamiltonian. Recompute both contractions for each approximation;
 mixing the target correction with approximate factors changes the Hamiltonian.
 `double_factorization_one_norm` validates neither the provenance nor the
-length of `one_body_eigenvalues`, so the eigenvalues of `h`, of `kappa` built
-from the target `eri`, or of a vector of the wrong length are all accepted
-without raising; only the caller's bookkeeping keeps the norm honest.
+length of `one_body_eigenvalues`. Eigenvalues of `h` or `kappa`, an `F` built
+from a different ERI, and vectors of the wrong length are accepted without
+raising; only the caller's bookkeeping keeps the norm honest.
 
 ## Verification
 
@@ -118,7 +120,8 @@ operator = chemistry.qubit_hamiltonian(
 matrix = fixed_width_matrix(operator, 2*n)
 levels = np.linalg.eigvalsh(matrix[np.ix_(sector, sector)])
 kappa = df.modified_one_body_integrals(h, eri_approx)
-one_body_levels = np.linalg.eigvalsh(kappa)
+F = kappa + np.einsum("pqrr->pq", eri_approx)
+one_body_levels = np.linalg.eigvalsh(F)
 lambda_lcu = df.double_factorization_one_norm(
     factorization, one_body_levels, convention="lcu")
 manual_lambda = np.abs(one_body_levels).sum() + sum(

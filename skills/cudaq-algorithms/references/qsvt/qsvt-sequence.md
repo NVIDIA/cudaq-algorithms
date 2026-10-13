@@ -8,19 +8,43 @@ phase sequence**.
 - Public symbols: `cudaq_algorithms.PhaseSequence`, `cudaq_algorithms.QSVT`.
 - Source: `python/cudaq_algorithms/qsvt.py` and signal kernels in
   `common_kernels.py`. The whole sequence is also available as composable
-  device kernels for a user's own `@cudaq.kernel`:
-  `pauli_lcu.apply_phase_sequence(signal, system, phases, walk_directions,
-  *kernel_args)` and `pauli_lcu.apply_controlled_phase_sequence(
-  control_and_signal, system, ...)`, taking `PauliLCU.kernel_args` and
-  projector phases; `walk_directions` must be non-empty (pass one unused
-  entry for degree 0).
+  device kernels `pauli_lcu.apply_phase_sequence` and
+  `pauli_lcu.apply_controlled_phase_sequence` for a user's own
+  `@cudaq.kernel`. Unpack `PauliLCU.kernel_args` on the host, then pass each
+  list explicitly inside the kernel; CUDA-Q 0.15 does not support starred
+  call arguments there. Use projector phases and a non-empty direction list
+  (one unused forward entry for degree 0), as shown below.
 - Tests: `test_qsvt.py`, `test_walk_qsvt_orchestration.py`,
-  `test_block_encoding_protocol.py`, `test_df_encoding.py`.
+  `test_block_encoding_protocol.py`, `test_df_encoding.py`, and
+  `test_pauli_lcu.py::test_module_level_phase_sequence_kernels_compose`.
 - Examples: `02_hamiltonian_simulation.py`, `07_matrix_inversion_qsvt.py`,
   `hamiltonian_simulation_qsvt.py`.
 - Kind/role/abstraction: quantum operation, driver, composite protocol.
 - Layers: host phase validation, kernel factory, device kernel.
 - Exactness: exact for supplied phases; polynomial design error is caller-owned.
+
+For an existing `PauliLCU` encoding `enc` and `PhaseSequence` `seq`, put this
+composition in a `.py` file:
+
+```python
+import cudaq
+from cudaq_algorithms.pauli_lcu import apply_phase_sequence
+
+angles, controls, ops, lengths, signs = enc.kernel_args
+phases = seq.projector_phases
+directions = list(seq.walk_directions) or [0]
+n_anc = enc.num_ancilla
+
+@cudaq.kernel
+def composed(state: cudaq.State):
+    system = cudaq.qvector(state)
+    signal = cudaq.qvector(n_anc)
+    apply_phase_sequence(signal, system, phases, directions,
+                         angles, controls, ops, lengths, signs)
+```
+
+The controlled form takes the same explicit arguments, replacing `signal`
+with a contiguous `[control, signal...]` view as its first argument.
 
 ## `PhaseSequence` representation
 

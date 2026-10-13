@@ -38,8 +38,10 @@ SPEC.loader.exec_module(router)
      {"primitives/primitives.md"}),
     ("Use unary iteration to apply a per-address body.",
      {"primitives/primitives.md"}),
-    ("Build an alias sampling PREPARE for these LCU coefficients.",
-     {"primitives/primitives.md", "block-encoding/block-encoding.md"}),
+    ("Build an alias sampling PREPARE for these LCU coefficients.", {
+        "primitives/primitives.md", "primitives/primitives-alias-sampling.md",
+        "block-encoding/block-encoding.md"
+    }),
     ("What is the ground state energy of the 2D Fermi-Hubbard model at "
      "half filling?",
      {"qubitization/qubitization.md", "application-composition.md"}),
@@ -89,6 +91,8 @@ def test_every_table_record_exists():
      "primitives/primitives.md"),
     ("Does a controlled SELECT require an adjoint block encoding?",
      "conventions/kernel-boundaries.md"),
+    ("Prepare an LCU encoding from the supplied coefficients.",
+     "primitives/primitives-alias-sampling.md"),
 ])
 def test_generic_protocol_words_do_not_cross_route(prompt, excluded):
     assert excluded not in router.route(prompt)
@@ -102,6 +106,7 @@ def test_phase_estimation_gets_a_building_block_note():
 
 @pytest.mark.parametrize("token,expected", [
     ("LiH", True),
+    ("H2", True),
     ("H2O", True),
     ("N2", True),
     ("CH4", True),
@@ -109,6 +114,8 @@ def test_phase_estimation_gets_a_building_block_note():
     ("UCC", False),
     ("HF", False),
     ("H", False),
+    ("H0", False),
+    ("H1", False),
     ("Be", False),
 ])
 def test_chemical_formula_recognition(token, expected):
@@ -146,6 +153,87 @@ def test_conditional_analysis_is_not_displaced_by_default_dynamics():
 ])
 def test_nonchemical_basis_and_bonds_do_not_select_chemistry(prompt):
     assert "chemistry/chemistry-bridges.md" not in router.route(prompt)
+
+
+@pytest.mark.parametrize("prompt", [
+    "Find the lowest energy of a two-site Heisenberg dimer.",
+    "Find the ground state of an XXZ dimer in a fixed magnetization sector.",
+])
+def test_spin_dimers_select_the_lattice_energy_chain(prompt):
+    records = router.route(prompt)
+    assert records == [
+        "qubitization/qubitization.md", "application-composition.md"
+    ]
+
+
+@pytest.mark.parametrize("label", ["H0", "H1"])
+def test_hamiltonian_labels_do_not_add_a_molecular_chain(label):
+    records = router.route(
+        f"Estimate the ground energy of {label} using Chebyshev moments.")
+    assert records == ["qubitization/qubitization.md"]
+
+
+@pytest.mark.parametrize("prompt", [
+    "Find the ground energy of an argon dimer.",
+    "Compute the binding energy of helium dimers.",
+    "Find the ground energy of a copper-dimer.",
+    "Find the binding energy of an argon dimer in a Gaussian basis.",
+    "Compare ground energies of a molecular dimer along a bond stretch.",
+    "Find the ground energy of He2.",
+    "Find the ground energy of H2.",
+    "Find the ground energy of H2O.",
+    "Find the ground energy of LiH.",
+])
+def test_molecular_context_retains_the_chemistry_chain(prompt):
+    assert router.route(prompt) == [
+        "chemistry/chemistry-bridges.md", "application-composition.md"
+    ]
+
+
+def test_dimer_without_physical_context_does_not_choose_a_family():
+    assert router.route("Find the dimer ground energy.") == []
+
+
+def test_named_method_precedes_the_spin_dimer_default():
+    records = router.route(
+        "Use QSVT to filter the ground state of a Heisenberg dimer.")
+    assert records[0] == "qsvt/qsvt.md"
+    assert "chemistry/chemistry-bridges.md" not in records
+
+
+@pytest.mark.parametrize("prompt", [
+    "Build alias-sampling PREPARE for an LCU block encoding.",
+    "Use AliasSamplingPrepare for the PauliLCU coefficient distribution.",
+    "Use AliasSamplingPrepare for LCU state preparation.",
+    "Build alias-sampling PREPARE and inject it into an LCU block encoding.",
+])
+def test_named_alias_prepare_keeps_its_focused_record(prompt):
+    records = router.route(prompt)
+    assert set(records) == {
+        "block-encoding/block-encoding.md", "primitives/primitives.md",
+        "primitives/primitives-alias-sampling.md"
+    }
+    assert len(records) <= router.MAX_RECORDS
+
+
+@pytest.mark.parametrize("prompt", [
+    "Inject a state preparation kernel into an LCU block encoding.",
+    "Prepare a Slater determinant and inject it into the walk kernel.",
+])
+def test_generic_state_injection_retains_its_contract(prompt):
+    records = router.route(prompt)
+    assert records[0] == "state-preparation/state-preparation.md"
+    assert "state-preparation/injection-contract.md" in records
+    assert "primitives/primitives.md" not in records
+
+
+def test_named_method_precedes_alias_prepare_with_state_injection():
+    records = router.route(
+        "Use QSVT with alias-sampling PREPARE and inject a state.")
+    assert records == [
+        "qsvt/qsvt.md", "primitives/primitives.md",
+        "primitives/primitives-alias-sampling.md"
+    ]
 
 
 def test_atomic_inputs_can_select_the_molecular_chain_with_a_named_method():

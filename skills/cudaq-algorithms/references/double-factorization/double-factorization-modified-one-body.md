@@ -22,6 +22,13 @@ conversion and are outside this real-integral contract.
 The result is host data used when assembling the full double-factorized
 Hamiltonian. No resource estimator or quantum kernel is provided.
 
+For the [one-norm helper](double-factorization-one-norm.md), form the distinct
+Fock-like matrix `F[p,q] = kappa[p,q] + sum_r eri[p,q,r,r]` and pass its
+eigenvalues. The helper above still returns `kappa`, not `F`. When assessing
+approximate factors, use their reconstructed ERI in both contractions. Keep
+the original physical one-body matrix and scalar when building the ordinary
+two-electron Hamiltonian.
+
 ## Validation
 
 Use an explicit `p,q,r` loop independent of `einsum`. The runnable pointer is

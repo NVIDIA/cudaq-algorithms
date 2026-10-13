@@ -10,9 +10,11 @@
   a register-only seam, even when it implements the same physics. Wrapping it
   in a one-argument kernel is the caller's explicit act, not an equivalence.
 - **Mismatch symptom.** A kernel that will not launch, or a consumer factory
-  that silently keeps its `cudaq.State` argument mode: every consumer factory
-  branches on `state_prep is None`, so omitting the `state_prep=` keyword
-  yields the `cudaq.State`-taking kernel rather than an error.
+  that silently keeps its `cudaq.State` argument mode: omitting `state_prep`
+  from `PauliLCU.encode_kernel`, `Walk.kernel`, or `QSVT.kernel` selects the
+  state-input mode. `Trotter.kernel` always emits a zero-argument kernel,
+  with optional injected preparation; `Trotter.state_kernel` is its separate
+  `cudaq.State`-taking factory and accepts no `state_prep`.
 - **Source.** `python/cudaq_algorithms/block_encoding.py` module docstring
   ("data erasure at the kernel boundary"); `docs/sphinx/guide/state_prep.rst`
   ("State preparation injection"); the `if state_prep is not None` branches

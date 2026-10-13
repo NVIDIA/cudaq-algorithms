@@ -50,12 +50,13 @@ factorization, prepare a state, or submit quantum work.
 ## Workflow
 
 Start with geometry and its units, basis/ECP, charge, electron count and spin
-convention. For a provider calculation, converge the restricted Hartree-Fock reference
-and retain its MO coefficients, occupations and orbital ordering before calling
-the loader. Neither provider loader enforces Hartree-Fock: a restricted
-Kohn-Sham (DFT) reference is accepted and yields a Hartree-Fock-type
-Hamiltonian in the Kohn-Sham orbital basis with no exchange-correlation term,
-so its energies are not DFT energies and must not be reported as such. For
+convention. For a provider calculation, converge a supported reference with a
+common spatial-orbital basis for both spins and retain its MO coefficients,
+occupations and orbital ordering before calling the loader. A restricted
+Kohn-Sham (DFT) reference supplies the core-plus-bare-ERI electronic Hamiltonian
+in the Kohn-Sham orbital basis. It contains no exchange-correlation functional
+and does not reproduce the provider's DFT total energy. The orbital choice does
+not impose a Hartree-Fock approximation on a subsequent correlated solver. For
 FCIDUMP, retain electron/spin and orbital metadata separately: the returned
 triple alone does not identify the physical sector.
 
@@ -94,13 +95,13 @@ hamiltonian = chemistry.qubit_hamiltonian(
 
 Subtract `len(core)` from each spin's electron count. Remap occupied orbitals
 into the active list: spin orbitals are interleaved (`2*p` up, `2*p+1` down).
-Because unrestricted loader inputs are unsupported, an open-shell molecule
-(a radical or an open-shell transition-metal complex) is described only by
-restricted spatial orbitals with unequal up/down electron counts, an
-ROHF-style restricted-orbital approximation; state that up front rather than
-discovering it at a loader rejection.
+Unrestricted/UHF loader inputs remain unsupported, but a common spatial-orbital
+basis can represent correlated, multideterminant open-shell states. Open-shell
+singlets have equal up/down electron counts; open shell does not imply unequal
+populations or an ROHF approximation. Fixed `(N_up, N_down)` fixes
+`S_z = (N_up - N_down)/2`, not `S^2`; select or verify total spin when required.
 Retain the intended width `2*len(active)` even when operator pruning reduces its
-support. Prepare that determinant with the
+support. Prepare the chosen initial state with the
 [state-preparation contracts](../state-preparation/state-preparation.md) when
 quantum execution is needed; a Hamiltonian or classical energy request can stop
 at host calculations. An energy estimator using a shifted/scaled Hamiltonian
@@ -138,8 +139,10 @@ for term in hamiltonian:
 np.testing.assert_allclose(qubit_energy, det_energy, atol=atol, rtol=0)
 ```
 
-For the HF determinant this should reproduce the provider's total HF energy
-when frozen/empty selections preserve its occupations. For a small correlated
+For an HF reference, evaluating its determinant should reproduce the provider's
+total HF energy when the integrals, scalar and frozen/empty selections preserve
+that model and its occupations. A KS determinant's expectation of these
+integrals is not the provider's DFT total energy. For a small correlated
 reference, use an independent FCI implementation with the same active integrals,
 scalar and `(N_up, N_down)`, or occupation-space ladder algebra. Check the
 sector before diagonalization: the unconstrained Fock-space minimum can belong
