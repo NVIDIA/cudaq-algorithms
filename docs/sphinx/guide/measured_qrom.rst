@@ -36,17 +36,20 @@ compiler check, not a check this package performs, and older CUDA-Q
 releases accepted nested feedback while returning samples that are not the
 logical lookup. A backend must support mid-circuit measurement and classical
 feedback; these tests do not establish support on other backends or
-hardware. Do not name your own kernels ``h`` or ``mz``: CUDA-Q 0.16 resolves
-bare gate names against kernel decorators visible from the defining frame,
-so a user kernel with one of those names breaks the library kernels'
-compilation.
+hardware. The shared interpreter explicitly binds ``h`` and ``mz``, so caller
+kernels with these names do not affect its compilation or execution. Avoid
+naming your kernels after its other gates (for example, ``x``): CUDA-Q 0.16
+resolves those bare names against kernel decorators visible from the defining
+frame, and the library kernels can then either fail to compile or silently
+call your kernel in place of the gate and compute the wrong state.
 
 For a coherent external control, construct with ``controlled=True`` and call
 ``lookup(control, address, ladder, output)``, where ``control`` is a one-qubit
 view; the control is folded into the tree root. Do not apply ``cudaq.control``
 to a measured kernel: on CUDA-Q 0.16 it compiles and runs without any error,
-but the mid-circuit measurements cannot be controlled, so each run measures
-the caller's control register in the Z basis, and on a superposed control the
+but the mid-circuit measurements cannot be controlled, so they act on the
+caller's control register: a fix-up that fires collapses a superposed control
+to one, and one that does not fire attenuates the control-on branch, so the
 resulting state differs from the controlled lookup and from run to run.
 ``cudaq.adjoint`` of a measured kernel raises. ``controlled=True`` and the
 walker's ``kernel_adj`` are the only supported forms.

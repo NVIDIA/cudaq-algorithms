@@ -138,6 +138,10 @@ from typing import Any, Callable, Sequence
 
 import cudaq
 
+# Bind the measured-arm intrinsics here: CUDA-Q otherwise searches caller
+# frames for these names, even when a coherent tape never uses those arms.
+from cudaq.qis import h, mz
+
 __all__ = ["UnaryIterationKernels", "unary_iteration_kernels"]
 
 # Keep-alive registry for factory-minted kernels. CUDA-Q identifies a
