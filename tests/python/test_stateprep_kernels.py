@@ -289,3 +289,21 @@ def test_invalid_inputs_raise():
         stateprep.get_ceo_pauli_lists(1.5)
     with pytest.raises(ValueError, match="non-negative integer"):
         stateprep.make_ceo_operator_pool(True)
+
+
+def test_uccsd_rejects_open_shell_spin_with_odd_electron_difference():
+    # spin is 2*S_z, so (num_electrons - spin) must be even when spin > 0.
+    # An odd difference floors to spin+1, so (8, 4, 1) aliases (8, 4, 2).
+    stateprep = algorithms.stateprep
+
+    # Even electron count and odd spin: the enumerator itself must raise.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.get_uccsd_excitations(8, 4, 1)
+    # Odd electron count and even spin > 0. The pool is built by the same
+    # enumerator, so the rejection must surface on this entry point too.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.make_uccsd_operator_pool(6, 3, 2)
+    # (10, 5, 2) would otherwise be a non-empty pool at the promoted spin 3.
+    # The parameter counter uses the same enumerator and must raise first.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.get_num_uccsd_parameters(10, 5, 2)

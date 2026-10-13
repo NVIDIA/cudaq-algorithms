@@ -87,6 +87,12 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
 
     num_spatial = num_qubits // 2
     if spin_number > 0:
+        # spin is 2*S_z, so (num_electrons - spin) must be even. Otherwise
+        # the floor realizes spin+1. Matches make_hartree_fock_occupation.
+        if (num_electrons - spin_number) % 2 != 0:
+            raise ValueError(
+                "(num_electrons - spin) must be even when spin > 0 "
+                "(spin is 2*S_z)")
         n_occ_beta = (num_electrons - spin_number) // 2
         n_occ_alpha = num_electrons - n_occ_beta
         if n_occ_alpha > num_spatial:
