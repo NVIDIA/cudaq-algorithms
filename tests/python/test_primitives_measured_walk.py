@@ -209,8 +209,9 @@ def test_measured_walk_toffoli_and_measurement_accounting():
                 toffolis = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
                 measurements = sum(1 for op in ops
                                    if op[0] in _MEASURED_OPCODES)
-                assert toffolis == measurements == _measured_walk_toffoli_count(
+                expected = _measured_walk_toffoli_count(
                     num_bits, num_items, controlled)
+                assert toffolis == measurements == expected
                 if num_items == capacity:
                     assert toffolis == capacity - 2 + int(controlled)
     # The minted record carries the same numbers.

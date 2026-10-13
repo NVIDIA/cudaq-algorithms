@@ -623,16 +623,16 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     compile error once fixed); it also shrinks every minted module to
     the arms it actually replays.
 
-    Measured gadgets. The two measured-uncompute opcodes (``_OP_MEAS_UNCOMPUTE``
-    and its control-rooted twin) are dispatched here as well, behind the
-    same captured guards; a coherent tape never contains them, so their
-    arms are pruned from every coherent module, and the measured walk in
-    ``_unary_iteration_measured`` is their only producer. On CUDA-Q 0.16
-    the captured guards are lifted into kernel arguments, so the generic
-    kernel source still mentions ``mz`` for coherent walks; the runtime's
-    measurement-feedback checks look at entry kernels, and the tests pin
-    that ``cudaq.sample``, ``cudaq.control`` and ``cudaq.adjoint`` of
-    coherent tapes keep working.
+    Measured gadgets. The two measured-uncompute opcodes
+    (``_OP_MEAS_UNCOMPUTE`` and its control-rooted twin) are dispatched here as
+    well, behind the same captured guards; a coherent tape never contains them,
+    so their arms are pruned from every coherent module, and the measured walk
+    in ``_unary_iteration_measured`` is their only producer. On CUDA-Q 0.16 the
+    captured guards are lifted into kernel arguments, so the generic kernel
+    source still mentions ``mz`` for coherent walks; the runtime's
+    measurement-feedback checks look at entry kernels, and the tests pin that
+    ``cudaq.sample``, ``cudaq.control`` and ``cudaq.adjoint`` of coherent tapes
+    keep working.
     """
     supported = _BASE_OPS | _MEASURED_OPS
     if controlled:
