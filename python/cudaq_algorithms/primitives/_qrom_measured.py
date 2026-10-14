@@ -14,13 +14,16 @@ traversals write and erase the cache; routing and unrouting stay coherent.
 With ``dirty_banks=True`` and explicit ``variant="select_swap"``, the final
 routing/copy/unrouting echo restores a borrowed bank in an arbitrary joint
 state. Its cost is ``2*C(h,M,c) + 4*output_bits*(B-1)`` Toffolis, with ``h``
-clean lines and ``B*output_bits`` dirty lines. Measurement-erased caches
-with separate phase-correction oracles are not implemented.
+clean lines and ``B*output_bits`` dirty lines. For clean banks, ``cache_uncompute="measure"`` replaces the final write
+with X-basis cache erasure and an outcome-dependent phase correction.
+``cache_uncompute="auto"`` selects it only for a strict Toffoli saving; the
+default ``"traverse"`` preserves the original selection and operation counts.
 
 Resource properties describe emitted logical operations, not physical
-hardware cost or compiled T gates. A 4T temporary-AND model applies only
-to ``tree_and_count`` after a compatible synthesis; the implementation
-emits ordinary Toffolis. Tree lines must always start clean. The routing
+hardware cost or compiled T gates. A 4T temporary-AND model applies to
+``resources.temporary_and_count`` (tree and one-hot ANDs) after compatible
+synthesis; the implementation emits ordinary Toffolis. Tree lines must
+always start clean. The routing
 network's targets are bank lines, so a bank need not be clean for the
 circuit to be well defined, but only ``dirty_banks=True`` restores a
 non-clean bank and keeps its word out of the output; with the default, a
@@ -36,25 +39,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from ._qrom_common import validate_qrom_data
+from ._qrom_plan import QROMResources
+from ._qrom_measured_plan import _plan_measured_qrom
+
 from ._qrom import _ADDRESS_OPERANDS
-from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CCX_CTRL,
-                               _OP_CX_LADDER_LADDER, _OP_CX_LADDER_TARGET,
-                               _OP_DESCRIPTIONS, _OP_MEAS_UNCOMPUTE,
-                               _OP_MEAS_UNCOMPUTE_CTRL, _TOFFOLI_OPCODES,
-                               _mint_interpreter)
-from ._unary_iteration_measured import (_MEASURED_OPCODES, _emit_measured_walk,
-                                        _measured_walk_toffoli_count,
-                                        measured_unary_iteration_kernels)
+from ._unary_iteration import _OP_DESCRIPTIONS, _mint_interpreter
+from ._unary_iteration_measured import _measured_walk_toffoli_count
 
 __all__ = ["MeasuredQROM"]
 
 _VARIANTS = ("auto", "select", "select_swap")
 
-_MEASURED_ADDRESS_OPERANDS = {
-    **_ADDRESS_OPERANDS,
-    _OP_MEAS_UNCOMPUTE: (2, ),
-    _OP_MEAS_UNCOMPUTE_CTRL: (2, ),
-}
+_MEASURED_ADDRESS_OPERANDS = _ADDRESS_OPERANDS
 
 
 def _select_swap_cost(address_bits: int,
@@ -97,6 +94,12 @@ class MeasuredQROM:
     echo; the borrowed bank may be entangled with any other input. Default
     ``False`` requires a clean bank. ``describe()`` lists the emitted tape.
 
+    ``cache_uncompute="measure"`` requires explicit clean SELECT-SWAP.
+    ``phase_block_size`` optionally selects its power-of-two one-hot width;
+    otherwise the planner minimizes correction Toffolis. ``"auto"`` admits
+    measured cleanup and favors traversal on equal Toffoli costs. Persistent
+    outcomes are fresh local invocation state; compiled kernels are reusable.
+
     See the module and measured-QROM guide for executor requirements,
     resource conventions, and the clean-workspace restriction.
     """
@@ -109,198 +112,54 @@ class MeasuredQROM:
                  variant: str = "auto",
                  block_size: int | None = None,
                  controlled: bool = False,
-                 dirty_banks: bool = False) -> None:
-        if int(address_bits) != address_bits or address_bits < 1:
-            raise ValueError("address_bits must be a positive integer")
-        if int(output_bits) != output_bits or output_bits < 1:
-            raise ValueError("output_bits must be a positive integer")
-        address_bits = int(address_bits)
-        output_bits = int(output_bits)
-        # Materialize first: a single-pass iterable must not be consumed
-        # by one check and leave the others looking at an empty iterator.
-        raw = list(data)
-        if len(raw) == 0:
-            raise ValueError("data must be non-empty")
-        if any(int(v) != v for v in raw):
-            raise ValueError("data entries must be integers")
-        entries = [int(v) for v in raw]
-        if len(entries) > (1 << address_bits):
-            raise ValueError(
-                f"data has {len(entries)} entries but address_bits="
-                f"{address_bits} addresses only {1 << address_bits}")
-        if any(v < 0 for v in entries):
-            raise ValueError("data entries must be non-negative")
-        if max(entries) >= (1 << output_bits):
-            raise ValueError(
-                f"data entry {max(entries)} does not fit in output_bits="
-                f"{output_bits} bits (max representable "
-                f"{(1 << output_bits) - 1})")
-        if variant not in _VARIANTS:
-            raise ValueError(
-                f"variant must be one of {_VARIANTS}, got {variant!r}")
-        if not isinstance(controlled, bool):
-            raise ValueError("controlled must be a bool (pass bool(flag) for "
-                             "numpy booleans)")
-        if not isinstance(dirty_banks, bool):
-            raise ValueError("dirty_banks must be a bool (pass bool(flag) for "
-                             "numpy booleans)")
-        if dirty_banks and variant != "select_swap":
-            raise ValueError("dirty_banks=True requires variant='select_swap'")
-        if variant == "select_swap" and address_bits < 2:
-            raise ValueError(
-                "variant='select_swap' requires address_bits >= 2 (no "
-                "block-index bit exists at address_bits=1); use "
-                "variant='select' or 'auto'")
-        if block_size is not None:
-            if variant != "select_swap":
-                raise ValueError(
-                    "block_size is only valid with variant='select_swap', "
-                    f"got variant={variant!r}")
-            if (int(block_size) != block_size or block_size < 2
-                    or int(block_size) & (int(block_size) - 1) != 0):
-                raise ValueError("block_size must be a power of two >= 2, got "
-                                 f"{block_size}")
-            block_size = int(block_size)
-            if block_size > (1 << (address_bits - 1)):
-                raise ValueError(
-                    f"block_size {block_size} needs at least one block-"
-                    f"index address bit: max is 2^(address_bits - 1) = "
-                    f"{1 << (address_bits - 1)}")
-
-        select_cost = _measured_walk_toffoli_count(address_bits, len(entries),
-                                                   controlled)
-        swap_candidates = [1 << s for s in range(1, address_bits)
-                           ] if block_size is None else [block_size]
-        swap_costs = {
-            size:
-            _select_swap_cost(address_bits, len(entries), output_bits, size,
-                              controlled, dirty_banks)
-            for size in swap_candidates
-        }
-        if variant == "auto":
-            best_size = min(swap_costs,
-                            key=lambda size: (swap_costs[size], size),
-                            default=None)
-            if best_size is None or select_cost <= swap_costs[best_size]:
-                variant = "select"
-                block_size = None
-            else:
-                variant = "select_swap"
-                block_size = best_size
-        elif variant == "select_swap":
-            block_size = min(swap_costs,
-                             key=lambda size: (swap_costs[size], size))
-
-        self._dirty_banks = dirty_banks
-        self._controlled = controlled
-        self._data = tuple(entries)
+                 dirty_banks: bool = False,
+                 cache_uncompute: str = "traverse",
+                 phase_block_size: int | None = None) -> None:
+        # Materialize single-pass inputs once before planning and retaining data.
+        entries, address_bits, output_bits = validate_qrom_data(
+            data, address_bits, output_bits)
+        selection = _plan_measured_qrom(entries,
+                                        address_bits,
+                                        output_bits,
+                                        variant=variant,
+                                        block_size=block_size,
+                                        controlled=controlled,
+                                        dirty_banks=dirty_banks,
+                                        cache_uncompute=cache_uncompute,
+                                        phase_block_size=phase_block_size)
+        plan = selection.plan
+        self._data = entries
         self._num_address = address_bits
         self._output_bits = output_bits
-        self._variant = variant
-        self._block_size = block_size
-        if variant == "select":
-            self._build_select()
-        else:
-            self._build_select_swap()
+        self._controlled = controlled
+        self._dirty_banks = dirty_banks
+        self._variant = selection.variant
+        self._block_size = selection.block_size
+        self._cache_uncompute = selection.cache_uncompute
+        self._phase_block_size = selection.phase_block_size
+        self._resources = plan.resources
+        self._num_ladder = plan.resources.num_ladder
+        self._ops = plan.ops
+        self._kernel = _mint_interpreter(plan.ops,
+                                         controlled=controlled,
+                                         has_work=False,
+                                         num_results=plan.num_results,
+                                         parity_masks=plan.parity_masks)
 
-    def _build_select(self) -> None:
-        entries = self._data
-        output_bits = self._output_bits
+    @property
+    def cache_uncompute(self) -> str:
+        """Resolved cache cleanup: none, traverse, or measure."""
+        return self._cache_uncompute
 
-        def body(k: int) -> list[tuple[str, int]]:
-            return [("x", t) for t in range(output_bits)
-                    if (entries[k] >> t) & 1]
+    @property
+    def phase_block_size(self) -> int | None:
+        """Resolved one-hot phase block width, or None without cache erasure."""
+        return self._phase_block_size
 
-        # X-only body: the walk is an involution, skip the adjoint mint.
-        walk = measured_unary_iteration_kernels(self._num_address,
-                                                len(entries),
-                                                body,
-                                                controlled=self._controlled,
-                                                include_adjoint=False)
-        self._kernel = walk.kernel
-        self._num_ladder = walk.num_ladder
-        self._toffoli_count = walk.toffoli_count
-        self._num_measurements = walk.num_measurements
-        self._ops = tuple(walk.ops)
-        self._tree_and_count = walk.tree_and_count
-
-    def _build_select_swap(self) -> None:
-        entries = self._data
-        b = self._output_bits
-        size = self._block_size
-        low_bits = size.bit_length() - 1
-        high_bits = self._num_address - low_bits
-        num_blocks = (len(entries) + size - 1) // size  # ceil division
-
-        def block_write(j: int) -> list[tuple[str, int]]:
-            gates = []
-            for i in range(size):
-                k = j * size + i
-                word = entries[k] if k < len(entries) else 0
-                gates.extend(
-                    ("x", i * b + t) for t in range(b) if (word >> t) & 1)
-            return gates
-
-        bodies = [block_write(j) for j in range(num_blocks)]
-        walk_ops = _emit_measured_walk(high_bits, num_blocks, self._controlled,
-                                       bodies, False)
-        # Rebase high address bits and store each block in the clean
-        # ladder view after the tree lines. Fixup CZ address operands
-        # must be rebased too: their phase matters on superpositions.
-        ops = []
-        for op in walk_ops:
-            opcode, a, bb, c = op
-            if opcode == _OP_BODY_X:
-                ops.append((_OP_CX_LADDER_LADDER, a, high_bits + bb, 0))
-                continue
-            operands = [a, bb, c]
-            for position in _MEASURED_ADDRESS_OPERANDS.get(opcode, ()):
-                operands[position] += low_bits
-            ops.append((opcode, *operands))
-        walk_ops = ops
-        tree_ands = sum(1 for op in walk_ops
-                        if op[0] in (_OP_CCX, _OP_CCX_CTRL))
-
-        # Binary routing network: after stage s (controlled on
-        # address[s]), block slot i (i = 0 mod 2^(s+1)) holds the entry
-        # at low-address offset (i + a_s 2^s + ... + a_0); slot 0 ends
-        # holding the selected entry. Each controlled register swap is b
-        # Fredkins: cswap(c; u, v) = cx(v, u) ccx(c, u, v) cx(v, u).
-        # u and v are block-register wires (which live in the ladder
-        # view — see the rebase note above), so the outer CNOTs of each
-        # Fredkin appear as _OP_CX_LADDER_LADDER: CNOTs purely between
-        # the data blocks, exactly the routing network's own gates.
-        swap_ops = []
-        for s in range(low_bits):
-            for i in range(0, size, 1 << (s + 1)):
-                for t in range(b):
-                    u = high_bits + i * b + t
-                    v = high_bits + (i + (1 << s)) * b + t
-                    swap_ops.append((_OP_CX_LADDER_LADDER, v, u, 0))
-                    swap_ops.append((_OP_CCX, u, s, v))
-                    swap_ops.append((_OP_CX_LADDER_LADDER, v, u, 0))
-        copy_ops = [(_OP_CX_LADDER_TARGET, high_bits + t, t, 0)
-                    for t in range(b)]
-
-        # W S C S^-1 W: write, route, copy, unroute, unwrite. The default
-        # clean bank gives the logical XOR directly.
-        echo = swap_ops + copy_ops + list(reversed(swap_ops))
-        ops = walk_ops + echo + walk_ops
-        if self._dirty_banks:
-            # W (S C S^-1) W restores the bank but copies its original
-            # selected word along with the data; a second S C S^-1 cancels
-            # exactly that borrowed contribution, even for entangled banks
-            # and coherent controls (W S C S^-1 W S C S^-1 in circuit order).
-            ops += echo
-        self._kernel = _mint_interpreter(ops,
-                                         controlled=self._controlled,
-                                         has_work=False)
-        self._num_ladder = high_bits + size * b
-        self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
-        self._num_measurements = sum(1 for op in ops
-                                     if op[0] in _MEASURED_OPCODES)
-        self._ops = tuple(ops)
-        self._tree_and_count = 2 * tree_ands
+    @property
+    def resources(self) -> QROMResources:
+        """Logical operation counts by stage, not compiled hardware costs."""
+        return self._resources
 
     @property
     def data(self) -> tuple[int, ...]:
@@ -333,7 +192,7 @@ class MeasuredQROM:
 
     @property
     def toffoli_count(self) -> int:
-        return self._toffoli_count
+        return self._resources.toffoli_count
 
     @property
     def dirty_banks(self) -> bool:
@@ -362,12 +221,12 @@ class MeasuredQROM:
         """Temporary clean-tree ANDs, counted from the walk tape (opcodes
         ``_OP_CCX`` and ``_OP_CCX_CTRL``); excludes coherent routing
         Toffolis and is independent of ``num_measurements``."""
-        return self._tree_and_count
+        return self._resources.tree_and_count
 
     @property
     def num_measurements(self) -> int:
-        """Unconditional X-basis tree measurements per application."""
-        return self._num_measurements
+        """Unconditional X-basis tree, cache, and one-hot measurements."""
+        return self._resources.num_measurements
 
     @property
     def kernel(self):
@@ -378,9 +237,9 @@ class MeasuredQROM:
 
     def describe(self) -> str:
         """Decode the minted lookup into a gate listing, one line per
-        instruction in execution order. Lines tagged ``# Toffoli`` are what
-        ``toffoli_count`` counts; lines tagged ``# measured uncompute`` are
-        the gadgets ``num_measurements`` counts."""
+        instruction in execution order. Lines tagged ``# Toffoli`` contribute
+        to ``toffoli_count``; measured uncompute and cache result lines
+        contribute to ``num_measurements``."""
         lines = [
             _OP_DESCRIPTIONS[op].format(a=a, b=b, c=c)
             for op, a, b, c in self._ops
@@ -395,5 +254,7 @@ class MeasuredQROM:
                 f"block_size={self._block_size}, "
                 f"controlled={self.controlled}, "
                 f"dirty_banks={self.dirty_banks}, "
+                f"cache_uncompute={self.cache_uncompute!r}, "
+                f"phase_block_size={self.phase_block_size}, "
                 f"toffolis={self.toffoli_count}, "
                 f"measurements={self.num_measurements})")

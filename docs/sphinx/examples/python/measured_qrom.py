@@ -16,8 +16,28 @@ from cudaq_algorithms.primitives import MeasuredQROM
 
 def main():
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
-    data = [3, 0, 1, 2, 1]
-    lookup = MeasuredQROM(data, 3, 2, variant="select_swap", block_size=2)
+    data = [2, 1, 3, 2, 0, 3, 1]
+    lookup = MeasuredQROM(data,
+                          3,
+                          2,
+                          variant="select_swap",
+                          block_size=2,
+                          cache_uncompute="measure",
+                          phase_block_size=2)
+    traversal = MeasuredQROM(data,
+                             3,
+                             2,
+                             variant="select_swap",
+                             block_size=2,
+                             cache_uncompute="traverse")
+    automatic = MeasuredQROM(data,
+                             3,
+                             2,
+                             variant="select_swap",
+                             block_size=2,
+                             cache_uncompute="auto")
+    print(f"cleanup strategies: {traversal.cache_uncompute}, "
+          f"{lookup.cache_uncompute}, {automatic.cache_uncompute}")
     apply_lookup = lookup.kernel
     n_ladder = lookup.num_ladder
     rng = np.random.default_rng(27)
@@ -57,8 +77,8 @@ def main():
     print(lookup)
     print(f"max complex-vector error: {error:.3e}")
     print(
-        f"clean ancillas: {lookup.num_ladder}; tree ANDs: {lookup.tree_and_count}"
-    )
+        f"clean ancillas: {lookup.num_ladder}; tree ANDs: {lookup.tree_and_count}; "
+        f"persistent outcome bits: {lookup.resources.classical_bits}")
     print(f"data[3] bit 1: {sum(values)}/{len(values)} ones")
 
 

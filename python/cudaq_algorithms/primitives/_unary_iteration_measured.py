@@ -41,6 +41,10 @@ guide for runnable examples.
 
 from __future__ import annotations
 
+from ._unary_iteration_ir import (_emit_body_gates, _emit_measured_walk,
+                                  _measured_walk_toffoli_count, infer_num_work,
+                                  materialize_bodies, validate_unary_inputs)
+
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
@@ -130,169 +134,6 @@ class MeasuredUnaryIterationKernels:
         return "\n".join([header] + lines)
 
 
-def _measured_walk_toffoli_count(num_address_bits: int,
-                                 num_items: int,
-                                 controlled: bool = False) -> int:
-    """Exact AND-compute count of the measured walk, without emitting it.
-
-    Descent pays one AND per level below the root (the root is linear
-    uncontrolled, one AND controlled), and the transition from leaf ``k``
-    recomputes one AND per trailing one of ``k``; sibling crossings are
-    CNOTs. On full trees this is ``N - 2`` uncontrolled, ``N - 1``
-    controlled. The measurement count equals this on any tree shape
-    (every AND-computed line is measured away exactly once).
-    """
-    # Sum_{k=0}^{m-2} trailing_ones(k) = m - 1 - popcount(m - 1).
-    return (num_items + num_address_bits - 2 + int(controlled) -
-            (num_items - 1).bit_count())
-
-
-def _emit_body_gates(ops: list, line: int, k: int,
-                     gates: Sequence[tuple]) -> None:
-    """Append the validated body instructions for address ``k``."""
-    for item in gates:
-        gate = item[0]
-        operands = item[1:]
-        if gate in _BODY_OPCODES:
-            if len(operands) != 1:
-                raise ValueError(f"body({k}) returned {gate!r} with "
-                                 f"{len(operands)} operands (expected 1)")
-            target = operands[0]
-            if int(target) != target or target < 0:
-                raise ValueError(f"body({k}) returned an invalid target "
-                                 f"qubit index {target!r}")
-            ops.append((_BODY_OPCODES[gate], line, int(target), 0))
-        elif gate in _EXTENDED_BODY_GATES:
-            opcode, kinds, leaf_slot = _EXTENDED_BODY_GATES[gate]
-            if len(operands) != len(kinds):
-                raise ValueError(
-                    f"body({k}) returned {gate!r} with {len(operands)} "
-                    f"operands (expected {len(kinds)})")
-            slots = [0, 0, 0]
-            cursor = 0
-            if leaf_slot is not None:
-                slots[leaf_slot] = line
-                cursor = leaf_slot + 1
-            for kind, operand in zip(kinds, operands):
-                if int(operand) != operand or operand < 0:
-                    name = "target" if kind == "t" else "work"
-                    raise ValueError(f"body({k}) returned an invalid {name} "
-                                     f"qubit index {operand!r}")
-                slots[cursor] = int(operand)
-                cursor += 1
-            ops.append((opcode, slots[0], slots[1], slots[2]))
-        else:
-            raise ValueError(
-                f"body({k}) returned unsupported gate {gate!r}: the "
-                "unary-iteration body instruction set is 'x', 'y', 'z' "
-                "plus the extended gates documented in "
-                "cudaq_algorithms.primitives._unary_iteration")
-
-
-def _emit_measured_walk(num_address_bits: int, num_items: int,
-                        controlled: bool, bodies: Sequence[Sequence[tuple]],
-                        reverse: bool) -> list:
-    """Flatten the measured retrace walk into (opcode, a, b, c) tuples.
-
-    ``reverse=True`` emits the inverse walk: the leaves are visited in
-    descending address order with each body's (self-inverse) gates
-    reversed. The transition machinery is direction-agnostic — between
-    consecutive leaves it measures away the levels below the common
-    ancestor against the *outgoing* leaf's bits and recomputes them
-    against the incoming leaf's bits — so one emitter serves both.
-    """
-    n = num_address_bits
-    ops: list[tuple[int, int, int, int]] = []
-
-    def emit(opcode: int, a: int = 0, b: int = 0, c: int = 0) -> None:
-        ops.append((opcode, a, b, c))
-
-    def wire(level: int) -> int:
-        """Address wire examined at 1-based tree level ``level``."""
-        return n - level
-
-    def bit_of(leaf: int, level: int) -> bool:
-        return ((leaf >> wire(level)) & 1) == 1
-
-    def compute_line(level: int, bit_is_one: bool) -> None:
-        """ladder[level-1] <- parent AND (address bit == value): the AND
-        compute (a Toffoli onto the clean line; linear at the
-        uncontrolled root)."""
-        a = wire(level)
-        if not bit_is_one:
-            emit(_OP_X_ADDR, a)
-        if level == 1:
-            if controlled:
-                emit(_OP_CCX_CTRL, 0, a, 0)
-            else:
-                emit(_OP_CX_ADDR_LADDER, a, 0)
-        else:
-            emit(_OP_CCX, level - 2, a, level - 1)
-        if not bit_is_one:
-            emit(_OP_X_ADDR, a)
-
-    def uncompute_line(level: int, bit_is_one: bool) -> None:
-        """Erase ladder[level-1] (currently parent AND (bit == value)):
-        the Gidney measured uncompute, X-conjugated as the compute was.
-        The uncontrolled root is linear and uncomputed by its own CNOT
-        (no measurement)."""
-        a = wire(level)
-        if level == 1 and not controlled:
-            compute_line(level, bit_is_one)  # linear, self-inverse
-            return
-        if not bit_is_one:
-            emit(_OP_X_ADDR, a)
-        if level == 1:
-            emit(_OP_MEAS_UNCOMPUTE_CTRL, 0, 0, a)
-        else:
-            emit(_OP_MEAS_UNCOMPUTE, level - 1, level - 2, a)
-        if not bit_is_one:
-            emit(_OP_X_ADDR, a)
-
-    def cross_to_sibling(level: int) -> None:
-        """Flip ladder[level-1] between the two siblings: given the
-        parent, exactly one of the two is active, so their XOR is the
-        parent line itself."""
-        if level == 1:
-            if controlled:
-                emit(_OP_CX_CTRL_LADDER, 0, 0)
-            else:
-                emit(_OP_X_LADDER, 0)
-        else:
-            emit(_OP_CX_LADDER_LADDER, level - 2, level - 1)
-
-    def body_at(k: int) -> None:
-        gates = bodies[k]
-        if reverse:
-            gates = list(reversed(gates))
-        _emit_body_gates(ops, n - 1, k, gates)
-
-    leaves = list(range(num_items))
-    if reverse:
-        leaves.reverse()
-
-    # Descent to the first leaf.
-    for level in range(1, n + 1):
-        compute_line(level, bit_of(leaves[0], level))
-    body_at(leaves[0])
-
-    for previous, leaf in zip(leaves, leaves[1:]):
-        # Retrace up to the common ancestor, measuring the path away ...
-        d = n - (previous ^ leaf).bit_length() + 1  # topmost changed level
-        for level in range(n, d, -1):
-            uncompute_line(level, bit_of(previous, level))
-        # ... cross to the sibling subtree, and descend into it.
-        cross_to_sibling(d)
-        for level in range(d + 1, n + 1):
-            compute_line(level, bit_of(leaf, level))
-        body_at(leaf)
-
-    # Measure the final path away.
-    for level in range(n, 0, -1):
-        uncompute_line(level, bit_of(leaves[-1], level))
-    return ops
-
-
 def measured_unary_iteration_kernels(
         num_address_bits: int,
         num_items: int,
@@ -335,33 +176,15 @@ def measured_unary_iteration_kernels(
         ``work`` view to the kernel signature even when the body never
         touches it.
     """
-    if int(num_address_bits) != num_address_bits or num_address_bits < 1:
-        raise ValueError("num_address_bits must be a positive integer")
-    num_address_bits = int(num_address_bits)
-    capacity = 1 << num_address_bits
-    if int(num_items) != num_items or not 1 <= num_items <= capacity:
-        raise ValueError(
-            f"num_items must be an integer in [1, 2^num_address_bits = "
-            f"{capacity}], got {num_items}")
-    num_items = int(num_items)
-
-    bodies = [list(body(k)) for k in range(num_items)]
+    num_address_bits, num_items = validate_unary_inputs(
+        num_address_bits, num_items)
+    bodies = materialize_bodies(body, num_items)
     ops = _emit_measured_walk(num_address_bits,
                               num_items,
                               bool(controlled),
                               bodies,
                               reverse=False)
-    required_work = 0
-    for op in ops:
-        for position in _WORK_OPERANDS.get(op[0], ()):
-            required_work = max(required_work, op[1 + position] + 1)
-    if num_work is None:
-        num_work = required_work
-    if int(num_work) != num_work or num_work < required_work:
-        raise ValueError(
-            f"num_work must be an integer >= the body's work usage "
-            f"({required_work}), got {num_work}")
-    num_work = int(num_work)
+    num_work = infer_num_work(ops, num_work)
 
     toffolis = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
     measurements = sum(1 for op in ops if op[0] in _MEASURED_OPCODES)

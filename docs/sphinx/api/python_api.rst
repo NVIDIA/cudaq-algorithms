@@ -47,6 +47,9 @@ Trotter
 Circuit primitives
 ==================
 
+See :doc:`../guide/measured_qrom` for measured lookup cleanup strategies,
+clean and borrowed workspace contracts, and logical resource accounting.
+
 .. automodule:: cudaq_algorithms.primitives
    :members:
 

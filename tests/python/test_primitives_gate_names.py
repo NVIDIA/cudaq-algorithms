@@ -16,7 +16,7 @@ from cudaq_algorithms.primitives import (measured_unary_iteration_kernels,
                                          unary_iteration_kernels)
 
 
-@pytest.mark.parametrize("name", ["h", "mz"])
+@pytest.mark.parametrize("name", ["h", "mz", "x", "z"])
 @pytest.mark.parametrize("measured", [False, True])
 @pytest.mark.parametrize("controlled,has_work", [(False, False), (True, False),
                                                  (False, True), (True, True)])
@@ -48,6 +48,18 @@ def _run_lookup(name, measured, controlled, has_work):
 
         @cudaq.kernel
         def h(qubits: cudaq.qview):
+            x(qubits[0])
+
+    elif name == "x":
+
+        @cudaq.kernel
+        def x(qubits: cudaq.qview):
+            z(qubits[0])
+
+    elif name == "z":
+
+        @cudaq.kernel
+        def z(qubits: cudaq.qview):
             x(qubits[0])
 
     else:
