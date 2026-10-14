@@ -163,11 +163,18 @@ different register and uncomputation model. In Appendices A/B,
 repeated dirty offsets in the outputs. Measurement disposes temporary
 ANDs, rather than erasing the borrowed bank.
 
-Matching those costs would additionally require the retained-bank/cache
-schedule across caller operations and temporary-AND fanout Restore with
-measurement/feed-forward accounting. This implementation instead uses
-the explicit coherent echoes above and checks arbitrary entangled bank
-restoration. The optimized cache and adaptive Restore form a separate
-construction; they are not obtained by relaxing the clean walk-prefix
-requirement. Balanced packets here also differ from Appendix A's fixed
-packet width followed by a shorter remainder.
+``MeasuredQROM(variant="select_copy")`` provides the separate adaptive
+construction, including temporary-AND fanout Restore and fixed-width packets.
+``RetainedQROMChain`` provides a full-word retained-bank/cache schedule with
+explicit begin/step/end boundaries. Their complete operation ledgers include
+measurements, borrowed qubits, endpoint work and, for dirty packet Restore,
+one additional clean scratch qubit. See :doc:`measured_qrom` for these
+contracts and their difference from the paper's accounting. The coherent
+``QROM`` and ``QROMChain`` constructions above retain their existing defaults.
+Balanced coherent packets differ from Appendix A's fixed packet width followed
+by a shorter remainder; ``packet_width`` belongs to the measured API.
+
+``AliasSamplingPrepare`` continues to use unitary QROM. Its PREPARE and adjoint
+remain unitary; choosing a measured lookup elsewhere never changes them.
+Adaptive alias preparation would require its own contract and is not provided
+by these measured lookup options.

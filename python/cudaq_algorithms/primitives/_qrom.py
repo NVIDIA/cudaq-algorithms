@@ -111,21 +111,14 @@ from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CCX_ADDR_ADDR,
                                _emit_walk, _mint_interpreter,
                                _walk_toffoli_count, unary_iteration_kernels)
 
+from ._qrom_common import BlockGeometry, rebase_block_walk, validate_qrom_data
+from ._qrom_plan import QROMResources, QROMStageResources
+from ._unary_iteration_ir import _ADDRESS_OPERANDS
+
 __all__ = ["QROM"]
 
 _VARIANTS = ("auto", "select", "select_swap", "select_copy")
 _BLOCK_VARIANTS = ("select_swap", "select_copy")
-
-# Walk opcodes whose (a, b) operands index the address register, used to
-# shift the block-index walk onto the high address bits.
-_ADDRESS_OPERANDS = {
-    _OP_X_ADDR: (0, ),
-    _OP_CX_ADDR_LADDER: (0, ),
-    _OP_CCX: (1, ),
-    _OP_CCX_CTRL: (1, ),
-    _OP_CX_ADDR_ADDR: (0, 1),
-    _OP_CCX_ADDR_ADDR: (0, 1),
-}
 
 
 def _select_swap_cost(address_bits: int,
@@ -175,32 +168,10 @@ def _select_copy_ancillas(address_bits: int,
 
 
 def _normalize_table(data, address_bits, output_bits):
-    """Validate original inputs once, before any XOR preprocessing."""
-    if int(address_bits) != address_bits or address_bits < 1:
-        raise ValueError("address_bits must be a positive integer")
-    if int(output_bits) != output_bits or output_bits < 1:
-        raise ValueError("output_bits must be a positive integer")
-    address_bits = int(address_bits)
-    output_bits = int(output_bits)
-    # Materialize first: a single-pass iterable must not be consumed
-    # by one check and leave the others looking at an empty iterator.
-    raw = list(data)
-    if len(raw) == 0:
-        raise ValueError("data must be non-empty")
-    if any(int(v) != v for v in raw):
-        raise ValueError("data entries must be integers")
-    entries = [int(v) for v in raw]
-    if len(entries) > (1 << address_bits):
-        raise ValueError(f"data has {len(entries)} entries but address_bits="
-                         f"{address_bits} addresses only {1 << address_bits}")
-    if any(v < 0 for v in entries):
-        raise ValueError("data entries must be non-negative")
-    if max(entries) >= (1 << output_bits):
-        raise ValueError(
-            f"data entry {max(entries)} does not fit in output_bits="
-            f"{output_bits} bits (max representable "
-            f"{(1 << output_bits) - 1})")
-    return entries, address_bits, output_bits
+    """Compatibility alias for shared single-pass validation."""
+    entries, address_bits, output_bits = validate_qrom_data(
+        data, address_bits, output_bits)
+    return list(entries), address_bits, output_bits
 
 
 class QROM:
@@ -403,9 +374,10 @@ class QROM:
         entries = self._data
         b = self._output_bits
         size = self._block_size
-        low_bits = size.bit_length() - 1
-        high_bits = self._num_address - low_bits
-        num_blocks = -(-len(entries) // size)
+        geometry = BlockGeometry(self._num_address, b, len(entries), size)
+        low_bits, high_bits, num_blocks = (geometry.low_bits,
+                                           geometry.high_bits,
+                                           geometry.num_blocks)
 
         def block_write(j: int) -> list[tuple[str, int]]:
             gates = []
@@ -417,22 +389,11 @@ class QROM:
             return gates
 
         walk_ops = _emit_walk(high_bits, num_blocks, False, block_write)
-        # Rebase the walk onto the combined kernel: block-index address
-        # wires sit above the low routing bits, and the walk's "target"
-        # (the block registers) lives in the ladder view after the walk
-        # lines, so the leaf-controlled body X becomes a ladder-to-ladder
-        # CNOT.
-        ops = []
-        for op in walk_ops:
-            opcode, a, bb, c = op
-            if opcode == _OP_BODY_X:
-                ops.append((_OP_CX_LADDER_LADDER, a, high_bits + bb, 0))
-                continue
-            operands = [a, bb, c]
-            for position in _ADDRESS_OPERANDS.get(opcode, ()):
-                operands[position] += low_bits
-            ops.append((opcode, *operands))
-        walk_ops = ops
+        walk_ops = list(
+            rebase_block_walk(walk_ops,
+                              address_offset=low_bits,
+                              output_bits=0,
+                              bank_offset=high_bits))
 
         # Binary routing network: after stage s (controlled on
         # address[s]), block slot i (i = 0 mod 2^(s+1)) holds the entry
@@ -469,9 +430,10 @@ class QROM:
         b = self._output_bits
         size = self._block_size
         alpha = self._alpha
-        low_bits = size.bit_length() - 1
-        high_bits = self._num_address - low_bits
-        num_blocks = -(-len(entries) // size)
+        geometry = BlockGeometry(self._num_address, b, len(entries), size)
+        low_bits, high_bits, num_blocks = (geometry.low_bits,
+                                           geometry.high_bits,
+                                           geometry.num_blocks)
         # The block-index and low-address walks run sequentially and both
         # restore their ladder lines, so they share one line pool; the
         # B - 1 block registers (block 0 rides the direct output write)
@@ -520,26 +482,12 @@ class QROM:
             return body
 
         def block_walk(prev: int | None, nxt: int | None) -> list:
-            # Rebase the block-index walk exactly as select_swap does
-            # (walk lines lead the ladder view, block-index address wires
-            # sit above the low bits); direct output writes stay
-            # leaf-controlled body X's, register writes become
-            # ladder-to-ladder CNOTs.
-            ops = []
-            for op in _emit_walk(high_bits, num_blocks, False,
-                                 block_body(prev, nxt)):
-                opcode, a, bb, c = op
-                if opcode == _OP_BODY_X:
-                    if bb < b:
-                        ops.append((_OP_BODY_X, a, bb, 0))
-                    else:
-                        ops.append((_OP_CX_LADDER_LADDER, a, pool + bb - b, 0))
-                    continue
-                operands = [a, bb, c]
-                for position in _ADDRESS_OPERANDS.get(opcode, ()):
-                    operands[position] += low_bits
-                ops.append((opcode, *operands))
-            return ops
+            return list(
+                rebase_block_walk(_emit_walk(high_bits, num_blocks, False,
+                                             block_body(prev, nxt)),
+                                  address_offset=low_bits,
+                                  output_bits=b,
+                                  bank_offset=pool))
 
         def copy_walk(s: int) -> list:
             # The multiplexed copy for packet s: one walk over the low
@@ -594,6 +542,13 @@ class QROM:
         self._num_ladder = pool + (size - 1) * packet
         self._ops = tuple(ops)
         self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
+
+    @property
+    def resources(self) -> QROMResources:
+        """Logical coherent tape accounting for every construction and echo."""
+        return QROMResources(
+            (QROMStageResources(self.variant, self.toffoli_count), ),
+            self.num_clean, self.num_dirty)
 
     @property
     def data(self) -> tuple[int, ...]:

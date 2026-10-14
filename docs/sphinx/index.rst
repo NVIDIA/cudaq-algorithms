@@ -24,6 +24,7 @@ kernels.
    guide/qubitization_qsvt
    guide/state_prep
    guide/qrom
+   guide/measured_qrom
 
 .. toctree::
    :caption: Examples

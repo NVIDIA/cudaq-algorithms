@@ -17,12 +17,11 @@ ladder (clean lines plus any bank). ``QROMChain`` fuses adjacent
 unload/load pairs through XOR difference tables while preserving the
 public QROM kernel property.
 
-Everything here is strictly unitary: the papers' headline Toffoli counts
-assume measurement-based ancilla uncomputation, which this library does
-not use (primitives must stay statevector-testable and
-inverse-composable); the module docstrings state the coherent costs the
-minted kernels actually have, and the resource tests pin them against
-the compiler.
+``MeasuredQROM``, ``measured_unary_iteration_kernels`` and
+``RetainedQROMChain`` explicitly opt into measurement and classical feedback.
+Coherent ``QROM``, ``QROMChain`` and alias PREPARE remain unitary. Measured
+resources separate logical Toffolis, clean temporary ANDs, measurements and
+workspace; they are not hardware or synthesized T-gate costs.
 
 The reversible integer arithmetic device kernels (:mod:`._arithmetic`)
 are the in-place little-endian adders and comparators the lookup-based
@@ -56,12 +55,19 @@ from ._arithmetic import (add_constant, add_constant_qft, add_register,
                           subtract_constant, subtract_constant_qft,
                           subtract_register)
 from ._qrom import QROM
+from ._qrom_measured import MeasuredQROM
+from ._qrom_retained import RetainedQROMChain
+from ._unary_iteration_measured import MeasuredUnaryIterationKernels, measured_unary_iteration_kernels
 from ._qrom_chain import QROMChain
 from ._unary_iteration import UnaryIterationKernels, unary_iteration_kernels
 
 __all__ = [
     "AliasSamplingPrepare",
     "QROM",
+    "MeasuredQROM",
+    "RetainedQROMChain",
+    "MeasuredUnaryIterationKernels",
+    "measured_unary_iteration_kernels",
     "QROMChain",
     "UnaryIterationKernels",
     "add_constant",
