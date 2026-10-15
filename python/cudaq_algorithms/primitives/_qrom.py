@@ -80,28 +80,25 @@ looser than the physics:
 
 The address register is likewise split by convention, low bits first:
 ``address[0 .. low)`` are the routing bits (low = log2(B)),
-``address[low ..)`` the block index the walk iterates. The block-index
-walk is emitted by ``_emit_walk`` as if its address register started at
-wire 0, then *rebased*: every address operand is shifted up by ``low``
-(the ``_ADDRESS_OPERANDS`` table names which operand slots to shift).
+``address[low ..)`` the block index the walk iterates.
 
-**Why "ladder-to-ladder CNOTs" appear** (``_OP_CX_LADDER_LADDER``):
-the interpreter's opcodes name *registers*, not roles, so this one
-opcode serves three distinct jobs:
+``select_swap`` is built by **composition** (CUDA-Q >= 0.16: kernels
+calling minted kernels compose and ``cudaq.control`` propagates through
+the calls): a parent kernel carves the honest sub-views out of
+``address`` and ``ladder`` with qview slices and calls three
+sub-kernels, ``W S C S^-1 W``:
 
-1. In the plain walk: parent-line -> child-line CNOTs (sibling
-   crossings) — genuinely ladder-to-ladder.
-2. In the ``select_swap`` write stage: ``_emit_walk`` emits the block
-   writes as leaf-controlled body X's onto its *target* register, but
-   here the write destination is the block registers, which live in
-   the ``ladder`` view — so each ``_OP_BODY_X`` is rewritten to a
-   ladder-to-ladder CNOT from the word line onto a block-register
-   qubit (the rebase loop in ``_build_select_swap``).
-3. In the routing network: each controlled register swap is ``b``
-   Fredkins, decomposed ``cswap(c; u, v) = cx(v,u) ccx(u,c,v)
-   cx(v,u)`` — the outer CNOTs connect two block-register qubits,
-   again both inside ``ladder``. The middle Toffoli reuses the walk's
-   ``_OP_CCX`` shape with a low address bit as its second control.
+- ``W`` — the block-index walk, a plain
+  :func:`~cudaq_algorithms.primitives.unary_iteration_kernels` mint over
+  the high address bits whose *target view is the block registers*: the
+  per-block body X's write the visited block's ``B`` entries.
+- ``S`` — a dedicated routing kernel over ``(low address bits,
+  blocks)``: ``low`` rounds of Fredkins, each controlled register swap
+  being ``b`` Fredkins decomposed ``cswap(c; u, v) = cx(v,u) ccx(u,c,v)
+  cx(v,u)``. ``S^-1`` is the same Fredkin list reversed (each Fredkin
+  is self-inverse).
+- ``C`` — ``b`` CNOTs copying block slot 0 onto ``output``, inline in
+  the parent.
 
 End-to-end, ``select_swap`` is the five-step program (with
 ``h + low = address_bits``, ``B = 2^low`` entries per block):
@@ -123,27 +120,38 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CCX_ADDR_ADDR,
-                               _OP_CCX_CTRL, _OP_CX_ADDR_ADDR,
-                               _OP_CX_ADDR_LADDER, _OP_CX_LADDER_LADDER,
-                               _OP_CX_LADDER_TARGET, _OP_X_ADDR,
-                               _TOFFOLI_OPCODES, _emit_walk, _mint_interpreter,
-                               _walk_toffoli_count, unary_iteration_kernels)
+import cudaq
+
+from ._unary_iteration import (_retain, _walk_toffoli_count,
+                               unary_iteration_kernels)
 
 __all__ = ["QROM"]
 
 _VARIANTS = ("auto", "select", "select_swap")
 
-# Walk opcodes whose (a, b) operands index the address register, used to
-# shift the block-index walk onto the high address bits.
-_ADDRESS_OPERANDS = {
-    _OP_X_ADDR: (0, ),
-    _OP_CX_ADDR_LADDER: (0, ),
-    _OP_CCX: (1, ),
-    _OP_CCX_CTRL: (1, ),
-    _OP_CX_ADDR_ADDR: (0, 1),
-    _OP_CCX_ADDR_ADDR: (0, 1),
-}
+
+def _mint_route(swap_c: list, swap_u: list, swap_v: list):
+    """Mint the routing kernel: Fredkin ``i`` swaps ``blocks[swap_u[i]]``
+    and ``blocks[swap_v[i]]`` controlled on ``low[swap_c[i]]``.
+
+    The inverse network is this same mint over the reversed lists (each
+    Fredkin is self-inverse).
+    """
+    num_swaps = len(swap_c)
+
+    @cudaq.kernel
+    def primitives_qrom_route(low: cudaq.qview, blocks: cudaq.qview):
+        for i in range(num_swaps):
+            c = swap_c[i]
+            u = swap_u[i]
+            v = swap_v[i]
+            # cswap(low[c]; blocks[u], blocks[v]) via one Toffoli.
+            cx(blocks[v], blocks[u])
+            x.ctrl(blocks[u], low[c], blocks[v])
+            cx(blocks[v], blocks[u])
+
+    _retain(primitives_qrom_route)
+    return primitives_qrom_route
 
 
 def _select_swap_cost(address_bits: int, num_entries: int, output_bits: int,
@@ -304,59 +312,59 @@ class QROM:
                     ("x", i * b + t) for t in range(b) if (word >> t) & 1)
             return gates
 
-        walk_ops = _emit_walk(high_bits, num_blocks, False, block_write)
         # This IS the textbook SELECT-SWAP: a unary-iteration walk over
-        # the high (block-index) bits whose leaf action writes each
-        # block, then a low-bit-controlled swap network routes the
-        # selected entry. We reuse the walk EMITTER rather than a minted
-        # walk kernel because CUDA-Q kernels cannot call kernels: the
-        # whole lookup must be one flat tape, so the walk's instructions
-        # are rebased into the combined kernel's wire layout here.
-        # In that layout (see "select_swap register layout" in
-        # _unary_iteration's docstring) the block registers ride in the
-        # ladder VIEW after the walk lines — "ladder" names the wire
-        # bundle, not a role — so the walk's leaf-controlled block-write
-        # X lands as a CNOT between two ladder-view wires.
-        ops = []
-        for op in walk_ops:
-            opcode, a, bb, c = op
-            if opcode == _OP_BODY_X:
-                ops.append((_OP_CX_LADDER_LADDER, a, high_bits + bb, 0))
-                continue
-            operands = [a, bb, c]
-            for position in _ADDRESS_OPERANDS.get(opcode, ()):
-                operands[position] += low_bits
-            ops.append((opcode, *operands))
-        walk_ops = ops
+        # the high (block-index) bits whose target view is the block
+        # registers (the leaf action writes each visited block), then a
+        # low-bit-controlled swap network routes the selected entry.
+        # X-only body: the walk is an involution, skip the adjoint mint.
+        walk = unary_iteration_kernels(high_bits,
+                                       num_blocks,
+                                       block_write,
+                                       include_adjoint=False)
+        walk_kernel = walk.kernel
 
         # Binary routing network: after stage s (controlled on
         # address[s]), block slot i (i = 0 mod 2^(s+1)) holds the entry
         # at low-address offset (i + a_s 2^s + ... + a_0); slot 0 ends
         # holding the selected entry. Each controlled register swap is b
-        # Fredkins: cswap(c; u, v) = cx(v, u) ccx(c, u, v) cx(v, u).
-        # u and v are block-register wires (which live in the ladder
-        # view — see the rebase note above), so the outer CNOTs of each
-        # Fredkin appear as _OP_CX_LADDER_LADDER: CNOTs purely between
-        # the data blocks, exactly the routing network's own gates.
-        swap_ops = []
+        # Fredkins (one Toffoli each).
+        swap_c: list[int] = []
+        swap_u: list[int] = []
+        swap_v: list[int] = []
         for s in range(low_bits):
             for i in range(0, size, 1 << (s + 1)):
                 for t in range(b):
-                    u = high_bits + i * b + t
-                    v = high_bits + (i + (1 << s)) * b + t
-                    swap_ops.append((_OP_CX_LADDER_LADDER, v, u, 0))
-                    swap_ops.append((_OP_CCX, u, s, v))
-                    swap_ops.append((_OP_CX_LADDER_LADDER, v, u, 0))
-        copy_ops = [(_OP_CX_LADDER_TARGET, high_bits + t, t, 0)
-                    for t in range(b)]
+                    swap_c.append(s)
+                    swap_u.append(i * b + t)
+                    swap_v.append((i + (1 << s)) * b + t)
+        route_kernel = _mint_route(swap_c, swap_u, swap_v)
+        unroute_kernel = _mint_route(list(reversed(swap_c)),
+                                     list(reversed(swap_u)),
+                                     list(reversed(swap_v)))
 
         # W S C S^-1 W: write, route, copy, unroute, unwrite — clean
-        # ancillas and an exactly self-inverse lookup.
-        ops = (walk_ops + swap_ops + copy_ops + list(reversed(swap_ops)) +
-               walk_ops)
-        self._kernel = _mint_interpreter(ops, controlled=False, has_work=False)
+        # ancillas and an exactly self-inverse lookup. The parent carves
+        # the documented sub-views out of the public (address, ladder,
+        # output) signature and composes the sub-kernels.
+        @cudaq.kernel
+        def primitives_qrom_select_swap(address: cudaq.qview,
+                                        ladder: cudaq.qview,
+                                        output: cudaq.qview):
+            low = address[0:low_bits]
+            high = address[low_bits:]
+            lines = ladder[0:high_bits]
+            blocks = ladder[high_bits:]
+            walk_kernel(high, lines, blocks)
+            route_kernel(low, blocks)
+            for t in range(b):
+                cx(blocks[t], output[t])
+            unroute_kernel(low, blocks)
+            walk_kernel(high, lines, blocks)
+
+        _retain(primitives_qrom_select_swap)
+        self._kernel = primitives_qrom_select_swap
         self._num_ladder = high_bits + size * b
-        self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
+        self._toffoli_count = 2 * walk.toffoli_count + 2 * len(swap_c)
 
     @property
     def data(self) -> tuple[int, ...]:
