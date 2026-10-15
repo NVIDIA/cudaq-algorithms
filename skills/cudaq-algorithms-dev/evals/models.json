@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "description": "Historical NVIDIA Build model IDs. Preflight verifies current access; no fallback model is selected automatically.",
+  "models": [
+    {"id": "nemotron-ultra", "model": "nvidia/nemotron-3-ultra-550b-a55b", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {"chat_template_kwargs": {"enable_thinking": true, "force_nonempty_content": true}}},
+    {"id": "kimi", "model": "moonshotai/kimi-k3", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}},
+    {"id": "muse", "model": "meta/muse-glimmer-30b", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}},
+    {"id": "glm", "model": "z-ai/glm-5.3", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {"reasoning_effort": "low"}},
+    {"id": "glm-flash", "model": "z-ai/glm-5.3-flash", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {"reasoning_effort": "low"}},
+    {"id": "deepseek", "model": "deepseek-ai/deepseek-v4.1-flash", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}},
+    {"id": "nemotron-lightning", "model": "nvidia/nemotron-3.5-lightning-30b-a3b", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}},
+    {"id": "nemotron-nano", "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}},
+    {"id": "gpt-oss", "model": "openai/gpt-oss-20b", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}},
+    {"id": "laguna", "model": "poolside/laguna-xs-2.1", "base_url": "https://integrate.api.nvidia.com/v1", "api_key_env": "NVIDIA_API_KEY", "max_tokens": 8192, "extra_body": {}}
+  ]
+}

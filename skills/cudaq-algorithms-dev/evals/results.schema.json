@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CUDA-Q Algorithms paired evaluation results",
+  "description": "Recorded evidence for five paired repetitions of the canonical suite. report_eval.py additionally validates suite identity, coverage, evidence files and resource relationships.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite_sha256", "source_revision", "skill_revision", "skill_label", "environment", "protocol", "case_contracts", "models"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "suite_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_revision": {"$ref": "#/$defs/nonemptyString"},
+    "skill_revision": {"$ref": "#/$defs/nonemptyString"},
+    "skill_label": {"$ref": "#/$defs/nonemptyString"},
+    "environment": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string"},
+      "description": "Record CUDA-Q, CUDA-Q Algorithms, Python, dependencies, simulator target and precision. Keys describe the environment and values are strings."
+    },
+    "protocol": {"$ref": "#/$defs/protocol"},
+    "case_contracts": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/nonemptyString"},
+      "additionalProperties": {"$ref": "#/$defs/caseContract"},
+      "description": "Exactly the canonical case IDs; preregister checks and applicability identically for both arms and every model."
+    },
+    "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
+  },
+  "$defs": {
+    "nonemptyString": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "nullableString": {"anyOf": [{"$ref": "#/$defs/nonemptyString"}, {"type": "null"}]},
+    "nonnegativeNumber": {"type": "number", "minimum": 0},
+    "nullableNumber": {"type": ["number", "null"], "minimum": 0},
+    "nullableCount": {"type": ["integer", "null"], "minimum": 0},
+    "nullableBoolean": {"type": ["boolean", "null"]},
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seeds", "budget_seconds", "tool_call_limit", "skill_exposure", "time_regression_limit", "token_regression_limit"],
+      "properties": {
+        "seeds": {
+          "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+          "items": {"type": "integer"},
+          "description": "Five independent paired repetitions, without stopping on success or selecting a best attempt. Seeds identify pairs; providers need not be deterministic."
+        },
+        "budget_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "tool_call_limit": {"type": ["integer", "null"], "minimum": 1},
+        "skill_exposure": {"enum": ["listed", "injected"]},
+        "time_regression_limit": {"type": ["number", "null"], "minimum": 1},
+        "token_regression_limit": {"type": ["number", "null"], "minimum": 1}
+      }
+    },
+    "caseContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable_check", "implementation", "rationale"],
+      "properties": {
+        "executable_check": {"type": "boolean"},
+        "implementation": {"type": "boolean"},
+        "rationale": {"$ref": "#/$defs/nonemptyString"}
+      },
+      "if": {"properties": {"implementation": {"const": true}}},
+      "then": {"properties": {"executable_check": {"const": true}}}
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tier", "wall_seconds", "notes", "runs"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonemptyString"},
+        "tier": {"enum": ["frontier", "mid"]},
+        "wall_seconds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseline", "skill"],
+          "properties": {
+            "baseline": {"$ref": "#/$defs/nonnegativeNumber"},
+            "skill": {"$ref": "#/$defs/nonnegativeNumber"}
+          },
+          "description": "Measured elapsed campaign time for each arm; not the sum of task durations."
+        },
+        "notes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["regression", "science", "controls"],
+          "properties": {
+            "regression": {"$ref": "#/$defs/nonemptyString"},
+            "science": {"$ref": "#/$defs/nonemptyString"},
+            "controls": {"$ref": "#/$defs/nonemptyString"}
+          },
+          "description": "Explain changed or misleading task paths with case IDs and evidence references."
+        },
+        "runs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/run"}}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "seed", "arm", "outcome", "skill_opened", "assertions", "expected_output", "claimed_success", "verification", "verification_evidence", "transcript", "grading_evidence", "critical_failures", "tripwires", "resources", "verified_completion"],
+      "properties": {
+        "case_id": {"$ref": "#/$defs/nonemptyString"},
+        "seed": {"type": "integer"},
+        "arm": {"enum": ["baseline", "skill"]},
+        "outcome": {"enum": ["answered", "budget_timeout", "tool_limit", "backend_error", "error", "no_answer"]},
+        "skill_opened": {"$ref": "#/$defs/nullableBoolean"},
+        "assertions": {
+          "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nullableBoolean"},
+          "description": "One boolean or null per original assertion, in its original order. Null means ungraded."
+        },
+        "expected_output": {"$ref": "#/$defs/nullableBoolean"},
+        "claimed_success": {"$ref": "#/$defs/nullableBoolean"},
+        "verification": {"enum": ["passed", "failed", "not_run", "not_applicable"]},
+        "verification_evidence": {
+          "$ref": "#/$defs/nullableString",
+          "description": "Relative path to an existing, nonempty executable-check log resolving inside the results bundle directory; required for passed/failed and null otherwise."
+        },
+        "transcript": {
+          "$ref": "#/$defs/nonemptyString",
+          "description": "Relative path to an existing, nonempty transcript file resolving inside the results bundle directory."
+        },
+        "grading_evidence": {
+          "$ref": "#/$defs/nullableString",
+          "description": "Relative path to an existing, nonempty grading-evidence file resolving inside the bundle directory; required when assertions, expected output, critical failures, tripwires or executable checks are assessed."
+        },
+        "critical_failures": {"$ref": "#/$defs/nullableCount"},
+        "tripwires": {"$ref": "#/$defs/tripwires"},
+        "resources": {"$ref": "#/$defs/resources"},
+        "verified_completion": {"anyOf": [{"$ref": "#/$defs/verifiedCompletion"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"arm": {"const": "baseline"}}},
+          "then": {"properties": {"skill_opened": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"verification": {"enum": ["passed", "failed"]}}},
+          "then": {"properties": {"verification_evidence": {"$ref": "#/$defs/nonemptyString"}, "grading_evidence": {"$ref": "#/$defs/nonemptyString"}}},
+          "else": {"properties": {"verification_evidence": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"verification": {"const": "passed"}}},
+          "then": {"properties": {"verified_completion": {"$ref": "#/$defs/verifiedCompletion"}}},
+          "else": {"properties": {"verified_completion": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"outcome": {"not": {"const": "answered"}}}},
+          "then": {"properties": {
+            "claimed_success": {"enum": [false, null]},
+            "expected_output": {"enum": [false, null]},
+            "assertions": {"items": {"enum": [false, null]}}
+          }}
+        }
+      ]
+    },
+    "tripwires": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controlled_measurement", "sample_feedback", "heredoc_kernel", "remint_in_loop", "partial_statevector"],
+      "properties": {
+        "controlled_measurement": {"$ref": "#/$defs/nullableCount"},
+        "sample_feedback": {"$ref": "#/$defs/nullableCount"},
+        "heredoc_kernel": {"$ref": "#/$defs/nullableCount"},
+        "remint_in_loop": {"$ref": "#/$defs/nullableCount"},
+        "partial_statevector": {"$ref": "#/$defs/nullableCount"}
+      },
+      "description": "Source-grounded occurrence counts. Zero means the transcript was assessed; null means unknown, never an implicit zero."
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_seconds", "wall_seconds", "backend_wait_seconds", "tokens", "tool_calls", "cost_usd"],
+      "properties": {
+        "task_seconds": {"$ref": "#/$defs/nonnegativeNumber"},
+        "wall_seconds": {"$ref": "#/$defs/nonnegativeNumber"},
+        "backend_wait_seconds": {"$ref": "#/$defs/nonnegativeNumber"},
+        "tokens": {"$ref": "#/$defs/nullableCount"},
+        "tool_calls": {"$ref": "#/$defs/nullableCount"},
+        "cost_usd": {"$ref": "#/$defs/nullableNumber"}
+      }
+    },
+    "verifiedCompletion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_seconds", "wall_seconds", "tokens", "tool_calls", "failed_attempts"],
+      "properties": {
+        "task_seconds": {"$ref": "#/$defs/nonnegativeNumber"},
+        "wall_seconds": {"$ref": "#/$defs/nonnegativeNumber"},
+        "tokens": {"$ref": "#/$defs/nullableCount"},
+        "tool_calls": {"$ref": "#/$defs/nullableCount"},
+        "failed_attempts": {"type": "integer", "minimum": 0}
+      },
+      "description": "Cumulative resources through the first successful executable check, including prior failed attempts within this run."
+    }
+  }
+}
