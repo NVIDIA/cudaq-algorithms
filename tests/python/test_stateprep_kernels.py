@@ -95,6 +95,15 @@ def _thetas(seed, count):
     return (0.4 * rng.standard_normal(count)).tolist()
 
 
+def _uccsd_angles(recipe, num_qubits, num_electrons, count):
+    # "random" draws both signs. "arithmetic" keeps every |theta| >= 0.2.
+    if recipe == "random":
+        return _thetas(num_qubits * 100 + num_electrons, count)
+    if recipe == "arithmetic":
+        return [0.2 + 0.01 * index for index in range(count)]
+    raise ValueError(f"unknown UCCSD angle recipe: {recipe}")
+
+
 def _pool_term_groups(ops, num_qubits):
     """(word, coefficient) term lists per pool operator, in term order."""
     return [[(str(term.get_pauli_word(num_qubits)),
@@ -136,20 +145,22 @@ def _assert_close(actual, reference):
 # ----------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("angles", ["random", "arithmetic"])
 @pytest.mark.parametrize(
     "num_qubits,num_electrons,spin",
+    # (6, 2, 0) emits swapped and sorted mixed doubles in one ansatz.
     # (10, 5, 1) is open-shell (spin>0) and large enough to emit same-spin
     # alpha *and* beta doubles (3 each) -- the occupancy split the smaller
     # (6, 3, 1) case leaves empty.
     # (8, 4, 2) interleaves the occupied alpha and virtual beta indices; the
     # assertion below checks that the direct circuit still matches the pool.
-    [(4, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1), (8, 4, 2)])
+    [(4, 2, 0), (6, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1), (8, 4, 2)])
 def test_uccsd_kernel_matches_dense_exponential(num_qubits, num_electrons,
-                                                spin):
+                                                spin, angles):
     pool = algorithms.stateprep.make_uccsd_operator_pool(
         num_qubits, num_electrons, spin)
     term_groups = _pool_term_groups(pool, num_qubits)
-    thetas = _thetas(num_qubits * 100 + num_electrons, len(pool))
+    thetas = _uccsd_angles(angles, num_qubits, num_electrons, len(pool))
     occupation = _hf_occupation(num_electrons, spin)
 
     actual = _state(_uccsd_entry, num_qubits, occupation, thetas,
@@ -317,34 +328,3 @@ def test_double_excitation_negates_one_index_swap():
     # between the Hartree-Fock determinant and the double excitation is
     # the correlation sign.
     _assert_close(swapped, ordered)
-
-
-@pytest.mark.parametrize(
-    "num_qubits,num_electrons,spin",
-    # (4, 2, 0): H2, whose only double is the swapped order [0, 1, 3, 2].
-    # (6, 2, 0): swapped and sorted mixed doubles in one ansatz, so one
-    # global sign cannot satisfy both.
-    # (8, 4, 0): same-spin doubles, which the enumerator stores sorted.
-    # (8, 4, 2): a swapped mixed double whose ranges overlap, [4, 1, 3, 6].
-    [(4, 2, 0), (6, 2, 0), (8, 4, 0), (8, 4, 2)])
-def test_uccsd_matches_pool_at_the_singles_scale(num_qubits, num_electrons,
-                                                 spin):
-    # Singles match the pool exponential at scale -1/2, from the rz gadget
-    # exp(-i theta P / 2). Doubles use the same gadget, so every double
-    # (sorted, swapped, same-spin, overlapping) must match at that same
-    # scale. The pool negates a swapped pair, so no extra per-excitation
-    # sign is applied here.
-    pool = algorithms.stateprep.make_uccsd_operator_pool(
-        num_qubits, num_electrons, spin)
-    thetas = [0.2 + 0.01 * index for index in range(len(pool))]
-    occupation = _hf_occupation(num_electrons, spin)
-
-    actual = _state(_uccsd_entry, num_qubits, occupation, thetas,
-                    num_electrons, spin)
-    reference = _dense_product_reference(_pool_term_groups(pool, num_qubits),
-                                         thetas,
-                                         num_qubits,
-                                         _hf_ket(num_qubits, occupation),
-                                         scale=-0.5)
-    # No per-excitation sign. A uniform -1/2 is the whole conversion.
-    _assert_close(actual, reference)
