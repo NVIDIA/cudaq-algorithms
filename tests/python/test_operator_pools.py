@@ -319,23 +319,20 @@ def test_pauli_lists_reject_complex_pool_coefficients():
 
 
 def test_uccsd_double_pool_negates_one_pair_swap():
-    # tau changes sign when one pair is swapped. [0, 1, 3, 2] is that swap
-    # of [0, 1, 2, 3], and it is the only double get_uccsd_excitations
-    # emits for H2. The pool must return the negated Pauli sum. The +/-
-    # match in test_uccsd_spin_two_pool_matches_fermionic_generators does
-    # not catch this: a missing minus still hits one of the two phases.
+    # tau = adag_r adag_s a_q a_p - h.c. flips when one pair is swapped.
+    # [0, 1, 3, 2] is that swap of the H2 double [0, 1, 2, 3]. Each pool
+    # operator must equal +i * tau of its own order: an extra minus on
+    # both would keep them negatives of each other and still be wrong.
     from cudaq_algorithms.stateprep._pools import _uccsd_double
 
-    def coefficients(operator):
-        return {
-            term.get_pauli_word(4): complex(term.evaluate_coefficient())
-            for term in operator
-        }
-
-    swapped = coefficients(_uccsd_double(0, 1, 3, 2))
-    ordered = coefficients(_uccsd_double(0, 1, 2, 3))
-    # Same words on both operators.
-    assert set(swapped) == set(ordered)
-    for word, coefficient in ordered.items():
-        # Each coefficient flips with the swapped pair.
-        assert swapped[word] == -coefficient
+    _, double = _fermionic_generators(4)
+    matrices = []
+    for p, q, r, s in ((0, 1, 2, 3), (0, 1, 3, 2)):
+        actual = _dense_at_width(_uccsd_double(p, q, r, s), 4)
+        # double(r, s, q, p) is adag_r adag_s a_q a_p - h.c.
+        reference = 1.0j * double(r, s, q, p)
+        # Absolute sign against the Jordan-Wigner generator of this order.
+        assert np.allclose(actual, reference, atol=1e-10)
+        matrices.append(actual)
+    # The swapped order is the negation of the sorted order.
+    assert np.allclose(matrices[1], -matrices[0], atol=1e-10)
