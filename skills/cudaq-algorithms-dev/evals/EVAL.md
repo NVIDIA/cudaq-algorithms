@@ -5,12 +5,28 @@ comprising 42 regression and 20 science cases. It has 59 positive skill cases
 and 3 negative controls. [`manifest.json`](manifest.json) pins the original
 case order, complete case records, source provenance and fixture hashes.
 Intentional future changes require explicit manifest review and rebaselining.
-One reviewed rebaseline is recorded: `unknown-future-primitive` probes a
+An earlier reviewed rebaseline is recorded: `unknown-future-primitive` probes a
 tensor hypercontraction (THC) block encoding, which is absent from
 `python/cudaq_algorithms`; its record hash in the manifest and its
-`case_contracts.json` rationale were regenerated together, and the 61 other
-case records are unchanged. Old 42- or 7-case measurements are not results
-for this delivery suite.
+`case_contracts.json` rationale were regenerated together; the other case
+records at that baseline were unchanged. Old 42- or 7-case measurements are not
+results for this delivery suite.
+
+The [2026-10-15 source/runtime rebaseline](rebaselines/2026-10-15-uccsd-host-parity.json)
+updates `state-preparation-uccsd-open-shell-parity` for the current host
+`ValueError`, preserving its false-premise prompt and the raw device-kernel
+validation boundary. It also updates `state-preparation-provider-selection`
+to check declared dependency ranges against current source while keeping
+verified runtime versions distinct. `state-preparation-ucc-parameterization-boundary`
+permits the current source-supported local amplitude conversion while still
+rejecting same-amplitude substitution and direct raw-kernel injection.
+`implementation-scope-overreach` requires observed workspace availability
+instead of assuming a historical harness version, preserving its no-install
+boundary. The rebaseline records all four prior cases, old/new case and suite
+hashes, PR/main source revisions, and unchanged fixture and protocol hashes. The
+other 58 cases, original source provenance, suite version and paired protocol stay
+unchanged. Existing frozen campaigns retain their own suite and grades; this
+review does not retroactively regrade them.
 
 The runtime skill also ships a standalone [catalog evaluation package](../../cudaq-algorithms/evals/EVAL.md)
 for NVIDIA SkillEvaluator. Its 62 cases and three negative controls decode to

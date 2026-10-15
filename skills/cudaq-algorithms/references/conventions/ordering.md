@@ -46,9 +46,11 @@
   `(num_electrons - spin)` must be even when `spin > 0`, and
   `make_hartree_fock_occupation` raises `ValueError` ("(num_electrons - spin)
   must be even when spin > 0 (spin is 2*S_z)") for inputs such as
-  `(8, 4, 1)`; `get_uccsd_excitations` does not apply that parity check and
-  returns a pool for the same arguments, while it is the one that raises
-  `RuntimeError` for an odd electron count at `spin == 0` (for example
+  `(8, 4, 1)`. `get_uccsd_excitations`, `get_num_uccsd_parameters`, and
+  `make_uccsd_operator_pool` share that parity rejection. The raw `uccsd`
+  kernel still floors the beta count without validation, so the host check
+  must precede launch. The UCCSD host helpers additionally raise
+  `ValueError` for an odd electron count at `spin == 0` (for example
   `(8, 3, 0)`, which the occupation builder accepts as `[0, 1, 2]`).
 - **Source.** `docs/sphinx/conventions.rst` ("Spin orbitals: interleaved");
   `docs/sphinx/guide/state_prep.rst` ("Package conventions");

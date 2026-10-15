@@ -85,8 +85,9 @@ hardware cost.
 
 These kernels call the QROM and comparator sub-kernels and are therefore
 **not flat**: source directs that they not be placed under `cudaq.control`
-(control-variant generation rejects nested kernel calls through CUDA-Q
-0.15); consumers control SELECT, not PREPARE. Not provided: a clean
+(control-variant generation rejected nested kernel calls through CUDA-Q
+0.15; the source notes that 0.16 lifts that rejection while retaining this
+contract); consumers control SELECT, not PREPARE. Not provided: a clean
 (garbage-free) `sum sqrt(p_k)|k>` preparation, a `controlled` option, any
 `BlockEncoding` member (`prepare_kernel`, `unprepare_kernel`,
 `select_observable`, `alpha`), a SELECT, a block-encoding or `Walk`

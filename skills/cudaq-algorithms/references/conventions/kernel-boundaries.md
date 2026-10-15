@@ -71,8 +71,11 @@
 - **Consequence.** Encodings ship explicit `controlled_*` factories instead
   of relying on `cudaq.control` over the uncontrolled kernel. Kernels that
   call sub-kernels (for example the alias-sampling PREPARE) are not to be
-  placed under `cudaq.control`: control-variant generation rejects nested
-  kernel calls on CUDA-Q 0.15 (the package pins `cudaq >= 0.15.0, < 0.16`).
+  placed under `cudaq.control` without a separately validated contract.
+  The nested-call rejection documented for CUDA-Q 0.15 was lifted in 0.16,
+  as the alias-sampling source notes; this compiler change does not supply
+  controlled preparation semantics. The package now declares
+  `cudaq >= 0.16.0, < 0.17`.
   The unary-iteration primitives take a separate one-qubit `control` view
   instead of a leading qubit, for the same reason.
 - **Mismatch symptom.** A compile error on a mixed control set, or a

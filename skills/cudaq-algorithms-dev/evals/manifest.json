@@ -15,10 +15,10 @@
         {"id": "contextual-existing-primitive", "sha256": "2c38ab47fda2ceb32b3e1cddf745723d679995e39ce44616adcbdabfccb20b79"},
         {"id": "unsupported-library-workflow", "sha256": "7fd48a65ef7fb2ad689e7ad7963c2d55684d143d9183e5226db063300040ea97"},
         {"id": "unknown-future-primitive", "sha256": "403f7d141b40eae5cbec740d4a0e57aa2af0ffce6ed4fcbff337cedc32b04d95"},
-        {"id": "state-preparation-provider-selection", "sha256": "a4f11c3a1996548baa1c93b5fc503c0ce2702a5586329457b47241f884d73a6f"},
-        {"id": "state-preparation-ucc-parameterization-boundary", "sha256": "e4308f940a6896b95c40e3715e13ff92f2f2f502a7f41d33816cf1ace7110584"},
+        {"id": "state-preparation-provider-selection", "sha256": "79d64312534f559d493addc85bfcfdcc2a6b59a10429b9d421b5052d4c5e02eb"},
+        {"id": "state-preparation-ucc-parameterization-boundary", "sha256": "6803740f941423d8592ca1fc2a85bbf7a341f5915b53e5b5f1b45571df85cfbb"},
         {"id": "state-preparation-reference-excitation-device-boundary", "sha256": "d055b6e2ac1465526ff761e34dec11f41200286b8b928bed53b96cd955d8f81e"},
-        {"id": "state-preparation-uccsd-open-shell-parity", "sha256": "2180db823409c428bdecc6d6d7d84dc3454e3d78e59ff74c734e9196c1f947ed"},
+        {"id": "state-preparation-uccsd-open-shell-parity", "sha256": "fdfcd0bc9c44d117fd989a9655c4fe5c7bb5fe54aa2a52a5627beb02f1c64662"},
         {"id": "state-preparation-grouped-ucc-device-boundary", "sha256": "0b5a5414d4709f88879b98e7b1a92a41f05889c6fa46a81d95b77fee9503e635"},
         {"id": "state-preparation-givens-device-boundary", "sha256": "496a8424bd5b95c53291ab749b5b17abb60c2782fe312d9dcbf0f2ff8b3e66cb"},
         {"id": "state-preparation-injection-composition", "sha256": "eba8c907530dcdb537a1412051786e51d609193fd2c175a4c989cc509775631d"},
@@ -50,7 +50,7 @@
         {"id": "qsvt-paraphrase-convention", "sha256": "6e9767609bbb06fd91c46e99f2b741d97f752c08d0de63306806b4fa1459bab7"},
         {"id": "chemistry-end-to-end-composition", "sha256": "c3b5032e877d4d6d7a8c9e69841699e2185087ad8d9c54187708bbd2a8c5ccdf"},
         {"id": "negative-generic-cudaq-kernel", "sha256": "9b43b7fbfc91d00f32f9d8cf9a381b32802cb98ea5a7459546a904dfed11d7e6"},
-        {"id": "implementation-scope-overreach", "sha256": "b0fea5a917a4a036b44ca8a124ee5d0cbe54feedb536c2c04b2bfdbdb7ec5b96"},
+        {"id": "implementation-scope-overreach", "sha256": "ac5d9dca05badc50880e3eaee6a9425447be929414db142dc8bc4dd6adf06a18"},
         {"id": "operator-pool-ceo-units", "sha256": "0933abcc8e4a0fcf464b4d86d0d11874df92623d0b704737d0199b81bfdb3c56"}
       ]
     },

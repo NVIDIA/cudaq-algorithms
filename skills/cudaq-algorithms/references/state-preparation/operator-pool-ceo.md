@@ -8,11 +8,11 @@ pool**.
 - Public symbols from `cudaq_algorithms.stateprep`:
   `make_ceo_operator_pool(num_orbitals)` and
   `get_ceo_pauli_lists(num_orbitals)`.
-- Source: `python/cudaq_algorithms/stateprep/_pools.py:296-356,364-395`;
-  exports: `python/cudaq_algorithms/stateprep/__init__.py:21-22,43-47,61,66`.
+- Source: `python/cudaq_algorithms/stateprep/_pools.py:311-371,379-418`;
+  exports: `python/cudaq_algorithms/stateprep/__init__.py:21-22,44-48,64,69`.
 - Tests: `tests/python/test_operator_pools.py:82-89,255-273`,
   `tests/python/test_stateprep.py:63-69`, and
-  `tests/python/test_stateprep_kernels.py:241-255,263-291`.
+  `tests/python/test_stateprep_kernels.py:232-246,254-301`.
 - Runnable usage: `docs/sphinx/guide/state_prep.rst:58,69,265-267` and
   `pytest -q tests/python/test_operator_pools.py -k ceo`.
 - Source provenance: current public source/tests are authoritative and must be
@@ -62,10 +62,11 @@ derived `2*num_orbitals` width.
 `get_ceo_pauli_lists` returns grouped full-width Pauli words and floats, one
 group per pool operator, and explicitly passes width `2*num_orbitals` to the
 shared converter. Word/coefficient lengths match. The converter retains all
-terms and silently takes `coefficient.real`; packaged CEO coefficients are
-real dyadic values in the absolute oracle, while reachability of an imaginary
-coefficient elsewhere is unverified. The generic converter has different
-imaginary/tolerance behavior.
+real terms, rejects `abs(coefficient.imag) > 1e-12` with `ValueError`, and
+takes `coefficient.real` otherwise. Packaged CEO coefficients are real dyadic
+values in the absolute oracle; `test_operator_pools.py:310-324` separately
+checks shared-converter rejection with a synthetic complex pool. The generic
+converter uses a configurable tolerance and can prune negligible real terms.
 
 Composition requires an explicit spatial-to-spin width conversion, preservation
 of order, one parameter per pool element, and a prepared reference determinant

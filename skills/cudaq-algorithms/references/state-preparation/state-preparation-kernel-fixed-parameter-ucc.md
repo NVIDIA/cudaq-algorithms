@@ -30,7 +30,7 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 | Input representations | caller-owned `cudaq.qview`, flat amplitudes, grouped full-width Pauli words, grouped real coefficients |
 | Output representations | in-place transformed live register; no host return value |
 | Domain | domain-independent at the execution boundary; a caller-selected pool may impose a domain such as quantum-chemistry |
-| Required dependencies | `cudaq >=0.15.0,<0.16`; a CUDA-Q target to execute the enclosing kernel |
+| Required dependencies | `cudaq >=0.16.0,<0.17`; a CUDA-Q target to execute the enclosing kernel |
 | Optional dependencies | Not applicable: none in the public contract |
 | Exactness | exact ordered product for the supplied grouped data after converter pruning, subject to target floating-point synthesis |
 | Uncertainty | deterministic |
@@ -150,4 +150,4 @@ hardware cost, and no such estimate is provided.
 | --- | --- |
 | Literature conventions | no paper was reviewed; "fixed-parameter UCC" here means the exact grouped ordered `+i` Pauli product above, not a universal UCC exponential convention |
 | External package translations | unverified; align pool definition, qubit/Pauli ordering, coefficient sign, amplitude scale, pruning, and product order before conversion |
-| Known semantic differences | same numeric amplitudes are not interchangeable with `uccsd`, whose committed oracle uses a local `-i*theta/2` pool-term relationship plus double-order signs; UCCGSD, UpCCGSD, and CEO groups retain distinct provider meanings even though this kernel can execute their shapes |
+| Known semantic differences | same numeric amplitudes are not interchangeable with `uccsd`, whose oracle uses a uniform `-i*theta/2` relationship to its signed pool terms. For that pool, preserve reference, width, and excitation order and use `theta_pool = -theta_uccsd/2`, with no additional per-double sign compensation. UCCGSD, UpCCGSD, and CEO groups retain distinct provider meanings even though this kernel can execute their shapes |

@@ -30,7 +30,7 @@ routed by [the state-preparation family selector](state-preparation.md).
 | Input representations | a live `cudaq.qview` and an electron count |
 | Output representations | in-place state transformation; no host return |
 | Domain | quantum-chemistry |
-| Required dependencies | `cudaq >=0.15.0,<0.16` as declared by `pyproject.toml` |
+| Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
 | Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the emitted sequence of logical `X` calls on valid inputs |
 | Uncertainty | deterministic |

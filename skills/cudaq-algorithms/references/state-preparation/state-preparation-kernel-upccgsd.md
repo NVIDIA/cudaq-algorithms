@@ -30,7 +30,7 @@ the contract and cannot be inferred from the Python container types.
 | Input representations | caller-owned `cudaq.qview`, flat amplitudes, grouped full-width Pauli words, grouped real coefficients |
 | Output representations | in-place transformed live register; no host return value |
 | Domain | quantum-chemistry |
-| Required dependencies | `cudaq >=0.15.0,<0.16`; a CUDA-Q target to execute the enclosing kernel |
+| Required dependencies | `cudaq >=0.16.0,<0.17`; a CUDA-Q target to execute the enclosing kernel |
 | Optional dependencies | Not applicable: none in the public contract |
 | Exactness | exact ordered product for supplied grouped data, subject to target floating-point synthesis |
 | Uncertainty | deterministic |

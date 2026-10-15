@@ -258,10 +258,11 @@ Package conventions
   `n_alpha = num_electrons - n_beta`. `spin == 0` selects the
   closed-shell forms; `spin > 0` requires an even `num_qubits` and
   produces the interleaved open-shell occupations and excitations.
-- **Error types**: two error cases raise `RuntimeError` (odd qubit count
-  and
-  odd-electrons-at-spin-0 in `get_uccsd_excitations`); every guard added
-  in the pure implementation raises `ValueError`.
+- **Error types**: every input guard raises `ValueError`.
+  `get_uccsd_excitations` and `make_hartree_fock_occupation` apply the
+  same `(num_qubits, num_electrons, spin)` checks with the same messages;
+  in particular both reject an odd `num_electrons - spin` when `spin > 0`,
+  since the beta floor would otherwise silently realize `spin + 1`.
 - **CEO orbital counts**: the CEO helpers (`make_ceo_operator_pool`,
   `get_ceo_pauli_lists`) take `num_orbitals` in *spatial* orbitals — the
   pool acts on `2 * num_orbitals` qubits.

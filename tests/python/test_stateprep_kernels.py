@@ -95,6 +95,15 @@ def _thetas(seed, count):
     return (0.4 * rng.standard_normal(count)).tolist()
 
 
+def _uccsd_angles(recipe, num_qubits, num_electrons, count):
+    # "random" draws both signs. "arithmetic" keeps every |theta| >= 0.2.
+    if recipe == "random":
+        return _thetas(num_qubits * 100 + num_electrons, count)
+    if recipe == "arithmetic":
+        return [0.2 + 0.01 * index for index in range(count)]
+    raise ValueError(f"unknown UCCSD angle recipe: {recipe}")
+
+
 def _pool_term_groups(ops, num_qubits):
     """(word, coefficient) term lists per pool operator, in term order."""
     return [[(str(term.get_pauli_word(num_qubits)),
@@ -136,49 +145,33 @@ def _assert_close(actual, reference):
 # ----------------------------------------------------------------------------
 
 
-def _uccsd_circuit_signs(num_qubits, num_electrons, spin):
-    """Per-excitation theta signs applied by the double_excitation circuit.
-
-    The circuit negates theta for the index patterns (p < q, r > s) and
-    (p > q, r < s) while the pool operators carry no such sign, so the
-    reference has to apply it explicitly (this convention is inherited
-    from the C++ implementation, where the discrepancy between the pool
-    and the kernel is identical).
-    """
-    (singles_alpha, singles_beta, doubles_mixed, doubles_alpha,
-     doubles_beta) = algorithms.stateprep.get_uccsd_excitations(
-         num_qubits, num_electrons, spin)
-    signs = [1.0] * (len(singles_alpha) + len(singles_beta))
-    for p, q, r, s in doubles_mixed + doubles_alpha + doubles_beta:
-        flipped = (p < q and r > s) or (p > q and r < s)
-        signs.append(-1.0 if flipped else 1.0)
-    return signs
-
-
+@pytest.mark.parametrize("angles", ["random", "arithmetic"])
 @pytest.mark.parametrize(
     "num_qubits,num_electrons,spin",
+    # (6, 2, 0) emits swapped and sorted mixed doubles in one ansatz.
     # (10, 5, 1) is open-shell (spin>0) and large enough to emit same-spin
     # alpha *and* beta doubles (3 each) -- the occupancy split the smaller
     # (6, 3, 1) case leaves empty.
     # (8, 4, 2) interleaves the occupied alpha and virtual beta indices; the
     # assertion below checks that the direct circuit still matches the pool.
-    [(4, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1), (8, 4, 2)])
+    [(4, 2, 0), (6, 2, 0), (6, 3, 1), (8, 4, 0), (10, 5, 1), (8, 4, 2)])
 def test_uccsd_kernel_matches_dense_exponential(num_qubits, num_electrons,
-                                                spin):
+                                                spin, angles):
     pool = algorithms.stateprep.make_uccsd_operator_pool(
         num_qubits, num_electrons, spin)
     term_groups = _pool_term_groups(pool, num_qubits)
-    thetas = _thetas(num_qubits * 100 + num_electrons, len(pool))
-    signs = _uccsd_circuit_signs(num_qubits, num_electrons, spin)
+    thetas = _uccsd_angles(angles, num_qubits, num_electrons, len(pool))
     occupation = _hf_occupation(num_electrons, spin)
 
     actual = _state(_uccsd_entry, num_qubits, occupation, thetas,
                     num_electrons, spin)
-    reference = _dense_product_reference(
-        term_groups, [t * s for t, s in zip(thetas, signs)],
-        num_qubits,
-        _hf_ket(num_qubits, occupation),
-        scale=-0.5)
+    # One scale for every excitation. The pool carries the swap minus, so
+    # swapped mixed doubles use -1/2 as well.
+    reference = _dense_product_reference(term_groups,
+                                         thetas,
+                                         num_qubits,
+                                         _hf_ket(num_qubits, occupation),
+                                         scale=-0.5)
     _assert_close(actual, reference)
 
 
@@ -196,10 +189,8 @@ def test_uccsd_interleaved_mixed_double_matches_dense_exponential():
 
     actual = _state(_uccsd_entry, num_qubits, occupation, thetas,
                     num_electrons, spin)
-    reference = _dense_product_reference(_pool_term_groups(pool, num_qubits), [
-        t * s for t, s in zip(
-            thetas, _uccsd_circuit_signs(num_qubits, num_electrons, spin))
-    ],
+    reference = _dense_product_reference(_pool_term_groups(pool, num_qubits),
+                                         thetas,
                                          num_qubits,
                                          _hf_ket(num_qubits, occupation),
                                          scale=-0.5)
@@ -263,10 +254,11 @@ def test_ceo_kernel_matches_dense_exponential(num_orbitals):
 def test_invalid_inputs_raise():
     stateprep = algorithms.stateprep
 
-    # Error cases the C++ bindings also defined.
-    with pytest.raises(RuntimeError, match="should be even"):
+    # Error cases the C++ bindings also defined (as ValueError, like every
+    # other input guard in the package).
+    with pytest.raises(ValueError, match="should be even"):
         stateprep.get_uccsd_excitations(5, 2, 0)
-    with pytest.raises(RuntimeError, match="spin multiplicity"):
+    with pytest.raises(ValueError, match="spin multiplicity"):
         stateprep.get_uccsd_excitations(4, 3, 0)
     with pytest.raises(ValueError, match="even number"):
         stateprep.make_upccgsd_operator_pool(7)
@@ -289,3 +281,50 @@ def test_invalid_inputs_raise():
         stateprep.get_ceo_pauli_lists(1.5)
     with pytest.raises(ValueError, match="non-negative integer"):
         stateprep.make_ceo_operator_pool(True)
+
+
+def test_uccsd_rejects_open_shell_spin_with_odd_electron_difference():
+    # spin is 2*S_z, so (num_electrons - spin) must be even when spin > 0.
+    # An odd difference floors to spin+1, so (8, 4, 1) aliases (8, 4, 2).
+    stateprep = algorithms.stateprep
+
+    # Even electron count and odd spin: the enumerator itself must raise.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.get_uccsd_excitations(8, 4, 1)
+    # Odd electron count and even spin > 0. The pool is built by the same
+    # enumerator, so the rejection must surface on this entry point too.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.make_uccsd_operator_pool(6, 3, 2)
+    # (10, 5, 2) would otherwise be a non-empty pool at the promoted spin 3.
+    # The parameter counter uses the same enumerator and must raise first.
+    with pytest.raises(ValueError, match="must be even when spin > 0"):
+        stateprep.get_num_uccsd_parameters(10, 5, 2)
+
+
+# ----------------------------------------------------------------------------
+# UCCSD ladder / pool angle scale
+# ----------------------------------------------------------------------------
+
+
+@cudaq.kernel
+def _one_double_entry(theta: float, p_occ: int, q_occ: int, r_virt: int,
+                      s_virt: int):
+    qubits = cudaq.qvector(4)
+    x(qubits[0])
+    x(qubits[1])
+    algorithms.stateprep.double_excitation(qubits, theta, p_occ, q_occ, r_virt,
+                                           s_virt)
+
+
+def test_double_excitation_negates_one_index_swap():
+    # Swapping one pair sends tau = adag_r adag_s a_q a_p - h.c. to -tau.
+    # The ladder must keep that minus: +theta on the H2 order [0, 1, 3, 2]
+    # is -theta on the sorted order [0, 1, 2, 3]. The pool applies the
+    # same minus, so both APIs stay antisymmetric.
+    theta = 0.4
+    swapped = _state(_one_double_entry, theta, 0, 1, 3, 2)
+    ordered = _state(_one_double_entry, -theta, 0, 1, 2, 3)
+    # Same state, not merely the same probabilities: the relative phase
+    # between the Hartree-Fock determinant and the double excitation is
+    # the correlation sign.
+    _assert_close(swapped, ordered)

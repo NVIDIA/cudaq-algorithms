@@ -9,11 +9,11 @@ and doubles pool**.
   `make_uccgsd_operator_pool(num_qubits, only_singles=False,
   only_doubles=False)` and `get_uccgsd_pauli_lists(num_qubits,
   only_singles=False, only_doubles=False)`.
-- Source: `python/cudaq_algorithms/stateprep/_pools.py:209-265,364-382`;
-  exports: `python/cudaq_algorithms/stateprep/__init__.py:43-47,59,64`.
+- Source: `python/cudaq_algorithms/stateprep/_pools.py:224-280,379-405`;
+  exports: `python/cudaq_algorithms/stateprep/__init__.py:44-48,62,67`.
 - Tests: `tests/python/test_operator_pools.py:60-69,141-228`,
   `tests/python/test_stateprep.py:41-52`, and
-  `tests/python/test_stateprep_kernels.py:211-223,263-291`.
+  `tests/python/test_stateprep_kernels.py:202-214,254-301`.
 - Runnable usage: `docs/sphinx/guide/state_prep.rst:54,66-67` and
   `pytest -q tests/python/test_operator_pools.py -k uccgsd`.
 - Source provenance: current public source/tests are authoritative and must be
@@ -63,13 +63,14 @@ operator touches at most `num_qubits`, but the object does not carry that width.
 `get_uccgsd_pauli_lists` returns
 `(list[list[cudaq.pauli_word]], list[list[float]])`, one group per operator in
 pool order. It pads every word to `num_qubits`; word and coefficient group
-lengths match. The shared converter takes
-`float(term.evaluate_coefficient().real)`, silently discarding any imaginary
-part, and does not prune negligible terms. Packaged operators are supported by
-fermionic Hermiticity evidence and have real dyadic coefficients; reachability
-of an imaginary coefficient from this builder is unverified. The generic
-fixed-parameter converter instead rejects material imaginary coefficients and
-can prune negligible real terms.
+lengths match. The shared converter rejects `abs(coefficient.imag) > 1e-12`
+with `ValueError("operator pool coefficients must be real; ...")`, then takes
+`coefficient.real`; it does not prune negligible real terms. Packaged operators
+have real dyadic coefficients. The rejection is directly checked with a
+synthetic complex pool in `test_operator_pools.py:310-324`; this is converter
+evidence, not evidence that the packaged builder produces such a pool. The
+generic fixed-parameter converter uses a configurable tolerance and can prune
+negligible real terms.
 
 Composition is positional: retain width and provide one parameter for every
 group. Pool-derived device use additionally needs a reference determinant.

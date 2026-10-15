@@ -26,7 +26,7 @@ non-equivalence of that path to the `uccsd` device kernel live in
 - Public namespace: `cudaq_algorithms.stateprep`; the package root exports the
   `stateprep` module, not each pool symbol directly.
 - Implementation: `python/cudaq_algorithms/stateprep/_pools.py`; exports:
-  `python/cudaq_algorithms/stateprep/__init__.py:43-47`.
+  `python/cudaq_algorithms/stateprep/__init__.py:44-48`.
 - Authoritative tests: `tests/python/test_operator_pools.py`,
   `tests/python/test_stateprep.py`, and
   `tests/python/test_stateprep_kernels.py`.
@@ -47,7 +47,7 @@ non-equivalence of that path to the `uccsd` device kernel live in
   `make_*_operator_pool` constructor. Each element is accepted by
   `cudaq.SpinOperator(op)` and is iterable as Pauli terms exposing
   `get_pauli_word(width)` and `evaluate_coefficient()`
-  (`_pools.py:364-376`). There is no named pool class.
+  (`_pools.py:379-399`). There is no named pool class.
 - **Mathematical meaning:** each element is one Hermitian Pauli-sum generator.
   For the three UCC families it is `G = (+/- i) * (T - T^dagger)` for the
   provider's fermionic excitation `T`. CEO is deliberately non-fermionic and
@@ -82,9 +82,10 @@ non-equivalence of that path to the `uccsd` device kernel live in
 - **Unsupported or ambiguous forms:** mixing providers or widths is not
   rejected; empty pools are legal and produce a no-op product; complex
   coefficients are outside the demonstrated packaged constructors. The
-  provider-specific converters take `coefficient.real` without rejecting an
-  imaginary part, whereas the generic fixed-parameter converter rejects one
-  above its tolerance and can prune negligible real terms.
+  provider-specific converters reject `abs(coefficient.imag) > 1e-12` with
+  `ValueError`, then retain `coefficient.real` without pruning real terms.
+  The generic fixed-parameter converter uses a caller-configurable tolerance
+  for imaginary rejection and can prune negligible real terms.
 - **Observable failure symptoms:** reordering or re-widthing can yield a
   normalized but scientifically wrong state without an exception; treating
   CEO's spatial count as a qubit count doubles the intended register; treating

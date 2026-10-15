@@ -9,7 +9,7 @@ A cited test is repository evidence, not a fresh execution result. If current
 source is unavailable, say that freshness cannot be established.
 
 Declared requirements in `pyproject.toml` are Python `>=3.11` and
-`cudaq >=0.15.0,<0.16`; recheck the current file. Runtime compatibility requires
+`cudaq >=0.16.0,<0.17`; recheck the current file. Runtime compatibility requires
 execution against an installed supported version; declarations alone do not
 establish a tested combination.
 

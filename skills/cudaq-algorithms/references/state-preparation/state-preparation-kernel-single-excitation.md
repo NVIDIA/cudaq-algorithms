@@ -12,9 +12,9 @@ determinant and is not the full UCCSD product documented in
 | Field | Value |
 | --- | --- |
 | Owner | CUDA-Q Algorithms Team |
-| Public symbols and import paths | `cudaq_algorithms.stateprep.single_excitation`. The public package initializer imports the symbol, so it is addressable there, but omits it from `cudaq_algorithms.stateprep.__all__` |
-| Contract-specific source paths | Device circuit: `python/cudaq_algorithms/stateprep/_kernels.py:59-91`; matching pool generator: `python/cudaq_algorithms/stateprep/_pools.py:150-154`; import surface: `python/cudaq_algorithms/stateprep/__init__.py` |
-| Authoritative tests | **No direct standalone test exists.** Indirect composition evidence is `tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential` (`:158-182`), which calls the full `uccsd` kernel and compares its ordered product against a dense oracle |
+| Public symbols and import paths | `cudaq_algorithms.stateprep.single_excitation`, explicitly imported and included in `cudaq_algorithms.stateprep.__all__` |
+| Contract-specific source paths | Device circuit: `python/cudaq_algorithms/stateprep/_kernels.py:59-91`; matching pool generator: `python/cudaq_algorithms/stateprep/_pools.py:158-162`; import surface: `python/cudaq_algorithms/stateprep/__init__.py:41-43,58` |
+| Authoritative tests | **No direct standalone statevector test exists.** Indirect composition evidence is `tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential` (`:148-175`), which calls the full `uccsd` kernel and compares its ordered product against a dense oracle; `tests/python/test_operator_pools.py::test_excitation_kernels_are_exported` checks the public export |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:24-72` documents the full UCCSD kernel and its host-generated endpoints; no standalone `single_excitation` example is documented |
 
 ## Classification
@@ -30,7 +30,7 @@ determinant and is not the full UCCSD product documented in
 | Input representations | a live `cudaq.qview`, one real amplitude, and an ordered occupied-to-virtual endpoint pair |
 | Output representations | in-place unitary state transformation; no host return |
 | Domain | quantum-chemistry |
-| Required dependencies | `cudaq >=0.15.0,<0.16` as declared by `pyproject.toml` |
+| Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
 | Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the source-defined two-term Pauli-rotation circuit on valid endpoints, subject to floating-point gate realization |
 | Uncertainty | deterministic |
@@ -119,8 +119,8 @@ architecture-level claim.
 | --- | --- |
 | Independent oracle | For a direct validation, construct `G_1` from dense Pauli matrices with the repository's little-endian convention and compare a wrapper-kernel state to `scipy.linalg.expm(-0.5j * theta * G_1) @ ket`. The committed suite implements this dense-matrix method for the full `uccsd` product rather than this symbol alone |
 | Invariants | Unit norm and fermion-number/parity preservation for valid endpoints; `theta=0` is the identity mathematically. These are derived from `G_1`, not fresh direct executions |
-| Representative cases | Indirect full-product cases `(num_qubits,num_electrons,spin) = (4,2,0), (6,3,1), (8,4,0), (10,5,1), (8,4,2)`. No standalone single-excitation case exists in the repository |
-| Predeclared tolerances | For the indirect dense suite, maximum absolute statevector error `<5e-5` when `cudaq.complex()` is `complex64`, otherwise `<1e-12` (`tests/python/test_stateprep_kernels.py:127-131`) |
+| Representative cases | Indirect full-product cases `(num_qubits,num_electrons,spin) = (4,2,0), (6,2,0), (6,3,1), (8,4,0), (10,5,1), (8,4,2)`, with random and arithmetic amplitudes. No standalone single-excitation statevector case exists in the repository |
+| Predeclared tolerances | For the indirect dense suite, maximum absolute statevector error `<5e-5` when `cudaq.complex()` is `complex64`, otherwise `<1e-12` (`tests/python/test_stateprep_kernels.py:136-140`) |
 | Expected failure/adversarial case | A reversed pair `p_occ > q_virt` must be refused or host-checked by the caller; do not expect canonicalization or a device exception |
 | Runnable example or usage test | Indirect composition command: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python pytest -q -p no:cacheprovider tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential` |
 | Evidence status per claim | Signature, mathematical circuit, ordering, invalid-path behavior, and structural resources: `derived` from source cited in the repository; dense agreement and tolerance: `derived` from an indirect committed test cited in the repository; direct execution, direct numerical validation, and measurement: `unexecuted` / `unverified` |

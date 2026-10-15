@@ -142,7 +142,7 @@ provider-specific limitations stay in the provider records.
 
 | Shared boundary | Label | Why the label |
 | --- | --- | --- |
-| Controlled preparation | unverified | no packaged provider documents, wraps, or performs it, and `cudaq.control` never appears in the stateprep sources. `cudaq.control` is not a workaround for the factory-emitted kernels: they call sub-kernels, and CUDA-Q 0.15 control-variant generation rejects kernels that call other kernels |
+| Controlled preparation | unverified | no packaged provider documents, wraps, or performs it, and `cudaq.control` never appears in the stateprep sources. CUDA-Q 0.15 historically rejected nested kernel calls during control-variant generation; `python/cudaq_algorithms/primitives/_alias_sampling.py` states that rejection was lifted in 0.16. This compiler change does not establish controlled-preparation semantics, which remain unverified for these providers |
 | Inverse/adjoint preparation | unverified | `cudaq.adjoint` never appears in the stateprep sources and no inverse-preparation symbol exists |
 | Global phase under control | unverified | the Givens contract holds only up to a global phase, and no source characterizes a preparation later placed under control |
 | Measurement-assisted preparation | absent | no measurement, reset, feed-forward, repeat-until-success, or success-probability construct exists in the family, so there is no library success probability to report |

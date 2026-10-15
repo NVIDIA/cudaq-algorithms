@@ -30,7 +30,7 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Input representations | caller-owned `cudaq.qview`, flat real amplitudes, electron count, and `spin = 2*S_z` |
 | Output representations | in-place transformed live quantum register; no host return value |
 | Domain | quantum-chemistry |
-| Required dependencies | `cudaq >=0.15.0,<0.16`; a CUDA-Q target to execute the enclosing kernel |
+| Required dependencies | `cudaq >=0.16.0,<0.17`; a CUDA-Q target to execute the enclosing kernel |
 | Optional dependencies | Not applicable: none in the public kernel contract |
 | Exactness | exact ordered circuit for the supplied amplitudes, subject to target floating-point synthesis; it is not a Trotter approximation of a summed generator |
 | Uncertainty | deterministic |
@@ -48,13 +48,15 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
   as
 
   ```text
-  product_e product_j exp(-i * (theta_e / 2) * s_e * c_ej * P_ej),
+  product_e product_j exp(-i * (theta_e / 2) * c_ej * P_ej).
   ```
 
-  where `s_e = -1` for a double whose endpoint ordering satisfies
-  `(p < q and r > s)` or `(p > q and r < s)`, and `s_e = +1` otherwise.
-  This is the tested local circuit/pool relationship, not a general conversion
-  rule between UCC parameterizations.
+  The pool coefficients already contain the sign for a double with exactly
+  one descending pair, matching the device gadget. A grouped `+i` consumer
+  therefore needs `theta_pool = -theta_uccsd/2` uniformly, with the same
+  reference, width, and excitation order; no extra per-double sign applies.
+  This is the local circuit/pool relationship, not a translation to arbitrary
+  external UCC parameterizations.
 - **Why and when to use:** use it inside a caller-written CUDA-Q kernel when
   occupied-to-virtual UCCSD enumeration and runtime amplitudes are required.
 - **When not to use:** do not use it as a drop-in grouped-pool consumer or pass
@@ -75,7 +77,7 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Ordering/layout | qubit 0 is least significant; spin orbitals are interleaved alpha-even/beta-odd. Amplitudes follow the exact five-group and nested-loop order above |
 | Normalization | no classical normalization condition; the live quantum state is acted on unitarily and should be normalized when interpreted as a physical state |
 | Required mathematical properties | `n` is even; `num_electrons <= n`; for `spin == 0`, `num_electrons` is even; for `spin > 0`, `spin <= num_electrons`, **`(num_electrons - spin) % 2 == 0`**, and `n_occ_alpha = num_electrons - (num_electrons-spin)//2 <= n//2`; the register should hold the caller's intended reference state |
-| Validation and rejection behavior | the device kernel performs no validation and exposes no error channel. Validate counts on the host and check the open-shell parity condition explicitly before calling; `get_uccsd_excitations` currently checks the other listed count constraints but **omits the `(num_electrons-spin)` parity guard**: the kernel floors `n_occ_beta = (num_electrons - spin)//2` the same way, so `uccsd(..., num_electrons=4, spin=1)` silently realizes the `spin=2` partition (three alpha, one beta occupied) with no error. `make_hartree_fock_occupation(n, num_electrons, spin)` does enforce that parity (`ValueError`, "(num_electrons - spin) must be even when spin > 0") and is the packaged route to a matching reference occupation. Too few amplitudes can index out of range; extras are ignored. Invalid counts, non-finite amplitudes, out-of-range derived indices, and launch error types are otherwise unverified |
+| Validation and rejection behavior | the device kernel performs no validation and exposes no error channel. Validate counts through `get_uccsd_excitations` or `get_num_uccsd_parameters` before calling; both reject open-shell parity mismatches with `ValueError("(num_electrons - spin) must be even when spin > 0 (spin is 2*S_z)")`. `make_uccsd_operator_pool` shares that rejection. The raw kernel still floors `n_occ_beta = (num_electrons - spin)//2`, so bypassing host validation with `num_electrons=4, spin=1` uses the `spin=2` partition (three alpha, one beta occupied). `make_hartree_fock_occupation(n, num_electrons, spin)` enforces the same open-shell parity and builds the matching reference occupation. Too few amplitudes can index out of range; extras are ignored. Non-finite amplitudes, out-of-range derived indices, and launch error types are otherwise unverified |
 
 ## Outputs
 
@@ -84,7 +86,7 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Return type or emitted kernel signature | returns nothing; mutates the supplied `cudaq.qview` in place |
 | Mathematical meaning | the ordered UCCSD product under "Scientific contract" applied to the incoming register state |
 | Shape/register geometry | register width is unchanged; no qubit, ancilla, control, or measurement register is allocated |
-| Normalization, sign, and phase | norm-preserving unitary with the tested `-i/2` pool-term scale and double-order sign `s_e`; do not substitute the `+i` grouped-kernel convention |
+| Normalization, sign, and phase | norm-preserving unitary with the tested uniform `-i/2` scale relative to the signed pool terms; grouped kernels use `+i` and need the amplitude conversion above |
 | Observable or measurement interpretation | Not applicable: no measurement or observable is produced |
 | Error/status information | Not applicable: a device kernel has no host return or status channel; malformed inputs do not have one uniform characterized failure mode |
 
@@ -115,8 +117,8 @@ Not applicable: leaf operation.
 | Error behavior or bounds | no algorithmic approximation bound is needed; source states no target floating-point error bound |
 | Precision sensitivity | dense tests predeclare `1e-12` at double precision and `5e-5` when `cudaq.complex()` is single precision |
 | Unsupported inputs | inputs violating the mathematical properties in the Inputs table; a direct injection-seam use |
-| Known implementation limitations | no device validation; extra amplitudes are ignored; missing amplitudes may fail by indexing; derived-index failures are uncharacterized. The kernel source also documents a CUDA-Q 0.15 miscompile shape avoided by keeping virtual offsets inline |
-| Unsupported, absent, and unverified behavior | parity-invalid open-shell input is **unsupported but currently silently accepted by `get_uccsd_excitations`**; uniform runtime failures, dirty-reference semantics as state preparation, controlled/adjoint use, and hardware behavior are unverified; host amplitude optimization is absent |
+| Known implementation limitations | no device validation; extra amplitudes are ignored; missing amplitudes may fail by indexing; derived-index failures are uncharacterized. The kernel source preserves inline virtual offsets to avoid a historically observed CUDA-Q 0.15 miscompile; occurrence of that miscompile on 0.16 is unverified |
+| Unsupported, absent, and unverified behavior | parity-invalid open-shell input is **rejected by the host helpers but unchecked by the raw device kernel**; uniform runtime failures, dirty-reference semantics as state preparation, controlled/adjoint use, and hardware behavior are unverified; host amplitude optimization is absent |
 
 ## Resources
 
@@ -135,11 +137,11 @@ excitation endpoints and target lowering; no bound or measurement is claimed.
 
 | Field | Contract |
 | --- | --- |
-| Independent oracle | a NumPy/SciPy dense ordered product of Pauli-matrix exponentials in `test_stateprep_kernels.py`, combined with absolute UCCSD pool pins at `(4,2,0)` and an independent dense Jordan-Wigner fermionic-generator bijection at `(8,4,2)` in `test_operator_pools.py` |
+| Independent oracle | a NumPy/SciPy dense ordered product of Pauli-matrix exponentials in `test_stateprep_kernels.py`, combined with absolute UCCSD pool pins at `(4,2,0)` and independent dense Jordan-Wigner ordered generator equality, including absolute signs, at `(8,4,2)` in `test_operator_pools.py::test_uccsd_spin_two_pool_matches_fermionic_generators` |
 | Invariants | unit norm; unchanged register width; exact five-group parameter count/order; agreement with the dense state; explicit mixed-double amplitude at `(8,4,2)` |
-| Representative cases | `(n,e,spin) = (4,2,0), (6,3,1), (8,4,0), (10,5,1), (8,4,2)`; the last isolates an interleaved mixed double |
+| Representative cases | `(n,e,spin) = (4,2,0), (6,2,0), (6,3,1), (8,4,0), (10,5,1), (8,4,2)`, with random and arithmetic amplitudes; `(6,2,0)` includes swapped and sorted mixed doubles, and a separate `(8,4,2)` test isolates an interleaved mixed double |
 | Predeclared tolerances | maximum amplitude error `<1e-12` for double precision or `<5e-5` for single precision |
-| Expected failure/adversarial case | host helper rejects odd `n`, odd electrons at `spin=0`, excessive counts, and invalid scalar counts; **parity-invalid `(8,4,1)` is the known missing host guard and must not be used as a passing case** |
+| Expected failure/adversarial case | host helpers raise `ValueError` for odd `n`, odd electrons at `spin=0`, excessive counts, invalid scalar counts, and parity-invalid open-shell inputs; `test_uccsd_rejects_open_shell_spin_with_odd_electron_difference` checks enumeration `(8,4,1)`, pool construction `(6,3,2)`, and parameter counting `(10,5,2)` |
 | Runnable example or usage test | `pytest -q tests/python/test_stateprep_kernels.py -k uccsd`; smoke usage also lives in `tests/python/test_stateprep.py` |
 | Evidence status per claim | signatures, loops, limitations, and cited assertions are `derived` from source and committed tests cited in the repository; fresh compilation, execution, numerical validation, and measurement are `unverified` with qualifier `unexecuted` |
 
@@ -149,4 +151,4 @@ excitation endpoints and target lowering; no bound or measurement is claimed.
 | --- | --- |
 | Literature conventions | "UCCSD" names singles and doubles, but no paper was reviewed for this record; the precise local exponent, ordering, and spin conventions above control |
 | External package translations | unverified; align orbital layout, generator sign, amplitude scale, excitation order, and double-endpoint sign before comparing or converting |
-| Known semantic differences | unlike the grouped UCCGSD/UpCCGSD/CEO/fixed-parameter kernels, this kernel enumerates excitations internally and the committed oracle uses the local `-i*theta/2` scale plus `s_e`; equal numeric amplitude lists do not establish equivalent states |
+| Known semantic differences | unlike the grouped UCCGSD/UpCCGSD/CEO/fixed-parameter kernels, this kernel enumerates excitations internally and uses the uniform `-i*theta/2` scale relative to its signed UCCSD pool; equal numeric amplitude lists do not establish equivalent states |

@@ -12,9 +12,9 @@ determinant and is not the full UCCSD product documented in
 | Field | Value |
 | --- | --- |
 | Owner | CUDA-Q Algorithms Team |
-| Public symbols and import paths | `cudaq_algorithms.stateprep.double_excitation`. The public package initializer imports the symbol, so it is addressable there, but omits it from `cudaq_algorithms.stateprep.__all__` |
-| Contract-specific source paths | Public circuit and its two private realizations: `python/cudaq_algorithms/stateprep/_kernels.py:94-442`; matching pool generator: `python/cudaq_algorithms/stateprep/_pools.py:157-183`; import surface: `python/cudaq_algorithms/stateprep/__init__.py` |
-| Authoritative tests | **No direct standalone test exists.** Indirect composition evidence is `tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential` (`:158-182`). `::test_uccsd_interleaved_mixed_double_matches_dense_exponential` (`:185-208`) sets every other amplitude to zero and isolates the overlapping-interval tuple `[4,1,3,6]`, but still calls the full `uccsd` entry kernel |
+| Public symbols and import paths | `cudaq_algorithms.stateprep.double_excitation`, explicitly imported and included in `cudaq_algorithms.stateprep.__all__` |
+| Contract-specific source paths | Public circuit and its two private realizations: `python/cudaq_algorithms/stateprep/_kernels.py:94-442`; matching pool generator: `python/cudaq_algorithms/stateprep/_pools.py:165-198`; import surface: `python/cudaq_algorithms/stateprep/__init__.py:41-43,59` |
+| Authoritative tests | `tests/python/test_stateprep_kernels.py::test_double_excitation_negates_one_index_swap` (`:309-330`) directly compares swapped and sorted endpoint calls. Dense composition evidence is `::test_uccsd_kernel_matches_dense_exponential` (`:148-175`) and `::test_uccsd_interleaved_mixed_double_matches_dense_exponential` (`:178-199`), which isolates `[4,1,3,6]` through the full `uccsd` entry kernel. `tests/python/test_operator_pools.py::test_excitation_kernels_are_exported` checks the public export |
 | Authoritative documentation and runnable examples | `docs/sphinx/guide/state_prep.rst:24-72` documents the full UCCSD kernel and its host-generated endpoints; no standalone `double_excitation` example is documented |
 
 ## Classification
@@ -30,7 +30,7 @@ determinant and is not the full UCCSD product documented in
 | Input representations | a live `cudaq.qview`, one real amplitude, one occupied pair, and one virtual pair |
 | Output representations | in-place unitary state transformation; no host return |
 | Domain | quantum-chemistry |
-| Required dependencies | `cudaq >=0.15.0,<0.16` as declared by `pyproject.toml` |
+| Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
 | Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the source-defined eight-term Pauli-rotation circuit on four valid distinct endpoints, subject to floating-point gate realization |
 | Uncertainty | deterministic |
@@ -110,10 +110,10 @@ Not applicable: leaf operation.
 | Field | Statement |
 | --- | --- |
 | Error behavior or bounds | No algorithmic approximation or source error bound is stated; deviations from the exact source-defined unitary depend on target floating-point and gate realization |
-| Precision sensitivity | The continuous rotations can be precision-sensitive. The only repository tolerance is inherited from indirect full-UCCSD comparison: `5e-5` for an fp32 CUDA-Q complex type and `1e-12` otherwise |
+| Precision sensitivity | The continuous rotations can be precision-sensitive. Direct swap and full-UCCSD comparisons use `5e-5` for an fp32 CUDA-Q complex type and `1e-12` otherwise |
 | Unsupported inputs | Any repeated endpoints, out-of-range or non-integral endpoints, non-real/non-finite amplitudes, and calls that assume the kernel also prepares a reference determinant |
 | Known implementation limitations | There is no device guard. Pair equality can leave the canonical local indices at zero rather than reject; cross-pair repeats and out-of-range indices likewise have no defined safe result |
-| Unsupported, absent, and unverified behavior | A direct standalone test is absent; exception behavior for invalid endpoints and non-finite amplitudes is unverified; controlled/adjoint use and behavior as an injected preparation are unverified |
+| Unsupported, absent, and unverified behavior | A standalone independent dense-oracle test is absent; the direct pair-swap test checks antisymmetry only. Exception behavior for invalid endpoints and non-finite amplitudes is unverified; controlled/adjoint use and behavior as an injected preparation are unverified |
 
 ## Resources
 
@@ -134,13 +134,13 @@ make no architecture-level claim.
 
 | Field | Evidence |
 | --- | --- |
-| Independent oracle | Canonicalize both pairs, compute `t` with the exactly-one-descending rule, construct the displayed `G_2` from dense little-endian Pauli matrices, and compare a wrapper-kernel state to `scipy.linalg.expm(-0.5j * t * G_2) @ ket`. The committed suite implements this dense-matrix method through the full `uccsd` kernel rather than calling this symbol alone |
+| Independent oracle | Canonicalize both pairs, compute `t` with the exactly-one-descending rule, construct the displayed `G_2` from dense little-endian Pauli matrices, and compare a wrapper-kernel state to `scipy.linalg.expm(-0.5j * t * G_2) @ ket`. The committed dense oracle uses the full `uccsd` kernel; the direct standalone swap test checks antisymmetry between two device calls, not an independent absolute dense oracle |
 | Invariants | Unit norm and fermion-number/parity preservation for valid endpoints; swapping neither or both pairs keeps `t`, while swapping exactly one pair negates `t`. These are source-derived, not fresh direct executions |
-| Representative cases | Indirect full-product cases `(4,2,0)`, `(6,3,1)`, `(8,4,0)`, `(10,5,1)`, and `(8,4,2)`. The composed `(8,4,2)` case isolates `[4,1,3,6]`, whose occupied pair descends and virtual pair ascends, so effective `theta` flips and the parity intervals overlap |
-| Predeclared tolerances | For the indirect dense suite, maximum absolute statevector error `<5e-5` when `cudaq.complex()` is `complex64`, otherwise `<1e-12` (`tests/python/test_stateprep_kernels.py:127-131`) |
+| Representative cases | Indirect full-product cases `(4,2,0)`, `(6,2,0)`, `(6,3,1)`, `(8,4,0)`, `(10,5,1)`, and `(8,4,2)`. The composed `(8,4,2)` case isolates `[4,1,3,6]`, whose occupied pair descends and virtual pair ascends, so effective `theta` flips and the parity intervals overlap. The standalone case compares `theta=0.4` on `[0,1,3,2]` with `theta=-0.4` on `[0,1,2,3]` |
+| Predeclared tolerances | Direct swap and indirect dense tests require maximum absolute statevector error `<5e-5` when `cudaq.complex()` is `complex64`, otherwise `<1e-12` (`tests/python/test_stateprep_kernels.py:136-140`) |
 | Expected failure/adversarial case | Repeat an endpoint within or across the two pairs: the caller must reject it before launch; do not expect a device exception or a meaningful canonicalization |
-| Runnable example or usage test | Indirect composition command: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python pytest -q -p no:cacheprovider tests/python/test_stateprep_kernels.py::test_uccsd_kernel_matches_dense_exponential tests/python/test_stateprep_kernels.py::test_uccsd_interleaved_mixed_double_matches_dense_exponential` |
-| Evidence status per claim | Signature, canonicalization, sign rule, mathematical circuit, invalid-path behavior, and structural resources: `derived` from source cited in the repository; dense agreement and tolerance: `derived` from indirect committed tests cited in the repository; direct execution, direct numerical validation, and measurement: `unexecuted` / `unverified` |
+| Runnable example or usage test | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python pytest -q -p no:cacheprovider tests/python/test_stateprep_kernels.py -k 'uccsd or double_excitation'` |
+| Evidence status per claim | Signature, canonicalization, sign rule, mathematical circuit, invalid-path behavior, and structural resources: `derived` from source cited in the repository; dense agreement, direct pair-swap antisymmetry, and tolerances: `derived` from committed tests cited in the repository; fresh execution, numerical validation, and measurement: `unexecuted` / `unverified` |
 
 ## External alignment
 
@@ -148,4 +148,4 @@ make no architecture-level claim.
 | --- | --- |
 | Literature conventions | No literature citation in the cited source defines this factor. Use the displayed repository generator, multiplication order, Jordan-Wigner indexing, exponent sign, and `t/2` scale rather than assuming a paper's UCC amplitude convention |
 | External package translations | Not applicable: no external-package amplitude, endpoint-order, or orbital-layout translation is established by the cited source, tests, or documentation |
-| Known semantic differences | The pool generator canonicalizes pairs but carries no exactly-one-descending amplitude sign; the device circuit applies that sign adjustment. Grouped Pauli-product kernels also use a different tested exponent convention, so equal numeric amplitudes are not interchangeable |
+| Known semantic differences | The pool generator and device circuit both carry the exactly-one-descending-pair sign. Relative to that signed pool generator, a grouped `+i` consumer needs the uniform amplitude `theta_pool = -theta/2`, with no further pair-swap correction. Equal numeric amplitudes remain inequivalent |

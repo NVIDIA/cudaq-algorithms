@@ -21,17 +21,21 @@ like a multiplicity: it is `2 * S_z`, so `(num_electrons - spin)` must be even.
 The source states that without the guard the beta floor
 `(num_electrons - spin) // 2` would silently realize `spin + 1` - `(8, 4, 1)`
 would return the same occupation as `(8, 4, 2)` - and the rejection is asserted
-at `test_stateprep_hf_ucc.py:149-150` (`_hartree_fock.py:104-111`).
+at `test_stateprep_hf_ucc.py:149-157` (`_hartree_fock.py:104-111`), together
+with the matching rejection by `get_uccsd_excitations` and
+`make_uccsd_operator_pool`. `get_num_uccsd_parameters` delegates to the same
+guarded enumeration; `test_stateprep_kernels.py:286-301` checks all three
+UCCSD host entry points. The raw `uccsd` kernel remains unvalidated.
 
 ## Independent validation
 
 | Field | Evidence |
 | --- | --- |
-| Independent oracles | two, both committed in the repository and cited rather than executed: a dense pool exponential built with NumPy/SciPy `expm` in pool order (`tests/python/test_stateprep_hf_ucc.py:65-76`, applied at `:239-264`), and an independent fermionic-generator bijection (`tests/python/test_operator_pools.py:172-231`). The seam itself is covered by `tests/python/test_state_prep_injection.py` - injected kernel versus `cudaq.State`-fed twin agreement, zero-argument sampleability, a no-op preparation on an all-zero register, and non-cross-contamination of two kernels minted by one factory |
+| Independent oracles | two, both committed in the repository and cited rather than executed: a dense pool exponential built with NumPy/SciPy `expm` in pool order (`tests/python/test_stateprep_hf_ucc.py:65-76`, applied at `:248-271`), and independent fermionic generators (`tests/python/test_operator_pools.py:152-187`). UCCSD ordered equality pins absolute signs at `(8,4,2)` (`:276-297`); generalized pools retain the sign-agnostic bijection check (`:189-252`). The seam itself is covered by `tests/python/test_state_prep_injection.py` - injected kernel versus `cudaq.State`-fed twin agreement, zero-argument sampleability, a no-op preparation on an all-zero register, and non-cross-contamination of two kernels minted by one factory |
 | Invariants | the open-shell Hartree-Fock occupation equals the determinant implied by `get_uccsd_excitations` (`test_stateprep_hf_ucc.py:125-135`) |
 | Representative cases | the `(num_qubits, num_electrons, spin)` triples in the non-interchangeability table, and `(8, 4, spin=2)` occupying `{0, 1, 2, 4}` |
-| Predeclared tolerances | they differ by suite, so read the suite. `test_stateprep_hf_ucc.py:59-63` and `test_stateprep_kernels.py:127-131` select `1e-12` (fp64) or `5e-5` (fp32) from the active simulator precision, gating on `np.dtype(cudaq.complex()) == np.complex64`. `tests/python/test_state_prep_injection.py` does **not** gate on precision: it hard-codes `atol=1e-12` for the statevector comparisons and uses `abs=1e-10` / `atol=1e-10` for the `Walk.moment` / `Walk.moments` path, and `tests/python/conftest.py` honors `CUDAQ_DEFAULT_SIMULATOR` with a `qpp-cpu` fallback rather than forcing fp64. So do not tell a caller that "the repository's tolerances adapt to simulator precision" - that holds for the provider suites, not for the injection suite |
-| Expected failure/adversarial cases | the factory rejections - seven `pytest.raises` blocks over six distinct messages (`test_stateprep_hf_ucc.py:335-379`) - and the occupation guards, including the `(num_electrons - spin)` parity rejection (`test_stateprep_hf_ucc.py:140-150`) |
+| Predeclared tolerances | they differ by suite, so read the suite. `test_stateprep_hf_ucc.py:59-63` and `test_stateprep_kernels.py:136-140` select `1e-12` (fp64) or `5e-5` (fp32) from the active simulator precision, gating on `np.dtype(cudaq.complex()) == np.complex64`. `tests/python/test_state_prep_injection.py` does **not** gate on precision: it hard-codes `atol=1e-12` for the statevector comparisons and uses `abs=1e-10` / `atol=1e-10` for the `Walk.moment` / `Walk.moments` path, and `tests/python/conftest.py` honors `CUDAQ_DEFAULT_SIMULATOR` with a `qpp-cpu` fallback rather than forcing fp64. So do not tell a caller that "the repository's tolerances adapt to simulator precision" - that holds for the provider suites, not for the injection suite |
+| Expected failure/adversarial cases | the factory rejections - seven `pytest.raises` blocks over six distinct messages (`test_stateprep_hf_ucc.py:342-386`) - and the occupation/enumeration guards, including the `(num_electrons - spin)` parity rejection (`test_stateprep_hf_ucc.py:140-157`) |
 | Reference results | none; each oracle is constructed inside the cited test |
 | Evidence status per claim | `derived` from the cited source or committed test assertion, unless labeled `assumed` or `unverified` in place. Nothing here is `measured` |
 

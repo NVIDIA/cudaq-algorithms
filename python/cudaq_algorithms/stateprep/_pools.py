@@ -4,12 +4,14 @@
 
 Pure-Python port of ``lib/stateprep/excitations.cpp`` and the host-side
 helpers of ``lib/stateprep/device/*.cpp``, built with ``cudaq.spin``
-algebra. Enumeration orders, index conventions, and coefficient signs
-match the C++ implementation exactly (the tests pin them):
+algebra. Enumeration order and index conventions match the C++
+implementation (the tests pin them):
 
 * UCCSD excitations follow the interleaved alpha/beta spin-orbital layout
   (alpha even, beta odd) with the closed-shell (spin == 0) and open-shell
-  (spin > 0) occupancy rules of the C++ ``get_uccsd_excitations``.
+  (spin > 0) occupancy rules of the C++ ``get_uccsd_excitations``. One
+  swapped pair negates the double-excitation generator, matching the
+  ``uccsd`` ladder.
 * UCCGSD doubles enumerate the three pairings of every 4-combination of
   qubits, normalized to (high, low) within each pair and deduplicated in
   sorted order (the C++ ``std::set`` iteration order).
@@ -77,7 +79,7 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
     num_electrons = _as_count(num_electrons, "num_electrons")
     spin_number = _as_count(spin, "spin")
     if num_qubits % 2 != 0:
-        raise RuntimeError("The total number of qubits should be even.")
+        raise ValueError("The total number of qubits should be even.")
     # The C++ implementation has no defined behavior for these (unsigned
     # underflow); reject them explicitly.
     if num_electrons > num_qubits:
@@ -87,6 +89,12 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
 
     num_spatial = num_qubits // 2
     if spin_number > 0:
+        # spin is 2*S_z, so (num_electrons - spin) must be even. Otherwise
+        # the floor realizes spin+1. Matches make_hartree_fock_occupation.
+        if (num_electrons - spin_number) % 2 != 0:
+            raise ValueError(
+                "(num_electrons - spin) must be even when spin > 0 "
+                "(spin is 2*S_z)")
         n_occ_beta = (num_electrons - spin_number) // 2
         n_occ_alpha = num_electrons - n_occ_beta
         if n_occ_alpha > num_spatial:
@@ -107,9 +115,9 @@ def get_uccsd_excitations(num_qubits, num_electrons, spin=0):
         occupied_beta = [i * 2 + 1 for i in range(n_occ)]
         virtual_beta = [i * 2 + num_electrons + 1 for i in range(n_virt)]
     else:
-        raise RuntimeError(
-            "Incorrect spin multiplicity. Number of electrons is odd but "
-            f"spin is 0 {num_electrons}, {spin_number}")
+        raise ValueError(
+            "Incorrect spin multiplicity: num_electrons is odd but spin is 0 "
+            f"(num_electrons={num_electrons}, spin={spin_number})")
 
     singles_alpha = [[p, q] for p in occupied_alpha for q in virtual_alpha]
     singles_beta = [[p, q] for p in occupied_beta for q in virtual_beta]
@@ -155,15 +163,22 @@ def _uccsd_single(p, q):
 
 
 def _uccsd_double(p, q, r, s):
-    """The 8-term UCCSD double-excitation generator (C++ index rules)."""
+    """The 8-term UCCSD double-excitation generator.
+
+    One swapped pair negates the operator, the same rule as
+    ``double_excitation``, so the pool matches the ``uccsd`` ladder.
+    """
+    sign = 1.0
     if p < q and r < s:
         i_occ, j_occ, a_virt, b_virt = p, q, r, s
     elif p > q and r > s:
         i_occ, j_occ, a_virt, b_virt = q, p, s, r
     elif p < q and r > s:
         i_occ, j_occ, a_virt, b_virt = p, q, s, r
+        sign = -1.0
     else:
         i_occ, j_occ, a_virt, b_virt = q, p, r, s
+        sign = -1.0
 
     parity_a = _z_parity(i_occ, j_occ)
     parity_b = _z_parity(a_virt, b_virt)
@@ -180,7 +195,7 @@ def _uccsd_double(p, q, r, s):
     op -= term(spin.y, spin.x, spin.x, spin.x)
     op -= term(spin.y, spin.y, spin.x, spin.y)
     op -= term(spin.y, spin.y, spin.y, spin.x)
-    return 0.125 * op
+    return sign * 0.125 * op
 
 
 def make_uccsd_operator_pool(num_qubits, num_electrons, spin=0):
@@ -370,7 +385,15 @@ def _pauli_lists_from_pool(ops, num_qubits):
         for term in cudaq.SpinOperator(op):
             words.append(cudaq.pauli_word(str(
                 term.get_pauli_word(num_qubits))))
-            coefficients.append(float(term.evaluate_coefficient().real))
+            coefficient = complex(term.evaluate_coefficient())
+            # The pool generators are anti-Hermitian with the i folded in,
+            # so every coefficient is real; reject rather than truncate
+            # anything else.
+            if abs(coefficient.imag) > 1e-12:
+                raise ValueError(
+                    "operator pool coefficients must be real; got "
+                    f"{coefficient} for {words[-1]}")
+            coefficients.append(coefficient.real)
         words_list.append(words)
         coefficients_list.append(coefficients)
     return words_list, coefficients_list

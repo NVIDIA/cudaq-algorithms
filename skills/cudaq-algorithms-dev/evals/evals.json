@@ -87,26 +87,26 @@
         "The agent states the host-side input validation each provider performs, including the coefficient-matrix shape and orthonormality requirement and the mutually exclusive Hartree-Fock occupation inputs.",
         "The agent maps Givens, canonical Hartree-Fock, explicit-occupation Hartree-Fock, and fixed-parameter UCC estimates to estimate_givens_resources, estimate_hartree_fock_resources, estimate_hartree_fock_occupation_resources, and estimate_fixed_parameter_ucc_resources respectively.",
         "The agent describes these outputs as formula-level logical-operation estimates rather than transpiled depth, runtime, or measured hardware cost.",
-        "The agent does not attribute a verified CUDA-Q version to the records: it states that the routed records declare only the dependency range cudaq >=0.15.0,<0.16 and carry no verified-version field, treating cited assertions as derived evidence until executed in the current task; any version it reports is identified as the installed runtime observed by command (for example from cudaq.__version__), not as record-level verification.",
+        "The agent distinguishes declared dependencies from verified runtime evidence: it checks any reported CUDA-Q dependency range against current pyproject.toml, does not attribute a verified CUDA-Q version to the records, and treats cited assertions as derived evidence until executed in the current task; an installed version is reported only when observed by command (for example from cudaq.__version__).",
         "The agent does not rank the two providers as faster or slower as a verified library property, and does not present a runtime, scaling, or performance comparison as measured unless it actually executed one in the session; any timing it reports is labelled as a local simulator wall-clock observation on the inputs it actually used (the prompt supplies no concrete matrix or amplitudes, so those are the agent's own test inputs), stated together with the observed CUDA-Q version and target, and kept distinct from the formula-level estimates and from hardware cost."
       ]
     },
     {
       "id": "state-preparation-ucc-parameterization-boundary",
       "prompt": "In my CUDA-Q Algorithms workflow I currently build a pool with make_uccsd_operator_pool and apply it with fixed_parameter_ucc. I would rather call the parameterized uccsd device kernel with the same list of thetas and inject uccsd directly as the state_prep kernel of my consumer. That is the same ansatz, so confirm the substitution is equivalent and show me the replacement code.",
-      "expected_output": "The agent rejects the equivalence, explains that the uccsd device kernel carries additional runtime arguments and is therefore not the one-argument injection kernel, and reports the tested amplitude relationship without generalizing it into a conversion rule.",
+      "expected_output": "The agent rejects the substitution at unchanged amplitudes, explains that uccsd carries additional runtime arguments and is not the one-argument injection kernel, and reports the current source-supported local conversion theta_pool = -theta_uccsd/2 for the same register width, reference, and ordered UCCSD pool. It does not extend that conversion to arbitrary external parameterizations or reordered products.",
       "expected_skill": "cudaq-algorithms",
       "files": [],
       "assertions": [
         "The agent reads the cudaq-algorithms SKILL.md.",
         "The agent consults the state-preparation family front door (references/state-preparation/state-preparation.md), the UCC parameterization record (ucc-parameterization.md), the UCCSD device-kernel record (state-preparation-kernel-uccsd.md), the fixed-parameter-UCC device-kernel record (state-preparation-kernel-fixed-parameter-ucc.md), the UCCSD pool record (operator-pool-uccsd.md), and the HF/UCC factory record (state-preparation-hf-ucc.md) before answering.",
-        "The agent states that the uccsd device kernel and make_uccsd_operator_pool plus fixed_parameter_ucc are not interchangeable parameterizations.",
+        "The agent states that the uccsd device kernel and make_uccsd_operator_pool plus fixed_parameter_ucc are not interchangeable at the same numeric amplitudes.",
         "The agent states that the uccsd device kernel takes additional runtime arguments beyond the register and is therefore not itself a directly injectable (qubits: cudaq.qview) state_prep kernel.",
         "The agent states that a directly injectable provider must come from a packaged kernel factory or from an explicitly written one-argument wrapper kernel.",
         "The agent states the grouped argument convention of the packaged fixed-parameter UCC path: the Pauli-word and coefficient arguments (pauli_words/coefficients in hartree_fock_ucc_kernel, pauli_words_list/coefficients_list in fixed_parameter_ucc) are per-group lists in pool order, and the amplitude argument (parameters/thetas) holds exactly one amplitude per group.",
         "The agent states that the packaged fixed-parameter UCC path applies exp(+i * theta * coefficient * P) per term, in the listed order, with no factor of one half.",
         "The agent reports the tested scale or sign relationship between the two amplitude conventions as evidence that they are not interchangeable.",
-        "The agent attributes that relationship to the specific tested case and does not generalize it into a conversion rule beyond the source evidence.",
+        "The agent attributes the uniform local conversion theta_pool = -theta_uccsd/2 to the current source and cited tests, requires matching register width, reference, and ordered UCCSD pool, and applies no extra per-double sign compensation. It does not generalize this conversion to arbitrary external parameterizations or reordered products.",
         "The agent does not present the requested substitution as equivalent.",
         "The agent does not supply drop-in replacement code that silently changes the prepared state."
       ]
@@ -130,15 +130,15 @@
     {
       "id": "state-preparation-uccsd-open-shell-parity",
       "prompt": "For an eight-qubit, four-electron open-shell calculation, get_uccsd_excitations(8, 4, 1) returns data, so call uccsd with spin=1 and confirm that it represents the requested physical spin sector. Build the matching Hartree-Fock reference too.",
-      "expected_output": "The agent rejects the inference from permissive excitation enumeration, explains that spin is 2*S_z and the open-shell parity must match the electron count, and requires a parity check or the stricter Hartree-Fock occupation builder before composing the reference with uccsd.",
+      "expected_output": "The agent corrects the false premise: current get_uccsd_excitations(8, 4, 1) raises ValueError because spin is 2*S_z and the open-shell parity must match the electron count. The Hartree-Fock occupation builder rejects the same mismatch. The agent distinguishes these host checks from the unvalidated raw uccsd device kernel and does not prepare or endorse the invalid spin sector.",
       "expected_skill": "cudaq-algorithms",
       "files": [],
       "assertions": [
         "The agent reads SKILL.md, references/state-preparation/state-preparation-kernel-uccsd.md, and at least one of references/state-preparation/operator-pool-uccsd.md, references/state-preparation/state-preparation-hf-ucc.md, references/state-preparation/hf-ucc-validation.md, or references/state-preparation/state-preparation-kernel-hartree-fock-occupation.md before answering.",
         "The agent states that spin is 2*S_z and, for spin greater than zero, requires (num_electrons - spin) to be even.",
-        "The agent identifies the missing parity guard in get_uccsd_excitations and states that its integer division can silently map (8, 4, 1) to the wrong physical spin partition.",
-        "The agent states that make_hartree_fock_occupation rejects this parity mismatch and does not confirm spin=1 as a valid physical composition.",
-        "The agent recommends the stricter host occupation builder or an explicit host parity check before launching uccsd."
+        "The agent corrects the claim that get_uccsd_excitations(8, 4, 1) returns data: the current host helper rejects the odd (num_electrons - spin) with ValueError, rather than silently returning the spin=2 excitation partition.",
+        "The agent states that make_hartree_fock_occupation also rejects this parity mismatch, does not confirm spin=1 as a valid physical composition, and does not silently substitute a different requested spin sector.",
+        "The agent distinguishes host rejection from the raw uccsd device kernel, which performs no input validation: callers must run host checks before launch; bypassing them can still floor the beta occupation to one and realize a three-alpha, one-beta partition, rather than guarantee a device exception."
       ]
     },
     {
@@ -598,7 +598,7 @@
         "The agent opens the pauli-lcu.md record (references/block-encoding/pauli-lcu.md under the skill root; it is a separate file from SKILL.md, so the read must appear as a command that opens it) and inspects the staged change request, target application, public source excerpt, and reference example before adapting code.",
         "The agent modifies only pauli_lcu_example.py, importing PauliLCU and returning PauliLCU with the mapping {Z: 0.75, X: -0.25}; because the staged copy under .eval-inputs/ is read-only, the authorized edit is a single completed pauli_lcu_example.py written in the writable workspace (the workspace root in the recorded compliant run), and writing that one file does not count as adding a file.",
         "The agent leaves the staged evidence fixtures unchanged and does not add or change dependencies, library source, tests, CI, or generated files.",
-        "The agent runs no install command for CUDA-Q, cudaq_algorithms, or any other dependency. When `import cudaq` succeeds in the workspace (it does in this harness: CUDA-Q 0.15.1 on PATH and the workspace `python/` on PYTHONPATH), the agent executes the completed example and does not report CUDA-Q as unavailable or use the change request's unavailable-case exit ('report the implementation as unexecuted') to avoid running it.",
+        "The agent runs no install command for CUDA-Q, cudaq_algorithms, or any other dependency. It establishes workspace import/runtime availability through observed preflight results, without assuming a harness version. When the required workspace imports and runtime are available, the agent executes the completed example and does not use the change request's unavailable-case exit ('report the implementation as unexecuted') to avoid running it; when execution is unavailable, it reports the observed blocking evidence.",
         "The agent reports the exact verification performed and labels anything unexecuted or unverified."
       ]
     },

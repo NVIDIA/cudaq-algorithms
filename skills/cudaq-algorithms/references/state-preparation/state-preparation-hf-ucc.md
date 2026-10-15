@@ -31,7 +31,7 @@ Cited repository assertions provide derived evidence until executed in the curre
 | Input representations | Hartree-Fock occupation; grouped fixed-parameter UCC Pauli words and coefficients; a flat amplitude list |
 | Output representations | the one-argument `(qubits: cudaq.qview)` preparation kernel of the shared injection Representation Record |
 | Domain | `quantum-chemistry` - a tag, not a parallel taxonomy; the capability it provides is domain-independent |
-| Required dependencies | `cudaq >= 0.15.0, < 0.16` (`pyproject.toml`); the host path uses `cudaq` only. A simulator or hardware target is needed to *run* an emitted kernel, not to build one |
+| Required dependencies | `cudaq >= 0.16.0, < 0.17` (`pyproject.toml`); the host path uses `cudaq` only. A simulator or hardware target is needed to *run* an emitted kernel, not to build one |
 | Optional dependencies | none |
 | Exactness | exact for the emitted circuit contract, subject to host input validation and floating-point synthesis of the rotation angles |
 | Uncertainty | deterministic |
@@ -75,7 +75,7 @@ a group - so the prepared state is that ordered product applied to `|HF>`. Each
 factor is emitted as one `exp_pauli(theta_g * c_gj, qubits, P_gj)` call
 (`_hartree_fock.py:43-49`, `:281-287`), and `exp_pauli(angle, qubits, P)`
 implements `exp(+i * angle * P)`, as stated by the dense reference at
-`tests/python/test_stateprep_kernels.py:105-112`. The exponent sign is `+i`;
+`tests/python/test_stateprep_kernels.py:114-129`. The exponent sign is `+i`;
 there is **no** factor of `1/2` and no `theta/2` anywhere in this contract.
 
 **Consequence for caller amplitudes.** Amplitudes expressed in a different UCC
@@ -86,7 +86,7 @@ raises. Convert before calling.
 
 **Scope of the statement.** It is `derived` from the cited source lines and
 pinned by `test_fixed_parameter_ucc_matches_dense_pool_exponential`
-(`tests/python/test_stateprep_hf_ucc.py:239-264`), which compares the kernel
+(`tests/python/test_stateprep_hf_ucc.py:248-271`), which compares the kernel
 against `expm(1.0j * theta * generator)` accumulated in pool order at
 `(num_qubits, num_electrons, spin)` of `(4,2,0)`, `(6,3,1)`, and `(8,4,2)`. It
 says nothing about whether the factors commute, and no source or test in the
@@ -127,7 +127,7 @@ before supplying hand-built inputs.
 `get_fixed_parameter_ucc_pauli_lists(operator_pool, num_qubits,
 coefficient_tolerance=1.0e-12)` is the packaged route from any operator pool to
 the grouped form above (`_hartree_fock.py:161-193`; asserted at
-`test_stateprep_hf_ucc.py:158-195`):
+`test_stateprep_hf_ucc.py:165-202`):
 
 - it returns `(pauli_words, coefficients)` with **one group per pool operator,
   in pool order**, so group `g` corresponds to `operator_pool[g]` and pairs with

@@ -8,11 +8,11 @@ and paired-doubles UpCCGSD pool**.
 - Public symbols from `cudaq_algorithms.stateprep`:
   `make_upccgsd_operator_pool(num_qubits, only_doubles=False)` and
   `get_upccgsd_pauli_lists(num_qubits, only_doubles=False)`.
-- Source: `python/cudaq_algorithms/stateprep/_pools.py:209-250,273-288,364-388`;
-  exports: `python/cudaq_algorithms/stateprep/__init__.py:43-47,60,65`.
+- Source: `python/cudaq_algorithms/stateprep/_pools.py:224-265,288-303,379-411`;
+  exports: `python/cudaq_algorithms/stateprep/__init__.py:44-48,63,68`.
 - Tests: `tests/python/test_operator_pools.py:72-79,141-202,231-252`,
   `tests/python/test_stateprep.py:54-61,72-82`, and
-  `tests/python/test_stateprep_kernels.py:226-238,263-291`.
+  `tests/python/test_stateprep_kernels.py:217-229,254-301`.
 - Runnable usage: `docs/sphinx/guide/state_prep.rst:57,68` and
   `pytest -q tests/python/test_operator_pools.py -k upccgsd`.
 - Source provenance: current public source/tests are authoritative and must be
@@ -62,12 +62,13 @@ carried.
 
 `get_upccgsd_pauli_lists` returns grouped full-width Pauli words and floats,
 one group per operator in pool order, with matching group lengths. Its shared
-converter retains every Pauli term and computes
-`float(term.evaluate_coefficient().real)`. This conversion discards any imaginary
-component; the converter implements neither an imaginary-magnitude test nor a
-corresponding rejection. Packaged-pool coefficients are real under the cited
-Hermiticity evidence; production of an imaginary coefficient is unverified.
-The generic fixed-parameter converter has stricter imaginary/tolerance rules.
+converter retains every real Pauli term, rejects
+`abs(coefficient.imag) > 1e-12` with `ValueError`, and uses
+`coefficient.real` otherwise. Packaged-pool coefficients are real under the
+cited Hermiticity evidence; `test_operator_pools.py:310-324` checks the shared
+converter's rejection using a synthetic complex pool. The generic
+fixed-parameter converter uses a configurable tolerance and additionally
+prunes negligible real terms.
 
 Composition requires the same register width, positional one-parameter-per-
 element matching, and a prepared reference determinant for device use. The

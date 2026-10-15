@@ -43,10 +43,12 @@ fresh system register and runs preparation first. Exact width is required but
 not generally checked at factory time; mismatch behavior can fail or silently
 prepare a wrong state and is unverified. Preparation is not controlled, and no
 controlled-Trotter factory is documented. `cudaq.control` over the emitted
-kernel is not a workaround: the kernel is not flat (it calls the
-`apply_trotter` sub-kernel), and CUDA-Q 0.15 control-variant generation
-rejects kernels that call other kernels (the pinned dependency is
-`cudaq >= 0.15.0, < 0.16`; see [kernel boundaries](../conventions/kernel-boundaries.md)).
+kernel is a separate, unverified composition: the kernel calls the
+`apply_trotter` sub-kernel. The historical CUDA-Q 0.15 nested-call rejection
+was lifted in 0.16, but that does not establish controlled evolution,
+including its identity-term phase and injected preparation. The declared
+dependency is `cudaq >= 0.16.0, < 0.17`; see
+[kernel boundaries](../conventions/kernel-boundaries.md).
 The package's controlled paths (`Walk.controlled_kernel`,
 `QSVT.controlled_kernel`) are built from dedicated controlled device kernels,
 and no such kernel exists for Trotter evolution, so phase estimation over
