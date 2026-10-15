@@ -4,12 +4,14 @@
 
 Pure-Python port of ``lib/stateprep/excitations.cpp`` and the host-side
 helpers of ``lib/stateprep/device/*.cpp``, built with ``cudaq.spin``
-algebra. Enumeration orders, index conventions, and coefficient signs
-match the C++ implementation exactly (the tests pin them):
+algebra. Enumeration order and index conventions match the C++
+implementation (the tests pin them):
 
 * UCCSD excitations follow the interleaved alpha/beta spin-orbital layout
   (alpha even, beta odd) with the closed-shell (spin == 0) and open-shell
-  (spin > 0) occupancy rules of the C++ ``get_uccsd_excitations``.
+  (spin > 0) occupancy rules of the C++ ``get_uccsd_excitations``. One
+  swapped pair negates the double-excitation generator, matching the
+  ``uccsd`` ladder.
 * UCCGSD doubles enumerate the three pairings of every 4-combination of
   qubits, normalized to (high, low) within each pair and deduplicated in
   sorted order (the C++ ``std::set`` iteration order).
@@ -161,15 +163,22 @@ def _uccsd_single(p, q):
 
 
 def _uccsd_double(p, q, r, s):
-    """The 8-term UCCSD double-excitation generator (C++ index rules)."""
+    """The 8-term UCCSD double-excitation generator.
+
+    One swapped pair negates the operator, the same rule as
+    ``double_excitation``, so the pool matches the ``uccsd`` ladder.
+    """
+    sign = 1.0
     if p < q and r < s:
         i_occ, j_occ, a_virt, b_virt = p, q, r, s
     elif p > q and r > s:
         i_occ, j_occ, a_virt, b_virt = q, p, s, r
     elif p < q and r > s:
         i_occ, j_occ, a_virt, b_virt = p, q, s, r
+        sign = -1.0
     else:
         i_occ, j_occ, a_virt, b_virt = q, p, r, s
+        sign = -1.0
 
     parity_a = _z_parity(i_occ, j_occ)
     parity_b = _z_parity(a_virt, b_virt)
@@ -186,7 +195,7 @@ def _uccsd_double(p, q, r, s):
     op -= term(spin.y, spin.x, spin.x, spin.x)
     op -= term(spin.y, spin.y, spin.x, spin.y)
     op -= term(spin.y, spin.y, spin.y, spin.x)
-    return 0.125 * op
+    return sign * 0.125 * op
 
 
 def make_uccsd_operator_pool(num_qubits, num_electrons, spin=0):
