@@ -123,6 +123,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from ._qrom_common import BlockGeometry, rebase_block_walk, validate_qrom_data
+from ._qrom_plan import QROMResources, QROMStageResources
+
 from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CCX_ADDR_ADDR,
                                _OP_CCX_CTRL, _OP_CX_ADDR_ADDR,
                                _OP_CX_ADDR_LADDER, _OP_CX_LADDER_LADDER,
@@ -136,14 +139,7 @@ _VARIANTS = ("auto", "select", "select_swap")
 
 # Walk opcodes whose (a, b) operands index the address register, used to
 # shift the block-index walk onto the high address bits.
-_ADDRESS_OPERANDS = {
-    _OP_X_ADDR: (0, ),
-    _OP_CX_ADDR_LADDER: (0, ),
-    _OP_CCX: (1, ),
-    _OP_CCX_CTRL: (1, ),
-    _OP_CX_ADDR_ADDR: (0, 1),
-    _OP_CCX_ADDR_ADDR: (0, 1),
-}
+from ._unary_iteration_ir import _ADDRESS_OPERANDS
 
 
 def _select_swap_cost(address_bits: int, num_entries: int, output_bits: int,
@@ -189,31 +185,8 @@ class QROM:
                  *,
                  variant: str = "auto",
                  block_size: int | None = None) -> None:
-        if int(address_bits) != address_bits or address_bits < 1:
-            raise ValueError("address_bits must be a positive integer")
-        if int(output_bits) != output_bits or output_bits < 1:
-            raise ValueError("output_bits must be a positive integer")
-        address_bits = int(address_bits)
-        output_bits = int(output_bits)
-        # Materialize first: a single-pass iterable must not be consumed
-        # by one check and leave the others looking at an empty iterator.
-        raw = list(data)
-        if len(raw) == 0:
-            raise ValueError("data must be non-empty")
-        if any(int(v) != v for v in raw):
-            raise ValueError("data entries must be integers")
-        entries = [int(v) for v in raw]
-        if len(entries) > (1 << address_bits):
-            raise ValueError(
-                f"data has {len(entries)} entries but address_bits="
-                f"{address_bits} addresses only {1 << address_bits}")
-        if any(v < 0 for v in entries):
-            raise ValueError("data entries must be non-negative")
-        if max(entries) >= (1 << output_bits):
-            raise ValueError(
-                f"data entry {max(entries)} does not fit in output_bits="
-                f"{output_bits} bits (max representable "
-                f"{(1 << output_bits) - 1})")
+        entries, address_bits, output_bits = validate_qrom_data(
+            data, address_bits, output_bits)
         if variant not in _VARIANTS:
             raise ValueError(
                 f"variant must be one of {_VARIANTS}, got {variant!r}")
@@ -286,14 +259,16 @@ class QROM:
         self._kernel = walk.kernel
         self._num_ladder = walk.num_ladder
         self._toffoli_count = walk.toffoli_count
+        self._resources = QROMResources(
+            (QROMStageResources("select", walk.toffoli_count), ),
+            walk.num_ladder, 0)
 
     def _build_select_swap(self) -> None:
         entries = self._data
         b = self._output_bits
         size = self._block_size
-        low_bits = size.bit_length() - 1
-        high_bits = self._num_address - low_bits
-        num_blocks = (len(entries) + size - 1) // size  # ceil division
+        geometry = BlockGeometry(self._num_address, b, len(entries), size)
+        low_bits, high_bits, num_blocks = geometry.low_bits, geometry.high_bits, geometry.num_blocks
 
         def block_write(j: int) -> list[tuple[str, int]]:
             gates = []
@@ -317,17 +292,11 @@ class QROM:
         # ladder VIEW after the walk lines — "ladder" names the wire
         # bundle, not a role — so the walk's leaf-controlled block-write
         # X lands as a CNOT between two ladder-view wires.
-        ops = []
-        for op in walk_ops:
-            opcode, a, bb, c = op
-            if opcode == _OP_BODY_X:
-                ops.append((_OP_CX_LADDER_LADDER, a, high_bits + bb, 0))
-                continue
-            operands = [a, bb, c]
-            for position in _ADDRESS_OPERANDS.get(opcode, ()):
-                operands[position] += low_bits
-            ops.append((opcode, *operands))
-        walk_ops = ops
+        walk_ops = list(
+            rebase_block_walk(walk_ops,
+                              address_offset=low_bits,
+                              output_bits=0,
+                              bank_offset=high_bits))
 
         # Binary routing network: after stage s (controlled on
         # address[s]), block slot i (i = 0 mod 2^(s+1)) holds the entry
@@ -357,6 +326,20 @@ class QROM:
         self._kernel = _mint_interpreter(ops, controlled=False, has_work=False)
         self._num_ladder = high_bits + size * b
         self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
+        walk_cost = sum(op[0] in _TOFFOLI_OPCODES for op in walk_ops)
+        route_cost = sum(op[0] in _TOFFOLI_OPCODES for op in swap_ops)
+        write = QROMStageResources("write", walk_cost)
+        unwrite = QROMStageResources("unwrite", walk_cost)
+        routing = (QROMStageResources("route", route_cost),
+                   QROMStageResources("copy", 0),
+                   QROMStageResources("unroute", route_cost))
+        stages = (write, ) + routing + (unwrite, )
+        self._resources = QROMResources(stages, self._num_ladder, 0)
+
+    @property
+    def resources(self) -> QROMResources:
+        """Logical operation counts by stage, not compiled hardware costs."""
+        return self._resources
 
     @property
     def data(self) -> tuple[int, ...]:
@@ -392,7 +375,7 @@ class QROM:
 
     @property
     def toffoli_count(self) -> int:
-        return self._toffoli_count
+        return self._resources.toffoli_count
 
     @property
     def kernel(self):

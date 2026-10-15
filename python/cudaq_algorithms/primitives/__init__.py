@@ -12,12 +12,16 @@ classical-table lookups on top of it, either as the plain
 unary-iteration SELECT or as the SELECT-SWAP / QROAM construction of
 Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`).
 
-Everything here is strictly unitary: the papers' headline Toffoli counts
-assume measurement-based ancilla uncomputation, which this library does
-not use (primitives must stay statevector-testable and
-inverse-composable); the module docstrings state the coherent costs the
-minted kernels actually have, and the resource tests pin them against
-the compiler.
+``QROM`` and the original unary-iteration factory stay strictly unitary.
+``MeasuredQROM`` and ``measured_unary_iteration_kernels`` explicitly opt
+into measurement-based tree uncomputation on clean tree ancillas, with
+factory-built controls and, for SELECT-SWAP, an optional borrowed bank
+that may start in any state, entangled or not. Their logical action is
+unitary on the declared workspace subspace (clean prefix at zero, bank
+arbitrary) — for ``MeasuredQROM`` a basis permutation — so coherence and
+entanglement of the inputs are preserved; automatic control/adjoint and
+sampling are outside the measured API contract. See
+:doc:`../guide/measured_qrom` for execution and resource conventions.
 
 The reversible integer arithmetic device kernels (:mod:`._arithmetic`)
 are the in-place little-endian adders and comparators the lookup-based
@@ -51,11 +55,17 @@ from ._arithmetic import (add_constant, add_constant_qft, add_register,
                           subtract_constant, subtract_constant_qft,
                           subtract_register)
 from ._qrom import QROM
+from ._qrom_measured import MeasuredQROM
 from ._unary_iteration import UnaryIterationKernels, unary_iteration_kernels
+from ._unary_iteration_measured import (MeasuredUnaryIterationKernels,
+                                        measured_unary_iteration_kernels)
 
 __all__ = [
     "AliasSamplingPrepare",
     "QROM",
+    "MeasuredQROM",
+    "MeasuredUnaryIterationKernels",
+    "measured_unary_iteration_kernels",
     "UnaryIterationKernels",
     "add_constant",
     "add_constant_qft",
