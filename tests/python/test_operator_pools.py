@@ -274,21 +274,27 @@ def test_ceo_operator_pool_correctness():
 
 
 def test_uccsd_spin_two_pool_matches_fermionic_generators():
+    # Ordered equality, not a +/- i bijection. A shared extra minus on the
+    # pool and the ladder would still pass the other UCCSD checks.
     num_qubits, num_electrons, spin = 8, 4, 2
     excitations = algorithms.stateprep.get_uccsd_excitations(
         num_qubits, num_electrons, spin)
     single, double = _fermionic_generators(num_qubits)
-    singles = [single(q, p) for group in excitations[:2] for p, q in group]
-    doubles = [
-        double(s, r, q, p) for group in excitations[2:] for p, q, r, s in group
-    ]
+    pool = algorithms.stateprep.make_uccsd_operator_pool(
+        num_qubits, num_electrons, spin)
+    singles = [(p, q) for group in excitations[:2] for p, q in group]
+    doubles = [(p, q, r, s) for group in excitations[2:]
+               for p, q, r, s in group]
+    assert len(pool) == len(singles) + len(doubles)
 
-    # A full bijection proves every spin-2 pool term has one independent
-    # fermionic generator, including all interleaved mixed doubles.
-    _assert_bijection_up_to_global_phase(
-        algorithms.stateprep.make_uccsd_operator_pool(num_qubits,
-                                                      num_electrons, spin),
-        singles + doubles, num_qubits)
+    for operator, (p, q) in zip(pool, singles):
+        # pool single (p, q) equals -i * (adag_q a_p - h.c.).
+        actual = _dense_at_width(operator, num_qubits)
+        assert np.allclose(actual, -1.0j * single(q, p), atol=1e-10)
+    for operator, (p, q, r, s) in zip(pool[len(singles):], doubles):
+        # pool double (p, q, r, s) equals +i * (adag_r adag_s a_q a_p - h.c.).
+        actual = _dense_at_width(operator, num_qubits)
+        assert np.allclose(actual, 1.0j * double(r, s, q, p), atol=1e-10)
 
 
 def test_excitation_kernels_are_exported():
