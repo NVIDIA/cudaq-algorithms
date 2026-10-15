@@ -42,6 +42,16 @@ def reflection_observable(encoding: BlockEncoding) -> cudaq.SpinOperator:
     """R = ``2|0...0><0...0| - I`` on the ancilla register."""
     if encoding.num_ancilla == 0:
         raise ValueError("reflection observable needs at least one ancilla")
+    # The projector product expands to 2^num_ancilla Pauli terms. Past ~20
+    # ancillas that is millions of terms: constructing it does not error,
+    # it hangs. Wide-ancilla encodings (e.g. the sparse-access family)
+    # must take their Chebyshev data from walk_kernel powers instead.
+    if encoding.num_ancilla > 20:
+        raise ValueError(
+            f"the reflection observable over {encoding.num_ancilla} "
+            f"ancillas would expand to 2^{encoding.num_ancilla} Pauli "
+            "terms; even-order moments are impractical for this encoding "
+            "-- apply walk_kernel(power=...) and measure directly instead")
     offset = encoding.num_system
     projector = _bit_projector(offset, 0)
     for b in range(1, encoding.num_ancilla):
