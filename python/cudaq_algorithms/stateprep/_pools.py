@@ -166,8 +166,7 @@ def _uccsd_double(p, q, r, s):
     """The 8-term UCCSD double-excitation generator.
 
     One swapped pair negates the operator, the same rule as
-    ``double_excitation``. ``exp(i * (-theta / 2) * G)`` then matches the
-    ladder at angle ``theta`` for every excitation.
+    ``double_excitation``, so the pool matches the ``uccsd`` ladder.
     """
     sign = 1.0
     if p < q and r < s:
