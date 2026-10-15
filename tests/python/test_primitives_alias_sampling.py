@@ -289,8 +289,9 @@ def test_alias_sampling_passthrough_validation_propagates():
 
 @_RESOURCES
 def test_alias_sampling_adjoint_costs_exactly_the_forward_price():
-    # The hand-written adjoint is the literal gate-reversal: same gate
-    # multiset, gate for gate.
+    # The hand-written adjoint reverses the circuit block by block and
+    # re-applies the self-inverse QROM lookup: same gate multiset, gate
+    # for gate.
     prep = AliasSamplingPrepare([0.9, 0.0, 2.2, 0.0, 0.4, 1.3, 0.0, 3.1], 2)
     forward = _prepare_resources(prep, adjoint=False)
     backward = _prepare_resources(prep, adjoint=True)
