@@ -14,12 +14,13 @@ Givens-rotation Slater-determinant kernels and schedule helpers
 (:mod:`._givens`) follow the same split: composable device kernels plus
 host-side planning.
 
-Error-type convention: the two error cases the compiled bindings
-defined keep their historical ``RuntimeError`` (odd qubit count and
-odd-electrons-at-spin-0 in ``get_uccsd_excitations``); every guard
-added in the pure implementation raises ``ValueError``. Note also that
-the CEO helpers take ``num_orbitals`` in *spatial* orbitals (the pool
-acts on ``2 * num_orbitals`` qubits), matching the compiled API.
+Error-type convention: every input guard raises ``ValueError``, and
+``get_uccsd_excitations`` and ``make_hartree_fock_occupation`` apply the
+same ``(num_qubits, num_electrons, spin)`` checks with the same messages
+(``spin`` is ``2*S_z``, so ``num_electrons - spin`` must be even). Note
+also that the CEO helpers take ``num_orbitals`` in *spatial* orbitals
+(the pool acts on ``2 * num_orbitals`` qubits), matching the compiled
+API.
 """
 
 from ._givens import (GivensResourceEstimate, GivensRotation,
@@ -54,6 +55,8 @@ __all__ = [
     "hartree_fock",
     "hartree_fock_occupation",
     "fixed_parameter_ucc",
+    "single_excitation",
+    "double_excitation",
     "get_uccsd_excitations",
     "get_num_uccsd_parameters",
     "get_uccgsd_pauli_lists",
