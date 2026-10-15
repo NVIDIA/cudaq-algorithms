@@ -967,3 +967,81 @@ def test_parity_validation():
             bravyi_kitaev_superfast(h, parity=bad)
     with pytest.raises(ValueError, match="parity must be 0"):
         bravyi_kitaev_superfast_stabilizers(h, parity=2)
+
+
+# ----------------------------------------------------------------------
+# Eq. (12): prod_i B_i = (-1)^parity on the code space
+# ----------------------------------------------------------------------
+
+
+def _complex_five_mode_model():
+    """A complex-hopping, density-density model on a 4-cycle with a pendant
+    mode (degree padding adds two dummy edges for the generalized
+    encodings). With all edges oriented low -> high, the generalized code
+    space here carries the ODD sector unless Eq. (12) is enforced."""
+    h = np.zeros((5, 5), dtype=complex)
+    h[0, 0] = 0.014075
+    h[0, 1] = -0.687584 + 2.020947j
+    h[0, 4] = 0.481373 - 0.742623j
+    h[1, 1] = 0.107428
+    h[1, 3] = 0.672004 + 0.257291j
+    h[2, 2] = -1.783379
+    h[2, 3] = -0.275563 + 0.172139j
+    h[3, 3] = -2.822872
+    h[3, 4] = 0.900132 - 0.124976j
+    h = h + np.triu(h, 1).conj().T
+    V = np.zeros((5, 5, 5, 5), dtype=complex)
+    V[0, 1, 1, 0] = -0.81
+    V[0, 4, 4, 0] = 0.735962
+    V[1, 3, 3, 1] = 1.349459
+    return h, V
+
+
+@pytest.mark.parametrize("local_modes", ["standard", "binary_tree"])
+@pytest.mark.parametrize("parity", [0, 1])
+def test_complex_five_mode_model_lands_in_the_requested_sector(
+        local_modes, parity):
+    import warnings
+    h, V = _complex_five_mode_model()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert _matches_jw(h, V, local_modes=local_modes,
+                           parity=parity) < 1e-10
+
+
+def _encoded_parity_on_code_space(h, V, local_modes, parity):
+    """Eigenvalue of the encoded parity prod_i B_i on the code space (dense)."""
+    from cudaq_algorithms.fermion._superfast import _word_mul
+    backend = _encoding_backend(np.asarray(h, dtype=complex),
+                                np.asarray(V, dtype=complex), 1e-15, None,
+                                local_modes, parity)
+    nq = backend.num_qubits
+    coeff, word = 1.0 + 0j, (0, 0)
+    for i in sorted({m for edge in backend.edges for m in edge}):
+        coeff, word = _word_mul(coeff, word, *backend.b_word(i))
+    parity_op = coeff * _word_matrix(word[0], word[1], nq)
+    cols = np.eye(1 << nq, dtype=complex)
+    for c, (x, z) in backend.stabilizers():
+        S = cols.conj().T @ (c * _word_matrix(x, z, nq)) @ cols
+        w, U = np.linalg.eigh(S)
+        cols = cols @ U[:, np.abs(w - 1) < 1e-7]
+    projected = cols.conj().T @ parity_op @ cols
+    values = np.linalg.eigvalsh(projected)
+    assert np.max(
+        np.abs(values - values[0])) < 1e-9  # a scalar on the code space
+    return float(values[0].real)
+
+
+@pytest.mark.parametrize("name", list(_GRAPHS) + list(_MULTICYCLE_EVEN))
+@pytest.mark.parametrize("local_modes", ["standard", "binary_tree"])
+@pytest.mark.parametrize("parity", [0, 1])
+def test_encoded_parity_equals_requested_sector(name, local_modes, parity):
+    """Eq. (12) directly: prod_i B_i is (-1)^parity on the code space."""
+    n, edges = {**_GRAPHS, **_MULTICYCLE_EVEN}[name]
+    h, V = _random_tight_binding(2, n, edges, coulomb=True)
+    if local_modes == "binary_tree" and name == "star-4":
+        pytest.skip("odd-degree star cannot be padded for binary_tree")
+    assert _encoded_parity_on_code_space(h, V, local_modes,
+                                         parity) == pytest.approx(
+                                             1.0 if parity == 0 else -1.0,
+                                             abs=1e-9)

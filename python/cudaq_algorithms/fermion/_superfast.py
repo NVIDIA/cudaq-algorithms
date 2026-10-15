@@ -475,17 +475,69 @@ def _validate_parity(parity) -> int:
     return int(parity)
 
 
-def _parity_vertex(edges, parity):
-    """The vertex whose operator is negated to select the odd sector.
+def _stabilizer_subset(words, target):
+    """Indices of a subset of Pauli ``words`` whose product has the Pauli
+    word ``target`` (GF(2) elimination on the (x, z) bit vectors), or
+    ``None`` when ``target`` is not in the group they generate."""
+    rows = []  # (pivot bit, vector, index set)
+    for index, (x, z) in enumerate(words):
+        vector, members = x | (z << 64), {index}
+        for pivot, basis, basis_members in rows:
+            if vector >> pivot & 1:
+                vector ^= basis
+                members ^= basis_members
+        if vector:
+            rows.append((vector.bit_length() - 1, vector, members))
+    vector, members = target[0] | (target[1] << 64), set()
+    for pivot, basis, basis_members in rows:
+        if vector >> pivot & 1:
+            vector ^= basis
+            members ^= basis_members
+    return sorted(members) if vector == 0 else None
 
-    The code space fixes ``prod_i B_i`` (the encoded fermion parity) to a
-    constant; negating one vertex operator flips that constant and so
-    selects the odd-particle-number sector while leaving the edge operators,
-    their orientation and the loop stabilizers untouched. The lowest active
-    mode is the designated vertex (any vertex works)."""
-    if parity == 0:
+
+def _code_space_parity(backend):
+    """Eq. (12) check: the sign ``s`` such that ``prod_i B_i = s * I`` on the
+    code space (the joint +1 eigenspace of the loop stabilizers).
+
+    ``prod_i B_i`` is the encoded ``(-1)^N``; it commutes with every edge
+    and vertex operator, so on the code space it is a scalar, and its Pauli
+    word is a product of stabilizer words. The sign is the ratio of the two
+    coefficients. ``s = +1`` is the even-particle-number sector."""
+    coeff, word = 1.0 + 0j, (0, 0)
+    for i in sorted({m for edge in backend.edges for m in edge}):
+        c, w = backend._vertex_word(i)
+        coeff, word = _word_mul(coeff, word, c, w)
+    stabilizers = backend.stabilizers()
+    subset = _stabilizer_subset([w for _, w in stabilizers], word)
+    if subset is None:
+        raise RuntimeError("internal error: the encoded parity operator is "
+                           "not in the stabilizer group")
+    s_coeff, s_word = 1.0 + 0j, (0, 0)
+    for index in subset:
+        s_coeff, s_word = _word_mul(s_coeff, s_word, *stabilizers[index])
+    ratio = complex(coeff) / complex(s_coeff)
+    if abs(ratio.imag) > 1e-9 or abs(abs(ratio.real) - 1.0) > 1e-9:
+        raise RuntimeError("internal error: the encoded parity operator is "
+                           f"not +-1 on the code space (got {ratio})")
+    return 1 if ratio.real > 0 else -1
+
+
+def _parity_vertex(backend, parity):
+    """The vertex whose operator is negated so the code space carries the
+    requested fermion-parity sector.
+
+    The loop stabilizers fix ``prod_i B_i`` (the encoded parity) to a
+    constant ``s`` on the code space (:func:`_code_space_parity`); the
+    requested sector needs ``(-1)**parity``. Negating one vertex operator
+    flips the constant while leaving the edge operators, their orientation
+    and the stabilizers untouched, so the lowest active mode's operator is
+    negated exactly when ``s != (-1)**parity`` (Eq. (12) of the paper for
+    ``parity=0``)."""
+    wanted = 1 if parity == 0 else -1
+    if _code_space_parity(backend) == wanted:
         return None
-    return min(m for edge in edges for m in edge)
+    return min(m for edge in backend.edges for m in edge)
 
 
 class _StandardBackend:
@@ -497,10 +549,14 @@ class _StandardBackend:
         self.num_modes = graph.num_modes
         self.num_qubits = graph.num_qubits
         self.edges = graph.edges
-        self._flip_vertex = _parity_vertex(graph.edges, parity)
+        self._flip_vertex = None
+        self._flip_vertex = _parity_vertex(self, parity)
 
     def a_word(self, i, j):
         return 1.0, _a_word(self.graph, i, j)
+
+    def _vertex_word(self, i):  # B_i before the sector sign
+        return 1.0, _b_word(self.graph, i)
 
     def b_word(self, i):
         sign = -1.0 if i == self._flip_vertex else 1.0
@@ -666,19 +722,18 @@ class _GSEBackend:
 
     ``B_i = (-i)^{d/2} gamma_{i,1}...gamma_{i,d}`` (Eq 20);
     ``A_{i,j} = eps_{i,j} gamma_{i,p} gamma_{j,q}`` with ``j = N(i, p)`` and
-    ``i = N(j, q)`` (Eq 21). The edge orientation ``eps_{i,j} = +-1`` (for
-    ``i < j``; ``A_{j,i} = -A_{i,j}`` fixes the other direction) is the paper's
-    "suitable choice": a fixed sign would leave a spurious flux on some loops
-    that would move the code space off the physical sector, so each
-    fundamental cycle's chord orientation is set (``_fix_orientation``) to make
-    the loop operator ``+1`` on it. The fermion parity of that sector is a
-    separate choice: ``parity=1`` negates one vertex operator (``b_word``),
-    which no orientation or stabilizer-sign pattern can emulate."""
+    ``i = N(j, q)`` (Eq 21), with every edge oriented low -> high
+    (``eps = +1``). Orientation is a gauge: flipping one chord negates its
+    loop stabilizer and toggles the fermion-parity sector of the code space,
+    but nothing else. The sector is therefore fixed by Eq. (12),
+    ``prod_i B_i = I``: :func:`_code_space_parity` evaluates the encoded
+    parity on the stabilizers' +1 eigenspace and one vertex operator is
+    negated when it disagrees with the requested ``parity``."""
 
     def __init__(self, graph, local_modes, parity=0):
         self.num_modes = graph.num_modes
         self.edges = graph.edges
-        self._flip_vertex = _parity_vertex(graph.edges, parity)
+        self._flip_vertex = None
         neighbors = [[] for _ in range(graph.num_modes)]
         for (i, j) in graph.edges:
             neighbors[i].append(j)
@@ -703,8 +758,11 @@ class _GSEBackend:
             self._modes[v] = [(c, (x << shift, z << shift))
                               for c, (x, z) in cache[d]]
 
+        # Every edge oriented low -> high (eps = +1). Orientation is a gauge:
+        # each flip negates one loop stabilizer and toggles the sector, so
+        # the sector is fixed once, below, through one vertex sign instead.
         self._eps = {edge: 1 for edge in graph.edges}
-        self._fix_orientation(graph)
+        self._flip_vertex = _parity_vertex(self, parity)
 
     def _raw_a_word(self, i, j):  # i < j, before the orientation sign
         p = self._neighbors[i].index(j)
@@ -717,32 +775,16 @@ class _GSEBackend:
         coeff, word = self._raw_a_word(i, j)
         return self._eps[(i, j)] * coeff, word
 
-    def _loop_coeff(self, cycle):
-        length = len(cycle) - 1
-        coeff, word = 1.0 + 0j, (0, 0)
-        for u, v in zip(cycle, cycle[1:]):
-            ca, aw = self.a_word(min(u, v), max(u, v))
-            if u > v:
-                ca = -ca
-            coeff, word = _word_mul(coeff, word, ca, aw)
-        return coeff * (1j)**length
-
-    def _fix_orientation(self, graph):
-        """Set each chord's orientation so its fundamental loop operator is
-        ``+1`` on the physical code space -- the paper's "suitable choice" of
-        edge orientations. Each chord lies in exactly one fundamental cycle, so
-        the choices are independent (and independent of ``parity``)."""
-        tree, chords = _spanning_forest(graph)
-        for (i, j) in chords:
-            cycle = _tree_path(tree, graph.num_modes, j, i) + [j]
-            if self._loop_coeff(cycle).real < 0:
-                self._eps[(i, j)] = -self._eps[(i, j)]
-
-    def b_word(self, i):
+    def _vertex_word(
+            self,
+            i):  # B_i = (-i)^{d/2} prod_p gamma_{i,p}, before the sector sign
         coeff, word = 1.0 + 0j, (0, 0)
         for c, w in self._modes[i]:
             coeff, word = _word_mul(coeff, word, c, w)
-        coeff *= (-1j)**(self._degree[i] // 2)
+        return coeff * (-1j)**(self._degree[i] // 2), word
+
+    def b_word(self, i):
+        coeff, word = self._vertex_word(i)
         if i == self._flip_vertex:
             coeff = -coeff
         return coeff, word
