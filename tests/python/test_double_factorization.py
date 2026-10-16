@@ -566,19 +566,23 @@ def test_cdf_reports_when_optimizer_hits_iteration_limit(backend):
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
-def test_cdf_exact_rank_is_marked_converged(backend):
+@pytest.mark.parametrize("n, num_vectors, num_leaves", [(4, 3, 3), (1, 1, 1)])
+def test_cdf_exact_rank_is_marked_converged(backend, n, num_vectors,
+                                            num_leaves):
     # At the true leaf rank the X-DF warm start is already a minimizer, so
-    # L-BFGS must report success and must not warn.
-    eri = _synthetic_eri(4, 3, seed=11)
+    # L-BFGS must report success and must not warn. n == 1 has no free
+    # parameters, so the identity and closed-form cores are already exact.
+    eri = _synthetic_eri(n, num_vectors, seed=11)
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
-        factorization = df.compressed_double_factorization(eri,
-                                                           num_leaves=3,
-                                                           max_iterations=1500,
-                                                           backend=backend)
+        factorization = df.compressed_double_factorization(
+            eri, num_leaves=num_leaves, max_iterations=1500, backend=backend)
+    # Status records that this stationary point was accepted.
     assert factorization.optimizer_success is True
+    # Stationary, including the empty parameter vector when n == 1.
     assert factorization.optimizer_grad_norm is not None
     assert factorization.optimizer_grad_norm < 1.0e-8
+    # Closed-form cores at the true rank must reproduce the ERI.
     assert df.factorization_error(eri, factorization) < 1.0e-4
 
 
