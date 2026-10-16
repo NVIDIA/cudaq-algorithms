@@ -16,6 +16,9 @@ Use the strongest path available without overstating it:
 
 1. State the claim and mathematical oracle before execution.
 2. Translate qubit order, tensor order, signs, phases, normalization, and units.
+   Independently validate constructed inputs against the user's definition
+   before reusing them in a circuit and dense oracle; see
+   [product-state amplitudes](conventions/ordering.md#product-state-amplitudes).
 3. Fix target, precision, representative inputs, random seed when relevant, and
    tolerance before viewing results.
 4. Run the smallest test that distinguishes the intended contract from likely
@@ -59,13 +62,50 @@ are reported accurately.
 
 Record enough run provenance to reproduce the result in the artifact: package
 versions, target/precision, inputs or their provenance, settings, reference,
-and errors. Summarize routine checks in the answer; do not reproduce every
-command or fill context with unrelated records. Offline execution against an
+and errors. Summarize routine checks in the answer, including the exact command
+that reproduces the delivered result and its observed outcome; retain detailed
+logs with the artifact. Offline execution against an
 independent oracle can establish numerical correctness for the checked cases;
 static link, coverage, and source checks alone cannot. Neither establishes
 improved model pass rates, time, or token usage. Those claims require separate
 paired model evaluations on the same tasks, grading, environments, and budgets,
 with the skill revision and suite identity recorded.
+
+## Requested output artifacts
+
+When the request requires machine-readable results, validate the exact delivery
+interface as well as the scientific calculation:
+
+1. Identify the requested entrypoint, output destination and format: a named
+   file, a stdout record, or a function return value. Build one complete payload
+   containing the required results and emit it at that destination. Additional
+   summaries or sidecar files supplement that payload.
+2. Execute the declared command or call and capture the result as the consumer
+   receives it. For a last-stdout-line JSON contract, capture stdout and parse
+   `json.loads(completed.stdout.splitlines()[-1])`; for a file contract, read
+   that exact file after execution; for a return-value contract, inspect the
+   actual returned object. Check the exit status or exception too.
+3. Validate the captured payload against the requested schema and the checks
+   below. Keep evidence of this check with the reproduction command. A valid
+   payload at another destination does not establish this interface's validity.
+
+- Check required fields, types, array shapes, admissible values, and units.
+  Correct scientific numbers alone do not establish a valid output contract.
+- Where IDs identify candidates, check uniqueness and that every selection or
+  cross-reference resolves to an emitted ID. Derive stable IDs from the settings
+  that distinguish candidates; equal realized sizes do not imply equal IDs.
+- Record requested caps separately from realized rank or size, deriving the
+  latter from returned data. For example, explicit double factorization's
+  `max_num_leaves` is a cap; `factorization.num_leaves` is the returned count and
+  may stop below it. See the [explicit-factorization record](double-factorization/double-factorization-explicit.md)
+  and `python/cudaq_algorithms/double_factorization/_factorization.py`.
+- If multiple settings produce the same candidate, preserve distinct requested
+  settings or, when the output contract permits deduplication, retain their
+  mapping to the shared result. Check table headings and summary claims against
+  the emitted settings, realized sizes, and selected IDs.
+
+Apply the [completion checkpoint](workflow.md#completion-checkpoint) to reconcile
+the final explanation with this validated payload.
 
 ## Evidence labels
 

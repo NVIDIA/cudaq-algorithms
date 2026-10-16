@@ -1,7 +1,9 @@
 ---
 name: cudaq-algorithms
-description: Use for CUDA-Q Algorithms (cudaq_algorithms) primitives and for scientific requests taking molecular or lattice Hamiltonians to energies or dynamics.
+description: Use for CUDA-Q Algorithms primitives and molecular/lattice workflows. Excludes installation, backend setup, and standalone kernels (e.g. Bell).
 license: Apache-2.0
+version: "0.2.0"
+permissions: [file_read, file_write, shell]
 tags: [cuda-quantum, cudaq-algorithms, quantum-computing, fault-tolerant, simulation, chemistry, nvidia]
 metadata:
   author: CUDA-Q Algorithms Team <cuda-quantum@nvidia.com>
@@ -29,6 +31,45 @@ Suzuki-Trotter evolution, fermion transforms, chemistry, double factorization,
 fault-tolerant circuit primitives (QROM, unary iteration, reversible arithmetic,
 alias sampling), and statevector analysis. Not for CUDA-Q installation, backend setup, basic standalone
 kernels such as Bell states, or unrelated quantum-computing questions.
+For an excluded request, use the ordinary CUDA-Q workflow without loading this
+skill's scientific references. A basic state used as an input to a packaged
+algorithm remains in scope through that algorithm's contract.
+
+## Before implementation
+
+Route the in-scope task with
+`python3 <skill-dir>/scripts/route.py "<request>"`, retaining named operations,
+the desired scientific result, and requested output format. Open the selected
+family's Workflow and Verification and its relevant focused records; the router
+also points to shared workflow and validation checkpoints. Read only the sections
+needed for this task, then follow their current source/test pointers.
+
+Use the relevant [Quick contract](references/quick-contract.md) entry when an
+exact call or runnable pattern is needed. The [protocol-only encoding](references/quick-contract.md#consume-a-protocol-only-encoding),
+[walk verification](references/quick-contract.md#qubitization-walk-action-and-prepared-state-checks),
+and [chemistry conventions](references/quick-contract.md#chemistry-sector-energies-and-integral-conventions)
+sections supplement those records. Apply these checks when relevant:
+
+- **Complex input to real-Hamiltonian QSVT recovery:** follow the
+  [real/imaginary reconstruction recipe](references/qsvt/qsvt-recovery.md#complex-input-composition-for-a-real-hamiltonian).
+  Recover the two real components separately, restore their norms, and recombine.
+  Pass contiguous state arrays to CUDA-Q and check the raw complex vector against
+  an independent reference before a parameter sweep.
+- **States specified by site or qubit:** check amplitudes against the user's
+  specification with `q[0]` as the least-significant bit; see
+  [ordering](references/conventions/ordering.md). Agreement between a circuit and
+  a dense oracle using the same incorrectly constructed input is insufficient.
+- **Requested machine-readable results:** before delivering, follow
+  [output validation](references/validation.md#requested-output-artifacts).
+  Run the actual entrypoint and validate the complete payload at the requested
+  interface (stdout, file, or return value), including required fields, types,
+  identifiers and references. A separate complete file does not validate an
+  incomplete stdout result. Distinguish requested caps from realized sizes.
+- **Final scientific claims:** derive threshold decisions and selected candidates
+  from the validated rows; reconcile the prose with the observed output. For
+  executed work, include the exact reproduction command. Diagnose a conflicting observation
+  before describing it as successful; see
+  [completion](references/workflow.md#completion-checkpoint).
 
 ## Prerequisites
 
@@ -58,7 +99,7 @@ and Unknowns. A record sentence is source evidence, never an observed run.
 
 | Script | Invocation and inputs | Output |
 | --- | --- | --- |
-| [route.py](scripts/route.py) | `python3 <skill-dir>/scripts/route.py [--full] "<request>"`; reads standard input when request arguments are omitted or empty. `--help` shows usage. | At most three starting guide paths, section names, candidate premise rows, and focused record paths; a `## Note` when the request names an algorithm that is not a packaged primitive (quantum phase estimation). `--full` prints complete selected guides. Unmatched requests return the catalog entry point. |
+| [route.py](scripts/route.py) | `python3 <skill-dir>/scripts/route.py [--full] "<request>"`; reads standard input when request arguments are omitted or empty. `--help` shows usage. | At most three starting guides with section names, plus focused operation records, applicable premise candidates, and shared checkpoints. `--full` prints complete selected guides. Standalone Bell/basic-kernel requests return a scope note; unmatched requests return the catalog entry point. Quantum phase estimation gets a note naming available building blocks. |
 
 Here, `<skill-dir>` is the directory containing this `SKILL.md`, independently of
 the repository checkout root. Open the relevant sections of the routed guides and
@@ -119,164 +160,18 @@ skill; parameterized UCC construction remains an in-scope state-preparation prim
 Dependencies, credentials, remote jobs, paid/shared QPUs, publishing, and external
 contact require authorization covering those actions.
 
-## Quick contract (checked against `python/cudaq_algorithms` in this checkout)
+Before writing CUDA-Q kernels, read the
+[kernel boundaries](references/quick-contract.md#kernel-boundaries).
+Define kernels in a `.py` file run with `python3 file.py`; CUDA-Q cannot compile
+kernels defined in a heredoc or `-c` string. Mint kernels and compute NumPy/host
+data outside `@cudaq.kernel`; inside it allocate registers, apply gates, and call
+captured kernels. Pass statevector input with `state_from(ket)` as a `cudaq.State`
+argument; there is no `cudaq.prepare_state`. CUDA-Q statevectors are little-endian
+(`q[0]` is the least-significant bit); the good subspace is the first
+`2**num_system` amplitudes when the system register is allocated first.
 
-The package imports as `cudaq_algorithms` (source `python/cudaq_algorithms/`); it is
-not a submodule of `cudaq`.
-
-```python
-from cudaq_algorithms import (PauliLCU, Walk, QSVT, PhaseSequence,
-                              recover_real_time_evolution, Trotter, state_from)
-from cudaq_algorithms import sim_utils as sim, chemistry, fermion, stateprep
-from cudaq_algorithms import double_factorization as df
-```
-
-| Operation | Exact call | Runnable example in `docs/sphinx/examples/python/` |
-| --- | --- | --- |
-| Block-encode `H/alpha` | `enc = PauliLCU({"ZI": 0.5, "IX": 0.25})` or `PauliLCU([(coef, word), ...])`; a word has one character per qubit, so its length is the qubit count (`[(0.37, "X"), (-0.48, "Z"), (0.21, "I")]` is a one-qubit Hamiltonian with a 2-component state) and word position = qubit index; `enc.alpha`; `enc.terms` is a list of `(coef, word)` | `pauli_lcu_demo.py` |
-| Check the encoded block densely | `sim.action(enc, ket)` returns `(H/alpha) ket` for a normalized `ket` (one application of the block, not a walk); `sim.good_subspace(enc, statevector)` postselects the all-zero ancilla block | `pauli_lcu_demo.py` |
-| Consume any `BlockEncoding` (protocol only) | See [Consume a protocol-only encoding](#consume-a-protocol-only-encoding) below | `06_bring_your_own_encoding.py`, `python/cudaq_algorithms/qubitization.py` |
-| Qubitization walk action | See [Qubitization walk action and prepared-state checks](#qubitization-walk-action-and-prepared-state-checks) below | `05_state_prep_and_injection.py`, `pauli_lcu_demo.py` |
-| QSP/QSVT sequence | `qsvt = QSVT(enc)`; `out = sim.transform(qsvt, ket, PhaseSequence(phases, convention="qsp"))` returns the good-subspace state; the default convention is `"qsvt"` | `hamiltonian_simulation_qsvt.py` |
-| Real-time evolution recovery | `recover_real_time_evolution(cos_state, sin_state, cos_phases, sin_phases)` on cosine/sine approximations for a **real Hamiltonian and real input state** estimates `exp(-iHt) ket`; arbitrary supplied phases need not approximate evolution. For complex inputs use a separately validated linear extension; see the QSVT Workflow. When vector accuracy is requested, compare the raw complex vector with `scipy.linalg.expm(-1j * H * t) @ ket` without renormalizing or aligning a global phase | `hamiltonian_simulation_qsvt.py`, `02_hamiltonian_simulation.py` |
-| Suzuki-Trotter | Do not hand-write the product formula. `ev = Trotter([(0.37, "X"), (-0.48, "Z"), (0.21, "I")])` (identity terms move to `ev.identity_coefficient`); `trotter = sim.evolve(ev, ket, time, steps=3, order=2)` includes the identity phase; `exact = expm(-1j * H_dense * time) @ ket`; for phase-sensitive vector accuracy report raw `np.linalg.norm(trotter - exact)`; for an observable target compare its expectation values at the requested times (see Trotter Verification); `ev.resources(steps=3, order=2)` gives formula-level counts, labelled as a circuit proxy, not hardware cost; device kernels are `ev.kernel(time, steps, order, state_prep=...)` and `ev.state_kernel(time, steps, order)` | `02_hamiltonian_simulation.py` |
-| Chemistry integrals | `one_body, eri, constant = chemistry.from_pyscf(mf)` (also `from_psi4`, `from_fcidump(text)`); `chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=constant)`; `chemistry.spin_orbital_tensors(one_body, eri)`. Sector, scalar, and sparse-integral rules: [Chemistry sector energies](#chemistry-sector-energies-and-integral-conventions) below | `03_chemistry_to_ground_state.py` |
-| Fermion transforms | `fermion.jordan_wigner(one_body, two_body, scalar_offset=0.0)`; `fermion.bravyi_kitaev(one_body, two_body, scalar_offset=0.0)` | see records |
-| Circuit primitives | Build strictly unitary FT circuit components (QROM lookup, unary-iteration SELECT walk, reversible integer arithmetic, alias-sampling PREPARE) on caller-owned little-endian registers; exact logical Toffoli counts; import `cudaq_algorithms.primitives` directly: `from cudaq_algorithms.primitives import QROM, AliasSamplingPrepare, unary_iteration_kernels` (nothing is re-exported at the package root). `QROM(data, address_bits, output_bits, variant="auto")` mints a self-inverse lookup `kernel` with an exact `toffoli_count`; `unary_iteration_kernels(num_address_bits, num_items, body)` returns `kernel`/`kernel_adj` applying a per-address body; `AliasSamplingPrepare(weights, mu)` realizes a weighted index marginal with a `discretization_bound`; reversible adders/comparators/QFT arithmetic are device kernels (`add_register`, `add_constant`, `cmp_ge_constant`, `cmp_ge_register`, `qft`, `iqft`, `phase_add_constant`, ...). Toffoli counts are exact logical counts of the strictly unitary (no measurement-based uncomputation) kernels, not hardware cost | `tests/python/test_primitives_*.py` (no docs example); records under `references/primitives/` |
-| Double factorization | `fac = df.explicit_double_factorization(eri)` or, from supplied leaves, `df.DoubleFactorization(num_orbitals=n, leaf_rotations=[U_t, ...], leaf_cores=[Z_t, ...], method="C-DF")`; `eri_rec = df.reconstruct_eri(fac)`; `df.factorization_error(target_eri, fac)` is the Frobenius residual; `kappa = df.modified_one_body_integrals(one_body, eri_rec)`; `F = kappa + np.einsum("pqrr->pq", eri_rec)` (use the reconstructed ERI in both contractions and say so in the answer); `df.double_factorization_one_norm(fac, np.linalg.eigvalsh(F), convention="lcu")` and `convention="burg"`; one-norms and any gate or query counts are formula-level proxies, not measured hardware cost | `double_factorization.py` |
-| State preparation kernels | `stateprep.hartree_fock(qubits, num_electrons)`; `stateprep.uccsd(qubits, thetas, num_electrons, spin)` (`spin` = 2*S_z, 0 for a closed shell; required); `stateprep.slater_determinant_kernel(stateprep.make_givens_rotation_schedule(coefficients))` | `hartree_fock_ucc.py`, `givens_slater_determinant.py` |
-
-Quantum phase estimation is not a packaged primitive. Its building blocks are the
-block encoding's walk-step kernels (`walk_step_kernel`, `adjoint_walk_step_kernel`,
-their controlled forms, `prepare_kernel`) and `Trotter` evolution; the self-verifying
-`08_quantum_phase_estimation.py` runs one QPE shell around exact, Trotter, and
-qubitization-walk oracles (walk decoding `E = -alpha*cos(theta)`). Chebyshev
-moments/Krylov estimate energies without a counting register (qubitization guide).
-
-### Consume a protocol-only encoding
-
-- Protocol members: `num_system`, `num_ancilla`, `alpha`, `prepare_kernel()`,
-  `unprepare_kernel()`, `apply_kernel()`, `controlled_apply_kernel()`,
-  `walk_step_kernel()`, `adjoint_walk_step_kernel()`, the controlled walk steps,
-  and `select_observable()`.
-- `apply_kernel()` returns the full block encoding `U_A` (PREPARE, SELECT,
-  UNPREPARE) on `(ancilla, system)`; `walk_step_kernel()` is one walk step;
-  `prepare_kernel()`/`unprepare_kernel()` are only needed when you sequence walk
-  steps yourself.
-- `encode_kernel()` and `kernel_args` are `PauliLCU` conveniences, not protocol
-  members; a consumer must not require them.
-- Compose by minting kernels outside and capturing the kernel objects, never the
-  encoding object, inside a `@cudaq.kernel`; the runnable snippet is under
-  [Kernel boundaries](#kernel-boundaries) below.
-- A repair belongs in the consumer (for example `python/cudaq_algorithms/sim_utils.py`),
-  not in the caller's encoding class, and leaves no backup files in the package.
-
-### Qubitization walk action and prepared-state checks
-
-- The walk action is `Walk`, executed; `sim.action` is not a substitute. In a
-  `.py` file: `walk = Walk(enc)`;
-  `sv = np.asarray(cudaq.get_state(walk.kernel(power=k), state_from(psi)))`;
-  `block = sim.good_subspace(enc, sv)` is the unnormalized `T_k(-H/alpha) psi`.
-- Dense reference: `M = -H_dense/enc.alpha`, Chebyshev recurrence
-  `T0=I, T1=M, T[j+1]=2 M T[j] - T[j-1]`; compare `block` with `T[k] @ psi`
-  (raw, no renormalization). `walk.moment(psi, k)` returns `<psi|T_k(H/alpha)|psi>`.
-- To inject a preparation kernel instead of a state:
-  `@cudaq.kernel def prep(qubits: cudaq.qview): ...` in the same file, then
-  `cudaq.get_state(walk.kernel(power=k, state_prep=prep))` (no state argument).
-- To check a prepared state, read the register back and compare it to the
-  supplied amplitudes: `@cudaq.kernel def prepared(state: cudaq.State): q = cudaq.qvector(state)`,
-  then `readback = np.asarray(cudaq.get_state(prepared, state_from(psi)))` and
-  report `np.max(np.abs(readback - psi))`. Precision is target-dependent: about
-  1e-15 on fp64 targets (`qpp-cpu`, which the repository tests pin) and about
-  1e-7 on single-precision GPU targets (the `nvidia` target's default); the
-  default target is machine-dependent, so state the target and precision used.
-- A matching walk output does not by itself verify the preparation, and
-  printing the input array is not a check.
-
-### Chemistry sector energies and integral conventions
-
-- Active-space energies are eigenvalues of the physical Hamiltonian in the
-  requested electron/spin sector, with the scalar included exactly once.
-- Use the Chemistry Workflow and Verification for frozen-core preprocessing and
-  the fermion Verification checkpoint for a matrix at the intended spin-orbital
-  width; operator support alone may omit idle orbitals. Project the matrix onto
-  the sector before diagonalizing; never select eigenvalues by
-  computational-basis indices.
-- Sparse chemist-notation entries such as `two_body_chemist_nonzero` are
-  symmetry representatives: an entry `[p, q, r, s, v]` is the chemist integral
-  (pq|rs), so set `eri[p, q, r, s] = v` in that index order (never reorder the
-  four indices), then fill the other seven eightfold-symmetric positions
-  (`[q,p,r,s]`, `[p,q,s,r]`, `[q,p,s,r]`, `[r,s,p,q]`, `[s,r,p,q]`, `[r,s,q,p]`,
-  `[s,r,q,p]`) and state that convention.
-- Comparing configurations needs each configuration's scalar/core constant. If
-  a constant is absent, derive it from the specified geometry/model when
-  possible; for integral-only inputs with no recoverable scalar, request that
-  scalar before reporting total energies or their difference.
-  Electronic-sector energies may still be computed and explicitly labelled as
-  excluding the unknown constant. Never silently set an unknown constant to
-  zero or assume it cancels between geometries.
-
-### Kernel boundaries
-
-CUDA-Q statevectors are little-endian (`q[0]` is the least-significant bit); the
-good subspace is the first `2**num_system` amplitudes because the system register
-is allocated first. Pass array data to a kernel with `state_from(ket)`. Any
-`@cudaq.kernel` function must be defined in a `.py` file run with `python3 file.py`;
-CUDA-Q cannot compile kernels defined in a `python3 - << 'EOF'` heredoc or `-c` string.
 For implementation requests, deliver a runnable script and the observed output when
 execution is available; keep the requested artifact in the workspace. For predictions
 or advice, supply the requested scientific result and sufficient evidence without
 claiming circuit execution. Preserve user files. If inputs remain unavailable after
 checking the named locations, identify what is missing and which work depends on it.
-
-Inside a `@cudaq.kernel` you may only allocate `cudaq.qvector`s, apply gates, and call
-kernels captured from the enclosing scope; Python objects and method calls (such as
-`encoding.apply_kernel()`), NumPy, and `cudaq.qvector` outside a kernel are not allowed,
-and there is no `cudaq.prepare_state`: pass array data as the kernel's `cudaq.State`
-argument via `state_from(ket)`. Kernels also reject the ternary `x if c else y`
-(`CUDA-Q does not currently support ternary IfExp expressions`); use an explicit
-`if` block. Those `state: cudaq.State` kernels are the simulation-only
-state-input mode; the injectable `state_prep` seam is different: a one-argument kernel
-`def prep(qubits: cudaq.qview)` that the consumer factory calls on the fresh register it
-allocates (state-preparation records). Runnable consumer of a protocol-only encoding
-(put it in a `.py` file). It uses only protocol members; `sim_utils.action` is
-narrower, because it calls `PauliLCU.encode_kernel()`, which the protocol does not
-declare, so it is not a consumer of an arbitrary `BlockEncoding`:
-
-```python
-import cudaq
-from cudaq_algorithms import state_from, sim_utils as sim
-apply_encoding = encoding.apply_kernel()   # full U_A on (ancilla, system); minted outside the kernel
-n_anc = encoding.num_ancilla
-
-@cudaq.kernel
-def encoded(state: cudaq.State):
-    system = cudaq.qvector(state)          # system register from the input statevector
-    ancilla = cudaq.qvector(n_anc)         # ancilla register in |0...0>
-    apply_encoding(ancilla, system)
-
-block = sim.good_subspace(encoding, cudaq.get_state(encoded, state_from(ket)))   # (H/alpha) ket
-```
-
-Runnable walk check, given `terms` as `[(coef, word), ...]`, a normalized complex
-array `psi`, and integer `k` (put it in a `.py` file):
-
-```python
-import numpy as np, cudaq
-from cudaq_algorithms import PauliLCU, Walk, state_from, sim_utils as sim
-enc = PauliLCU(terms); walk = Walk(enc)
-sv = np.asarray(cudaq.get_state(walk.kernel(power=k), state_from(psi)))
-block = sim.good_subspace(enc, sv)                      # unnormalized T_k(-H/alpha) psi
-P = {"I": np.eye(2), "X": np.array([[0, 1], [1, 0]]), "Y": np.array([[0, -1j], [1j, 0]]), "Z": np.diag([1, -1])}
-def word_matrix(word):                                  # word[0] acts on q0 = least-significant bit
-    m = np.array([[1.0]])
-    for ch in reversed(word):
-        m = np.kron(m, P[ch])
-    return m
-H = sum(c * word_matrix(w) for c, w in terms); M = -H / enc.alpha
-T = [np.eye(len(psi)), M]
-for j in range(1, k):
-    T.append(2 * M @ T[j] - T[j - 1])
-print("max |block - dense| =", np.max(np.abs(block - T[k] @ psi)))   # assess against the declared target/precision tolerance
-print("moment <T_k(H/alpha)> =", walk.moment(psi, k))
-```

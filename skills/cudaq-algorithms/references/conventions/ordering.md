@@ -14,6 +14,32 @@
   `diag(1, -1)`; on two qubits `spin.z(0)` acts on index bit 0.
 - **Source.** `docs/sphinx/conventions.rst` ("Qubit ordering").
 
+## Product-state amplitudes
+
+Fix the requested site-to-qubit mapping before constructing a state. For
+normalized single-qubit factors `u[k] = [a_k, b_k]` assigned to qubit `k`,
+the amplitude at index `i` is `product_k u[k][(i >> k) & 1]`.
+The equivalent tensor product is `u[n-1] tensor ... tensor u[0]`:
+
+```python
+import numpy as np
+
+psi = np.array([1.0 + 0j])
+for factor in reversed(u):
+    psi = np.kron(psi, factor)  # Append each descending-index factor.
+```
+
+Independently check the constructed amplitudes against the user's site/bit
+definition before passing `psi` to both the circuit and its dense reference.
+For a separate diagnostic fixture, use unequal complex local factors to expose
+reversed sites and lost phases; preserve the user's factors in the actual task.
+Norm preservation alone cannot detect either error. Agreement between two
+calculations sharing the same incorrectly constructed state validates their
+action on that state, not the requested input. For an entangled input, check
+the supplied basis-amplitude specification instead of a product-state formula.
+This recipe follows the qubit-index convention in
+`docs/sphinx/conventions.rst`; preparation readback is a separate check.
+
 ## Pauli words: string position equals qubit index
 
 - **Convention.** Pauli words are strings over `IXYZ` with `word[0]` acting on

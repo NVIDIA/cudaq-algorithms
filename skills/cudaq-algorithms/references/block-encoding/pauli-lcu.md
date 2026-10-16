@@ -123,8 +123,12 @@ Toffoli count.
 ## Workflow
 
 For a **heralded Hamiltonian application**, specify the normalized input, the
-full operator to apply, and the successful ancilla outcome. Keep the accepted
-branch `b = (H/alpha) @ psi` unnormalized: its squared norm is the success
+full operator to apply, and the successful ancilla outcome. Check the constructed
+input amplitudes against the requested state using
+[input ordering](../conventions/ordering.md#product-state-amplitudes): use the
+site factors for a product input; for an entangled input, verify the specified
+state without assuming product factors. Keep the accepted branch
+`b = (H/alpha) @ psi` unnormalized: its squared norm is the success
 probability. Conditional observables use `b^dagger O b / (b^dagger b)` and are undefined
 when success has zero probability. Removing a scalar from `H` changes this
 filter; restoring an energy offset afterward does not restore the coherent
@@ -156,7 +160,9 @@ Small independent checkpoint: `terms` is a nonempty list of real
 `(coefficient, word)` pairs with common positive width and positive total
 absolute coefficient sum; it already describes the retained operator. `ket`
 is normalized in little-endian order and `observable` is its dense Hermitian
-system observable. The default path is a classical prediction. Setting
+system observable. Validate `ket` against the requested input before this action
+check; circuit/dense agreement on a shared `ket` cannot establish its construction.
+The default path is a classical prediction. Setting
 `run_circuit=True` additionally executes the library on the active target.
 
 ```python

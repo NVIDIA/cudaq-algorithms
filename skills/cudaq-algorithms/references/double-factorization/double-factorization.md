@@ -43,10 +43,16 @@ alone certifies the requested physics or a hardware speedup.
 For a leaf-budget study, establish an untruncated reference, then vary
 `max_num_leaves` and explicit-factorization thresholds within a declared search
 budget. Record the actual leaf count because thresholding can stop before the
-cap. Cholesky assumes a positive semidefinite ERI supermatrix; an intentionally
-indefinite synthetic tensor requires the eigendecomposition path. Recheck the
-scientific observable for every candidate rather than treating a smaller tensor
-residual as an automatic ordering of energy or dynamics errors.
+cap. Check definiteness from the supplied construction: a supermatrix
+`M = sum_t w_t v_t v_t.T` with real vectors and `w_t >= 0` is positive
+semidefinite because `x.T M x = sum_t w_t (v_t.T x)**2 >= 0`, including when
+the vectors are random.
+Cholesky assumes a positive semidefinite ERI supermatrix; an indefinite input
+requires the eigendecomposition path. See the
+[explicit-factorization contract](double-factorization-explicit.md) and
+`python/cudaq_algorithms/double_factorization/_factorization.py`.
+Recheck the scientific observable for every candidate rather than treating a
+smaller tensor residual as an automatic ordering of energy or dynamics errors.
 
 For explicit-versus-compressed comparisons, hold the physical inputs and cost
 definition fixed. Compare at equal leaf budget or select the cheapest candidates
@@ -140,6 +146,12 @@ DF approximation. Compare gap/observable/dynamics errors too when those are the
 target: a small ground-energy shift is insufficient. Account for degeneracy
 when tracking individual states. For larger systems use a validated reference
 solver or explicit bounds, rather than requiring full Fock-space matrices.
+
+For requested structured results, read
+[output validation](../validation.md#requested-output-artifacts) and check the
+complete candidate payload at the requested interface. Use the
+[completion checkpoint](../workflow.md#completion-checkpoint) for selection and
+search-scope claims in the final explanation.
 
 Label the norm convention, scalar treatment, backend and actual runtime. The
 helper above omits the scalar; its value is a formula-level proxy, not an

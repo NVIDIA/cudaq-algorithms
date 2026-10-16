@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Route an in-scope request by API or scientific object and desired outcome.
 
 Usage: python3 scripts/route.py [--full] "<the request text>"
@@ -42,7 +44,7 @@ FAMILIES = [
      r"operator pool|\bceo\b|uccgsd|upccgsd|excitation pool|amplitude optimi|optimi[sz]e the amplitudes",
      None),
     ("state-preparation/state-preparation.md",
-     r"hartree|\buccs?d?\b|givens|slater|occupation|state.prep|prepar(e|ation)|determinant|excitation|measurement-assisted|inject",
+     r"hartree|\buccs?d?\b|givens|slater|occupation.(state|pattern|bitstring)|state.prep|prepar(e|ation)|determinant|(single|double)[_ -]excitation|excitation[_ -]kernel|measurement-assisted|inject",
      None),
     ("state-preparation/injection-contract.md",
      r"width|state_prep|inject|consumer|measurement-assisted|feed-forward",
@@ -85,7 +87,54 @@ EXPLICIT_ROUTES = [(named, rec) for rec, _, named in FAMILIES if named]
 # Words that name a state-preparation object. Only these promote the
 # state-preparation family selector to the first position; protocol vocabulary
 # such as "controlled" or "adjoint" belongs to every walk/QSVT consumer.
-STATE_PREP_OBJECT = r"hartree|givens|slater|\buccs?d?\b|occupation|determinant|state.prep|inject"
+STATE_PREP_OBJECT = r"hartree|givens|slater|\buccs?d?\b|occupation.(state|pattern|bitstring)|determinant|state.prep|inject"
+
+# Exact APIs and selected operation names bypass premise-row word overlap.
+# These are supplemental focused paths, so named contracts survive MAX_RECORDS.
+# Rows: (request regex, starting family, focused record).
+FOCUSED_ROUTES = [
+    (r"explicit[_ -](?:(?:cholesky|eigendecomposition)[_ -])?(double[_ -])?factorization|"
+     r"\bdouble.factorization\b[^.;\n]*\bexplicit\b|\bx-df\b",
+     "double-factorization/double-factorization.md",
+     "double-factorization/double-factorization-explicit.md"),
+    (r"compressed[_ -](double[_ -])?factorization|\b(?:rc|c)-df\b",
+     "double-factorization/double-factorization.md",
+     "double-factorization/double-factorization-compressed.md"),
+    (r"\breconstruct_eri\b", "double-factorization/double-factorization.md",
+     "double-factorization/double-factorization-reconstruction.md"),
+    (r"\bfactorization_error\b",
+     "double-factorization/double-factorization.md",
+     "double-factorization/double-factorization-error.md"),
+    (r"\bmodified_one_body_integrals\b",
+     "double-factorization/double-factorization.md",
+     "double-factorization/double-factorization-modified-one-body.md"),
+    (r"\bdouble_factorization_one_norm\b",
+     "double-factorization/double-factorization.md",
+     "double-factorization/double-factorization-one-norm.md"),
+    (r"\btrotterordering\b|\bmake_trotter_terms\b", "trotter/trotter.md",
+     "trotter/trotter-planning.md"),
+    (r"\btrotter\.kernel\b", "trotter/trotter.md",
+     "trotter/trotter-kernel-factory.md"),
+    (r"\btrotter\.state_kernel\b", "trotter/trotter.md",
+     "trotter/trotter-state-kernel-factory.md"),
+    (r"\bapply_trotter\b", "trotter/trotter.md",
+     "trotter/trotter-apply-kernel.md"),
+    (r"\btrotter\.resources\b", "trotter/trotter.md",
+     "trotter/trotter-resources-planned.md"),
+    (r"\bestimate_trotter_resources\b", "trotter/trotter.md",
+     "trotter/trotter-resources-raw.md"),
+    (r"\b(?:sim|sim_utils)\.evolve\b", "trotter/trotter.md",
+     "simulation/simulation-evolve.md"),
+]
+SHARED_RECORDS = ["workflow.md", "validation.md", "conventions/ordering.md"]
+
+# Supplemental input checks do not select families or consume starting paths.
+INPUT_STATE_FAMILIES = ("state-preparation/", "block-encoding/", "qubitization/",
+                        "qsvt/", "trotter/", "simulation/")
+INPUT_STATE_PATTERN = (
+    r"\b(?:input|prepared|product)[ -]states?\b|\b(?:statevectors?|kets?)\b|"
+    r"\btensor[ -](?:product|order)\b|\bendianness\b|"
+    r"\b(?:little|big)[ -]endian\b|\b(?:site|qubit|basis)[ -]amplitudes?\b")
 
 # Require both a scientific object and an outcome: generic words such as
 # "energy", "time", or "geometry" alone should not choose an application.
@@ -180,6 +229,9 @@ def all_records() -> list[str]:
     """Every record path a route can print; tests check each exists."""
     out = [rec for rec, _, _ in FAMILIES
            ] + [leaf for _, leaf in PRIMITIVES_LEAVES]
+    out.extend(SHARED_RECORDS)
+    for _, family, focused in FOCUSED_ROUTES:
+        out.extend((family, focused))
     for _, _, recs, compose in SCIENCE_ROUTES:
         out.extend(recs)
         if compose:
@@ -192,7 +244,46 @@ def notes(text: str) -> list[str]:
     return [note for pattern, note in NOTES if re.search(pattern, low)]
 
 
+def standalone_kernel(text: str) -> bool:
+    """Recognize explicit basic-kernel requests, preserving composed uses."""
+    low = text.lower()
+    if not re.search(
+            r"\bbell\b|\b(?:basic|standalone)\s+(?:cuda-q|cudaq)\s+kernel\b",
+            low):
+        return False
+    if any(re.search(pattern, low) for pattern, _ in EXPLICIT_ROUTES):
+        return False
+    if any(re.search(pattern, low) for pattern, _, _ in FOCUSED_ROUTES):
+        return False
+    if re.search(
+            r"hartree|givens|slater|\buccs?d?\b|state_prep|sim_utils|good.subspace|"
+            r"\b(?:chemistry|fermion|stateprep|sim|df)\.[a-z_]\w*", low):
+        return False
+    return not any((re.search(obj, low) or
+                    (obj == MOLECULE_OBJECT and mentions_molecule(text)))
+                   and re.search(goal, low)
+                   for obj, goal, _, _ in SCIENCE_ROUTES)
+
+
+def focused_records(text: str) -> list[str]:
+    """Direct operation hints, independent of heuristic premise candidates."""
+    low = text.lower()
+    out = [
+        focused for pattern, _, focused in FOCUSED_ROUTES
+        if re.search(pattern, low)
+    ]
+    out.extend(leaf for pattern, leaf in PRIMITIVES_LEAVES
+               if re.search(pattern, low))
+    # Planning is the relevant contract for an explicitly requested grouping.
+    if re.search(r"trotter|suzuki|product formula", low) and re.search(
+            r"grouping|term order|ordering", low):
+        out.append("trotter/trotter-planning.md")
+    return list(dict.fromkeys(out))
+
+
 def route(text: str) -> list[str]:
+    if standalone_kernel(text):
+        return []
     low = text.lower()
     molecule = mentions_molecule(text)
     out = []
@@ -219,7 +310,10 @@ def route(text: str) -> list[str]:
             compose = compose or chain
     # A named method takes priority over a default scientific path: a quench
     # with supplied QSP phases must not silently become a Trotter task.
-    explicit = []
+    explicit = [
+        family for pattern, family, _ in FOCUSED_ROUTES
+        if re.search(pattern, low)
+    ]
     for pattern, rec in EXPLICIT_ROUTES:
         if re.search(pattern, low):
             explicit.append(rec)
@@ -258,6 +352,11 @@ def main() -> None:
     if not text:
         print("usage: python3 scripts/route.py \"<the request text>\"")
         sys.exit(2)
+    if standalone_kernel(text):
+        print(
+            "Standalone Bell/basic CUDA-Q kernels are outside this skill's scope."
+        )
+        return
     for note in notes(text):
         print(f"\n## Note\n{note}")
     recs = route(text)
@@ -285,7 +384,17 @@ def main() -> None:
             print(f"Open: {REFS / rec}")
             print("Sections: " +
                   "; ".join(re.findall(r"^## (.+)$", body, re.MULTILINE)))
-    # focused records named by the premise-check rows that match the request: score rows by shared content words
+    direct = [rec for rec in focused_records(text) if rec not in recs]
+    if direct:
+        print("\n## Focused operation records (open before answering)\n")
+        for rec in direct:
+            print(f"cat {REFS / rec}")
+    # Premise rows are for boundary/diagnostic intent, not ordinary operation
+    # requests sharing only a family name or generic evolution/count words.
+    diagnostic = re.search(
+        r"\b(?:does|can|is|are|whether|why|assum\w*|validat\w*|support\w*|"
+        r"interchangeable|mismatch\w*|raises?|reject\w*|accept\w*|guarantee\w*)\b",
+        text.lower())
     stop = {
         "confirm", "kernel", "kernels", "device", "register", "cuda",
         "algorithms", "library", "packaged", "request", "that", "this", "with",
@@ -293,11 +402,12 @@ def main() -> None:
         "want", "would", "rather", "same", "call", "calls", "using", "inside",
         "every", "before", "changing", "which", "tell", "exactly", "case",
         "data", "show", "code", "reaches", "need", "needs", "have", "both",
-        "each", "then", "state", "claims", "assumes"
+        "each", "then", "state", "claims", "assumes", "trotter", "evolution",
+        "double", "factorization", "preparation", "counts"
     }
     words = {w for w in re.findall(r"[a-z_]{4,}", text.lower())} - stop
     scored = []
-    for body in printed:
+    for body in printed if diagnostic else []:
         start = body.find("## Premise check")
         if start < 0:
             continue
@@ -322,8 +432,8 @@ def main() -> None:
     for _, claim, line in chosen:
         for m in re.finditer(r"references/([\w./-]+\.md)`", line):
             rel = m.group(1)
-            if (REFS /
-                    rel).is_file() and rel not in recs and rel not in focused:
+            if (REFS / rel).is_file(
+            ) and rel not in recs and rel not in direct and rel not in focused:
                 focused.append(rel)
     if chosen:
         print(
@@ -340,6 +450,14 @@ def main() -> None:
         )
         for rel in focused:
             print(f"cat {REFS / rel}")
+    print("\n## Shared checkpoints")
+    print(f"Multi-step work: {REFS / 'workflow.md'}")
+    print(f"Numerical claims: {REFS / 'validation.md'}")
+    if any(rec.startswith(INPUT_STATE_FAMILIES) for rec in recs) and re.search(
+            INPUT_STATE_PATTERN, text.lower()):
+        print(f"Input-state representation: {REFS / 'conventions/ordering.md'}"
+              "#product-state-amplitudes (product recipe only for product "
+              "inputs; verify entangled inputs without assuming factorization)")
     print(CHECKLIST)
 
 

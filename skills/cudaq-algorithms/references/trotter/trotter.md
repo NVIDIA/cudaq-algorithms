@@ -103,6 +103,12 @@ matched settings; higher order, more steps or a different ordering need not win
 for every state, metric and finite step size. Distinguish numerical floors from
 asymptotic error behavior, and logical counts from compiled hardware performance.
 
+Derive any reported first passing step count from the validated candidate rows
+using the requested strict or inclusive threshold. Reconcile the final table and
+prose through the [completion checkpoint](../workflow.md#completion-checkpoint);
+for structured results, also read
+[output validation](../validation.md#requested-output-artifacts).
+
 Save this checkpoint as a `.py` file with the package importable. It selects
 fp64, uses an independent dense Hamiltonian in little-endian order, and searches
 a declared grid using an observable tolerance and a formula-level CX objective.

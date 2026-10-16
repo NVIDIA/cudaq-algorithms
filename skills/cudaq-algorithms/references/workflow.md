@@ -101,6 +101,25 @@ runnable artifact, commands and observed outcomes. When execution is unavailable
 still provide source-grounded code if requested, label it unexecuted, and give
 the exact verification command and oracle.
 
+## Completion checkpoint
+
+Build the final report from the checked results:
+
+- For executed calculations or implementation, include the runnable artifact or
+  changed files, the exact command that reproduced the result, its observed
+  outcome, and remaining unverified work. For unexecuted code, label the command
+  as a proposed verification step; advice alone does not require a new artifact.
+- For structured results, read and follow
+  [requested output artifacts](validation.md#requested-output-artifacts) to
+  check the payload at the requested delivery interface.
+- Derive tables, selected candidates, threshold crossings and minima from the
+  same validated rows. Apply the requested strict or inclusive comparison to
+  every relevant row; limit a first passing setting or minimum to the evaluated
+  domain. Check the final prose against those derived values.
+- Diagnose contradictions between observed output and the expected result using
+  the raw data and independent oracle. Demonstrate any claimed formatting or
+  normalization conversion; report unresolved discrepancies explicitly.
+
 Distinguish derived, source-checked, compiled, executed, numerically validated,
 measured, assumed, and unverified claims using the evidence actually gathered.
 Logical resource proxies are not transpiled gates, runtime, or memory. Unsupported,

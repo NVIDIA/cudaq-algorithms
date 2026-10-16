@@ -23,7 +23,11 @@ tests are authoritative and must be rechecked at use time.
    conditional state/observable, or the system state after discarding ancillas.
    Select the helper above for that object; obtain the full dilation or its
    equivalent channel when an unconditioned reduced state is needed.
-2. Normalize physical input states and declare basis/register order. Retain the
+2. Normalize physical input states and declare basis/register order. Check the
+   constructed amplitudes against the user's specification using
+   [input ordering](../conventions/ordering.md#product-state-amplitudes). Use site
+   factors only for product inputs; for entangled inputs, verify the specified
+   state without assuming product factors. Retain the
    actual encoded scale: `H/alpha` and `H` have different branch probabilities.
    The [good-subspace contract](simulation-good-subspace.md) identifies the
    packaged zero-ancilla slice; other layouts require their own indexing.
@@ -44,9 +48,11 @@ tests are authoritative and must be rechecked at use time.
 ## Verification
 
 Check a raw action against an independent dense operator before using its norm
-as a probability. For reduced states, check trace, Hermiticity, positivity and
-purity within numerical precision. Agreement on one observable does not prove
-state equality. Separate floating-point error, approximation error and sampling
+as a probability. First validate the input as above: two calculations sharing an
+incorrectly constructed state can agree. For reduced states, check trace,
+Hermiticity, positivity and purity within numerical precision. Agreement on one
+observable does not prove state equality. Separate floating-point error,
+approximation error and sampling
 uncertainty; choose tolerances for the requested output and active precision.
 For phase-sensitive vector comparisons, declare any phase convention explicitly.
 

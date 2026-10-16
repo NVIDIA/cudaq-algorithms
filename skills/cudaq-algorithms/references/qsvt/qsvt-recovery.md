@@ -30,9 +30,53 @@ global phase `exp(i * sum(phases))` and returns:
 Both components and both raw phase lists are required. One transformed
 statevector is insufficient.
 
-The documented applicability is real Hamiltonians and real input states, where
-the desired parts occupy those real/imaginary components. Complex Hamiltonians
-or complex inputs are unverified and must not be silently generalized.
+The helper's documented domain is real Hamiltonians and real input states,
+where the desired parts occupy those real/imaginary components. Direct use on
+blocks from complex inputs is outside that domain; use the caller composition
+below for a real Hamiltonian. Complex Hamiltonians remain unverified.
+
+## Complex-input composition for a real Hamiltonian
+
+The helper's real/imaginary extraction is not complex-linear: applying it
+directly to blocks from a complex ket can fail even for correctly calibrated
+phases. For a verified real Hamiltonian, split a normalized ket into real and
+imaginary components, normalize each nonzero component before circuit execution,
+restore its weight afterward, and recombine. Put this caller-side recipe in a
+`.py` file; it does not extend the helper's domain to complex Hamiltonians.
+
+```python
+import numpy as np
+from cudaq_algorithms import PhaseSequence, recover_real_time_evolution
+from cudaq_algorithms import sim_utils as sim
+
+def evolve_complex_input(transformer, psi, cos_phases, sin_phases):
+    """Caller composition for a real Hamiltonian and normalized complex ket."""
+    psi = np.asarray(psi, dtype=np.complex128)
+    cos_seq = PhaseSequence(cos_phases, convention="qsp")
+    sin_seq = PhaseSequence(sin_phases, convention="qsp")
+
+    def evolve_real(part):
+        weight = np.linalg.norm(part)
+        if weight == 0:
+            return np.zeros_like(psi)
+        unit = np.ascontiguousarray(part / weight, dtype=np.complex128)
+        cos_state = sim.transform(transformer, unit, cos_seq)
+        sin_state = sim.transform(transformer, unit, sin_seq)
+        recovered = recover_real_time_evolution(
+            cos_state, sin_state, cos_phases, sin_phases)
+        return weight * recovered
+
+    return evolve_real(psi.real) + 1j * evolve_real(psi.imag)
+```
+
+Materialize contiguous input arrays before handing slices or eigensolver column
+views to CUDA-Q; `state_from` casts precision but does not ensure contiguity.
+Keep the supplied phase lists unchanged. They must approximate cosine and sine
+for the intended Hamiltonian, normalization, and time; splitting the input does
+not establish that approximation. Check the raw complex result against
+`scipy.linalg.expm(-1j * H_dense * time) @ psi`, with an independently assembled
+real `H_dense` and a tolerance chosen before execution. Do not renormalize or
+align global phase for a phase-sensitive vector check.
 
 ## Inputs, outputs, and composition
 

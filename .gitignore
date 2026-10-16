@@ -10,4 +10,4 @@ timer.dat
 docs/sphinx/_build/
 
 # Skill-development run evidence stays out of the repository
-skills/cudaq-algorithms-dev/evals/results/
+skills-dev/cudaq-algorithms-dev/evals/results/
