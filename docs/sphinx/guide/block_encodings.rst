@@ -21,8 +21,10 @@ produced it. Everything below is pure-Python CUDA-Q kernels requiring only
 `cudaq` and numpy; qubit ordering, integral-tensor, and normalization
 conventions are collected in :doc:`../conventions`.
 
-One encoding ships in the package — `PauliLCU` (from a Pauli sum) — and
-any object satisfying the structural
+Two encodings ship in the package — `PauliLCU` (from a Pauli sum, with an
+exact multiplexed-rotation PREPARE) and `LCUBlockEncoding` (from term
+weights and SELECT bodies, with an alias-sampled PREPARE and a
+unary-iteration SELECT) — and any object satisfying the structural
 :class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol plugs into
 the same consumers. A complete worked encoding (the double-factorized
 example, below) demonstrates the protocol at full scale.
@@ -75,6 +77,54 @@ These stages are available as composable, module-level device kernels
 inside user kernels, with ``enc.kernel_args`` supplying the flattened arrays
 they take as arguments. They live in the module namespace rather than the
 package root because their names are too generic to re-export.
+
+``LCUBlockEncoding``: alias-sampled PREPARE, unary-iteration SELECT
+--------------------------------------------------------------------
+
+`LCUBlockEncoding` builds the same ``PREPARE-dagger . SELECT . PREPARE``
+structure from the circuit primitives in :mod:`cudaq_algorithms.primitives`:
+PREPARE is coherent alias sampling over the term weights and SELECT is a
+unary-iteration walk over the term index. It takes the Hamiltonian as term
+data rather than Pauli strings — the weights ``|c_k|`` and, per term, a
+SELECT *body* describing the Hermitian involution ``U_k`` in the
+unary-iteration gate vocabulary — so the term unitaries need not be Pauli
+words:
+
+.. code-block:: python
+
+   from cudaq_algorithms import LCUBlockEncoding
+
+   # H = 0.6 Z0 - 0.4 Y1 + 0.5 X0 X1: the weights |c_k| and one SELECT body
+   # per term; a negative coefficient is a ("sign",) op on its branch.
+   enc = LCUBlockEncoding(
+       num_system=2,
+       weights=[0.6, 0.4, 0.5],
+       bodies=[[("z", 0)], [("y", 1), ("sign",)], [("x", 0), ("x", 1)]],
+       mu=4)
+
+   enc.alpha                      # sum_k |c_k|
+   enc.num_ancilla                # index + alias garbage + SELECT work
+   enc.discretized_weights        # the weights the alias tables realize
+   enc.discretization_bound       # per-bin rounding bound, set by mu
+   kernel = enc.encode_kernel()   # @cudaq.kernel(state): full U_A
+
+Every body op is validated at construction (known op, operand count,
+system targets within ``num_system``, and a Hermitian product for
+Pauli-word bodies) with a ``ValueError`` naming the term and op. The alias
+tables hold the weights to ``mu`` bits, so the encoded operator is ``H``
+with each weight ``|c_k|`` realized within ``alpha * discretization_bound``
+while ``alpha`` stays the exact one-norm. The ancilla register is
+``index(m) + garbage(2m + 2mu + 2) + work`` qubits with
+``m = max(1, ceil(log2(num_terms)))``, so ``mu`` drives the width: a
+five-term, two-qubit Hamiltonian is 22 qubits in total at ``mu = 4`` and
+30 at the default ``mu = 8``, sized for resource estimation rather than
+for the CI simulators. The walk and QSVT consumers work unchanged. The
+walk runs in the PREPARE frame like `PauliLCU`'s, so `Walk.moment` serves
+odd orders through the derived `select_observable` whenever every body is
+a Pauli word (a body in the extended vocabulary raises
+`NotImplementedError` there); even orders use the geometry-only
+reflection observable, whose ``2^num_ancilla`` terms are practical only
+at small ``mu``.
 
 The ``BlockEncoding`` protocol
 ------------------------------

@@ -15,9 +15,12 @@ expresses directly. Two-level validation, matching the library's culture:
   derived bound ``alpha * num_bins * discretization_bound``;
 - the term one-norm ``alpha = sum_k |c_k|`` is pinned classically.
 
-``Walk.moment`` is not exercised: the even-moment reflection observable
-expands to ``2^num_ancilla`` Pauli terms. Walk circuits are pinned densely
-through ``walk_kernel`` powers instead.
+``Walk.moment`` is pinned on small instances (``mu <= 2``): the walk runs
+in the PREPARE frame, so odd orders measure the derived
+``select_observable`` and even orders the geometry-only reflection
+observable, whose ``2^num_ancilla`` Pauli terms are affordable only there.
+At the fixture's width the walk is pinned densely through ``walk_kernel``
+powers instead.
 """
 
 import functools
@@ -271,6 +274,89 @@ def test_controlled_apply_control_conventions():
                                atol=1e-10)
 
 
+def _controlled_step_circuit(encoding, control_value: int, roundtrip: bool):
+    # The step kernels are defined in the PREPARE frame, so they are
+    # wrapped in prepare / unprepare exactly as Walk composes them.
+    prep = encoding.prepare_kernel()
+    unprep = encoding.unprepare_kernel()
+    step = encoding.controlled_walk_step_kernel()
+    adjoint_step = encoding.controlled_adjoint_walk_step_kernel()
+    n_anc = encoding.num_ancilla
+    flip = control_value
+    undo = roundtrip
+
+    @cudaq.kernel
+    def circuit(state: cudaq.State):
+        system = cudaq.qvector(state)
+        control_and_ancilla = cudaq.qvector(n_anc + 1)
+        if flip == 1:
+            x(control_and_ancilla[0])
+        prep(control_and_ancilla.back(n_anc))
+        step(control_and_ancilla, system)
+        if undo:
+            adjoint_step(control_and_ancilla, system)
+        unprep(control_and_ancilla.back(n_anc))
+        if flip == 1:
+            x(control_and_ancilla[0])
+
+    return circuit
+
+
+@pytest.mark.parametrize("control_value", [0, 1])
+def test_controlled_walk_step_roundtrip_is_identity(control_value):
+    # Directly pins controlled_walk_step and controlled_adjoint_walk_step:
+    # W then W-dagger is the identity at control |1>, and both are the
+    # identity at control |0>.
+    encoding = build_encoding()
+    ket = random_ket(1 << NUM_SYSTEM, seed=17)
+    out = np.array(
+        cudaq.get_state(
+            _controlled_step_circuit(encoding, control_value, True),
+            state_from(ket)))
+    expected = np.zeros_like(out)
+    expected[:1 << NUM_SYSTEM] = ket
+    np.testing.assert_allclose(out, expected, atol=1e-10)
+
+
+def test_controlled_walk_step_control_conventions():
+    # A single controlled step inside prepare / unprepare: the identity at
+    # control |0> (the whole state, not just the block), and
+    # PREPARE W PREPARE-dagger = R U_A at control |1>, whose block is
+    # -H/alpha exactly as walk_kernel(1) -- so a dropped controlled
+    # reflection, which the roundtrip above cannot see, shows here.
+    encoding = build_encoding()
+    scaled = discretized_dense(encoding) / encoding.alpha
+    ket = random_ket(1 << NUM_SYSTEM, seed=19)
+
+    at_zero = np.array(
+        cudaq.get_state(_controlled_step_circuit(encoding, 0, False),
+                        state_from(ket)))
+    identity_expected = np.zeros_like(at_zero)
+    identity_expected[:1 << NUM_SYSTEM] = ket
+    np.testing.assert_allclose(at_zero, identity_expected, atol=1e-10)
+
+    at_one = encoded_block(encoding,
+                           _controlled_step_circuit(encoding, 1, False), ket)
+    np.testing.assert_allclose(at_one, -scaled @ ket, atol=1e-10)
+
+
+def test_controlled_walk_roundtrip_through_consumer_is_identity():
+    # Walk.controlled_roundtrip_kernel drives the controlled step kernels
+    # through the consumer's own composition. It flips the control on and
+    # leaves it there, so the identity roundtrip returns the state to
+    # |control=1, ancilla=0...0> x |ket>: the second block of amplitudes.
+    encoding = build_encoding()
+    walk = Walk(encoding)
+    ket = random_ket(1 << NUM_SYSTEM, seed=29)
+    out = np.array(
+        cudaq.get_state(walk.controlled_roundtrip_kernel(power=1),
+                        state_from(ket)))
+    dim = 1 << NUM_SYSTEM
+    expected = np.zeros_like(out)
+    expected[dim:2 * dim] = ket
+    np.testing.assert_allclose(out, expected, atol=1e-10)
+
+
 def test_qsvt_sequence_matches_signal_model():
     from test_qsvt import reference_response
 
@@ -318,9 +404,11 @@ def test_inspection_and_repr():
     encoding = build_encoding()
     assert encoding.num_system == NUM_SYSTEM
     assert encoding.num_index == 3  # ceil(log2(5))
+    assert encoding.num_garbage == 16  # 2 m + 2 mu + 2
+    assert encoding.num_select_work == 1  # Pauli bodies: the minimum width
+    assert encoding.num_ancilla == 20
     assert (encoding.num_ancilla == encoding.num_index + encoding.num_garbage +
             encoding.num_select_work)
-    assert encoding.num_select_work >= 1
     assert encoding.mu == 4
     assert encoding.weights[:5] == pytest.approx([0.6, 0.4, 0.5, 0.25, 0.3])
     assert "LCUBlockEncoding" in repr(encoding)
@@ -334,24 +422,101 @@ def test_satisfies_block_encoding_protocol():
 
 
 # ----------------------------------------------------------------------
-# 5. select_observable: opt-in, otherwise unavailable
+# 5. Chebyshev moments through the consumer (PREPARE-frame walk)
 # ----------------------------------------------------------------------
 
+SMALL_TERMS = [(0.6, {0: "z"}), (-0.4, {0: "x"})]  # non-commuting, 1 qubit
 
-def test_select_observable_unavailable_by_default():
-    encoding = build_encoding()
-    with pytest.raises(NotImplementedError, match="select_observable"):
+
+def chebyshev_moment(scaled: np.ndarray, ket: np.ndarray, order: int) -> float:
+    eigenvalues, vectors = np.linalg.eigh(scaled)
+    weights = np.abs(vectors.conj().T @ ket)**2
+    return float(
+        np.sum(weights *
+               np.cos(order * np.arccos(np.clip(eigenvalues, -1, 1)))))
+
+
+def test_walk_moments_match_chebyshev_sequence():
+    # Even orders use the reflection observable (2^num_ancilla terms, so a
+    # small instance), odd orders the derived select_observable measured in
+    # the PREPARE frame; both must agree with <T_k(H/alpha)> of the exactly
+    # encoded H. The 1-qubit instance keeps the two terms non-commuting.
+    encoding = build_encoding(terms=SMALL_TERMS, n=1, mu=2)
+    scaled = discretized_dense(encoding, SMALL_TERMS, 1) / encoding.alpha
+    ket = random_ket(2, seed=3)
+    moments = Walk(encoding).moments(ket, 6)
+    expected = [chebyshev_moment(scaled, ket, order) for order in range(6)]
+    np.testing.assert_allclose(moments, expected, atol=1e-10)
+    # The consumer's walk kernel composes prepare, steps, unprepare into the
+    # same (R U_A)^p block as walk_kernel.
+    block = encoded_block(encoding, Walk(encoding).kernel(power=2), ket)
+    t2 = 2.0 * scaled @ scaled - np.eye(2)
+    np.testing.assert_allclose(block, t2 @ ket, atol=1e-10)
+
+
+@pytest.mark.parametrize("order", [1, 3])
+def test_odd_moments_on_multi_qubit_words(order):
+    # The fixture at mu=2: multi-qubit Pauli words, a sign-carrying term and
+    # an identity term through the little-endian index projectors.
+    encoding = build_encoding(mu=2)
+    scaled = discretized_dense(encoding) / encoding.alpha
+    ket = random_ket(1 << NUM_SYSTEM, seed=7)
+    moment = Walk(encoding).moment(ket, order)
+    assert moment == pytest.approx(chebyshev_moment(scaled, ket, order),
+                                   abs=1e-10)
+
+
+def test_select_observable_requires_pauli_word_bodies():
+    body = [("and_tt", 0, 1, 0), ("z_w", 0), ("and_tt", 0, 1, 0)]  # CZ
+    encoding = LCUBlockEncoding(NUM_SYSTEM, [1.0], [body], mu=1)
+    with pytest.raises(NotImplementedError, match="Pauli word"):
         encoding.select_observable()
-
-
-def test_select_observable_returns_supplied_operator():
-    observable = cudaq.spin.z(0)
-    encoding = build_encoding(select_observable=observable)
-    assert encoding.select_observable() == observable
+    with pytest.raises(NotImplementedError, match="Pauli word"):
+        Walk(encoding).moment(random_ket(1 << NUM_SYSTEM), 1)
 
 
 # ----------------------------------------------------------------------
-# 6. Factory-boundary validation raises loudly
+# 6. A body on the work register
+# ----------------------------------------------------------------------
+
+CZ = np.diag([1.0, 1.0, 1.0, -1.0]).astype(np.complex128)
+WORK_TERMS = [
+    (0.5, [("x", 0)], pauli_matrix({0: "x"}, 2)),
+    (-0.3, [("z", 1), ("sign", )], pauli_matrix({1: "z"}, 2)),
+    (0.7, [("and_tt", 0, 1, 0), ("z_w", 0), ("and_tt", 0, 1, 0)], CZ),
+]
+
+
+def test_work_register_body_encodes_controlled_phase():
+    # A term unitary built on the SELECT work scratch (CZ as an AND into
+    # work[0] and a leaf-controlled Z on it) exercises the work slice the
+    # Pauli-only fixture never touches, uncontrolled and controlled.
+    encoding = LCUBlockEncoding(NUM_SYSTEM, [abs(c) for c, _, _ in WORK_TERMS],
+                                [body for _, body, _ in WORK_TERMS],
+                                mu=1)
+    assert encoding.num_select_work == 1
+    probabilities = encoding.preparation.table_probabilities
+    quantized = sum(encoding.alpha * probabilities[k] * np.sign(c) * matrix
+                    for k, (c, _, matrix) in enumerate(WORK_TERMS))
+    ket = random_ket(1 << NUM_SYSTEM, seed=31)
+    block = encoded_block(encoding, encoding.encode_kernel(), ket)
+    np.testing.assert_allclose(block * encoding.alpha,
+                               quantized @ ket,
+                               atol=1e-10)
+    at_one = np.array(
+        cudaq.get_state(_controlled_circuit(encoding, 1), state_from(ket)))
+    np.testing.assert_allclose(at_one[:1 << NUM_SYSTEM] * encoding.alpha,
+                               quantized @ ket,
+                               atol=1e-10)
+    at_zero = np.array(
+        cudaq.get_state(_controlled_circuit(encoding, 0), state_from(ket)))
+    identity_expected = np.zeros_like(at_zero)
+    identity_expected[:1 << NUM_SYSTEM] = ket
+    np.testing.assert_allclose(at_zero, identity_expected, atol=1e-10)
+
+
+# ----------------------------------------------------------------------
+# 7. Factory-boundary validation raises loudly
 # ----------------------------------------------------------------------
 
 
@@ -365,8 +530,39 @@ def test_validation_raises():
     with pytest.raises(ValueError, match="no terms"):
         LCUBlockEncoding(NUM_SYSTEM, [], [])
     with pytest.raises(ValueError, match="work"):
-        # A body needing work[2] (num_work 3) capped at 2.
+        # A body needing work[2] (width 3) capped at 2.
         LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("and_wt", 0, 0, 2)]],
-                         num_work=2)
+                         num_select_work=2)
     with pytest.raises(ValueError, match="mu"):
         LCUBlockEncoding(NUM_SYSTEM, weights, bodies, mu=0)
+    # Integer parameters are not silently truncated.
+    with pytest.raises(ValueError, match="num_system must be an integer"):
+        LCUBlockEncoding(2.7, weights, bodies)
+    with pytest.raises(ValueError, match="mu must be an integer"):
+        LCUBlockEncoding(NUM_SYSTEM, weights, bodies, mu=2.5)
+    with pytest.raises(ValueError, match="num_select_work must be an integer"):
+        LCUBlockEncoding(NUM_SYSTEM, weights, bodies, num_select_work=1.5)
+    # Body ops are checked at construction, not inside a kernel.
+    with pytest.raises(ValueError, match="num_system"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("x", NUM_SYSTEM)]])
+    with pytest.raises(ValueError, match="num_system"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("and_tt", 0, NUM_SYSTEM, 0)]])
+    with pytest.raises(ValueError, match="operands"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("and_tt", 0, 1)]])
+    with pytest.raises(ValueError, match="unknown"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("cnot", 0, 1)]])
+    with pytest.raises(ValueError, match="non-negative integer"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("z", -1)]])
+    with pytest.raises(ValueError, match="non-negative integer"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("z", None)]])
+    # A Pauli-word body must be Hermitian: X then Y on one qubit is -iZ.
+    with pytest.raises(ValueError, match="not Hermitian"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("x", 0), ("y", 0)]])
+    # ... while X Y X = -Y is, and reduces to the same observable as the
+    # ("y", 0), ("sign",) spelling.
+    reduced = LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("x", 0), ("y", 0),
+                                                    ("x", 0)]],
+                               mu=1)
+    spelled = LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("y", 0), ("sign", )]],
+                               mu=1)
+    assert str(reduced.select_observable()) == str(spelled.select_observable())

@@ -53,6 +53,18 @@ garbage(g) | select_work(w)]``:
   (CUDA-Q cannot deallocate mid-circuit, so it is counted in
   ``num_ancilla``).
 
+Walk frame: the qubitization walk step is ``W = PREPARE . R . PREPARE-dagger
+. SELECT`` with ``R`` the reflection about ancilla ``|0...0>`` — SELECT,
+then reflect about the PREPARE state — exactly as ``PauliLCU`` defines it,
+so the ``prepare_kernel`` / ``unprepare_kernel`` hooks are the alias
+PREPARE and its adjoint and ``Walk`` composes ``PREPARE . W^p .
+PREPARE-dagger = (R U_A)^p``. In this frame the protocol's odd-moment
+observable is the SELECT operator itself, ``sum_k sign_k |k><k|_index (x)
+P_k`` on the index and system registers (identity on the garbage and
+work), available whenever every body is a Pauli word; it agrees with the
+SELECT circuit on every state the walk produces, because those states keep
+the ladder and work scratch clean.
+
 Self-adjointness: every term unitary squares to the identity and SELECT is
 block-diagonal over the index, so ``SELECT^2 = I`` and ``U_A =
 P-dagger S P`` is exactly self-adjoint and involutory **on states whose
@@ -66,14 +78,16 @@ garbage-free, so an index-only reflection would misidentify the block.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+import numbers
+from typing import TYPE_CHECKING, Any, Sequence
 
 import cudaq
 import numpy as np
 
-from .common_kernels import (_validate_power, controlled_reflect_about_zero,
-                             reflect_about_zero)
+from .common_kernels import (_bit_projector, _validate_power,
+                             controlled_reflect_about_zero, reflect_about_zero)
 from .primitives import AliasSamplingPrepare, unary_iteration_kernels
+from .primitives._unary_iteration import _BODY_OPCODES, _EXTENDED_BODY_GATES
 
 if TYPE_CHECKING:
     from .block_encoding import Kernel
@@ -89,30 +103,150 @@ def _retain(*kernels) -> None:
     _LIVE_KERNELS.extend(kernels)
 
 
-@cudaq.kernel
-def _noop(register: cudaq.qview):
-    pass
+def _as_count(name: str, value, minimum: int) -> int:
+    """Require an integral number ``>= minimum`` (no bools, no silent
+    truncation of fractional values)."""
+    if (isinstance(value,
+                   (bool, np.bool_)) or not isinstance(value, numbers.Real)
+            or not np.isfinite(value) or int(value) != value):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    value = int(value)
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {value}")
+    return value
 
 
-# Body ops that consume a ``work`` operand, and the position of the work
-# index within the op tuple (see the unary-iteration vocabulary).
-_WORK_OPS = {"and_tt": 3, "and_wt": 3, "copy_tw": 2}
+def _is_index(value) -> bool:
+    """True for a non-negative integral number (bools excluded)."""
+    if (isinstance(value, (bool, np.bool_))
+            or not isinstance(value, numbers.Real) or not np.isfinite(value)):
+        return False
+    return int(value) == value and value >= 0
 
 
-def _required_work(bodies: Sequence[Sequence[tuple]]) -> int:
-    """The ``work`` width the bodies need (>= 1: an empty work view must
-    never cross the kernel boundary, cuda-quantum#4847)."""
+# ``sigma_then . sigma_first`` for distinct Paulis, ``first`` applied first:
+# (phase, result label).
+_PAULI_COMPOSE = {
+    ("x", "y"): (-1j, "z"),
+    ("y", "x"): (1j, "z"),
+    ("y", "z"): (-1j, "x"),
+    ("z", "y"): (1j, "x"),
+    ("z", "x"): (-1j, "y"),
+    ("x", "z"): (1j, "y"),
+}
+
+
+def _compose_pauli(first: str, then: str) -> tuple[complex, str]:
+    """``sigma_then . sigma_first`` as ``(phase, label)``, ``"i"`` the
+    identity."""
+    if first == "i":
+        return 1.0, then
+    if first == then:
+        return 1.0, "i"
+    return _PAULI_COMPOSE[(first, then)]
+
+
+def _operand_kinds(gate: str) -> tuple | None:
+    """Operand kinds of a SELECT body op (``"t"`` = system target index,
+    ``"w"`` = work index), from the unary-iteration vocabulary tables;
+    ``None`` for an unknown op name."""
+    if gate in _BODY_OPCODES:
+        return ("t", )
+    if gate in _EXTENDED_BODY_GATES:
+        return _EXTENDED_BODY_GATES[gate][1]
+    return None
+
+
+def _validate_bodies(bodies: Sequence[Sequence[tuple]],
+                     num_system: int) -> tuple[int, list]:
+    """Check every body op at the factory boundary.
+
+    Returns the ``work`` width the bodies need and, per body, its reduced
+    Pauli word ``(sign, {qubit: "x" | "y" | "z"})`` when the body uses only
+    the leaf-controlled Pauli and ``("sign",)`` ops, else ``None``.
+
+    Each op must be a known unary-iteration body op with the right number
+    of operands, every operand a non-negative integer, and every system
+    target index ``< num_system`` (the primitive cannot check the width
+    itself). A Pauli-word body whose ops compose to a ``+-i`` phase is
+    rejected: its term unitary would not be Hermitian. The returned width
+    is ``>= 1``: an empty work view must never cross the kernel boundary
+    (cuda-quantum#4847).
+    """
     width = 1
-    for body in bodies:
-        for item in body:
-            slot = _WORK_OPS.get(item[0])
-            if slot is not None:
-                width = max(width, int(item[slot]) + 1)
-    return width
+    words = []
+    for k, body in enumerate(bodies):
+        phase = 1.0 + 0.0j
+        word: dict = {}
+        pauli_only = True
+        for i, item in enumerate(body):
+            malformed = (not isinstance(item, (tuple, list)) or not item
+                         or not isinstance(item[0], str))
+            if malformed:
+                raise ValueError(f"body {k}, op {i}: expected a tuple "
+                                 f"('name', operands...), got {item!r}")
+            gate, operands = item[0], item[1:]
+            kinds = _operand_kinds(gate)
+            if kinds is None:
+                raise ValueError(f"body {k}, op {i}: unknown SELECT body op "
+                                 f"{gate!r}")
+            if len(operands) != len(kinds):
+                raise ValueError(
+                    f"body {k}, op {i}: {gate!r} takes {len(kinds)} "
+                    f"operands, got {len(operands)}")
+            for kind, operand in zip(kinds, operands):
+                name = "target" if kind == "t" else "work"
+                if not _is_index(operand):
+                    raise ValueError(
+                        f"body {k}, op {i}: {gate!r} {name} index must be a "
+                        f"non-negative integer, got {operand!r}")
+                if kind == "t" and operand >= num_system:
+                    raise ValueError(
+                        f"body {k}, op {i}: {gate!r} targets system qubit "
+                        f"{int(operand)}, but num_system = {num_system}")
+                if kind == "w":
+                    width = max(width, int(operand) + 1)
+            if gate in _BODY_OPCODES:
+                target = int(operands[0])
+                factor, label = _compose_pauli(word.get(target, "i"), gate)
+                phase *= factor
+                if label == "i":
+                    word.pop(target, None)
+                else:
+                    word[target] = label
+            elif gate == "sign":
+                phase = -phase
+            else:
+                pauli_only = False
+        if pauli_only:
+            if phase.imag != 0.0:
+                unit = "-i" if phase.imag < 0.0 else "i"
+                raise ValueError(
+                    f"body {k}: its Pauli ops compose to {unit} times a "
+                    f"Pauli word, which is not Hermitian; a term unitary "
+                    f"must be a Hermitian involution")
+            words.append((int(round(phase.real)), word))
+        else:
+            words.append(None)
+    return width, words
 
 
 class LCUBlockEncoding:
     """Block encoding of ``H / alpha`` for ``H = sum_k c_k U_k``.
+
+    Satisfies the full ``BlockEncoding`` protocol. ``select_observable``
+    (the odd-Chebyshev-moment observable ``Walk.moment`` uses) is derived
+    from the bodies when every term is a Pauli word (``"x"``, ``"y"``,
+    ``"z"`` and ``("sign",)`` ops only) and raises ``NotImplementedError``
+    for bodies using the extended vocabulary. Even ``Walk.moment`` orders
+    use the geometry-only reflection observable, whose ``2^num_ancilla``
+    Pauli terms are practical only at small ``mu``; dense Chebyshev data
+    is also available through ``walk_kernel`` powers.
+
+    Every body op is validated at construction (known op, operand count,
+    system targets ``< num_system``, and a Hermitian product for
+    Pauli-word bodies); the encoding raises ``ValueError`` rather than
+    failing inside a kernel.
 
     Parameters
     ----------
@@ -130,18 +264,9 @@ class LCUBlockEncoding:
     mu
         Alias-table keep precision in bits (>= 1); the per-term probability
         rounding is bounded by ``discretization_bound``.
-    num_work
+    num_select_work
         SELECT work-scratch width. Defaults to the minimum the bodies
         require; a larger value is accepted, a smaller one is rejected.
-    select_observable
-        Optional ``cudaq.SpinOperator`` for the odd-Chebyshev-moment
-        observable (available only when the ``U_k`` are computational-frame
-        Pauli words); ``select_observable()`` raises without it.
-
-    Satisfies the ``BlockEncoding`` protocol (``select_observable`` only
-    when supplied above). Measure Chebyshev data through ``walk_kernel``
-    powers; ``Walk.moment`` even moments need an ``2^num_ancilla``-term
-    reflection observable, astronomical at these ancilla widths.
     """
 
     def __init__(self,
@@ -150,11 +275,9 @@ class LCUBlockEncoding:
                  bodies: Sequence[Sequence[tuple]],
                  *,
                  mu: int = 8,
-                 num_work: int | None = None,
-                 select_observable: Any | None = None):
-        num_system = int(num_system)
-        if num_system < 1:
-            raise ValueError(f"num_system must be >= 1, got {num_system}")
+                 num_select_work: int | None = None):
+        num_system = _as_count("num_system", num_system, 1)
+        mu = _as_count("mu", mu, 1)
         weights = [float(w) for w in weights]
         bodies = [list(body) for body in bodies]
         if len(weights) != len(bodies):
@@ -164,15 +287,15 @@ class LCUBlockEncoding:
         if not weights:
             raise ValueError("no terms: weights and bodies are empty")
 
-        required_work = _required_work(bodies)
-        if num_work is None:
-            num_work = required_work
+        required_work, pauli_words = _validate_bodies(bodies, num_system)
+        if num_select_work is None:
+            num_select_work = required_work
         else:
-            num_work = int(num_work)
-            if num_work < required_work:
+            num_select_work = _as_count("num_select_work", num_select_work, 1)
+            if num_select_work < required_work:
                 raise ValueError(
-                    f"num_work={num_work} is too small; the bodies need at "
-                    f"least {required_work} work qubits")
+                    f"num_select_work={num_select_work} is too small; the "
+                    f"bodies need at least {required_work} work qubits")
 
         # Pin the "select" QROM variant: it keeps ladder_offset / num_ladder
         # == num_index, the geometry the apply kernel relies on when SELECT
@@ -182,22 +305,22 @@ class LCUBlockEncoding:
                                          len(bodies),
                                          lambda k: bodies[k],
                                          include_adjoint=False,
-                                         num_work=num_work)
+                                         num_work=num_select_work)
         controlled_select = unary_iteration_kernels(preparation.num_index,
                                                     len(bodies),
                                                     lambda k: bodies[k],
                                                     controlled=True,
                                                     include_adjoint=False,
-                                                    num_work=num_work)
+                                                    num_work=num_select_work)
 
         self._num_system = num_system
         self._weights = tuple(weights)
-        self._mu = int(mu)
+        self._mu = mu
         self._preparation = preparation
-        self._num_work = num_work
+        self._num_work = num_select_work
+        self._pauli_words = pauli_words
         self._select = select
         self._controlled_select = controlled_select
-        self._select_observable = select_observable
         self._build_kernels()
 
     # ------------------------------------------------------------------
@@ -248,36 +371,78 @@ class LCUBlockEncoding:
                       control_and_ancilla[1 + m:1 + m + g])
 
         @cudaq.kernel
+        def lcu_prepare(ancilla: cudaq.qview):
+            """The alias PREPARE on [index | garbage]: the protocol's
+            prepare hook (the walk runs in the PREPARE frame)."""
+            prepare(ancilla.front(m), ancilla[m:m + g])
+
+        @cudaq.kernel
+        def lcu_unprepare(ancilla: cudaq.qview):
+            """PREPARE-dagger on [index | garbage]."""
+            unprepare(ancilla.front(m), ancilla[m:m + g])
+
+        @cudaq.kernel
         def lcu_walk_step(ancilla: cudaq.qview, system: cudaq.qview):
-            """W = R U_A (block encodes -H/alpha); R covers the full
-            ancilla register, garbage included (sound in the sandwiched
-            frame — see the module docstring)."""
-            lcu_apply(ancilla, system)
+            """W = PREPARE R PREPARE-dagger SELECT: SELECT, then reflect
+            about the PREPARE state. R covers the full ancilla register,
+            garbage included (see the module docstring). SELECT's ladder
+            and the work scratch are clean here, as after every step."""
+            select(ancilla.front(m), ancilla[m + l0:m + l0 + m], system,
+                   ancilla[m + g:m + g + w])
+            unprepare(ancilla.front(m), ancilla[m:m + g])
             reflect_about_zero(ancilla)
+            prepare(ancilla.front(m), ancilla[m:m + g])
 
         @cudaq.kernel
         def lcu_adjoint_walk_step(ancilla: cudaq.qview, system: cudaq.qview):
-            """W-dagger = U_A R (U_A is self-adjoint)."""
+            """W-dagger = SELECT PREPARE R PREPARE-dagger (SELECT is
+            self-adjoint)."""
+            unprepare(ancilla.front(m), ancilla[m:m + g])
             reflect_about_zero(ancilla)
-            lcu_apply(ancilla, system)
+            prepare(ancilla.front(m), ancilla[m:m + g])
+            select(ancilla.front(m), ancilla[m + l0:m + l0 + m], system,
+                   ancilla[m + g:m + g + w])
 
         @cudaq.kernel
         def lcu_controlled_walk_step(control_and_ancilla: cudaq.qview,
                                      system: cudaq.qview):
-            lcu_controlled_apply(control_and_ancilla, system)
+            """Controlled W: controlled SELECT, PREPARE-dagger, controlled
+            R, PREPARE. Only the two Hermitian factors carry the control;
+            the uncontrolled PREPARE pair cancels at control |0>, and
+            PREPARE never sits under a control variant."""
+            controlled_select(control_and_ancilla.front(1),
+                              control_and_ancilla[1:1 + m],
+                              control_and_ancilla[1 + m + l0:1 + m + l0 + m],
+                              system,
+                              control_and_ancilla[1 + m + g:1 + m + g + w])
+            unprepare(control_and_ancilla[1:1 + m],
+                      control_and_ancilla[1 + m:1 + m + g])
             controlled_reflect_about_zero(control_and_ancilla)
+            prepare(control_and_ancilla[1:1 + m],
+                    control_and_ancilla[1 + m:1 + m + g])
 
         @cudaq.kernel
         def lcu_controlled_adjoint_walk_step(control_and_ancilla: cudaq.qview,
                                              system: cudaq.qview):
+            """Controlled W-dagger."""
+            unprepare(control_and_ancilla[1:1 + m],
+                      control_and_ancilla[1 + m:1 + m + g])
             controlled_reflect_about_zero(control_and_ancilla)
-            lcu_controlled_apply(control_and_ancilla, system)
+            prepare(control_and_ancilla[1:1 + m],
+                    control_and_ancilla[1 + m:1 + m + g])
+            controlled_select(control_and_ancilla.front(1),
+                              control_and_ancilla[1:1 + m],
+                              control_and_ancilla[1 + m + l0:1 + m + l0 + m],
+                              system,
+                              control_and_ancilla[1 + m + g:1 + m + g + w])
 
-        _retain(lcu_apply, lcu_controlled_apply, lcu_walk_step,
-                lcu_adjoint_walk_step, lcu_controlled_walk_step,
+        _retain(lcu_apply, lcu_controlled_apply, lcu_prepare, lcu_unprepare,
+                lcu_walk_step, lcu_adjoint_walk_step, lcu_controlled_walk_step,
                 lcu_controlled_adjoint_walk_step)
         self._apply = lcu_apply
         self._controlled_apply = lcu_controlled_apply
+        self._prepare = lcu_prepare
+        self._unprepare = lcu_unprepare
         self._walk_step = lcu_walk_step
         self._adjoint_walk_step = lcu_adjoint_walk_step
         self._controlled_walk_step = lcu_controlled_walk_step
@@ -331,8 +496,10 @@ class LCUBlockEncoding:
 
     @property
     def weights(self) -> tuple:
-        """The term weights ``|c_k|`` in PREPARE bin order (bins
-        ``>= num_terms`` are zero-weight padding acting as the identity)."""
+        """The term weights ``|c_k|``, one per term in term order (the first
+        ``num_terms`` PREPARE bins). ``discretized_weights`` has one entry
+        per bin; the bins past ``num_terms`` are zero-weight padding that
+        acts as the identity."""
         return self._weights
 
     @property
@@ -412,10 +579,14 @@ class LCUBlockEncoding:
                     state_prep: Kernel | None = None) -> Kernel:
         """A kernel applying ``power`` qubitization walk steps.
 
-        The all-zero-ancilla block of the result is T_power(-H/alpha)
-        applied to the input state. Input modes as in ``encode_kernel``.
+        PREPARE, ``power`` walk steps, PREPARE-dagger — the same
+        ``(R U_A)^power`` that ``Walk.kernel`` composes — so the
+        all-zero-ancilla block of the result is T_power(-H/alpha) applied
+        to the input state. Input modes as in ``encode_kernel``.
         """
         step = self._walk_step
+        prep = self._prepare
+        unprep = self._unprepare
         n_anc = self.num_ancilla
         n_sys = self.num_system
         steps = _validate_power(power)
@@ -427,8 +598,10 @@ class LCUBlockEncoding:
                 system = cudaq.qvector(n_sys)
                 state_prep(system)
                 ancilla = cudaq.qvector(n_anc)
+                prep(ancilla)
                 for _ in range(steps):
                     step(ancilla, system)
+                unprep(ancilla)
 
             _retain(lcu_prep_walked)
             return lcu_prep_walked
@@ -437,8 +610,10 @@ class LCUBlockEncoding:
         def lcu_walked(state: cudaq.State):
             system = cudaq.qvector(state)
             ancilla = cudaq.qvector(n_anc)
+            prep(ancilla)
             for _ in range(steps):
                 step(ancilla, system)
+            unprep(ancilla)
 
         _retain(lcu_walked)
         return lcu_walked
@@ -448,14 +623,13 @@ class LCUBlockEncoding:
     # ------------------------------------------------------------------
 
     def prepare_kernel(self) -> Kernel:
-        """``(ancilla: qview)``: trivial — the alias-sampling PREPARE is
-        part of ``apply_kernel``'s symmetric sandwich (its garbage is only
-        sound there, never left dirty across consumer-visible points)."""
-        return _noop
+        """``(ancilla: qview)``: the alias PREPARE on ``[index | garbage]``
+        — the walk runs in the PREPARE frame, as ``PauliLCU``'s does."""
+        return self._prepare
 
     def unprepare_kernel(self) -> Kernel:
-        """``(ancilla: qview)``: trivial (see ``prepare_kernel``)."""
-        return _noop
+        """``(ancilla: qview)``: PREPARE-dagger."""
+        return self._unprepare
 
     def apply_kernel(self) -> Kernel:
         """``(ancilla, system)``: the full block encoding U_A."""
@@ -486,15 +660,34 @@ class LCUBlockEncoding:
     # ------------------------------------------------------------------
 
     def select_observable(self) -> Any:
-        """The odd-Chebyshev-moment observable, if one was supplied.
+        """The SELECT operator ``sum_k sign_k |k><k|_index (x) P_k`` as a
+        ``cudaq.SpinOperator``: the odd-Chebyshev-moment observable.
 
-        Available only when the term unitaries are computational-frame
-        Pauli words (so ``sum_k sign_k |k><k| (x) P_k`` is a
-        ``cudaq.SpinOperator``); raises otherwise.
+        Measured after ``prepare_kernel`` and ``p`` walk steps with no
+        UNPREPARE (what ``Walk.moment`` does for odd orders), its
+        expectation is ``<T_{2p+1}(H/alpha)>``. It acts on the index
+        register (qubits ``num_system .. num_system + num_index - 1``,
+        little-endian) and the system, and is the identity on the garbage
+        and work. Available when every body is a Pauli word (``"x"`` /
+        ``"y"`` / ``"z"`` and ``("sign",)`` ops only); raises
+        ``NotImplementedError`` for bodies using the extended vocabulary,
+        whose term unitaries have no spin-operator form.
         """
-        if self._select_observable is None:
+        if any(word is None for word in self._pauli_words):
             raise NotImplementedError(
-                "LCUBlockEncoding was built without select_observable: the "
-                "odd-Chebyshev-moment observable is available only when the "
-                "term unitaries are computational-frame Pauli words")
-        return self._select_observable
+                "LCUBlockEncoding.select_observable needs every SELECT body "
+                "to be a Pauli word (x/y/z and ('sign',) ops only); a body "
+                "using the extended vocabulary has no SpinOperator form, so "
+                "only even Walk.moment orders are available")
+        offset = self.num_system
+        observable = None
+        for k, (sign, word) in enumerate(self._pauli_words):
+            term = None
+            for b in range(self.num_index):
+                factor = _bit_projector(offset + b, (k >> b) & 1)
+                term = factor if term is None else term * factor
+            for qubit in sorted(word):
+                term = term * getattr(cudaq.spin, word[qubit])(qubit)
+            term = float(sign) * term
+            observable = term if observable is None else observable + term
+        return observable

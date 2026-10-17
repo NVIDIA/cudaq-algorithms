@@ -154,8 +154,8 @@ class QSVT:
     """Quantum singular value transformation over a block encoding.
 
     Generic over the ``BlockEncoding`` protocol: encoding-specific
-    circuits are delegated to the injected encoding (``PauliLCU`` is the
-    provided implementation).
+    circuits are delegated to the injected encoding (``PauliLCU`` and
+    ``LCUBlockEncoding`` are the provided implementations).
     """
 
     def __init__(self, encoding: BlockEncoding) -> None:
