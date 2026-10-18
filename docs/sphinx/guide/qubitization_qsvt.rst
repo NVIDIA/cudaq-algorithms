@@ -63,8 +63,9 @@ encoding-specific `select_observable`, measured after PREPARE and ``p`` walk
 steps (no UNPREPARE), whose expectation is ``<T_{2p+1}(H/alpha)>``. This
 presumes a walk step defined in the PREPARE frame (``W = PREPARE R
 PREPARE-dagger SELECT``), as both `PauliLCU` and `LCUBlockEncoding` do. For
-an LCU this is ``sum_i sign_i |i><i|_anc x P_i`` (`LCUBlockEncoding` derives
-it when every SELECT body is a Pauli word); encodings that cannot supply it
+an LCU this is ``sum_i sign_i |i><i|_anc x P_i`` (`select_observable(enc)`
+serves both `PauliLCU` backends; `LCUBlockEncoding` derives it when every
+SELECT body is a Pauli word); encodings that cannot supply it
 (for example `DoubleFactorizedEncoding`, or `LCUBlockEncoding` with a body
 in the extended vocabulary) raise `NotImplementedError` on
 `select_observable`, and only even moments are available there.

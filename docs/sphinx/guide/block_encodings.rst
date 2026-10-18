@@ -21,9 +21,10 @@ produced it. Everything below is pure-Python CUDA-Q kernels requiring only
 `cudaq` and numpy; qubit ordering, integral-tensor, and normalization
 conventions are collected in :doc:`../conventions`.
 
-Two encodings ship in the package — `PauliLCU` (from a Pauli sum, with an
-exact multiplexed-rotation PREPARE) and `LCUBlockEncoding` (from term
-weights and SELECT bodies, with an alias-sampled PREPARE and a
+Two encodings ship in the package — `PauliLCU` (from a Pauli sum; an exact
+multiplexed-rotation PREPARE by default, or the alias-sampled PREPARE and
+unary-iteration SELECT with ``backend="alias"``) and `LCUBlockEncoding`
+(from term weights and SELECT bodies, always alias-sampled PREPARE and
 unary-iteration SELECT) — and any object satisfying the structural
 :class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol plugs into
 the same consumers. A complete worked encoding (the double-factorized
@@ -47,6 +48,7 @@ list of ``(coeff, word)`` pairs:
    enc = PauliLCU({"ZI": 0.70, "IZ": -0.43, "XX": 0.19, "YZ": 0.11})
    enc = PauliLCU(spin_op, num_qubits=2)
    enc = PauliLCU([(0.7, "ZI"), (-0.43, "IZ")])
+   enc = PauliLCU(spin_op, num_qubits=2, backend="alias", mu=4)  # see below
 
 The encoding exposes its geometry and coefficients for inspection:
 
@@ -77,6 +79,20 @@ These stages are available as composable, module-level device kernels
 inside user kernels, with ``enc.kernel_args`` supplying the flattened arrays
 they take as arguments. They live in the module namespace rather than the
 package root because their names are too generic to re-export.
+
+The ``"alias"`` backend
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``PauliLCU(..., backend="alias", mu=...)`` builds the same encoding from the
+alias-sampled PREPARE and unary-iteration SELECT primitives by delegating to
+`LCUBlockEncoding` (next section), with each Pauli word as a SELECT body.
+The rotations of the exact PREPARE become Toffoli-style gates, at the cost
+of extra ancillas — ``3 m + 2 mu + 3`` qubits for ``m`` index bits, so 20
+rather than 3 for a five-term Hamiltonian at ``mu = 4`` — and of rounding
+each term weight to ``mu`` bits (``alpha`` stays the exact one-norm). The
+API is otherwise the same: every kernel factory, `Walk`, `QSVT` and
+`select_observable` work unchanged, and `kernel_args` (the exact backend's
+flattened arrays) is the one member that raises.
 
 ``LCUBlockEncoding``: alias-sampled PREPARE, unary-iteration SELECT
 --------------------------------------------------------------------
