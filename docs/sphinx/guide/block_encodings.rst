@@ -24,17 +24,18 @@ conventions are collected in :doc:`../conventions`.
 Two encodings ship in the package, and they play different roles.
 `PauliLCU` is the front door for a Hamiltonian given as a Pauli sum: it
 reads the terms and builds the encoding with an exact multiplexed-rotation
-PREPARE. `LCUBlockEncoding` is the body-programmed primitive underneath
-such constructions: it takes term weights and, per term, a SELECT *body*
-in the unary-iteration gate vocabulary — controlled Paulis, but also the
-extended gates that use work qubits — so its terms need not be Pauli
-words; it realizes an alias-sampled PREPARE and a unary-iteration SELECT.
-Encodings built from structured data (the double-factorized example
-below, the sparse-access encodings) program it directly. Any object
-satisfying the structural
-:class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol plugs into
-the same consumers, and the worked double-factorized encoding demonstrates
-the protocol at full scale.
+PREPARE by default, or with the alias-sampled PREPARE and unary-iteration
+SELECT under ``backend="alias"``. `LCUBlockEncoding` is the body-programmed
+primitive underneath such constructions (the alias backend delegates to
+it): it takes term weights and, per term, a SELECT *body* in the
+unary-iteration gate vocabulary — controlled Paulis, but also the extended
+gates that use work qubits — so its terms need not be Pauli words; it
+realizes an alias-sampled PREPARE and a unary-iteration SELECT. Encodings
+built from structured data (the double-factorized example below, the
+sparse-access encodings) program it directly. Any object satisfying the
+structural :class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol
+plugs into the same consumers, and the worked double-factorized encoding
+demonstrates the protocol at full scale.
 
 The block-encoding idea and ``PauliLCU``
 ----------------------------------------
@@ -54,6 +55,7 @@ list of ``(coeff, word)`` pairs:
    enc = PauliLCU({"ZI": 0.70, "IZ": -0.43, "XX": 0.19, "YZ": 0.11})
    enc = PauliLCU(spin_op, num_qubits=2)
    enc = PauliLCU([(0.7, "ZI"), (-0.43, "IZ")])
+   enc = PauliLCU(spin_op, num_qubits=2, backend="alias", mu=4)  # see below
 
 The encoding exposes its geometry and coefficients for inspection:
 
@@ -84,6 +86,20 @@ These stages are available as composable, module-level device kernels
 inside user kernels, with ``enc.kernel_args`` supplying the flattened arrays
 they take as arguments. They live in the module namespace rather than the
 package root because their names are too generic to re-export.
+
+The ``"alias"`` backend
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``PauliLCU(..., backend="alias", mu=...)`` builds the same encoding from the
+alias-sampled PREPARE and unary-iteration SELECT primitives by delegating to
+`LCUBlockEncoding` (next section), with each Pauli word as a SELECT body.
+The rotations of the exact PREPARE become Toffoli-style gates, at the cost
+of extra ancillas — ``3 m + 2 mu + 3`` qubits for ``m`` index bits, so 20
+rather than 3 for a five-term Hamiltonian at ``mu = 4`` — and of rounding
+each term weight to ``mu`` bits (``alpha`` stays the exact one-norm). The
+API is otherwise the same: every kernel factory, `Walk`, `QSVT` and
+`select_observable` work unchanged, and `kernel_args` (the exact backend's
+flattened arrays) is the one member that raises.
 
 ``LCUBlockEncoding``: alias-sampled PREPARE, unary-iteration SELECT
 --------------------------------------------------------------------
