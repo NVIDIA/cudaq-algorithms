@@ -358,8 +358,15 @@ def test_rotated_with_explicit_kernels():
                                atol=1e-12)
 
 
+@cudaq.kernel
+def _identity_system_kernel(system: cudaq.qview):
+    pass
+
+
 def test_rotated_orbital_rotation_validation():
     inner = PauliLCU({"ZIII": 0.5})
+    assert RotatedEncoding(inner, _identity_system_kernel,
+                           _identity_system_kernel).mode_signs is None
     with pytest.raises(ValueError, match="square"):
         RotatedEncoding.from_orbital_rotation(inner, np.zeros((2, 3)))
     with pytest.raises(ValueError, match="system qubits"):
@@ -555,6 +562,7 @@ def test_orbital_rotation_network_realizes_the_matrix_up_to_mode_signs():
     rotated = RotatedEncoding.from_orbital_rotation(PauliLCU({"ZIII": 0.5}),
                                                     swap)
     assert rotated.num_rotations == 1
+    assert rotated.mode_signs is not None and -1 in rotated.mode_signs
     realized = {}
     for spin in (0, 1):
         exit_matrix, leak = _one_particle_matrix(rotated._exit, 2, spin)
@@ -568,6 +576,7 @@ def test_orbital_rotation_network_realizes_the_matrix_up_to_mode_signs():
         np.testing.assert_allclose(exit_matrix,
                                    swap @ np.diag(signs),
                                    atol=1e-12)
+        np.testing.assert_allclose(signs, rotated.mode_signs, atol=1e-12)
         enter_matrix, leak = _one_particle_matrix(rotated._enter, 2, spin)
         assert leak < 1e-12
         np.testing.assert_allclose(enter_matrix, exit_matrix.T, atol=1e-12)

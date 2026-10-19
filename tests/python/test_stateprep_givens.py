@@ -638,3 +638,101 @@ def test_factory_injects_as_state_prep_kernel():
     via_state = np.asarray(
         cudaq.get_state(enc.encode_kernel(), sim.state_from(ket)))
     np.testing.assert_allclose(via_prep, via_state, atol=1.0e-12)
+
+
+# ----------------------------------------------------------------------------
+# Orbital rotations: schedule, program and the spin-lifted network
+# ----------------------------------------------------------------------------
+
+
+def _replay_sweep(schedule, matrix):
+    """Left-apply the schedule's rotations to ``matrix`` in order."""
+    work = np.array(matrix, dtype=float, copy=True)
+    for mode, theta in schedule.rotations:
+        c, s = np.cos(theta), np.sin(theta)
+        work[mode:mode +
+             2, :] = np.array([[c, s], [-s, c]]) @ work[mode:mode + 2, :]
+    return work
+
+
+def _random_orthogonal(n, seed):
+    matrix, _ = np.linalg.qr(np.random.default_rng(seed).normal(size=(n, n)))
+    return matrix
+
+
+def _one_particle_matrix(modes, angles, num_modes, spin):
+    """The matrix ``spatial_givens_network`` realizes on the single-
+    excitation states of one spin sector, and the largest amplitude
+    leaking out of that sector."""
+    nq = 2 * num_modes
+    sector = [1 << (2 * q + spin) for q in range(num_modes)]
+    matrix = np.zeros((num_modes, num_modes))
+    leak = 0.0
+    for p in range(num_modes):
+        ket = np.zeros(1 << nq, dtype=np.complex128)
+        ket[sector[p]] = 1.0
+
+        @cudaq.kernel
+        def apply(state: cudaq.State):
+            system = cudaq.qvector(state)
+            stateprep.spatial_givens_network(system, modes, angles)
+
+        out = np.asarray(cudaq.get_state(apply, algorithms.state_from(ket)))
+        assert np.abs(out.imag).max() < 1e-12
+        matrix[:, p] = out.real[sector]
+        outside = np.ones(out.size, dtype=bool)
+        outside[sector] = False
+        leak = max(leak, float(np.abs(out[outside]).max()))
+    return matrix, leak
+
+
+@pytest.mark.parametrize("n,seed", [(2, 1), (3, 2), (4, 3)])
+def test_orbital_rotation_schedule_reduces_to_signs(n, seed):
+    matrix = _random_orthogonal(n, seed)
+    schedule = stateprep.make_orbital_rotation_schedule(matrix)
+    assert schedule.num_modes == n
+    assert len(schedule.rotations) == n * (n - 1) // 2  # generic matrix
+    assert all(mode + 1 < n for mode, _ in schedule.rotations)
+    assert set(schedule.signs) <= {1, -1}
+    np.testing.assert_allclose(_replay_sweep(schedule, matrix),
+                               np.diag(schedule.signs),
+                               atol=1e-12)
+
+
+def test_orbital_rotation_schedule_edge_cases_and_validation():
+    identity = stateprep.make_orbital_rotation_schedule(np.eye(3))
+    assert identity.rotations == () and identity.signs == (1, 1, 1)
+    sign = stateprep.make_orbital_rotation_schedule([[-1.0]])
+    assert sign.rotations == () and sign.signs == (-1, )
+    swap = stateprep.make_orbital_rotation_schedule([[0.0, 1.0], [1.0, 0.0]])
+    assert len(swap.rotations) == 1 and -1 in swap.signs  # det -1
+    with pytest.raises(ValueError, match="real matrix"):
+        stateprep.make_orbital_rotation_schedule(np.eye(2, dtype=complex))
+    with pytest.raises(ValueError, match="square"):
+        stateprep.make_orbital_rotation_schedule(np.zeros((2, 3)))
+    with pytest.raises(ValueError, match="orthonormal"):
+        stateprep.make_orbital_rotation_schedule(np.ones((2, 2)))
+    modes, angles = stateprep.orbital_rotation_program(identity, inverse=False)
+    assert modes == [] and angles == []
+
+
+@pytest.mark.parametrize("matrix", [
+    np.array([[0.0, 1.0], [1.0, 0.0]]),
+    _random_orthogonal(3, 7),
+])
+def test_spatial_givens_network_realizes_v_up_to_mode_signs(matrix):
+    # The forward program realizes V D on each spin's single-excitation
+    # states, the inverse program its transpose; nothing leaks out of the
+    # one-particle sector, and both spins see the same matrix.
+    n = matrix.shape[0]
+    schedule = stateprep.make_orbital_rotation_schedule(matrix)
+    expected = matrix @ np.diag(schedule.signs)
+    forward = stateprep.orbital_rotation_program(schedule, inverse=False)
+    inverse = stateprep.orbital_rotation_program(schedule, inverse=True)
+    for spin in (0, 1):
+        realized, leak = _one_particle_matrix(*forward, n, spin)
+        assert leak < 1e-12
+        np.testing.assert_allclose(realized, expected, atol=1e-12)
+        realized_inverse, leak = _one_particle_matrix(*inverse, n, spin)
+        assert leak < 1e-12
+        np.testing.assert_allclose(realized_inverse, expected.T, atol=1e-12)

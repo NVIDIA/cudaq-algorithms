@@ -74,6 +74,9 @@ from cudaq_algorithms.double_factorization import (
 from cudaq_algorithms.pauli_lcu import (controlled_reflect_about_prepare,
                                         prepare, reflect_about_prepare,
                                         unprepare)
+from cudaq_algorithms.stateprep import (make_orbital_rotation_schedule,
+                                        orbital_rotation_program,
+                                        spatial_givens_rotation)
 
 __all__ = [
     "DoubleFactorizedEncoding",
@@ -141,20 +144,12 @@ def apply_basis_rotations(system: cudaq.qview, start: int, count: int,
 
     Rotation ``i`` mixes adjacent spatial orbitals ``p, p + 1``
     (``p = rot_orbitals[start + i]``) with angle ``rot_angles[start + i]``,
-    lifted to both spin sectors of the interleaved Jordan-Wigner register:
-    ``exp(theta (a^dag_a a_b - a^dag_b a_a))`` on modes ``(2p, 2p + 2)``
-    and ``(2p + 1, 2p + 3)``, each realized as an ``XZY``/``YZX``
-    ``exp_pauli`` pair on a contiguous three-qubit slice.
+    lifted to both spin sectors of the interleaved Jordan-Wigner register
+    by ``stateprep.spatial_givens_rotation``.
     """
     for i in range(count):
-        p = rot_orbitals[start + i]
-        theta = rot_angles[start + i]
-        up = system[2 * p:2 * p + 3]
-        exp_pauli(0.5 * theta, up, "XZY")
-        exp_pauli(-0.5 * theta, up, "YZX")
-        down = system[2 * p + 1:2 * p + 4]
-        exp_pauli(0.5 * theta, down, "XZY")
-        exp_pauli(-0.5 * theta, down, "YZX")
+        spatial_givens_rotation(system, rot_angles[start + i],
+                                rot_orbitals[start + i])
 
 
 @cudaq.kernel
@@ -333,49 +328,6 @@ def controlled_adjoint_walk(control_and_ancilla: cudaq.qview,
 # ============================================================================
 
 
-def _givens_sweep(orthogonal: np.ndarray) -> list[tuple[int, float]]:
-    """Adjacent-Givens decomposition of an orthogonal matrix.
-
-    Returns plane rotations ``(p, theta)`` on rows ``(p, p + 1)`` whose
-    left-application reduces ``orthogonal`` to a diagonal of signs:
-    ``R_m ... R_1 V = diag(+-1)``. The signs are irrelevant here: every
-    encoded term is a number operator in the rotated basis, and number
-    operators are invariant under per-mode sign flips.
-    """
-    work = np.array(orthogonal, dtype=float, copy=True)
-    n = work.shape[0]
-    rotations: list[tuple[int, float]] = []
-    for col in range(n):
-        for row in range(n - 1, col, -1):
-            upper, lower = work[row - 1, col], work[row, col]
-            if abs(lower) > 1e-14:
-                theta = math.atan2(lower, upper)
-                c, s = math.cos(theta), math.sin(theta)
-                rotation = np.array([[c, s], [-s, c]])
-                work[row - 1:row + 1, :] = rotation @ work[row - 1:row + 1, :]
-                rotations.append((row - 1, theta))
-    return rotations
-
-
-def _forward_rotations(
-        sweep: list[tuple[int, float]]) -> list[tuple[int, float]]:
-    """Circuit program whose matrix is the frame's Gaussian rotation ``G``.
-
-    From ``R_m ... R_1 V = D`` follows ``V = R_1^T ... R_m^T D``; lifting
-    transposes negates angles, and the matrix product order means the last
-    sweep rotation is applied first in circuit time. Conjugating a
-    computational Z word ``W`` as ``G W G^dag`` therefore takes the
-    *inverse* program before the word and this program after it.
-    """
-    return [(p, -theta) for p, theta in reversed(sweep)]
-
-
-def _inverse_rotations(
-        sweep: list[tuple[int, float]]) -> list[tuple[int, float]]:
-    """Circuit program whose matrix is ``G^dag`` (frame entry)."""
-    return [(p, theta) for p, theta in sweep]
-
-
 def _leaf_pauli_expansion(
         core: np.ndarray,
         threshold: float) -> tuple[float, dict[tuple[int, ...], float]]:
@@ -522,7 +474,8 @@ class DoubleFactorizedEncoding:
             if abs(0.5 * f_k) >= coefficient_threshold:
                 one_body_words[(2 * k, )] = -0.5 * f_k
                 one_body_words[(2 * k + 1, )] = -0.5 * f_k
-        frames.append((_givens_sweep(eigenvectors), one_body_words))
+        frames.append(
+            (make_orbital_rotation_schedule(eigenvectors), one_body_words))
 
         for rotation, core in zip(factorization.leaf_rotations,
                                   factorization.leaf_cores):
@@ -533,7 +486,8 @@ class DoubleFactorizedEncoding:
             # away, so num_frames == 1 + num_leaves stays true and frame 0
             # remains the kappa eigenbasis. An empty frame contributes no
             # SELECT terms; its rotation sweep telescopes to the identity.
-            frames.append((_givens_sweep(rotation), leaf_words))
+            frames.append(
+                (make_orbital_rotation_schedule(rotation), leaf_words))
 
         self._constant = constant
 
@@ -565,17 +519,22 @@ class DoubleFactorizedEncoding:
         # (frame entry) and the segment after applies G; between frames
         # the two concatenate, and with no terms applied in between the
         # whole program telescopes to the identity.
-        segments: list[list[tuple[int, float]]] = []
-        segments.append(_inverse_rotations(frames[0][0]))
+        segments: list[tuple[list[int], list[float]]] = []
+        segments.append(orbital_rotation_program(frames[0][0], inverse=True))
         for previous, current in zip(frames, frames[1:]):
+            exit_modes, exit_angles = orbital_rotation_program(previous[0],
+                                                               inverse=False)
+            enter_modes, enter_angles = orbital_rotation_program(current[0],
+                                                                 inverse=True)
             segments.append(
-                _forward_rotations(previous[0]) +
-                _inverse_rotations(current[0]))
-        segments.append(_forward_rotations(frames[-1][0]))
+                (exit_modes + enter_modes, exit_angles + enter_angles))
+        segments.append(orbital_rotation_program(frames[-1][0], inverse=False))
 
-        self._segment_rot_counts = [len(s) for s in segments]
-        self._rot_orbitals = [p for s in segments for p, _ in s]
-        self._rot_angles = [theta for s in segments for _, theta in s]
+        self._segment_rot_counts = [len(modes) for modes, _ in segments]
+        self._rot_orbitals = [p for modes, _ in segments for p in modes]
+        self._rot_angles = [
+            theta for _, angles in segments for theta in angles
+        ]
         if not self._rot_orbitals:
             # Padding only: no empty list crosses the kernel boundary
             # (cuda-quantum#4847); all segment counts are 0, so these are
