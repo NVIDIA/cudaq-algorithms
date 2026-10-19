@@ -297,7 +297,7 @@ choosing *where* each piece is encoded. A hopping term encoded in momentum
 space costs ``sum_k |eps(k)|``, less than the one-norm of its Jordan-Wigner
 ``XX + YY`` strings, so the sum of a rotated momentum-space ``T`` and a
 real-space ``U`` has a smaller ``alpha`` than one flat `PauliLCU` of the
-whole Hamiltonian.
+whole Hamiltonian. (The identity part of ``U`` counts in both numbers.)
 
 **Ancilla layout.** `SumEncoding` adds a *slot* register of
 ``max(1, ceil(log2 K))`` qubits selecting the summand and one *flag* qubit,
@@ -307,8 +307,19 @@ and the summands share one ancilla pool as wide as the widest of them:
 ``sqrt(|c_i| alpha_i / alpha)`` on slot ``|i>``; SELECT computes
 ``flag <- (slot == i)`` and lets the flag drive summand ``i``'s own
 `controlled_apply_kernel` on the contiguous ``[flag | pool]`` view. Pool
-sharing works because every protocol-conforming encoding returns its
-ancillas to ``|0>``. `RotatedEncoding` adds no ancillas.
+sharing is sound because SELECT is block-diagonal over the slot register,
+each block a unitary on the whole pool, and the encoded block is the
+all-zero subspace of the entire ``[slot][flag][pool]`` register, which the
+walk's reflection covers; a summand's ancillas need not return to ``|0>``
+(an alias-sampled summand's garbage does not). `RotatedEncoding` adds no
+ancillas.
+
+**Costs.** The slot PREPARE is ``2^num_slots - 1`` controlled rotations per
+application; SELECT adds two ``num_slots``-controlled flag flips per summand
+and one extra control on every gate of every summand. An orbital-rotation
+network applies ``num_rotations`` adjacent Givens rotations per spin sector
+on entry and again on exit. The ``alpha`` saving is bought with these gates
+and the extra ``num_slots + 1`` ancillas.
 
 **Negative coefficients.** A term with ``c_i < 0`` is phased by ``-1`` on
 its slot branch, so ``SumEncoding([(1.0, encoding), (-e_ref, identity)])``
@@ -320,6 +331,14 @@ filters and QPE decoders need.
 `SumEncoding` of a `RotatedEncoding` of a `PauliLCU` is one
 `BlockEncoding`, and the walk's reflection acts on the outermost ancilla
 register as a whole.
+
+**Requirement on operands.** Every operand's `apply_kernel` must be
+Hermitian, hence an involution, as the protocol requires and every encoding
+in this package satisfies. The sum's SELECT is built from the operands'
+``U_A``; with a non-Hermitian operand the block and the first walk step are
+still right but walk powers ``>= 2`` and QSVT sequences are not. The
+protocol cannot check this, so verify ``U_A^2 = I`` for a foreign encoding
+before summing it.
 
 **The orbital-rotation constructor.** `RotatedEncoding.from_orbital_rotation(inner, orthogonal)`
 takes a real orthogonal ``n x n`` matrix whose columns are the target
@@ -333,13 +352,13 @@ your own ``enter``/``exit`` kernels.
 
 **Not available: the odd-moment observable.** Both combinators raise
 ``NotImplementedError`` from `select_observable`. The sum's SELECT drives
-each summand's full block encoding — PREPARE trees included — so it is not
-a finite Pauli sum and no composite `cudaq.SpinOperator` exists; a rotated
-encoding's terms are not computational-frame Pauli words. Even moments
-(`Walk.moment` with even order), `Walk.kernel` statevectors at any power,
-and QSVT sequences are all available. For an odd order on a statevector
-simulator, take the good-subspace block of
-``Walk(encoding).kernel(power=k)``, which applies ``T_k(-H/alpha)``.
+each summand's full block encoding — PREPARE trees included — so it has no
+compact `cudaq.SpinOperator` form; a rotated encoding's terms are not
+computational-frame Pauli words. Even moments (`Walk.moment` with even
+order), `Walk.kernel` statevectors at any power, and QSVT sequences are all
+available; `Walk.moments`, which alternates even and odd orders, is not.
+For an odd order on a statevector simulator, take the good-subspace block
+of ``Walk(encoding).kernel(power=k)``, which applies ``T_k(-H/alpha)``.
 
 The worked example ``09_hubbard_combined_encoding.py``
 (:doc:`../examples_rst/getting_started`) builds the Fermi-Hubbard
