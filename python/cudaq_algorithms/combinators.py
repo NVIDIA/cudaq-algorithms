@@ -12,8 +12,10 @@ unchanged and the combinators nest:
     coefficients ``c_i``; ``alpha = sum_i |c_i| alpha_i``. One extra *slot*
     register selects the summand, one *flag* qubit drives the selected
     summand's own controlled block encoding, and the summands' ancillas
-    share one pool (each returns its ancillas to ``|0>``). A single summand
-    is the "scale by a constant" case.
+    share one pool: SELECT is block-diagonal over the slot register, each
+    block a unitary on the whole pool, and the encoded block is the
+    all-zero subspace of the entire ancilla register. A single summand is
+    the "scale by a constant" case.
 
 ``RotatedEncoding``
     Encodes ``V H V^dagger`` from an encoding of ``H`` and a pair of
@@ -31,15 +33,22 @@ has a smaller ``alpha`` than one flat Pauli LCU of the whole Hamiltonian
 
 What is **not** provided: odd-moment ``select_observable`` hooks. The sum's
 SELECT drives each summand's full block encoding, PREPARE trees included,
-so it is not a finite Pauli sum and no composite ``cudaq.SpinOperator``
-exists; a rotated encoding's terms are not computational-frame Pauli
-words. Even moments (``Walk.moment`` with even order), ``Walk.kernel``
-statevectors at any power, and QSVT sequences are all available.
+so it has no compact ``cudaq.SpinOperator`` form; a rotated encoding's
+terms are not computational-frame Pauli words. Even moments
+(``Walk.moment`` with even order), ``Walk.kernel`` statevectors at any
+power, and QSVT sequences are all available; ``Walk.moments``, which
+alternates even and odd orders, is not.
+
+Every operand's ``apply_kernel`` must be Hermitian (hence an involution),
+as the protocol requires and every encoding in this package satisfies;
+``SumEncoding`` builds its SELECT from the operands' ``U_A`` and relies on
+it for walk powers ``>= 2``.
 """
 
 from __future__ import annotations
 
 import math
+import numbers
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
@@ -47,7 +56,8 @@ import numpy as np
 
 import cudaq
 
-from .common_kernels import (controlled_reflect_about_zero, reflect_about_zero)
+from .common_kernels import (_real_coefficient, controlled_reflect_about_zero,
+                             reflect_about_zero)
 from .pauli_lcu import _prepare_angles, prepare, unprepare
 
 if TYPE_CHECKING:
@@ -107,10 +117,20 @@ class SumEncoding:
     (the same binary rotation tree ``PauliLCU`` uses); SELECT computes
     ``flag <- (slot == i)``, phases the branch by ``-1`` when ``c_i < 0``,
     and lets the flag drive summand ``i``'s ``controlled_apply_kernel`` on
-    the contiguous ``[flag | pool]`` view. Each slot factor is a Hermitian
-    involution on its own slot subspace, so SELECT is one too and the
-    standard walk construction applies, with the reflection over the whole
-    ancilla register.
+    the contiguous ``[flag | pool]`` view. SELECT is block-diagonal over the
+    slot register, each block a unitary on the whole pool, so summands of
+    different widths share the pool and the encoded block is the all-zero
+    subspace of the entire ancilla register, which the walk's reflection
+    covers.
+
+    Each summand's ``apply_kernel`` must be Hermitian, hence an involution
+    (``PREPARE-dagger SELECT PREPARE`` with an involutory SELECT is; so is
+    every encoding in this package and every combinator of them). Then each
+    slot factor and SELECT itself are involutions and the standard walk
+    construction applies. A protocol-conforming encoding that is not
+    Hermitian still yields the right block and first walk step, but wrong
+    walk powers ``>= 2`` and QSVT sequences; the protocol cannot check
+    this, so verify ``U_A^2 = I`` for a foreign encoding before summing it.
 
     Parameters
     ----------
@@ -133,14 +153,14 @@ class SumEncoding:
             except (TypeError, ValueError) as exc:
                 raise TypeError("each term must be a (coefficient, encoding) "
                                 "pair") from exc
-            if isinstance(coefficient, bool):
+            if (isinstance(coefficient, (bool, np.bool_))
+                    or not isinstance(coefficient, numbers.Number)):
                 raise TypeError(f"term {index}: coefficient must be a real "
-                                "number")
+                                f"number, got {coefficient!r}")
             try:
-                coefficient = float(coefficient)
-            except (TypeError, ValueError) as exc:
-                raise TypeError(f"term {index}: coefficient must be a real "
-                                "number") from exc
+                coefficient = _real_coefficient(coefficient)
+            except ValueError as exc:
+                raise ValueError(f"term {index}: {exc}") from exc
             if not math.isfinite(coefficient) or coefficient == 0.0:
                 raise ValueError(f"term {index}: coefficient must be finite "
                                  "and nonzero")
@@ -412,9 +432,10 @@ class SumEncoding:
         raise NotImplementedError(
             "SumEncoding has no select_observable: its SELECT drives each "
             "summand's full block encoding (PREPARE trees included), which "
-            "is not a finite Pauli sum. Even moments are available through "
-            "Walk.moment; for odd orders take the good-subspace block of "
-            "Walk(encoding).kernel(power=k) on a statevector simulator.")
+            "has no compact SpinOperator form. Even moments are available "
+            "through Walk.moment; for odd orders take the good-subspace "
+            "block of Walk(encoding).kernel(power=k) on a statevector "
+            "simulator.")
 
     # ------------------------------------------------------------------
     # Convenience (not protocol members)
@@ -448,17 +469,23 @@ class RotatedEncoding:
         A ``BlockEncoding`` of ``H``.
     enter, exit
         ``(system: cudaq.qview)`` kernels implementing ``V^dagger`` and
-        ``V`` on the system register. Every protocol kernel of ``inner`` is
-        wrapped as ``enter; inner; exit``; ``alpha`` and the ancilla count
-        are unchanged.
+        ``V`` on the system register. Every ``(ancilla, system)`` kernel of
+        ``inner`` is wrapped as ``enter; inner; exit``; the ancilla-only
+        PREPARE hooks pass through, and ``alpha`` and the ancilla count are
+        unchanged.
     """
 
     def __init__(self, inner: "BlockEncoding", enter: "Kernel",
                  exit: "Kernel") -> None:
         _require_encoding(inner, "inner")
+        for label, kernel in (("enter", enter), ("exit", exit)):
+            if not callable(kernel):
+                raise TypeError(f"{label} must be a (system: cudaq.qview) "
+                                f"kernel, got {kernel!r}")
         self._inner = inner
         self._enter = enter
         self._exit = exit
+        self._num_rotations: int | None = None
 
     @classmethod
     def from_orbital_rotation(cls, inner: "BlockEncoding",
@@ -475,10 +502,16 @@ class RotatedEncoding:
         use — and must be accounted for otherwise.
         """
         _require_encoding(inner, "inner")
+        if np.iscomplexobj(orthogonal):
+            raise ValueError("orthogonal must be a real matrix")
         matrix = np.asarray(orthogonal, dtype=float)
         if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
             raise ValueError("orthogonal must be a square matrix")
         n = matrix.shape[0]
+        if n < 2:
+            raise ValueError("an orbital rotation needs at least 2 modes (4 "
+                             "system qubits); a 1 x 1 orthogonal matrix is a "
+                             "sign, not a rotation")
         if 2 * n != int(inner.num_system):
             raise ValueError(
                 f"a {n} x {n} orbital rotation needs {2 * n} system qubits "
@@ -505,6 +538,13 @@ class RotatedEncoding:
     @property
     def inner(self) -> "BlockEncoding":
         return self._inner
+
+    @property
+    def num_rotations(self) -> int | None:
+        """Adjacent Givens rotations per spin sector in a
+        ``from_orbital_rotation`` network, applied on entry and again on
+        exit; ``None`` for user-supplied kernels."""
+        return self._num_rotations
 
     @property
     def num_system(self) -> int:

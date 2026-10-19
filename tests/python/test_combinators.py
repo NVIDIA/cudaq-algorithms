@@ -414,3 +414,198 @@ def test_sum_input_validation():
         SumEncoding([(1.0, object())])
     with pytest.raises(TypeError, match="BlockEncoding protocol"):
         RotatedEncoding(object(), None, None)
+
+
+# ----------------------------------------------------------------------
+# Controlled consumers respect the control (not just W W-dagger = I)
+# ----------------------------------------------------------------------
+
+
+def _assert_controlled_respects_control(encoding, make_kernel, make_controlled,
+                                        ket):
+    """Control |1>: the control=1 half equals the uncontrolled state and the
+    control=0 half is empty. Control |0>: the identity (input state,
+    ancillas in |0>). Layout: [system][control][ancilla], q[0] the LSB."""
+    dim_s, dim_a = 1 << encoding.num_system, 1 << encoding.num_ancilla
+    reference = np.asarray(cudaq.get_state(make_kernel(), state_from(ket)))
+    on_state = np.asarray(cudaq.get_state(make_controlled(1), state_from(ket)))
+    off_state = np.asarray(cudaq.get_state(make_controlled(0),
+                                           state_from(ket)))
+    on = on_state.reshape(dim_a, 2, dim_s)
+    off = off_state.reshape(dim_a, 2, dim_s)
+    np.testing.assert_allclose(on[:, 1, :].reshape(-1), reference, atol=1e-10)
+    np.testing.assert_allclose(on[:, 0, :], 0.0, atol=1e-10)
+    expected_off = np.zeros((dim_a, dim_s), dtype=np.complex128)
+    expected_off[0] = ket
+    np.testing.assert_allclose(off[:, 0, :], expected_off, atol=1e-10)
+    np.testing.assert_allclose(off[:, 1, :], 0.0, atol=1e-10)
+
+
+def _combinator(which):
+    if which == "sum":
+        return _sum_case("three-mixed-widths")[0]
+    return _rotated_case(2, 5)[0]
+
+
+@pytest.mark.parametrize("which", ["sum", "rotated"])
+def test_controlled_walk_respects_control(which):
+    encoding = _combinator(which)
+    walk = Walk(encoding)
+    ket = random_ket(encoding.num_system, 13)
+    _assert_controlled_respects_control(
+        encoding, lambda: walk.kernel(power=2),
+        lambda c: walk.controlled_kernel(power=2, control_state=c), ket)
+
+
+@pytest.mark.parametrize("which", ["sum", "rotated"])
+def test_controlled_qsvt_respects_control(which):
+    encoding = _combinator(which)
+    transformer = QSVT(encoding)
+    sequence = PhaseSequence([0.3, -0.4, 0.25],
+                             walk_directions=["forward", "adjoint"])
+    ket = random_ket(encoding.num_system, 16)
+    _assert_controlled_respects_control(
+        encoding, lambda: transformer.kernel(sequence),
+        lambda c: transformer.controlled_kernel(sequence, control_state=c),
+        ket)
+
+
+# ----------------------------------------------------------------------
+# More shapes: a signed rescaling, a rotation around a sum
+# ----------------------------------------------------------------------
+
+
+def test_single_negative_term_is_a_signed_rescaling():
+    a = _encoding(TERMS_A)
+    encoding = SumEncoding([(-2.0, a)])
+    assert encoding.alpha == pytest.approx(2.0 * a.alpha)
+    assert encoding.num_ancilla == 1 + 1 + a.num_ancilla
+    dense = -2.0 * _dense(a)
+    ket = random_ket(NUM_QUBITS, 14)
+    np.testing.assert_allclose(_block(encoding, encoding.encode_kernel(), ket),
+                               dense @ ket / encoding.alpha,
+                               atol=1e-12)
+    scaled = -dense / encoding.alpha
+    walk = Walk(encoding)
+    for power in (1, 2, 3):
+        np.testing.assert_allclose(_block(encoding, walk.kernel(power=power),
+                                          ket),
+                                   _chebyshev(scaled, power, ket),
+                                   atol=1e-12)
+
+
+def test_rotated_around_sum():
+    inner_sum, dense_inner, _ = _sum_case("two-mixed-sign")
+
+    @cudaq.kernel
+    def hadamards(system: cudaq.qview):
+        for i in range(system.size()):
+            h(system[i])
+
+    rotated = RotatedEncoding(inner_sum, hadamards, hadamards)
+    hadamard = np.array([[1.0, 1.0], [1.0, -1.0]]) / np.sqrt(2.0)
+    basis_change = np.kron(np.kron(hadamard, hadamard), hadamard)
+    dense = basis_change @ dense_inner @ basis_change.T
+    ket = random_ket(NUM_QUBITS, 15)
+    np.testing.assert_allclose(_block(rotated, rotated.encode_kernel(), ket),
+                               dense @ ket / rotated.alpha,
+                               atol=1e-12)
+    expected = float(
+        np.real(ket.conj() @ _chebyshev(dense / rotated.alpha, 2, ket)))
+    assert Walk(rotated).moment(ket, 2) == pytest.approx(expected, abs=1e-10)
+
+
+# ----------------------------------------------------------------------
+# The Givens network realizes V up to a sign per mode, on both spins
+# ----------------------------------------------------------------------
+
+
+def _one_particle_matrix(kernel, num_modes, spin):
+    """The matrix a system-side kernel realizes on single-excitation states
+    of one spin sector, plus the largest amplitude leaking out of it."""
+    nq = 2 * num_modes
+    matrix = np.zeros((num_modes, num_modes))
+    leak = 0.0
+    sector = [1 << (2 * q + spin) for q in range(num_modes)]
+    for p in range(num_modes):
+        ket = np.zeros(1 << nq, dtype=np.complex128)
+        ket[sector[p]] = 1.0
+
+        @cudaq.kernel
+        def apply(state: cudaq.State):
+            system = cudaq.qvector(state)
+            kernel(system)
+
+        out = np.asarray(cudaq.get_state(apply, state_from(ket)))
+        assert np.abs(out.imag).max() < 1e-12
+        matrix[:, p] = out.real[sector]
+        outside = np.ones(out.size, dtype=bool)
+        outside[sector] = False
+        leak = max(leak, float(np.abs(out[outside]).max()))
+    return matrix, leak
+
+
+def test_orbital_rotation_network_realizes_the_matrix_up_to_mode_signs():
+    # A mode swap has determinant -1, so the Givens sweep must end in a
+    # sign matrix D != I: the realized one-particle matrix is V D with
+    # D = diag(+-1), identically on both spins, and enter is its transpose.
+    swap = np.array([[0.0, 1.0], [1.0, 0.0]])
+    rotated = RotatedEncoding.from_orbital_rotation(PauliLCU({"ZIII": 0.5}),
+                                                    swap)
+    assert rotated.num_rotations == 1
+    realized = {}
+    for spin in (0, 1):
+        exit_matrix, leak = _one_particle_matrix(rotated._exit, 2, spin)
+        assert leak < 1e-12
+        np.testing.assert_allclose(np.abs(exit_matrix),
+                                   np.abs(swap),
+                                   atol=1e-12)
+        signs = np.array(
+            [exit_matrix[1, 0] / swap[1, 0], exit_matrix[0, 1] / swap[0, 1]])
+        np.testing.assert_allclose(np.abs(signs), 1.0, atol=1e-12)
+        np.testing.assert_allclose(exit_matrix,
+                                   swap @ np.diag(signs),
+                                   atol=1e-12)
+        enter_matrix, leak = _one_particle_matrix(rotated._enter, 2, spin)
+        assert leak < 1e-12
+        np.testing.assert_allclose(enter_matrix, exit_matrix.T, atol=1e-12)
+        realized[spin] = exit_matrix
+    np.testing.assert_allclose(realized[0], realized[1], atol=1e-12)
+
+
+# ----------------------------------------------------------------------
+# Guards added at the factory boundary
+# ----------------------------------------------------------------------
+
+
+class _ZeroAncilla:
+    """A protocol-shaped wrapper claiming no ancilla qubits."""
+
+    num_ancilla = 0
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def test_sum_rejects_complex_string_and_ancilla_free_operands():
+    a = _encoding(TERMS_A)
+    with pytest.raises(ValueError, match="complex"):
+        SumEncoding([(np.complex128(1.0 + 2.0j), a)])
+    with pytest.raises(TypeError, match="real number"):
+        SumEncoding([("2.0", a)])
+    with pytest.raises(ValueError, match="at least one ancilla"):
+        SumEncoding([(1.0, _ZeroAncilla(a))])
+
+
+def test_rotated_rejects_non_kernels_and_degenerate_rotations():
+    inner = PauliLCU({"ZI": 0.5})
+    with pytest.raises(TypeError, match="enter"):
+        RotatedEncoding(inner, None, None)
+    with pytest.raises(ValueError, match="at least 2 modes"):
+        RotatedEncoding.from_orbital_rotation(inner, np.array([[1.0]]))
+    with pytest.raises(ValueError, match="real matrix"):
+        RotatedEncoding.from_orbital_rotation(PauliLCU({"ZIII": 0.5}),
+                                              np.eye(2, dtype=complex))
