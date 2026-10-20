@@ -4,15 +4,18 @@
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from . import assessment, campaign, providers
 
 HEARTBEAT_SECONDS = 15
+MAX_GRADE_RETRIES = 2
 
 
 def models_from(args):
@@ -101,6 +104,74 @@ def preflight_command(args):
     return 0 if all(row["ok"] for row in rows) else 1
 
 
+def _grade_request(judge, messages, timeout, transport_path):
+    """Retry only failed transport, sharing one request/backoff deadline."""
+    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError("grading timeout must be a positive finite number")
+    started = time.monotonic()
+    deadline = started + timeout
+    attempts = []
+    details = {
+        "attempts": attempts,
+        "backoff_seconds": 0.0,
+        "stop_reason": None
+    }
+    error = None
+    try:
+        for index in range(MAX_GRADE_RETRIES + 1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                details["stop_reason"] = "deadline"
+                raise error or providers.ProviderError(
+                    "timeout", None, "Judge transport deadline exhausted.",
+                    True)
+            attempt = {"request_index": index + 1}
+            attempts.append(attempt)
+            request_started = time.monotonic()
+            try:
+                reply = providers.complete(judge, messages, None, remaining)
+            except providers.ProviderError as exc:
+                error = exc
+                attempt["error"] = exc.as_dict()
+            else:
+                attempt["returned_model"] = reply.get("model")
+                details["stop_reason"] = "success"
+                return reply
+            finally:
+                attempt["latency_seconds"] = time.monotonic() - request_started
+            if not error.retryable or error.kind in ("authentication",
+                                                     "authentication_config",
+                                                     "configuration"):
+                details["stop_reason"] = "nonretryable"
+                raise error
+            if index == MAX_GRADE_RETRIES:
+                details["stop_reason"] = "retry_limit"
+                raise error
+            delay = max(2.0**(index + 1), error.retry_after_seconds or 0.0)
+            if delay >= deadline - time.monotonic():
+                details["stop_reason"] = "deadline"
+                raise error
+            attempt["scheduled_backoff_seconds"] = delay
+            sleep_started = time.monotonic()
+            try:
+                time.sleep(delay)
+            finally:
+                waited = time.monotonic() - sleep_started
+                attempt["backoff_seconds"] = waited
+                details["backoff_seconds"] += waited
+    except KeyboardInterrupt:
+        details["stop_reason"] = "interrupted"
+        raise
+    finally:
+        details.update(request_count=len(attempts),
+                       retry_count=max(0,
+                                       len(attempts) - 1),
+                       timeout_seconds=timeout,
+                       wall_seconds=time.monotonic() - started)
+        campaign.write_json(transport_path, details)
+
+
 def grade(root, judge, timeout, limit=None):
     root = Path(root).resolve()
     campaign.verify_inputs(root)
@@ -138,12 +209,15 @@ def grade(root, judge, timeout, limit=None):
             if result["outcome"] != "answered":
                 messages[0][
                     "content"] += " This attempt produced no final answer: assertion values, expected_output and claimed_success must be false or null. Still assess critical failures and tripwires from the full transcript."
-            reply = providers.complete(judge, messages, None, timeout)
+            transport_path = attempt / f"judge-transport-{uuid.uuid4().hex}.json"
+            reply = _grade_request(judge, messages, timeout, transport_path)
             provenance = {
                 "result_sha256": campaign.digest(path),
                 "transcript_sha256": campaign.digest(transcript_path),
                 "judge_model": judge["model"],
                 "returned_model": reply.get("model"),
+                "transport_file": transport_path.name,
+                "transport_sha256": campaign.digest(transport_path),
                 "wall_seconds": time.monotonic() - start,
                 "usage": reply.get("usage")
             }
@@ -246,7 +320,13 @@ def parser():
         help="Privately assess original rubrics against retained transcripts")
     catalog(g)
     g.add_argument("directory", type=Path)
-    g.add_argument("--timeout", type=float, default=180)
+    g.add_argument(
+        "--timeout",
+        type=float,
+        default=180,
+        help=
+        "Total deadline per judge transport call, including up to two retries and backoff"
+    )
     g.add_argument("--limit", type=int)
     export = sub.add_parser(
         "export", help="Build and validate a complete canonical result bundle")

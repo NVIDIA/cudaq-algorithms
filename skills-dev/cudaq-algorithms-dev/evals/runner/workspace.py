@@ -176,6 +176,10 @@ done
 for name in ld.so.cache ld.so.conf localtime; do
     if [ -f "/etc/$name" ]; then touch "$jail/etc/$name"; readonly_bind "/etc/$name" "$jail/etc/$name"; fi
 done
+if [ -d /etc/alternatives ]; then
+    mkdir "$jail/etc/alternatives"
+    readonly_bind /etc/alternatives "$jail/etc/alternatives"
+fi
 for name in null zero random urandom; do
     touch "$jail/dev/$name"
     mount --bind "/dev/$name" "$jail/dev/$name"
@@ -251,11 +255,15 @@ def run_command(command: str,
                 isolation: str = "unshare",
                 log_dir: Path | None = None,
                 max_output_bytes: int | None = None) -> dict:
-    """Run one shell command with full output and a process-tree deadline.
+    """Run one shell command with retained output and a process-tree deadline.
 
     ``unshare`` needs Linux mount/PID/network namespace permission, mount,
     chroot and setpriv. An unavailable sandbox raises before the command runs.
-    Pass ``log_dir`` to retain full stdout/stderr files outside the workspace.
+    Pass ``log_dir`` to retain all bytes produced in stdout/stderr files outside
+    the workspace. With ``max_output_bytes``, terminate the process group when
+    the combined on-disk size exceeds the limit (50 ms polling may overshoot),
+    then load at most that many bytes per stream. This is a producer limit as
+    well as a capture limit, not a promise of unlimited output retention.
     """
     if isinstance(timeout, bool) or not isinstance(
             timeout,
@@ -305,6 +313,7 @@ def run_command(command: str,
             ]
         timed_out = False
         output_limit_exceeded = False
+        termination_reason = "process_exit"
         with stdout_path.open("xb") as stdout, stderr_path.open(
                 "xb") as stderr:
             process = subprocess.Popen(argv,
@@ -325,10 +334,12 @@ def run_command(command: str,
                         if stdout_path.stat().st_size + stderr_path.stat(
                         ).st_size > max_output_bytes:
                             output_limit_exceeded = True
+                            termination_reason = "output_limit"
                             break
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
                             timed_out = True
+                            termination_reason = "timeout"
                             break
                         try:
                             process.wait(timeout=min(.05, remaining))
@@ -336,6 +347,7 @@ def run_command(command: str,
                             pass
             except subprocess.TimeoutExpired:
                 timed_out = True
+                termination_reason = "timeout"
             finally:
                 # Also discard background children after a normally exited shell.
                 try:
@@ -343,9 +355,11 @@ def run_command(command: str,
                 except ProcessLookupError:
                     pass
                 process.wait()
+        stdout_bytes, stderr_bytes = (path.stat().st_size
+                                      for path in (stdout_path, stderr_path))
         output_limit_exceeded = output_limit_exceeded or (
-            max_output_bytes is not None and stdout_path.stat().st_size +
-            stderr_path.stat().st_size > max_output_bytes)
+            max_output_bytes is not None
+            and stdout_bytes + stderr_bytes > max_output_bytes)
 
         def read_output(path):
             with path.open('rb') as handle:
@@ -362,7 +376,13 @@ def run_command(command: str,
             "isolation": isolation
         }
         if max_output_bytes is not None:
-            result['output_limit_exceeded'] = output_limit_exceeded
+            result.update(output_limit_exceeded=output_limit_exceeded,
+                          output_limit_bytes=max_output_bytes,
+                          termination_reason=termination_reason,
+                          stdout_bytes=stdout_bytes,
+                          stderr_bytes=stderr_bytes,
+                          stdout_truncated=stdout_bytes > max_output_bytes,
+                          stderr_truncated=stderr_bytes > max_output_bytes)
         if log_dir:
             result.update(stdout_log=str(stdout_path),
                           stderr_log=str(stderr_path))

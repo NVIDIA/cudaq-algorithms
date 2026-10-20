@@ -3,12 +3,19 @@
 Use `python3 skills-dev/cudaq-algorithms-dev/scripts/run_eval.py` from the repository
 root. The same commands run locally and in CI. Python 3.11+, `pytest`,
 `jsonschema`, NumPy, SciPy and PySCF support the offline tests/reporting and
-independent scientific references. Scientific execution additionally
-requires a dedicated CUDA-Q environment and Linux mount/PID/network namespace
-capabilities (`unshare`, `mount`, `chroot`, `setpriv`). Execution fails closed if
-isolation is unavailable. On this development host the controller requires
-approved elevated execution; no unrestricted execution fallback is offered by
-the CLI.
+independent scientific references. Scientific execution additionally requires a
+dedicated CUDA-Q environment. The current `run` sandbox uses `unshare` mount,
+PID and network namespaces without a user namespace, followed by `mount`,
+`chroot` and `setpriv`. It requires root or equivalent namespace/mount and
+chroot capabilities in its execution environment. Root alone can be insufficient
+inside a container with restricted capabilities: execution fails closed when
+isolation cannot be established, with no unrestricted fallback in the CLI.
+
+When launched as root, the controller and its provider API credential run in
+that root process too. The isolated worker receives no provider credentials,
+drops Linux capabilities and has no external network access. Ordinary offline
+tests and the endpoint-only `preflight` command do not require these namespace
+privileges; the opt-in isolated runtime tests and actual `run` execution do.
 
 The initial backend is an OpenAI-compatible Chat Completions tool loop. The
 catalog contains ten NVIDIA Build model configurations, including Nemotron,
@@ -127,7 +134,23 @@ The frozen policy is also recorded as the JSON string
 Skill opening is directly observed by the `read_file` tool. A shell can perform
 indirect reads; when that makes opening uncertain it remains unknown rather than
 being guessed from a command string. Provider-native responses, tool calls,
-complete command output and final answers are retained outside the worker mounts.
+command logs and final answers are retained outside the worker mounts.
+
+Worker shell calls use a 16 MiB combined on-disk output limit. The executor polls
+every 50 ms and requests process-group termination once stdout plus stderr exceed
+that limit; fast producers can overshoot between polls. All bytes actually
+produced remain in the two tool log files, with their paths and byte counts in
+the transcript. This does not retain output that a terminated producer would
+have generated later. A command that exits before the poll can exceed the limit
+without being terminated for it; `termination_reason` distinguishes that case.
+
+Before transcript serialization the executor reads at most 16 MiB from each
+stream, so the combined capture can be up to 32 MiB before text decoding and JSON
+escaping. `output_limit_exceeded` records the combined limit; separate truncation
+flags describe each captured stream. The smaller 48,000-character model-context
+excerpt includes a truncation notice, limit/termination metadata and log paths.
+This memory safeguard does not guarantee that every transcript fits a judge's
+input limit, and it never changes historical transcripts.
 
 ## Grade and report
 
@@ -147,6 +170,17 @@ Responses and original judge provenance are retained before parsing. Invalid
 responses fail visibly and can be revalidated on the next grading invocation;
 they are not silently replaced by another judgment. Grades remain bound to exact
 result/transcript hashes.
+
+For each new judge response, `grade --timeout` is one shared elapsed-time budget
+covering requests and backoff. Transient transport failures allow at most two
+retries of the exact judge and payload. Backoff is at least 2 then 4 seconds and
+honors a longer `Retry-After` without shortening it; a delay that cannot fit the
+remaining budget stops the call. Authentication, configuration and other
+nonretryable failures stop immediately. Each invocation retains a separate
+`judge-transport-*.json` accounting file, including safe error classifications,
+request counts and measured waits. Successful raw-response provenance references
+that file. Resuming reuses the retained response without another provider request;
+malformed judgments or invalid citations never trigger transport retries.
 
 `case_contracts.json` identifies 24 executable-eligible cases: 20 scientific cases
 and four executable regression cases. All have registered private checks in

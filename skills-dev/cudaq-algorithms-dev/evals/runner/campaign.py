@@ -15,6 +15,7 @@ from pathlib import Path
 from . import providers, workspace, verification, checkers
 
 EVALS = Path(__file__).resolve().parents[1]
+MAX_TOOL_OUTPUT_BYTES = 16 * 1024 * 1024
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 TOOLS = [
     {
@@ -644,7 +645,8 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                             spec["settings"].get("runtime_python") else None,
                             isolation=spec["settings"].get(
                                 "isolation", "unshare"),
-                            log_dir=attempt / "tool-logs")
+                            log_dir=attempt / "tool-logs",
+                            max_output_bytes=MAX_TOOL_OUTPUT_BYTES)
                         # Shell reads can be arbitrarily indirect; absence of read_file evidence is unknown.
                         if opened is False:
                             opened = None
@@ -659,7 +661,22 @@ def run_attempt(root, attempt, case, model, row, spec, *, progress=None):
                       output=output)
                 content = json.dumps(output)
                 if len(content) > 48000:
-                    content = content[:48000] + "\n[truncated in model context; full output retained in transcript]"
+                    capture = {
+                        key: output[key]
+                        for key in ("stdout_log", "stderr_log",
+                                    "output_limit_exceeded",
+                                    "output_limit_bytes", "termination_reason",
+                                    "stdout_bytes", "stderr_bytes",
+                                    "stdout_truncated", "stderr_truncated")
+                        if key in output
+                    }
+                    content = content[:48000] + "\n" + json.dumps({
+                        "model_context_truncated":
+                        True,
+                        "note":
+                        "Bounded capture is retained in the transcript; tool logs retain all bytes produced before command cleanup.",
+                        **capture
+                    })
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call["id"],

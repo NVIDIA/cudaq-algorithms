@@ -5,6 +5,7 @@
 import importlib.util
 import json
 import os
+import signal
 from pathlib import Path
 import sys
 import time
@@ -175,19 +176,72 @@ def test_trusted_mode_is_explicit_and_retains_full_output(subject, tmp_path):
 
 
 def test_deadline_kills_descendants_even_after_stdout_closes(
-        subject, tmp_path):
+        subject, tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    command = "(sleep 1; echo leaked > late.txt) >/dev/null 2>&1 & exec sleep 20"
-    started = time.monotonic()
-    result = subject.run_command(command,
-                                 workspace,
-                                 timeout=0.1,
-                                 isolation="trusted")
-    assert result["timed_out"] is True
-    assert time.monotonic() - started < 3
-    time.sleep(1.1)
-    assert not (workspace / "late.txt").exists()
+    (workspace / "sleeper.py").write_text('''import os, pathlib, time
+pathlib.Path('parent.pid').write_text(str(os.getpid()))
+if os.fork() == 0:
+    os.close(1); os.close(2)
+    pathlib.Path('child.pid').write_text(str(os.getpid()))
+    time.sleep(20)
+    pathlib.Path('late.txt').write_text('leaked')
+    os._exit(0)
+time.sleep(20)
+''')
+
+    def running(pid):
+        try:
+            # A killed orphan may await reaping by container init, but a zombie
+            # cannot execute the delayed write.
+            state = Path(f"/proc/{pid}/stat").read_text().rsplit(
+                ")", 1)[1].split()[0]
+            return state not in ("Z", "X")
+        except FileNotFoundError:
+            return False
+
+    def wait_for(predicate):
+        deadline = time.monotonic() + 5
+        while not predicate():
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(.02)
+        return True
+
+    original_popen = subject.subprocess.Popen
+    processes = []
+
+    def ready_popen(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        # Start the executor's wait only after the child closed its output and
+        # recorded its PID. Keep the actual process launch and wait behavior.
+        assert wait_for(lambda: (workspace / "child.pid").exists())
+        return process
+
+    monkeypatch.setattr(subject.subprocess, "Popen", ready_popen)
+    try:
+        started = time.monotonic()
+        result = subject.run_command("python3 sleeper.py",
+                                     workspace,
+                                     timeout=.1,
+                                     isolation="trusted")
+        assert result["timed_out"] is True
+        assert time.monotonic() - started < 10
+        pids = [
+            int((workspace / name).read_text())
+            for name in ("parent.pid", "child.pid")
+        ]
+        assert wait_for(lambda: all(not running(pid) for pid in pids))
+        assert not (workspace / "late.txt").exists()
+    finally:
+        # Assertion failures must not leave a sleeping parent or descendant.
+        for process in processes:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
 
 
 def test_invalid_timeout_or_mode_never_executes(subject, tmp_path):

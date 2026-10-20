@@ -26,7 +26,9 @@ This file is maintainer and reviewer policy. Scientific tasks normally begin at
 - `../coverage/` holds the live contract inventory and per-feature evaluation mappings;
   `../scripts/check_coverage.py` checks consistency.
 
-This development directory is not an application skill and has no `SKILL.md`.
+This development directory has an optional [maintainer entrypoint](../SKILL.md)
+outside the application skill catalog. Ordinary scientific tasks use the runtime
+skill; agent-facing deployments omit this development directory.
 The canonical delivery suite, evaluator configuration, required fixtures and
 integrity checks live under `../evals/`; do not package them as application
 guidance. Historical campaigns and superseded harnesses are archived outside

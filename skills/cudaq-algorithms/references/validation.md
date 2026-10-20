@@ -71,6 +71,32 @@ improved model pass rates, time, or token usage. Those claims require separate
 paired model evaluations on the same tasks, grading, environments, and budgets,
 with the skill revision and suite identity recorded.
 
+## Requested task completion
+
+Check the request's deliverables against the actual answer and artifact:
+
+- **When a result is requested through a named library object:** trace it to
+  that object's returned data or executed operation. Instantiating it only to
+  report its size leaves the calculation unimplemented. An independent oracle
+  validates this path; it does not replace it.
+
+- **When state preparation is requested:** supply the preparation operation
+  and compatible register/signature. An occupation list or basis index describes
+  the input but does not implement preparation. If execution is requested and
+  available, check the resulting state against that input.
+
+- **For composition or interchangeability advice:** cover relevant representations,
+  capabilities, register layout, normalization, phases, and execution layers.
+  Distinguish host factories, device kernels, and simulation-only analysis;
+  separate compatibility from target selection.
+
+- **When claiming sufficient improvement:** compare against the user's criterion.
+  If none is given, quantify the change and state what criterion would make it
+  sufficient; a feasibility bound alone does not define usefulness.
+
+Numerical predictions alone need not include a new circuit. Match the requested
+execution level, preserving any explicit library or artifact requirements.
+
 ## Requested output artifacts
 
 When the request requires machine-readable results, validate the exact delivery
@@ -91,6 +117,11 @@ interface as well as the scientific calculation:
 
 - Check required fields, types, array shapes, admissible values, and units.
   Correct scientific numbers alone do not establish a valid output contract.
+- Check field meanings as well as shapes: reconstruct the reported settings from
+  the actual computation and express them in the consumer's specified convention.
+  Internal substep coefficients, normalized values, or per-register counts may
+  need conversion before they describe a full step, physical value, or total.
+  Verify that the declared settings reproduce the reported result where feasible.
 - Where IDs identify candidates, check uniqueness and that every selection or
   cross-reference resolves to an emitted ID. Derive stable IDs from the settings
   that distinguish candidates; equal realized sizes do not imply equal IDs.
