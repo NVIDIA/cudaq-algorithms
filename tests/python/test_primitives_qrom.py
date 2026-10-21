@@ -270,3 +270,160 @@ def test_qrom_validation_raises():
              output_bits=1,
              variant="select_swap",
              block_size=8)
+
+
+# ----------------------------------------------------------------------
+# Externally controlled lookups
+# ----------------------------------------------------------------------
+
+from cudaq_algorithms.primitives._qrom import _select_swap_cost
+from cudaq_algorithms.primitives._unary_iteration import _walk_toffoli_count
+
+_CTRL_DATA = [5, 3, 0, 6, 7]
+_CTRL_INITIAL = 0b101
+
+
+def _controlled_fixture(variant, block_size):
+    plain = QROM(_CTRL_DATA, 3, 3, variant=variant, block_size=block_size)
+    ctrl = QROM(_CTRL_DATA,
+                3,
+                3,
+                variant=variant,
+                block_size=block_size,
+                controlled=True)
+    assert plain.controlled is False and ctrl.controlled is True
+    assert ctrl.variant == plain.variant
+    assert ctrl.num_ladder == plain.num_ladder
+    return plain, ctrl
+
+
+def _superposed_input_state(num_ladder):
+    """H on every address bit, output preloaded with 0b101, ladder |0>."""
+
+    @cudaq.kernel
+    def run():
+        address_reg = cudaq.qvector(3)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(3)
+        for b in range(3):
+            h(address_reg[b])
+            if ((_CTRL_INITIAL >> b) & 1) == 1:
+                x(output[b])
+
+    return np.array(cudaq.get_state(run))
+
+
+def _plain_lookup_state(qrom: QROM):
+    lookup = qrom.kernel
+    num_ladder = qrom.num_ladder
+
+    @cudaq.kernel
+    def run():
+        address_reg = cudaq.qvector(3)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(3)
+        for b in range(3):
+            h(address_reg[b])
+            if ((_CTRL_INITIAL >> b) & 1) == 1:
+                x(output[b])
+        lookup(address_reg, ladder, output)
+
+    return np.array(cudaq.get_state(run))
+
+
+def _controlled_lookup_state(qrom: QROM, control_mode: int):
+    """control_mode: 0 -> |0>, 1 -> |1>, 2 -> |+>; the control is qubit 0."""
+    lookup = qrom.kernel
+    num_ladder = qrom.num_ladder
+
+    @cudaq.kernel
+    def run(mode: int):
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(3)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(3)
+        if mode == 1:
+            x(control[0])
+        if mode == 2:
+            h(control[0])
+        for b in range(3):
+            h(address_reg[b])
+            if ((_CTRL_INITIAL >> b) & 1) == 1:
+                x(output[b])
+        lookup(control, address_reg, ladder, output)
+
+    # Reshape so column c holds the amplitudes with the control in |c>.
+    return np.array(cudaq.get_state(run, control_mode)).reshape(-1, 2)
+
+
+@pytest.mark.parametrize("variant,block_size", [("select", None),
+                                                ("select_swap", 2)])
+def test_controlled_qrom_control_conventions(variant, block_size):
+    # Control |0>: the whole register is untouched (superposed addresses,
+    # a non-zero output word). Control |1>: exactly the plain lookup.
+    # Control |+>: the two branches side by side, each with weight 1/2.
+    plain, ctrl = _controlled_fixture(variant, block_size)
+    before = _superposed_input_state(ctrl.num_ladder)
+    after = _plain_lookup_state(plain)
+
+    at_zero = _controlled_lookup_state(ctrl, 0)
+    np.testing.assert_allclose(at_zero[:, 0], before, atol=1e-12)
+    np.testing.assert_allclose(at_zero[:, 1], 0.0, atol=1e-12)
+
+    at_one = _controlled_lookup_state(ctrl, 1)
+    np.testing.assert_allclose(at_one[:, 1], after, atol=1e-12)
+    np.testing.assert_allclose(at_one[:, 0], 0.0, atol=1e-12)
+
+    at_plus = _controlled_lookup_state(ctrl, 2)
+    np.testing.assert_allclose(at_plus[:, 0], before / np.sqrt(2), atol=1e-12)
+    np.testing.assert_allclose(at_plus[:, 1], after / np.sqrt(2), atol=1e-12)
+
+
+@pytest.mark.parametrize("variant,block_size", [("select", None),
+                                                ("select_swap", 2)])
+def test_controlled_qrom_is_self_inverse(variant, block_size):
+    _, ctrl = _controlled_fixture(variant, block_size)
+    lookup = ctrl.kernel
+    num_ladder = ctrl.num_ladder
+
+    @cudaq.kernel
+    def run():
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(3)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(3)
+        h(control[0])
+        for b in range(3):
+            h(address_reg[b])
+            if ((_CTRL_INITIAL >> b) & 1) == 1:
+                x(output[b])
+        lookup(control, address_reg, ladder, output)
+        lookup(control, address_reg, ladder, output)
+
+    state = np.array(cudaq.get_state(run)).reshape(-1, 2)
+    before = _superposed_input_state(num_ladder)
+    np.testing.assert_allclose(state[:, 0], before / np.sqrt(2), atol=1e-12)
+    np.testing.assert_allclose(state[:, 1], before / np.sqrt(2), atol=1e-12)
+
+
+def test_controlled_qrom_toffoli_counts_follow_the_documented_contract():
+    # Only the walk passes carry the control, so the price is the
+    # controlled walk count in place of W; the routing and copy are
+    # unchanged (the select_swap delta is twice the per-walk delta).
+    plain_select, ctrl_select = _controlled_fixture("select", None)
+    assert ctrl_select.toffoli_count == _walk_toffoli_count(3, 5, True)
+    assert plain_select.toffoli_count == _walk_toffoli_count(3, 5, False)
+    plain_swap, ctrl_swap = _controlled_fixture("select_swap", 2)
+    assert ctrl_swap.toffoli_count == _select_swap_cost(3, 5, 3, 2, True)
+    assert plain_swap.toffoli_count == _select_swap_cost(3, 5, 3, 2, False)
+    per_walk = ctrl_select.toffoli_count - plain_select.toffoli_count
+    assert per_walk > 0
+    assert ctrl_swap.toffoli_count - plain_swap.toffoli_count == 2 * (
+        _walk_toffoli_count(2, 3, True) - _walk_toffoli_count(2, 3, False))
+    # Pricing a controlled lookup under variant="auto" compares the
+    # controlled costs, never mixing a controlled with a plain count.
+    auto = QROM(_CTRL_DATA, 3, 3, controlled=True)
+    assert auto.variant in ("select", "select_swap")
+    assert auto.toffoli_count == min(
+        _walk_toffoli_count(3, 5, True),
+        min(_select_swap_cost(3, 5, 3, size, True) for size in (2, 4)))
