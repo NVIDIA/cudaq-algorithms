@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """LCU block encoding of a sparse real symmetric matrix from its data.
 
-``SparseLCUEncoding`` is the data-driven (V2) sparse encoding: the user
+``SparseLCUEncoding`` is the data-driven sparse encoding: the user
 supplies the matrix entries and the encoding builds an alias-sampled
 PREPARE over the term weights and a unary-iteration SELECT over the term
 unitaries. The encoded block is ``H / alpha`` with ``alpha`` the *term
-one-norm* (below) — the construction that wins over the oracle-based V1
-(``alpha = d_padded * h``) whenever the matrix has one dominant entry and
-many small ones, and that handles negative diagonal entries V1 provably
-cannot.
+one-norm* (below) — the construction that wins over the oracle
+construction (``alpha = d_padded * h``) whenever the matrix has one
+dominant entry and many small ones, and that handles negative diagonal
+entries the symmetric oracle construction provably cannot.
 
 The ``U_A = PREPARE-dagger . SELECT . PREPARE`` structure is the standard
 linear-combination-of-unitaries (LCU) block encoding (Childs and Wiebe,
@@ -90,8 +90,10 @@ ancilla register enters in ``|0...0>``** — the domain every consumer
 supplies, and the domain the involution test pins. It is NOT a global
 matrix identity: SELECT's unary-iteration walk is an involution only
 when its ladder enters clean, so composing ``U_A`` by hand on a dirty
-ancilla register silently breaks ``U_A^2 = I`` (``SparseOracleEncoding``'s
-identical claim, by contrast, is global). ``Walk``'s Chebyshev powers
+ancilla register silently breaks ``U_A^2 = I`` (the same clean-scratch
+condition applies to ``SparseOracleEncoding`` over ``qrom_oracles``
+bundles; only its flat ``banded_oracles`` make the involution global).
+``Walk``'s Chebyshev powers
 and ``QSVT``'s reuse of ``apply_kernel`` for adjoint directions hold
 with no separate adjoint factory. Walk reflections cover the **full**
 ancilla register, garbage included, and this is a requirement, not a
@@ -126,6 +128,7 @@ import numpy as np
 from ..common_kernels import (_validate_power, controlled_reflect_about_zero,
                               reflect_about_zero)
 from ..primitives import AliasSamplingPrepare, unary_iteration_kernels
+from ._report import report_summary
 from ._sparse_oracle import _noop, _retain
 
 if TYPE_CHECKING:
@@ -152,10 +155,26 @@ def _real_entry(value, i: int, j: int) -> float:
     return entry.real
 
 
+def _looks_like_triples(matrix) -> bool:
+    """True for a ``(rows, cols, vals)`` tuple: three one-dimensional
+    sequences whose first two have an integer dtype. A tuple of three
+    matrix rows (floats, or 2-D) is a dense matrix, not triples."""
+    if not (isinstance(matrix, tuple) and len(matrix) == 3):
+        return False
+    try:
+        rows, cols, vals = (np.asarray(part) for part in matrix)
+    except (TypeError, ValueError):
+        return False
+    return (rows.ndim == cols.ndim == vals.ndim == 1
+            and rows.dtype.kind in "iu" and cols.dtype.kind in "iu")
+
+
 def _coerce_entries(matrix, dim: int | None) -> tuple[int, dict]:
     """Normalize any accepted input form to ``(dim, {(i, j): value})``.
 
     Zero entries are dropped; duplicate triples sum (COO semantics).
+    Triples are recognized by shape and dtype (``_looks_like_triples``);
+    anything else goes through ``np.asarray`` as a dense matrix.
     """
     if hasattr(matrix, "tocoo"):  # scipy.sparse, without a hard dependency
         coo = matrix.tocoo()
@@ -163,7 +182,7 @@ def _coerce_entries(matrix, dim: int | None) -> tuple[int, dict]:
             raise ValueError(f"matrix must be square, got shape {coo.shape}")
         size = int(coo.shape[0])
         rows, cols, vals = coo.row, coo.col, coo.data
-    elif isinstance(matrix, tuple) and len(matrix) == 3:
+    elif _looks_like_triples(matrix):
         rows, cols, vals = matrix
         if dim is None:
             raise ValueError(
@@ -369,6 +388,8 @@ class SparseLCUEncoding:
     ancilla widths (``Walk`` refuses fast rather than hanging).
     """
 
+    report: dict | None = None  # set by encode_sparse on the encodings it builds
+
     def __init__(self, matrix, *, mu: int = 8, dim: int | None = None):
         size, entries = _coerce_entries(matrix, dim)
         if not entries:
@@ -385,7 +406,7 @@ class SparseLCUEncoding:
         num_system = max(1, (size - 1).bit_length())
         terms = _build_terms(entries)
         # Pin the select-variant QROM: it freezes num_garbage at
-        # 2*num_index + 2*mu + 4 and keeps ladder_offset/num_ladder ==
+        # 2*num_index + 2*mu + 2 and keeps ladder_offset/num_ladder ==
         # num_index, the geometry sparse_lcu_apply relies on when SELECT
         # reuses the PREPARE QROM ladder (and the closed register-budget
         # formula in _factory). Adopting variant="auto" (select_swap for
@@ -591,7 +612,7 @@ class SparseLCUEncoding:
                 f"ancilla_qubits={self.num_ancilla} "
                 f"(index {self.num_index} + garbage {self.num_garbage} + "
                 f"work {self.num_select_work}), "
-                f"alpha={self.alpha:.6g})")
+                f"alpha={self.alpha:.6g})") + report_summary(self.report)
 
     # ------------------------------------------------------------------
     # Convenience factories (mirroring SparseOracleEncoding / PauliLCU)

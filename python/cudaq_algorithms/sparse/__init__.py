@@ -9,7 +9,7 @@ a classical pricing dispatcher (:func:`encode_sparse`). These names are also
 re-exported from the package root.
 """
 
-from ._banded import banded_oracles
+from ._banded import banded_oracles, quantized_angle
 from ._factory import encode_sparse
 from ._from_data import qrom_oracles
 from ._sparse_lcu import SparseLCUEncoding
@@ -22,4 +22,5 @@ __all__ = [
     "banded_oracles",
     "encode_sparse",
     "qrom_oracles",
+    "quantized_angle",
 ]

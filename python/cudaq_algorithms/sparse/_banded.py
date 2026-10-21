@@ -10,12 +10,11 @@ selects each band's precomputed fixed-point angle behind a slot match and
 a boundary comparator (bands are *not* periodic: elements that would wrap
 around the matrix edge are encoded as zero).
 
-The kernels are deliberately *flat* — the QFT and comparator circuits of
+The kernels are *flat* — the QFT and comparator circuits of
 ``cudaq_algorithms.primitives._arithmetic`` are inlined rather than
-called: ``from_general_oracles`` wraps these oracles in
-``cudaq.control``, and CUDA-Q's control-variant generation rejects
-kernels that call other kernels ("Unhandled controlled quantum kernel
-call"). The inlined circuits are the same ones pinned exhaustively by
+called — so that ``from_general_oracles`` can place them under
+``cudaq.control`` as plain gate sequences. The inlined circuits are the
+same ones pinned exhaustively by
 ``tests/python/test_primitives_arithmetic.py``.
 
 For ``hermitian=True`` (direct encoding) the offsets must be closed under
@@ -363,4 +362,5 @@ def banded_oracles(offsets: Sequence[int],
                          h=h,
                          value_bits=vb,
                          num_work=2,
-                         slot_flip=slot_flip)
+                         slot_flip=slot_flip,
+                         num_system=num_system)

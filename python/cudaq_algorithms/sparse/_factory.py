@@ -6,12 +6,12 @@
 *classically* — no kernels are minted for the path not taken — and
 returns the cheaper encoding:
 
-- **oracle** (V1, ``SparseOracleEncoding`` over ``qrom_oracles``):
+- **oracle** (``SparseOracleEncoding`` over ``qrom_oracles``):
   ``alpha = d_padded * h`` with ``d`` the slots of the matching-based
   slot assignment (``_from_data``), ``d_padded = 2^ceil(log2 d)`` and
   ``h = max |H_ij|`` — pays the worst element at the padded sparsity, so
   it wins on uniform structured matrices with tiny ``d``.
-- **lcu** (V2, ``SparseLCUEncoding``): ``alpha = sum_{i<j} |H_ij| +
+- **lcu** (``SparseLCUEncoding``): ``alpha = sum_{i<j} |H_ij| +
   sum_i |H_ii|``, the term one-norm — wins whenever the weights are
   skewed (one dominant element, many small ones), and is the only
   generic path for negative diagonal entries (which the symmetric
@@ -22,11 +22,15 @@ break to fewer total qubits, then to the LCU path. ``prefer="oracle"`` /
 ``prefer="lcu"`` overrides the pricing (and raises with the recorded
 reason if the preferred path is ineligible).
 
-Non-symmetric input is Hermitian-dilated **once, at the data level**
-(``[[0, A], [A^T, 0]]``, exactly as ``SparseLCUEncoding.from_general``),
-and *both* paths are priced on the same dilated symmetric matrix — like
-against like. Every entry of ``A`` lands off-diagonal in the dilation,
-so negative diagonals of ``A`` never disqualify the oracle path there.
+Non-symmetric input raises by default, naming the first asymmetry: a
+symmetric matrix stored as one triangle, or one with rounding noise
+above ``1e-12 * max|H|``, must be completed or symmetrized by the caller
+rather than silently encoded as something else. With ``dilate=True`` the
+input is Hermitian-dilated **once, at the data level** (``[[0, A],
+[A^T, 0]]``, exactly as ``SparseLCUEncoding.from_general``), and *both*
+paths are priced on the same dilated symmetric matrix — like against
+like. Every entry of ``A`` lands off-diagonal in the dilation, so
+negative diagonals of ``A`` never disqualify the oracle path there.
 
 ``max_terms`` bounds the generic constructions' classical-table sizes —
 the LCU term count (each matrix entry costs two alias bins) and the
@@ -37,9 +41,12 @@ structure — hand-written oracles for ``SparseOracleEncoding`` (see
 ``banded_oracles`` for the shape).
 
 The returned encoding carries the pricing as ``encoding.report`` (keys:
-``path``, ``alpha``, ``alpha_alternatives``, ``qubits``, ``nnz``, ``d``,
-``dim``, ``dilated``, ``ineligible``, ``mu``, ``value_bits``) and
-surfaces a one-line summary in ``repr()``.
+``path``, ``alpha``, ``alpha_alternatives``, ``qubits``, ``nnz``,
+``max_row_nnz`` (the largest number of nonzeros in a row),
+``slots`` (the structure slots the oracle path's matching assignment
+uses, which sets its ``alpha``), ``dim``, ``dilated``, ``ineligible``,
+``mu``, ``value_bits``) and surfaces a one-line summary in ``repr()``;
+``report`` is ``None`` on encodings built directly.
 """
 
 from __future__ import annotations
@@ -50,38 +57,6 @@ from ._sparse_lcu import (SparseLCUEncoding, _bodies_and_work, _build_terms,
 from ._sparse_oracle import SparseOracleEncoding
 
 __all__ = ["encode_sparse"]
-
-
-def _report_summary(report: dict) -> str:
-    parts = []
-    for path in ("oracle", "lcu"):
-        if path == report["path"]:
-            continue
-        alpha = report["alpha_alternatives"][path]
-        note = " (ineligible)" if report["ineligible"][path] else ""
-        parts.append(f"{path}: alpha={alpha:.6g}{note}")
-    return (f" [encode_sparse: path={report['path']!r}, "
-            f"alpha={report['alpha']:.6g}, nnz={report['nnz']}, "
-            f"d={report['d']}" + (", dilated" if report["dilated"] else "") +
-            "; vs " + "; ".join(parts) + "]")
-
-
-class _FactoryOracleEncoding(SparseOracleEncoding):
-    """``SparseOracleEncoding`` with the ``encode_sparse`` report attached."""
-
-    report: dict = {}
-
-    def __repr__(self) -> str:
-        return super().__repr__() + _report_summary(self.report)
-
-
-class _FactoryLCUEncoding(SparseLCUEncoding):
-    """``SparseLCUEncoding`` with the ``encode_sparse`` report attached."""
-
-    report: dict = {}
-
-    def __repr__(self) -> str:
-        return super().__repr__() + _report_summary(self.report)
 
 
 def _dilate_entries(entries: dict, size: int) -> tuple[int, dict]:
@@ -105,17 +80,22 @@ def encode_sparse(matrix,
                   max_terms: int = 4096,
                   mu: int = 8,
                   value_bits: int = 8,
-                  dim: int | None = None):
+                  dim: int | None = None,
+                  dilate: bool = False):
     """Encode a sparse real matrix on the cheaper generic construction.
 
     Parameters
     ----------
     matrix
         A dense 2-D array, a ``scipy.sparse`` matrix, or a
-        ``(rows, cols, vals)`` tuple of parallel sequences (the input
-        forms of ``SparseLCUEncoding``). Non-symmetric input is
-        Hermitian-dilated at the data level before pricing (see the
-        module docstring).
+        ``(rows, cols, vals)`` tuple of parallel integer-indexed sequences
+        (the input forms of ``SparseLCUEncoding``). Must be symmetric
+        unless ``dilate=True``.
+    dilate
+        ``True`` encodes the Hermitian dilation ``[[0, A], [A^T, 0]]`` of
+        a general square ``A`` (one extra system qubit; see the module
+        docstring). ``False`` (default) raises on non-symmetric input,
+        including a symmetric matrix supplied as one triangle.
     prefer
         ``"oracle"`` / ``"lcu"`` forces that path (raising if it is
         ineligible); ``None`` (default) dispatches on ``alpha``.
@@ -154,7 +134,16 @@ def encode_sparse(matrix,
     size, entries = _coerce_entries(matrix, dim)
     if not entries:
         raise ValueError("matrix has no nonzero entries: nothing to encode")
-    dilated = _first_asymmetry(entries) is not None
+    asymmetry = _first_asymmetry(entries)
+    if asymmetry is not None and not dilate:
+        i, j, value, partner = asymmetry
+        raise ValueError(
+            f"matrix is not symmetric at ({i}, {j}): {value} vs {partner}. "
+            "Both constructions encode a symmetric matrix: complete or "
+            "symmetrize the input (a matrix stored as one triangle must be "
+            "mirrored first), or pass dilate=True to encode the Hermitian "
+            "dilation [[0, A], [A^T, 0]] on one extra system qubit")
+    dilated = bool(dilate)
     if dilated:
         size, entries = _dilate_entries(entries, size)
     num_system = max(1, (size - 1).bit_length())
@@ -182,9 +171,8 @@ def encode_sparse(matrix,
     else:
         _, select_work = _bodies_and_work(terms, num_system)
         # (2 * num_index + 2 * mu + 2) is AliasSamplingPrepare's num_garbage
-        # for the select-variant QROM (num_ladder == num_index) since the
-        # PREPARE conditional moved to the family register comparator (one
-        # carry qubit, no pad pair), kept in lockstep with the
+        # for the select-variant QROM (num_ladder == num_index; the family
+        # comparator uses one carry qubit), kept in lockstep with the
         # variant="select" pinned in SparseLCUEncoding.
         qubits_lcu = (num_system + num_index + (2 * num_index + 2 * mu + 2) +
                       select_work)
@@ -249,7 +237,8 @@ def encode_sparse(matrix,
             for p in ("oracle", "lcu")
         },
         "nnz": nnz,
-        "d": d_row,
+        "max_row_nnz": d_row,
+        "slots": d_slots,
         "dim": size,
         "dilated": dilated,
         "ineligible": {
@@ -265,12 +254,12 @@ def encode_sparse(matrix,
     # ------------------------------------------------------------------
 
     keys = sorted(entries)
-    triples = ([i for i, _ in keys], [j for _, j in keys],
-               [entries[key] for key in keys])
+    triples = ([int(i) for i, _ in keys], [int(j) for _, j in keys],
+               [float(entries[key]) for key in keys])
     if path == "oracle":
         oracles = qrom_oracles(triples, value_bits, dim=size)
-        encoding = _FactoryOracleEncoding(oracles, num_system=num_system)
+        encoding = SparseOracleEncoding(oracles, num_system=num_system)
     else:
-        encoding = _FactoryLCUEncoding(triples, mu=mu, dim=size)
+        encoding = SparseLCUEncoding(triples, mu=mu, dim=size)
     encoding.report = report
     return encoding

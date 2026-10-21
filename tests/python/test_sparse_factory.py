@@ -9,8 +9,9 @@ The dispatch decisions this file pins:
 - uniform banded with tiny d -> oracle (padded sparsity 4 beats the
   one-norm 7);
 - negative diagonal -> oracle ineligible (recorded), LCU dispatched;
-- non-symmetric -> dilated once at the data level, both paths priced on
-  the dilation; the chosen tie-break case resolves by qubit count;
+- non-symmetric -> raises unless ``dilate=True``, which dilates once at
+  the data level and prices both paths on the dilation; exact alpha ties
+  resolve by qubit count in either direction;
 - ``prefer=`` overrides pricing in both directions and raises with the
   recorded reason when the preferred path is ineligible;
 - above ``max_terms`` a path drops out; with no path left the factory
@@ -32,7 +33,17 @@ import cudaq
 from cudaq_algorithms.common_kernels import state_from
 from cudaq_algorithms.sparse import (SparseLCUEncoding, SparseOracleEncoding,
                                      encode_sparse, qrom_oracles)
-from cudaq_algorithms.sparse._banded import quantized_angle
+
+
+def quantized_angle(value: float, h: float, value_bits: int) -> int:
+    """Test-local copy of the oracle contract's fixed-point angle,
+    ``round(arcsin(sqrt(|v|/h)) / (pi/2) * 2^bits)`` clamped to
+    ``2^bits - 1``, so the references do not import the quantizer under
+    test."""
+    theta = math.asin(math.sqrt(min(1.0, abs(value) / h)))
+    return min((1 << value_bits) - 1,
+               int(round(theta / (0.5 * math.pi) * (1 << value_bits))))
+
 
 # ----------------------------------------------------------------------
 # Dense references (independent NumPy constructions)
@@ -158,7 +169,8 @@ def test_dispatch_skewed_weights_picks_lcu():
     assert report["alpha"] == pytest.approx(encoding.alpha, abs=0.0)
     assert report["alpha_alternatives"]["oracle"] == pytest.approx(2.0)
     assert report["nnz"] == 8
-    assert report["d"] == 1  # every row is 1-sparse
+    assert report["max_row_nnz"] == 1  # every row is 1-sparse
+    assert report["slots"] == 1
     assert report["dilated"] is False
     assert report["ineligible"] == {"oracle": None, "lcu": None}
     assert report["qubits"]["lcu"] == total_qubits(encoding)
@@ -186,7 +198,8 @@ def test_dispatch_uniform_banded_picks_oracle():
     assert report["alpha"] == pytest.approx(encoding.alpha, abs=0.0)
     assert report["alpha_alternatives"]["lcu"] == pytest.approx(7.0)
     assert report["nnz"] == 10
-    assert report["d"] == 3  # max nonzeros per row
+    assert report["max_row_nnz"] == 3  # max nonzeros per row
+    assert report["slots"] == 3
     assert report["ineligible"] == {"oracle": None, "lcu": None}
     assert report["qubits"]["oracle"] == total_qubits(encoding)
 
@@ -225,12 +238,14 @@ def test_qrom_oracles_standalone_matches_dense():
     encoding = SparseOracleEncoding(oracles, num_system=2)
     assert encoding.alpha == pytest.approx(1.8)
 
-    block = encoding.alpha * encoded_matrix(encoding)
+    ket = random_ket(4, seed=17)
+    block = encoding.alpha * encoded_block(encoding, encoding.encode_kernel(),
+                                           ket)
     quantized = oracle_quantized_dense(matrix, 0.9, 6)
-    np.testing.assert_allclose(block, quantized, atol=1e-10)
+    np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
     np.testing.assert_allclose(block,
-                               matrix,
-                               atol=oracle_quantization_atol(0.9, 6))
+                               matrix @ ket,
+                               atol=oracle_quantization_atol(0.9, 6) * 2.0)
 
 
 def test_qrom_oracles_validation_raises():
@@ -276,7 +291,7 @@ def test_nonsymmetric_input_dilates_both_paths():
     # oracle alpha = d_padded * h = 2 * 1.0, lcu alpha = 0.5 + 1.0 + 0.5
     # = 2.0 — an exact tie, resolved by qubit count in favor of LCU.
     a = np.array([[0.5, 1.0], [0.0, -0.5]])
-    encoding = encode_sparse(a, mu=2)
+    encoding = encode_sparse(a, mu=2, dilate=True)
     report = encoding.report
 
     assert report["dilated"] is True
@@ -367,7 +382,7 @@ def test_guard_drops_one_path_and_reports_it():
         encode_sparse(matrix, max_terms=16, prefer="lcu")
 
 
-def test_over_budget_lcu_skips_building_gate_bodies():
+def test_over_budget_lcu_skips_building_gate_bodies(monkeypatch):
     # An over-budget LCU term count must be rejected on the count alone,
     # without materializing every SELECT body (which is O(nnz) work and
     # memory the budget is meant to avoid).
@@ -381,12 +396,9 @@ def test_over_budget_lcu_skips_building_gate_bodies():
         built += 1
         return original(*args, **kwargs)
 
-    lcu_mod._term_body = counting
-    try:
-        with pytest.raises(ValueError, match="no generic sparse encoding"):
-            encode_sparse(np.ones((64, 64)), max_terms=1)
-    finally:
-        lcu_mod._term_body = original
+    monkeypatch.setattr(lcu_mod, "_term_body", counting)
+    with pytest.raises(ValueError, match="no generic sparse encoding"):
+        encode_sparse(np.ones((64, 64)), max_terms=1)
     assert built == 0
 
 
@@ -399,7 +411,10 @@ def test_uniformly_tiny_asymmetric_matrix_dilates():
     for scale in scales:
         a = np.array([[0.0, scale], [0.0, 0.0]])
         for prefer in ("lcu", "oracle"):
-            encoding = encode_sparse(a, prefer=prefer, value_bits=4)
+            encoding = encode_sparse(a,
+                                     prefer=prefer,
+                                     value_bits=4,
+                                     dilate=True)
             assert encoding.report["dilated"] is True, (scale, prefer)
             assert encoding.report["dim"] == 4
 
@@ -415,3 +430,58 @@ def test_argument_validation_raises():
         encode_sparse(np.eye(2), mu=0)
     with pytest.raises(ValueError, match="value_bits"):
         encode_sparse(np.eye(2), value_bits=0)
+
+
+def test_nonsymmetric_input_raises_unless_dilate():
+    # Both constructions encode a symmetric matrix. A genuinely asymmetric
+    # matrix and a symmetric matrix stored as one triangle both raise by
+    # default, naming the asymmetry and the way out; dilate=True opts in.
+    with pytest.raises(ValueError, match="dilate=True"):
+        encode_sparse(np.array([[0.5, 1.0], [0.0, -0.5]]))
+    upper = ([0, 1, 2], [1, 2, 2], [0.5, -0.3, 0.8])
+    with pytest.raises(ValueError, match=r"not symmetric at \(0, 1\)"):
+        encode_sparse(upper, dim=3)
+    noisy = np.array([[1.0, 0.5], [0.5 * (1 + 1e-10), 1.0]])
+    with pytest.raises(ValueError, match="symmetrize"):
+        encode_sparse(noisy)
+    encoding = encode_sparse(upper, dim=3, mu=2, value_bits=3, dilate=True)
+    assert encoding.report["dilated"] is True and encoding.report["dim"] == 8
+
+
+def test_tie_breaks_to_fewer_qubits_in_either_direction():
+    # At value_bits=2 and the default mu=8 the dilated [[0.5, 1], [0, -0.5]]
+    # ties at alpha=2.0 on both paths and the oracle path is the narrower
+    # register (17 vs 30 qubits), so it must win -- the mirror image of
+    # the mu=2 case above, where the LCU path is narrower.
+    encoding = encode_sparse(np.array([[0.5, 1.0], [0.0, -0.5]]),
+                             value_bits=2,
+                             dilate=True)
+    report = encoding.report
+    assert report["alpha_alternatives"]["oracle"] == pytest.approx(2.0)
+    assert report["alpha_alternatives"]["lcu"] == pytest.approx(2.0)
+    assert report["qubits"]["oracle"] < report["qubits"]["lcu"]
+    assert report["path"] == "oracle"
+    assert isinstance(encoding, SparseOracleEncoding)
+    assert total_qubits(encoding) == report["qubits"]["oracle"]
+
+
+def test_report_distinguishes_row_sparsity_from_oracle_slots():
+    # The triangle K3 has two nonzeros per row but its edges need three
+    # matchings, so the oracle path pays alpha = d_padded * h = 4 on three
+    # slots; the report names both numbers instead of one ambiguous "d".
+    triangle = np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]])
+    encoding = encode_sparse(triangle, prefer="oracle", value_bits=2, mu=1)
+    assert encoding.report["max_row_nnz"] == 2
+    assert encoding.report["slots"] == 3
+    assert encoding.d == 3
+    assert encoding.alpha == pytest.approx(4.0)
+    assert "max_row_nnz=2, slots=3" in repr(encoding)
+
+
+def test_report_is_none_on_direct_constructions():
+    direct = SparseLCUEncoding(np.array([[1.0, 0.5], [0.5, 2.0]]), mu=1)
+    assert direct.report is None
+    assert "encode_sparse" not in repr(direct)
+    oracle = SparseOracleEncoding(qrom_oracles(np.eye(2), 2), num_system=1)
+    assert oracle.report is None
+    assert "encode_sparse" not in repr(oracle)

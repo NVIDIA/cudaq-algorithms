@@ -50,11 +50,18 @@ Construction (T . S . T-dagger)
   (cuda-quantum#4897/#4898).
 
 ``S`` is Hermitian and ``T`` unitary, so ``U_A`` is exactly self-adjoint
-and involutory — the property Walk's Chebyshev powers and QSVT's
-forward/adjoint step reuse of ``apply_kernel`` rely on. It also makes the
-controlled variants cheap: ``controlled-U_A = T-dagger (controlled-S) T``
-(the uncontrolled ``T`` pair cancels at control ``|0>``), so user oracles
-never need controlled versions.
+and involutory wherever ``T-dagger`` inverts ``T`` — on every state whose
+``work`` scratch enters in ``|0>``, the domain the oracle contract
+guarantees and every consumer supplies (scratch is ``|0>`` at every
+reflection point). Flat oracles with no work qubits (``banded_oracles``)
+make ``U_A`` an involution on the whole register; oracles built on
+unary-iteration walks (``qrom_oracles``) are their own inverse only with
+clean scratch, so ``U_A^2 = I`` does not extend to a dirty work
+register. Walk's Chebyshev powers and QSVT's forward/adjoint reuse of
+``apply_kernel`` rely only on the clean-scratch property. The sandwich
+also makes the controlled variants cheap: ``controlled-U_A = T-dagger
+(controlled-S) T`` (the uncontrolled ``T`` pair cancels at control
+``|0>``), so user oracles never need controlled versions.
 
 Sign convention
 ---------------
@@ -72,14 +79,19 @@ is ``|chi|^2`` = +1 for any convention); encode such operators via
 Oracle contract (``OracleKernels``)
 -----------------------------------
 
-All registers little-endian (``docs/conventions.md``). For slots ``s <
-d``, ``x -> c(s, x)`` must be a permutation; padded slots ``s >= d`` must
-act as the identity with zero value. Signatures::
+All registers little-endian (``docs/sphinx/conventions.rst``). For slots
+``s < d``, ``x -> c(s, x)`` must be a permutation; padded slots ``s >= d``
+must act as the identity with zero value. Signatures::
 
     o_loc(slot: qview, system: qview, work: qview)          # in place
     o_loc_adj(slot, system, work)                           # its inverse
     o_val(slot: qview, system: qview, value_and_sign: qview, work: qview)
     o_val_adj(...)                                          # its inverse
+
+Each ``*_adj`` must invert its partner on every state whose ``work``
+register enters in ``|0>`` (and leave it ``|0>``); it need not be a
+global matrix inverse. ``num_system`` records the system width the
+kernels were built for and is checked against the encoding's.
 
 ``o_val`` XOR-loads, for slot ``s`` and register content ``x`` (the *row*
 index, i.e. after ``o_loc``): the ``value_bits``-bit fixed point of
@@ -121,6 +133,7 @@ import cudaq
 
 from ..common_kernels import (_validate_power, controlled_reflect_about_zero,
                               reflect_about_zero)
+from ._report import report_summary
 
 if TYPE_CHECKING:
     from ..block_encoding import Kernel
@@ -171,10 +184,13 @@ class OracleKernels:
     value_bits
         Fixed-point bits of the angle register (>= 1).
     num_work
-        Work qubits the oracles need (returned to ``|0>``).
+        Work qubits the oracles need (entering and returned ``|0>``).
     slot_flip
         Reverse-slot involution over the *padded* slot range, or ``None``
         if unavailable (then only ``from_general_oracles`` applies).
+    num_system
+        System width the kernels were built for, or ``None`` if the
+        kernels are width-agnostic; the encoding rejects a mismatch.
     """
 
     o_loc: Any
@@ -186,6 +202,7 @@ class OracleKernels:
     value_bits: int
     num_work: int = 0
     slot_flip: list[int] | None = field(default=None)
+    num_system: int | None = None
 
 
 class SparseOracleEncoding:
@@ -207,9 +224,16 @@ class SparseOracleEncoding:
     refuses fast rather than hanging).
     """
 
+    report: dict | None = None  # set by encode_sparse on the encodings it builds
+
     def __init__(self, oracles: OracleKernels, num_system: int) -> None:
         if int(num_system) != num_system or num_system < 1:
             raise ValueError("num_system must be a positive integer")
+        if (oracles.num_system is not None
+                and int(oracles.num_system) != int(num_system)):
+            raise ValueError(
+                f"oracles were built for num_system={oracles.num_system} "
+                f"system qubits, but the encoding has num_system={num_system}")
         if int(oracles.d) != oracles.d or oracles.d < 1:
             raise ValueError("oracles.d must be a positive integer (d >= 1)")
         if not (oracles.h > 0.0) or not math.isfinite(oracles.h):
@@ -398,7 +422,8 @@ class SparseOracleEncoding:
 
         @cudaq.kernel
         def apply_u(ancilla: cudaq.qview, system: cudaq.qview):
-            """U_A = T-dagger S T (exactly self-adjoint and involutory)."""
+            """U_A = T-dagger S T: self-adjoint and involutory on every
+            state whose scratch enters |0> (module docstring)."""
             t_iso(ancilla, system)
             s_swap(ancilla, system)
             t_iso_adj(ancilla, system)
@@ -513,7 +538,7 @@ class SparseOracleEncoding:
                 f"(block {self.num_block_ancilla} + "
                 f"scratch {self.num_scratch}), "
                 f"value_bits={self.value_bits}, "
-                f"alpha={self.alpha:.6g})")
+                f"alpha={self.alpha:.6g})") + report_summary(self.report)
 
     # ------------------------------------------------------------------
     # Convenience factories (mirroring PauliLCU / the DF example)
@@ -649,16 +674,17 @@ class SparseOracleEncoding:
         """Encode the Hermitian dilation ``[[0, A], [A^T, 0]]`` of ``A``.
 
         ``oracles`` describes a general real ``2^n x 2^n`` matrix ``A``
-        (per-slot column permutations ``c(s, .)`` with explicit inverses;
-        the oracle kernels must be flat — through CUDA-Q 0.15 the dilation
-        wraps them in ``cudaq.control``, which rejects kernels that call
-        kernels, so ``qrom_oracles`` bundles cannot feed this path;
-        the value convention of the module docstring, with ``o_val``
+        (per-slot column permutations ``c(s, .)`` with explicit inverses,
+        and the value convention of the module docstring with ``o_val``
         writing *only* the angle and sign bits — the dilation supplies the
         ``upper`` bit itself, since row < column reduces to the halves
-        bit). ``slot_flip`` is ignored: every dilated slot is its own
-        reverse (``c_H(s, .)`` is an involution by construction), so the
-        flip is the identity.
+        bit). The dilation places the oracle kernels under
+        ``cudaq.control``, so they must be flat (no sub-kernel calls, as
+        ``banded_oracles`` builds them); ``qrom_oracles`` bundles, which
+        call unary-iteration sub-kernels, are not accepted here.
+        ``slot_flip`` is ignored: every dilated slot is its own reverse
+        (``c_H(s, .)`` is an involution by construction), so the flip is
+        the identity.
 
         The result acts on ``num_system + 1`` system qubits (the halves
         bit is the most significant) and encodes ``[[0, A], [A^T, 0]] /
@@ -672,6 +698,12 @@ class SparseOracleEncoding:
                 raise ValueError(f"oracles.{name} is required")
         if int(oracles.d) != oracles.d or oracles.d < 1:
             raise ValueError("oracles.d must be a positive integer (d >= 1)")
+        if (oracles.num_system is not None
+                and int(oracles.num_system) != int(num_system)):
+            raise ValueError(
+                f"oracles were built for num_system={oracles.num_system} "
+                f"system qubits, but the dilation was asked for "
+                f"num_system={num_system}")
 
         o_loc_a = oracles.o_loc
         o_loc_a_adj = oracles.o_loc_adj
@@ -750,5 +782,6 @@ class SparseOracleEncoding:
                                 h=oracles.h,
                                 value_bits=oracles.value_bits,
                                 num_work=oracles.num_work,
-                                slot_flip=list(range(d_padded)))
+                                slot_flip=list(range(d_padded)),
+                                num_system=int(num_system) + 1)
         return cls(dilated, num_system=int(num_system) + 1)

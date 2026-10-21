@@ -9,10 +9,13 @@ Two-level validation per the library's validation culture:
   ``table_probabilities`` (integer-exact) — at simulator precision
   (1e-10), which catches circuit/convention bugs undiluted by
   discretization;
-- the exactly encoded matrix is compared against the ideal one within the
-  derived bound ``alpha * num_bins * discretization_bound`` (each of the
-  ``num_bins`` alias bins carries at most ``discretization_bound`` of
-  probability rounding, each term unitary has entries of modulus <= 1);
+- the alias tables are pinned bin by bin against the ideal weights
+  (``|p_k - w_k / alpha| <= discretization_bound``, padding bins exactly
+  zero), and the exactly encoded matrix is compared against the ideal
+  one elementwise: an off-diagonal element is touched by exactly two
+  terms (``T`` and ``T'`` of its pair), so its error is at most
+  ``2 alpha * discretization_bound``; a diagonal element is touched by
+  every term, so it gets the ``num_bins``-term bound;
 - the term enumeration itself (the factor-of-2 split of each off-diagonal
   pair into T/T' and each diagonal into I/Z_i, and the sign placement) is
   pinned *classically*: the ideal-weight term sum must reproduce H
@@ -34,7 +37,17 @@ from cudaq_algorithms import BlockEncoding, PhaseSequence, QSVT, Walk
 from cudaq_algorithms.common_kernels import state_from
 from cudaq_algorithms.sparse import (OracleKernels, SparseLCUEncoding,
                                      SparseOracleEncoding)
-from cudaq_algorithms.sparse._banded import quantized_angle
+
+
+def quantized_angle(value: float, h: float, value_bits: int) -> int:
+    """Test-local copy of the oracle contract's fixed-point angle,
+    ``round(arcsin(sqrt(|v|/h)) / (pi/2) * 2^bits)`` clamped to
+    ``2^bits - 1``, so the references do not import the quantizer under
+    test."""
+    theta = math.asin(math.sqrt(min(1.0, abs(value) / h)))
+    return min((1 << value_bits) - 1,
+               int(round(theta / (0.5 * math.pi) * (1 << value_bits))))
+
 
 # ----------------------------------------------------------------------
 # Dense references (independent NumPy constructions)
@@ -75,25 +88,44 @@ def ideal_term_sum(encoding) -> np.ndarray:
 def discretized_dense(encoding) -> np.ndarray:
     """The exactly encoded matrix: alias-table weights, dense unitaries.
 
-    Padding bins (index >= len(terms)) act as the identity in SELECT; the
-    integer Vose residual redistribution can in principle leave them a
-    nonzero table probability, so they are included.
+    Padding bins (index >= len(terms)) carry exactly zero probability (the
+    integer residual redistribution only reaches bins with a rounding
+    deficit); that is asserted rather than worked around.
     """
     dim = 1 << encoding.num_system
     probabilities = encoding.preparation.table_probabilities
+    np.testing.assert_array_equal(probabilities[len(encoding.terms):], 0.0)
     total = np.zeros((dim, dim))
     for k, (kind, i, j, _, sign) in enumerate(encoding.terms):
         total += (encoding.alpha * probabilities[k] * sign *
                   term_matrix(kind, i, j, dim))
-    for k in range(len(encoding.terms), len(probabilities)):
-        total += encoding.alpha * probabilities[k] * np.eye(dim)
     return total
 
 
 def discretization_atol(encoding) -> float:
-    """Derived elementwise bound |H_discretized - H|."""
+    """Derived elementwise bound |H_discretized - H| for a *diagonal*
+    element, which every term touches."""
     return (encoding.alpha * encoding.preparation.num_bins *
             encoding.discretization_bound)
+
+
+def assert_discretization_is_tight(encoding, matrix) -> None:
+    """Pin the alias tables against the ideal weights and the exactly
+    encoded matrix against the ideal one with the elementwise bounds.
+
+    These checks are classical and independent of the circuit: the
+    weights come from ``encoding.terms`` (pinned against ``H`` by
+    ``ideal_term_sum``), the probabilities from the alias tables.
+    """
+    probabilities = encoding.preparation.table_probabilities
+    bound = encoding.discretization_bound
+    for k, (_, _, _, weight, _) in enumerate(encoding.terms):
+        assert abs(probabilities[k] - weight / encoding.alpha) <= bound
+    quantized = discretized_dense(encoding)
+    error = np.abs(quantized - matrix)
+    off_diagonal = error - np.diag(np.diag(error))
+    assert off_diagonal.max() <= 2.0 * encoding.alpha * bound
+    assert np.diag(error).max() <= discretization_atol(encoding)
 
 
 def random_ket(dim: int, seed: int = 11) -> np.ndarray:
@@ -176,11 +208,11 @@ def test_dim4_block_column_by_column():
                                atol=discretization_atol(encoding))
 
 
-@pytest.mark.parametrize("entries,dim,num_system", [(DIM8_ENTRIES, 8, 3),
-                                                    (DIM16_ENTRIES, 16, 4)])
-def test_sparse_hermitian_block_dense_action(entries, dim, num_system):
+@pytest.mark.parametrize("entries,dim,num_system,mu",
+                         [(DIM8_ENTRIES, 8, 3, 2), (DIM16_ENTRIES, 16, 4, 1)])
+def test_sparse_hermitian_block_dense_action(entries, dim, num_system, mu):
     matrix = dense_from_entries(entries, dim)
-    encoding = SparseLCUEncoding(matrix, mu=2)
+    encoding = SparseLCUEncoding(matrix, mu=mu)
     assert encoding.num_system == num_system
     # Classical pin: ideal weights reproduce H exactly (the factor-of-2
     # and sign bookkeeping, negative diagonals included).
@@ -190,7 +222,21 @@ def test_sparse_hermitian_block_dense_action(entries, dim, num_system):
                           ket) * encoding.alpha
     quantized = discretized_dense(encoding)
     np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
-    assert np.abs(quantized - matrix).max() <= discretization_atol(encoding)
+    assert_discretization_is_tight(encoding, matrix)
+
+
+@pytest.mark.parametrize("mu", [1, 2, 3, 4, 6, 8])
+def test_discretization_error_is_bounded_and_shrinks_with_mu(mu):
+    # Classical only: the alias tables at every mu stay within the derived
+    # bounds, and the realized error falls with the keep precision.
+    matrix = dense_from_entries(DIM8_ENTRIES, 8)
+    encoding = SparseLCUEncoding(matrix, mu=mu)
+    assert_discretization_is_tight(encoding, matrix)
+    coarse = np.abs(
+        discretized_dense(SparseLCUEncoding(matrix, mu=1)) - matrix).max()
+    fine = np.abs(discretized_dense(SparseLCUEncoding(matrix, mu=8)) -
+                  matrix).max()
+    assert fine < coarse
 
 
 # ----------------------------------------------------------------------
@@ -526,7 +572,9 @@ def test_encoding_validation_raises():
         SparseLCUEncoding(([0, 1], [1], [0.5]), dim=2)
     with pytest.raises(ValueError, match="out of range"):
         SparseLCUEncoding(([0, 7], [7, 0], [0.5, 0.5]), dim=4)
-    with pytest.raises(ValueError, match="must be integers"):
+    # Float-typed indices are not triples; the tuple is read as a dense
+    # matrix and rejected with the list of accepted forms.
+    with pytest.raises(ValueError, match="accepted forms"):
         SparseLCUEncoding(([0.5], [1], [0.5]), dim=2)
     with pytest.raises(ValueError, match="does not match"):
         SparseLCUEncoding(good, dim=8)
@@ -577,3 +625,44 @@ def test_encode_kernel_state_prep_injection():
     block = out[:1 << encoding.num_system] * encoding.alpha
     quantized = discretized_dense(encoding)
     np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
+
+
+def test_controlled_walk_respects_control():
+    # Walk.controlled_kernel: the control=1 half equals the uncontrolled
+    # walk and the control=0 half is empty; at control |0> the state is
+    # untouched. Layout [system][control][ancilla], q[0] the LSB. Pins the
+    # controlled reflection, which W W-dagger roundtrips cannot see.
+    encoding = SparseLCUEncoding(np.array([[0.6, -0.4], [-0.4, 0.2]]), mu=1)
+    walk = Walk(encoding)
+    dim_s, dim_a = 1 << encoding.num_system, 1 << encoding.num_ancilla
+    ket = random_ket(dim_s, seed=33)
+    reference = np.asarray(
+        cudaq.get_state(walk.kernel(power=2), state_from(ket)))
+    on_state = np.asarray(
+        cudaq.get_state(walk.controlled_kernel(power=2, control_state=1),
+                        state_from(ket))).reshape(dim_a, 2, dim_s)
+    off_state = np.asarray(
+        cudaq.get_state(walk.controlled_kernel(power=2, control_state=0),
+                        state_from(ket))).reshape(dim_a, 2, dim_s)
+    np.testing.assert_allclose(on_state[:, 1, :].reshape(-1),
+                               reference,
+                               atol=1e-10)
+    np.testing.assert_allclose(on_state[:, 0, :], 0.0, atol=1e-10)
+    expected_off = np.zeros((dim_a, dim_s), dtype=np.complex128)
+    expected_off[0] = ket
+    np.testing.assert_allclose(off_state[:, 0, :], expected_off, atol=1e-10)
+    np.testing.assert_allclose(off_state[:, 1, :], 0.0, atol=1e-10)
+
+
+def test_tuple_of_rows_is_a_dense_matrix_not_triples():
+    # A 3-tuple of float rows is a dense matrix; only integer-indexed
+    # (rows, cols, vals) sequences are coordinate triples.
+    identity = SparseLCUEncoding(
+        ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)), dim=3, mu=1)
+    assert identity.dim == 3 and len(identity.terms) == 6
+    # dim 3 is zero-padded to the 4 x 4 register.
+    np.testing.assert_allclose(ideal_term_sum(identity),
+                               np.pad(np.eye(3), ((0, 1), (0, 1))),
+                               atol=1e-12)
+    triples = SparseLCUEncoding(([0, 1], [1, 0], [0.5, 0.5]), dim=2, mu=1)
+    assert len(triples.terms) == 2

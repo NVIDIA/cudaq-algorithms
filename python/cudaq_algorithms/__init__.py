@@ -5,7 +5,7 @@
 A pure-Python package: the fermion-to-qubit transforms
 (:mod:`.fermion`), the state-preparation kernels and operator pools
 (:mod:`.stateprep`), the quantum primitives (:mod:`.pauli_lcu`,
-:mod:`.qubitization`, :mod:`.qsvt`, :mod:`.trotter`,
+:mod:`.sparse`, :mod:`.qubitization`, :mod:`.qsvt`, :mod:`.trotter`,
 :mod:`.sim_utils`), and the classical double-factorization
 preprocessing (:mod:`.double_factorization`, NumPy/SciPy with optional
 CuPy GPU acceleration) are implemented as CUDA-Q Python kernels and

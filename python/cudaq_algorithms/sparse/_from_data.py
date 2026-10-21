@@ -4,8 +4,8 @@
 
 ``qrom_oracles`` compiles the entries of a real symmetric sparse matrix
 into an ``OracleKernels`` bundle for ``SparseOracleEncoding`` — the
-generic data-driven route onto the oracle (V1) construction, and the
-path ``encode_sparse`` prices against the alias-LCU (V2) encoding.
+generic data-driven route onto the oracle construction, and the path
+``encode_sparse`` prices against ``SparseLCUEncoding``.
 
 Slot assignment: matchings, so every slot map is an involution
 ------------------------------------------------------------------
@@ -178,8 +178,10 @@ def qrom_oracles(matrix,
         return [("x_w", s, t) for s in range(d) for t in range(value_bits + 2)
                 if (val[s][row] >> t) & 1]
 
-    # X-only writes keyed on the (unchanged) address and match bits:
-    # involutions, so no adjoint mint (o_*_adj is o_* itself).
+    # X-only writes keyed on the (unchanged) address and match bits: each
+    # walk is its own inverse on a clean ladder/work register, so no
+    # adjoint mint (o_*_adj is o_* itself; the oracle contract requires
+    # work to enter |0>).
     val_walk = unary_iteration_kernels(n,
                                        size,
                                        val_body,
@@ -208,7 +210,8 @@ def qrom_oracles(matrix,
                        work: cudaq.qview):
             """|s>|x> -> |s>|c(s, x)> through the out scratch (module doc).
 
-            Its own inverse: c(s, .) is an involution.
+            Its own inverse on clean scratch: c(s, .) is an involution and
+            the walk restores its ladder.
             """
             for s in range(num_loc):
                 for b in range(m):
@@ -272,4 +275,5 @@ def qrom_oracles(matrix,
                          h=h,
                          value_bits=value_bits,
                          num_work=num_work,
-                         slot_flip=list(range(d_padded)))
+                         slot_flip=list(range(d_padded)),
+                         num_system=n)

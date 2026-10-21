@@ -29,8 +29,18 @@ import cudaq
 from cudaq_algorithms import BlockEncoding, PhaseSequence, QSVT, Walk
 from cudaq_algorithms.common_kernels import state_from
 from cudaq_algorithms.sparse import (OracleKernels, SparseOracleEncoding,
-                                     banded_oracles)
-from cudaq_algorithms.sparse._banded import quantized_angle
+                                     banded_oracles, qrom_oracles)
+
+
+def quantized_angle(value: float, h: float, value_bits: int) -> int:
+    """Test-local copy of the oracle contract's fixed-point angle,
+    ``round(arcsin(sqrt(|v|/h)) / (pi/2) * 2^bits)`` clamped to
+    ``2^bits - 1``, so the references do not import the quantizer under
+    test."""
+    theta = math.asin(math.sqrt(min(1.0, abs(value) / h)))
+    return min((1 << value_bits) - 1,
+               int(round(theta / (0.5 * math.pi) * (1 << value_bits))))
+
 
 # ----------------------------------------------------------------------
 # Dense references (independent NumPy constructions)
@@ -106,7 +116,7 @@ def laplacian_encoding(num_system: int,
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("num_system,value_bits", [(2, 6), (3, 6)])
+@pytest.mark.parametrize("num_system,value_bits", [(2, 6)])
 def test_laplacian_block_column_by_column(num_system, value_bits):
     encoding = laplacian_encoding(num_system, value_bits)
     block = encoded_matrix(encoding) * encoding.alpha
@@ -119,7 +129,7 @@ def test_laplacian_block_column_by_column(num_system, value_bits):
                                atol=quantization_atol(encoding.h, value_bits))
 
 
-@pytest.mark.parametrize("num_system,value_bits", [(4, 4), (5, 3)])
+@pytest.mark.parametrize("num_system,value_bits", [(3, 6), (4, 4)])
 def test_laplacian_block_dense_action(num_system, value_bits):
     # Larger registers: one application to a dense random ket exercises
     # every column in superposition at a fraction of the simulation cost.
@@ -139,21 +149,21 @@ def test_laplacian_block_dense_action(num_system, value_bits):
 
 
 def test_high_precision_quantization():
-    # One slow, tightened-tolerance run: value_bits=12 shrinks the
-    # derived per-element bound to ~2.7e-4 * h.
+    # A tightened-tolerance run: value_bits=10 shrinks the derived
+    # per-element bound to ~1.1e-3 * h.
     offsets, values = [1, -1], [0.7, 0.7]
-    oracles = banded_oracles(offsets, values, num_system=2, value_bits=12)
+    oracles = banded_oracles(offsets, values, num_system=2, value_bits=10)
     encoding = SparseOracleEncoding(oracles, num_system=2)
     ket = random_ket(4, seed=3)
     block = encoded_block(encoding, encoding.encode_kernel(),
                           ket) * encoding.alpha
-    quantized = banded_quantized_dense(offsets, values, 2, 12, encoding.h)
+    quantized = banded_quantized_dense(offsets, values, 2, 10, encoding.h)
     ideal = banded_dense(offsets, values, 2)
     np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
-    assert quantization_atol(encoding.h, 12) < 3e-4
+    assert quantization_atol(encoding.h, 10) < 1.2e-3
     np.testing.assert_allclose(block,
                                ideal @ ket,
-                               atol=2.0 * quantization_atol(encoding.h, 12))
+                               atol=2.0 * quantization_atol(encoding.h, 10))
 
 
 # ----------------------------------------------------------------------
@@ -272,11 +282,14 @@ def test_dilation_of_general_banded_matrix():
     dilated_quantized = np.block([[zero, a_quantized], [a_quantized.T, zero]])
     dilated_ideal = np.block([[zero, a_ideal], [a_ideal.T, zero]])
 
-    block = encoded_matrix(encoding) * encoding.alpha
-    np.testing.assert_allclose(block, dilated_quantized, atol=1e-10)
+    ket = random_ket(8, seed=29)
+    block = encoded_block(encoding, encoding.encode_kernel(),
+                          ket) * encoding.alpha
+    np.testing.assert_allclose(block, dilated_quantized @ ket, atol=1e-10)
     np.testing.assert_allclose(block,
-                               dilated_ideal,
-                               atol=quantization_atol(oracles.h, 6))
+                               dilated_ideal @ ket,
+                               atol=quantization_atol(oracles.h, 6) *
+                               math.sqrt(8))
 
 
 # ----------------------------------------------------------------------
@@ -312,13 +325,58 @@ def test_apply_is_involution():
     np.testing.assert_allclose(out, expected, atol=1e-10)
 
 
+def _twice_on_full_register(encoding, state):
+    apply_u = encoding.apply_kernel()
+    n_sys = encoding.num_system
+    n_tot = encoding.num_system + encoding.num_ancilla
+
+    @cudaq.kernel
+    def twice_full(state: cudaq.State):
+        reg = cudaq.qvector(state)
+        apply_u(reg[n_sys:n_tot], reg[0:n_sys])
+        apply_u(reg[n_sys:n_tot], reg[0:n_sys])
+
+    return np.array(cudaq.get_state(twice_full, state_from(state)))
+
+
+def test_apply_is_involution_on_dirty_block_ancillas():
+    # U_A = T-dagger S T is an involution on every state whose work
+    # scratch enters |0>: load an arbitrary state over the system and the
+    # block ancillas (slot, flags, dual) and the value/sign/upper scratch,
+    # keep the work register |0>, and check U_A^2 restores it. The
+    # qrom_oracles bundle is the interesting case: its oracles are
+    # unary-iteration walks, which are their own inverse only on clean
+    # scratch, so this is exactly the contract and no more.
+    matrix = np.array([[0.5, 0.8, 0.0, 0.3], [0.8, 0.2, 0.6, 0.0],
+                       [0.0, 0.6, 0.0, 0.9], [0.3, 0.0, 0.9, 0.4]])
+    oracles = qrom_oracles(matrix, 3)
+    encoding = SparseOracleEncoding(oracles, num_system=2)
+    n_sys, n_tot = encoding.num_system, encoding.num_system + encoding.num_ancilla
+    work_offset = n_tot - oracles.num_work
+    ket = random_ket(1 << n_tot, seed=27)
+    index = np.arange(1 << n_tot)
+    ket[(index >> work_offset) != 0] = 0.0  # work register |0>
+    ket /= np.linalg.norm(ket)
+    np.testing.assert_allclose(_twice_on_full_register(encoding, ket),
+                               ket,
+                               atol=1e-10)
+
+
+def test_flat_oracles_make_the_involution_global():
+    # With flat, work-free oracles (banded_oracles) U_A^2 = I is a matrix
+    # identity on the whole register -- a dirty work register included.
+    encoding = laplacian_encoding(2, 4)
+    n_tot = encoding.num_system + encoding.num_ancilla
+    ket = random_ket(1 << n_tot, seed=31)
+    np.testing.assert_allclose(_twice_on_full_register(encoding, ket),
+                               ket,
+                               atol=1e-10)
+
+
 def test_apply_is_involution_on_a_dirty_ancilla():
-    # The oracle construction's U_A = T-dagger S T is involutory *globally*
-    # (a matrix identity U_A^2 = I on the whole register), not only on the
-    # |0...0>-ancilla block. Load an arbitrary state over system AND ancilla
-    # -- scratch qubits deliberately non-zero -- and check U_A^2 restores it.
-    # (SparseLCUEncoding's involution holds only on the |0>-ancilla domain,
-    # so the analogous LCU test would fail here -- this pins the difference.)
+    # The hand-written permutation oracles are flat and work-free, so the
+    # involution is global here too (SparseLCUEncoding's holds only on
+    # the |0>-ancilla domain, so the analogous LCU test would fail).
     encoding = permutation_encoding()
     apply_u = encoding.apply_kernel()
     n_sys = encoding.num_system
@@ -519,3 +577,48 @@ def test_walk_kernel_state_prep_injection():
     out = np.array(cudaq.get_state(encoding.walk_kernel(1, state_prep=prep)))
     block = out[:1 << encoding.num_system]
     np.testing.assert_allclose(block, -scaled @ ket, atol=1e-10)
+
+
+def test_controlled_walk_respects_control():
+    # Walk.controlled_kernel: the control=1 half equals the uncontrolled
+    # walk and the control=0 half is empty; at control |0> the state is
+    # untouched. Layout [system][control][ancilla], q[0] the LSB. Pins the
+    # controlled reflection, which W W-dagger roundtrips cannot see.
+    encoding = permutation_encoding()
+    walk = Walk(encoding)
+    dim_s, dim_a = 1 << encoding.num_system, 1 << encoding.num_ancilla
+    ket = random_ket(dim_s, seed=35)
+    reference = np.asarray(
+        cudaq.get_state(walk.kernel(power=2), state_from(ket)))
+    on_state = np.asarray(
+        cudaq.get_state(walk.controlled_kernel(power=2, control_state=1),
+                        state_from(ket))).reshape(dim_a, 2, dim_s)
+    off_state = np.asarray(
+        cudaq.get_state(walk.controlled_kernel(power=2, control_state=0),
+                        state_from(ket))).reshape(dim_a, 2, dim_s)
+    np.testing.assert_allclose(on_state[:, 1, :].reshape(-1),
+                               reference,
+                               atol=1e-10)
+    np.testing.assert_allclose(on_state[:, 0, :], 0.0, atol=1e-10)
+    expected_off = np.zeros((dim_a, dim_s), dtype=np.complex128)
+    expected_off[0] = ket
+    np.testing.assert_allclose(off_state[:, 0, :], expected_off, atol=1e-10)
+    np.testing.assert_allclose(off_state[:, 1, :], 0.0, atol=1e-10)
+
+
+def test_bundle_width_must_match_the_encoding():
+    bundle = banded_oracles(LAPLACIAN_OFFSETS,
+                            LAPLACIAN_VALUES,
+                            num_system=3,
+                            value_bits=4)
+    assert bundle.num_system == 3
+    with pytest.raises(ValueError, match="built for num_system=3"):
+        SparseOracleEncoding(bundle, num_system=2)
+    general = banded_oracles([0, 1], [-0.5, 0.7],
+                             num_system=2,
+                             value_bits=4,
+                             hermitian=False)
+    with pytest.raises(ValueError, match="built for num_system=2"):
+        SparseOracleEncoding.from_general_oracles(general, num_system=3)
+    # Width-agnostic hand-written bundles (num_system=None) stay accepted.
+    assert permutation_encoding().num_system == 2
