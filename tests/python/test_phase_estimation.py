@@ -5,7 +5,10 @@
 Textbook QPE on the qubitization walk of a ``PauliLCU``. Recovered energies
 are checked against the Hamiltonian's exact eigenvalues within the
 phase-estimation resolution ``~ alpha * pi / 2^num_bits`` (the half-bin
-rounding of the walk eigenphase). qpp-cpu / fp64.
+rounding of the walk eigenphase), with the probability masses the input's
+spectral weights predict. qpp-cpu / fp64. Each ``energies`` call costs
+``2^num_bits - 1`` controlled walk steps (about 0.6 s each here), so the
+instances stay at ``num_bits <= 6``.
 """
 
 import math
@@ -70,8 +73,12 @@ def test_eigenstate_readout_concentrates_on_its_energy():
     # the probability on readouts near that energy (the +/-theta mirror pair,
     # each possibly split across adjacent bins).
     assert ranked[0][0] == pytest.approx(0.5, abs=tol)
-    mass = sum(p for e, p in ranked if abs(e - 0.5) < tol)
-    assert mass > 0.9
+    # The mirror pair is folded: the top entry alone carries the mass that
+    # a pure eigenstate puts on its energy, and no energy repeats.
+    assert ranked[0][1] > 0.9
+    energies_only = [e for e, _ in ranked]
+    assert len(energies_only) == len(set(energies_only)) == (1 << (m - 1)) + 1
+    assert sum(p for _, p in ranked) == pytest.approx(1.0, abs=1e-12)
 
 
 def test_mixed_input_recovers_both_eigenvalues():
@@ -81,14 +88,14 @@ def test_mixed_input_recovers_both_eigenvalues():
     # Input |0>: 80% overlap with the +0.5 eigenstate, 20% with -0.5.
     ranked = qpe.energies(m, ket=np.array([1.0, 0.0], dtype=complex))
     tol = resolution_tol(m, enc.alpha)
-    # Dominant distinct energy ~ +0.5 (the larger overlap).
+    # Dominant distinct energy ~ +0.5 (the larger overlap) with ~0.8 of the
+    # mass, the minority eigenvalue -0.5 with ~0.2: the spectral weights of
+    # |0> = cos(phi/2)|+> - sin(phi/2)|->.
     assert ranked[0][0] == pytest.approx(0.5, abs=tol)
-    # The minority eigenvalue -0.5 appears among the readouts.
-    assert any(e == pytest.approx(-0.5, abs=tol) for e, _ in ranked)
-    # Positive-energy mass dominates negative (the 80/20 split).
-    pos = sum(p for e, p in ranked if e > 0)
-    neg = sum(p for e, p in ranked if e < 0)
-    assert pos > neg
+    pos = sum(p for e, p in ranked if abs(e - 0.5) < tol)
+    neg = sum(p for e, p in ranked if abs(e + 0.5) < tol)
+    assert pos == pytest.approx(0.8, abs=0.03)
+    assert neg == pytest.approx(0.2, abs=0.03)
 
 
 def test_two_qubit_diagonal_ground_energy():
@@ -117,7 +124,68 @@ def test_validation():
     qpe = PhaseEstimation(enc)
     with pytest.raises(ValueError, match="num_bits"):
         qpe.kernel(0)
+    with pytest.raises(ValueError, match="num_bits"):
+        qpe.kernel(True)
     with pytest.raises(ValueError, match="exactly one"):
         qpe.energies(4)
     with pytest.raises(ValueError, match="exactly one"):
         qpe.energies(4, ket=np.array([1.0, 0.0]), state_prep=prep_plus)
+    with pytest.raises(ValueError, match="top"):
+        qpe.energies(2, ket=np.array([1.0, 0.0]), top=0)
+    with pytest.raises(ValueError, match="top"):
+        qpe.energies(2, ket=np.array([1.0, 0.0]), top=-1)
+    assert repr(qpe) == f"PhaseEstimation({enc!r})"
+
+
+# ----------------------------------------------------------------------
+# Readout shapes, equivalent input forms, small and on-grid cases
+# ----------------------------------------------------------------------
+
+
+def test_one_bit_readout_splits_by_spectral_weight():
+    # m = 1 has two readouts, j = 0 (E = -alpha) and j = 1 (E = +alpha);
+    # nothing to fold. |0> on H = 0.3 Z + 0.4 X puts its +0.5 / -0.5
+    # weights on the +alpha / -alpha bins in textbook-QPE proportions.
+    enc = PauliLCU({"Z": 0.3, "X": 0.4})
+    qpe = PhaseEstimation(enc)
+    probabilities = qpe.phase_probabilities(1, ket=np.array([1.0, 0.0]))
+    assert probabilities.shape == (2, )
+    assert probabilities.sum() == pytest.approx(1.0, abs=1e-12)
+    ranked = qpe.energies(1, ket=np.array([1.0, 0.0]))
+    assert len(ranked) == 2
+    assert sorted(e for e, _ in ranked) == pytest.approx([-0.7, 0.7],
+                                                         abs=1e-12)
+    assert ranked[0][0] == pytest.approx(0.7, abs=1e-12)
+    assert ranked[0][1] > ranked[1][1]
+
+
+def test_on_grid_eigenvalue_reads_exactly():
+    # H = 0.5 Z: alpha = 0.5, |1> has E = -0.5 = -alpha cos(0), i.e. the
+    # readout j = 0 exactly -- a single-term encoding with an idle ancilla.
+    enc = PauliLCU({"Z": 0.5})
+    qpe = PhaseEstimation(enc)
+    ranked = qpe.energies(3, ket=np.array([0.0, 1.0]), top=1)
+    assert ranked == [(pytest.approx(-0.5,
+                                     abs=1e-12), pytest.approx(1.0,
+                                                               abs=1e-10))]
+
+
+def test_ket_and_state_prep_inputs_agree():
+    enc = PauliLCU({"Z": 0.3, "X": 0.4})
+    qpe = PhaseEstimation(enc)
+    plus = np.array([math.cos(_PHI_PLUS / 2),
+                     math.sin(_PHI_PLUS / 2)],
+                    dtype=complex)
+    from_ket = qpe.phase_probabilities(4, ket=plus)
+    from_state = qpe.phase_probabilities(4, ket=cudaq.State.from_data(plus))
+    from_prep = qpe.phase_probabilities(4, state_prep=prep_plus)
+    np.testing.assert_allclose(from_ket, from_prep, atol=1e-10)
+    np.testing.assert_allclose(from_state, from_prep, atol=1e-10)
+    # The folded energies are the mirror sums of the raw marginal.
+    ranked = dict(qpe.energies(4, ket=plus))
+    half = 1 << 3
+    folded = from_ket[:half + 1].copy()
+    folded[1:half] += from_ket[-1:half:-1]
+    for j in range(half + 1):
+        assert ranked[qpe.phase_to_energy(j, 4)] == pytest.approx(folded[j],
+                                                                  abs=1e-12)
