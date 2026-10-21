@@ -34,6 +34,9 @@ Qubitization and QSVT
 
 .. autofunction:: cudaq_algorithms.qsvt.recover_real_time_evolution
 
+.. autoclass:: cudaq_algorithms.phase_estimation.PhaseEstimation
+   :members:
+
 .. autodata:: cudaq_algorithms.qsvt.FORWARD
 
 .. autodata:: cudaq_algorithms.qsvt.ADJOINT
