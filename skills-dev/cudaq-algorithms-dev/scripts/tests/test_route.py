@@ -275,8 +275,8 @@ def test_preparing_a_known_state_does_not_infer_an_energy_solver(prompt):
     assert records[0] == "state-preparation/state-preparation.md"
     assert "qubitization/qubitization.md" not in records
     output = route_cli(prompt)
-    assert "### references/state-preparation/state-preparation.md:" in output
-    assert "### references/qubitization/qubitization.md:" not in output
+    assert f"### {router.REFS / 'state-preparation/state-preparation.md'}:" in output
+    assert f"### {router.REFS / 'qubitization/qubitization.md'}:" not in output
 
 
 @pytest.mark.parametrize("outcome", [
@@ -301,7 +301,8 @@ def test_preparation_retains_a_separate_spectral_estimation_stage(outcome):
     ("QSP", "qsvt/qsvt.md"),
     ("Trotter", "trotter/trotter.md"),
 ])
-def test_preparation_diagnostics_preserve_requested_downstream_methods(method, family):
+def test_preparation_diagnostics_preserve_requested_downstream_methods(
+        method, family):
     records = router.route(
         "Prepare a Slater determinant for a hopping model, "
         f"then use {method} and compute its energy and coherences.")
@@ -323,7 +324,8 @@ def test_existing_references_and_spectral_reports_keep_energy_routing(prompt):
 def test_diagnostics_do_not_hide_a_later_lowest_energy_request():
     records = router.route(
         "Prepare a Slater state for a Hubbard model and measure its energy "
-        "expectation, then estimate the lowest energy of the full Hamiltonian.")
+        "expectation, then estimate the lowest energy of the full Hamiltonian."
+    )
     assert "qubitization/qubitization.md" in records
 
 
@@ -372,7 +374,8 @@ def test_actual_occupation_and_excitation_preparation_is_retained(prompt):
     "Prepare correlated states by applying fermionic excitation operators "
     "and use Jordan-Wigner to compare Hubbard energy expectations.",
 ])
-def test_excitation_preparation_precedes_default_energy_under_guide_cap(prompt):
+def test_excitation_preparation_precedes_default_energy_under_guide_cap(
+        prompt):
     records = router.route(prompt)
     preparation = "state-preparation/state-preparation.md"
     transform = "fermion-transforms/fermion-transforms.md"
@@ -425,7 +428,8 @@ def test_excitation_spectra_and_existing_inputs_do_not_promote_preparation(
 def test_named_method_survives_composed_excitation_preparation(method, family):
     records = router.route(
         "Prepare a correlated state with fermionic excitation operators "
-        f"using Jordan-Wigner, then use {method} for Hubbard energy estimates.")
+        f"using Jordan-Wigner, then use {method} for Hubbard energy estimates."
+    )
     assert records == [
         family, "fermion-transforms/fermion-transforms.md",
         "state-preparation/state-preparation.md"
@@ -468,6 +472,21 @@ def test_standalone_kernel_scope_is_not_changed_by_analysis_words(prompt):
 ])
 def test_bell_inputs_to_packaged_operations_stay_in_scope(prompt, required):
     assert required in router.route(prompt)
+
+
+def test_named_recovery_with_bell_input_keeps_its_algorithm_contract():
+    prompt = "Use recover_real_time_evolution with a Bell input state."
+    assert not router.standalone_kernel(prompt)
+    assert "qsvt/qsvt.md" in router.route(prompt)
+    assert "outside this skill" not in route_cli(prompt, "--paths")
+
+
+@pytest.mark.parametrize("name", ["QPE", "quantum phase estimation"])
+def test_phase_estimation_with_bell_input_retains_building_block_note(name):
+    output = route_cli(f"Use {name} with a Bell input state.", "--paths")
+    assert "not a packaged primitive" in output
+    assert "walk-step kernels" in output
+    assert "outside this skill" not in output
 
 
 @pytest.mark.parametrize("symbol,family,focused", [
@@ -724,9 +743,8 @@ def test_hf_focus_preserves_other_explicit_preparation_stages():
 
 def test_installation_prefix_does_not_change_bounded_operation_content(
         tmp_path, monkeypatch):
-    prompt = (
-        "Prepare a Hartree-Fock reference, then apply a Givens rotation "
-        "and a UCC ansatz.")
+    prompt = ("Prepare a Hartree-Fock reference, then apply a Givens rotation "
+              "and a UCC ansatz.")
     records = router.route(prompt) + router.focused_records(prompt)
     original_refs = router.REFS
     contexts = []
@@ -783,7 +801,8 @@ def test_unused_excerpt_budget_is_reused_for_a_complete_contract_table(
     "I need an architecture connecting molecular integrals through a "
     "compressed representation to dynamics. Do not write code.",
 ])
-def test_advisory_architecture_delivers_representation_and_method_options(prompt):
+def test_advisory_architecture_delivers_representation_and_method_options(
+        prompt):
     output = route_cli(prompt)
     assert "Selected reference text" in output
     context = output.split("Selected reference text", 1)[1]
@@ -792,7 +811,8 @@ def test_advisory_architecture_delivers_representation_and_method_options(prompt
     assert "host-side factorization data, not a quantum kernel or block encoding" in context
     assert "| factorize / chemist ERI tensor by X-DF |" in context
     assert "| compress / chemist ERI tensor by C-DF or RC-DF |" in context
-    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(prompt)
+    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(
+        prompt)
 
 
 def test_advisory_named_methods_keep_exact_contracts_and_full_output_checks():
@@ -809,12 +829,15 @@ def test_advisory_named_methods_keep_exact_contracts_and_full_output_checks():
     assert len(context) <= router.MAX_CONTEXT_CHARS
     assert "## Composition procedure" in context
     assert "host-side factorization data, not a quantum kernel or block encoding" in context
-    assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(context.split())
+    assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(
+        context.split())
     assert 'default convention is `"qsvt"`' in context
     assert "sim.evolve(ev, ket, time, steps=3, order=2)" in context
-    assert "double-factorization/double-factorization-explicit.md" not in router.focused_records(prompt)
+    assert "double-factorization/double-factorization-explicit.md" not in router.focused_records(
+        prompt)
     assert "Requested output artifacts" in context
-    assert "payload at another destination does not establish this interface's validity" in " ".join(context.split())
+    assert "payload at another destination does not establish this interface's validity" in " ".join(
+        context.split())
     assert "## Molecular structure to an energy estimate" not in context
 
 
@@ -828,7 +851,8 @@ def test_advisory_nonchemical_composition_avoids_unrelated_compression(prompt):
     output = route_cli(prompt)
     assert "## Composition procedure" in output
     assert "| Compressed chemistry approximation |" not in output
-    assert "double-factorization/double-factorization.md" not in router.focused_records(prompt)
+    assert "double-factorization/double-factorization.md" not in router.focused_records(
+        prompt)
 
 
 @pytest.mark.parametrize("prompt,required", [
@@ -839,7 +863,8 @@ def test_advisory_nonchemical_composition_avoids_unrelated_compression(prompt):
      "encoding and supplied QSP phases. Explain contracts before implementation.",
      "double-factorization/double-factorization.md"),
 ])
-def test_advisory_respects_explicit_and_unspecified_factorization(prompt, required):
+def test_advisory_respects_explicit_and_unspecified_factorization(
+        prompt, required):
     focused = router.focused_records(prompt)
     assert required in focused
     assert "double-factorization/double-factorization-compressed.md" not in focused
@@ -858,12 +883,15 @@ def test_advisory_respects_explicit_and_unspecified_factorization(prompt, requir
     "Explain the architecture for molecular integrals and QSVT dynamics; "
     "there is no need for compressed factors.",
 ])
-def test_advisory_does_not_substitute_factorization_for_alternatives_or_negation(prompt):
+def test_advisory_does_not_substitute_factorization_for_alternatives_or_negation(
+        prompt):
     output = route_cli(prompt)
     assert "## Composition procedure" in output
     assert "| Compressed chemistry approximation |" not in output
-    assert "double-factorization/double-factorization.md" not in router.focused_records(prompt)
-    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(prompt)
+    assert "double-factorization/double-factorization.md" not in router.focused_records(
+        prompt)
+    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(
+        prompt)
 
 
 def test_advisory_later_positive_compression_clause_remains_actionable():
@@ -874,7 +902,8 @@ def test_advisory_later_positive_compression_clause_remains_actionable():
     output = route_cli(prompt)
     assert "## Composition procedure" in output
     assert "| Compressed chemistry approximation |" in output
-    assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(output.split())
+    assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(
+        output.split())
 
 
 @pytest.mark.parametrize("prompt", [
@@ -890,7 +919,8 @@ def test_advisory_later_positive_compression_clause_remains_actionable():
     "Recommend an archive file format for molecular integrals without "
     "changing their values.",
 ])
-def test_execution_and_incidental_architecture_do_not_load_advisory_contracts(prompt):
+def test_execution_and_incidental_architecture_do_not_load_advisory_contracts(
+        prompt):
     assert "application-composition.md" not in router.focused_records(prompt)
     assert "## Composition procedure" not in route_cli(prompt)
 
@@ -903,7 +933,8 @@ def test_unmatched_eri_architecture_cli_modes_expose_the_same_records(mode):
     output = route_cli(prompt, *([mode] if mode else []))
     assert "No family matched" not in output
     assert "references/application-composition.md" in output
-    assert str(router.REFS / "double-factorization/double-factorization.md") in output
+    assert str(router.REFS /
+               "double-factorization/double-factorization.md") in output
     if mode == "--paths":
         assert "## Composition procedure" not in output
         assert "Selected reference text" not in output
@@ -927,8 +958,8 @@ def test_unmatched_eri_architecture_cli_modes_expose_the_same_records(mode):
 ])
 def test_advisory_operation_negation_omits_df_contracts(restriction):
     prompt = (
-        "Design the architecture from molecular integrals to QSVT dynamics; "
-        + restriction + ".")
+        "Design the architecture from molecular integrals to QSVT dynamics; " +
+        restriction + ".")
     focused = router.focused_records(prompt)
     assert "application-composition.md" in focused
     assert "double-factorization/double-factorization.md" not in focused
@@ -947,7 +978,8 @@ def test_advisory_operation_negation_omits_df_contracts(restriction):
     "Compare QSP conventions; do not actually use C-DF.",
 ])
 def test_negated_compressed_method_has_no_legacy_focused_recipe(prompt):
-    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(prompt)
+    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(
+        prompt)
     output = route_cli(prompt)
     assert 'DoubleFactorization(method="C-DF")' not in output
     assert "## Scientific contract\n\nC-DF fixes" not in output
@@ -968,10 +1000,12 @@ def test_negated_compressed_method_has_no_legacy_focused_recipe(prompt):
 ])
 def test_affirmative_df_contract_survives_other_negated_operations(operation):
     prompt = "Explain the architecture for molecular integrals: " + operation + "."
-    assert "double-factorization/double-factorization-compressed.md" in router.focused_records(prompt)
+    assert "double-factorization/double-factorization-compressed.md" in router.focused_records(
+        prompt)
     output = route_cli(prompt)
     assert 'DoubleFactorization(method="C-DF")' in output
-    assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(output.split())
+    assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(
+        output.split())
 
 
 def test_explicit_df_focus_is_not_replaced_by_a_negated_compressed_method():
@@ -989,14 +1023,18 @@ def test_explicit_df_focus_is_not_replaced_by_a_negated_compressed_method():
     ("Why should I not use compressed double factorization on complex ERIs?",
      "double-factorization/double-factorization-compressed.md"),
 ])
-def test_negated_contract_questions_retain_the_requested_explanation(prompt, record):
+def test_negated_contract_questions_retain_the_requested_explanation(
+        prompt, record):
     assert record in router.focused_records(prompt)
     assert str(router.REFS / record) in route_cli(prompt)
 
 
 def source_section(record, title):
-    return next(body for name, _, body in router.markdown_sections(
-        (router.REFS / record).read_text()) if name == title)
+    return next(
+        body
+        for name, _, body in router.markdown_sections((router.REFS /
+                                                       record).read_text())
+        if name == title)
 
 
 @pytest.mark.parametrize("prompt,record", [
@@ -1017,7 +1055,8 @@ def source_section(record, title):
     ("Use Jordan–Wigner and Bravyi–Kitaev to compute lattice charge dynamics.",
      "fermion-transforms/fermion-transforms.md"),
 ])
-def test_physical_transform_delivers_complete_scientific_checkpoint(prompt, record):
+def test_physical_transform_delivers_complete_scientific_checkpoint(
+        prompt, record):
     output = route_cli(prompt)
     # CLI appends a shared checklist; measure the bounded reference context itself.
     context = router.reference_context(
@@ -1063,7 +1102,8 @@ def test_physical_transform_delivers_complete_scientific_checkpoint(prompt, reco
     "Compare ERI compression sizes without calculating ground-state energies.",
     "Compare ERI factorization norms without estimating energies.",
 ])
-def test_physical_transform_packet_preserves_other_tasks_and_named_stages(prompt):
+def test_physical_transform_packet_preserves_other_tasks_and_named_stages(
+        prompt):
     records = router.route(prompt) + router.focused_records(prompt)
     assert router.physical_transform_record(records, prompt) is None
 
