@@ -74,8 +74,7 @@ def check(root):
     required = [
         runtime / name
         for name in ("skill-card.md", "references/quick-contract.md",
-                     "scripts/route.py", "scripts/check_calls.py",
-                     "scripts/check_output.py", "evals/evals.json",
+                     "scripts/route.py", "evals/evals.json",
                      "evals/config.yml")
     ]
     required.append(dev / "authoring/architecture.md")
@@ -96,10 +95,7 @@ def check(root):
             "SKILL.md", "skill-card.md", "references", "scripts", "evals"
         }
         if relative.parts[0] == "scripts":
-            allowed = relative.as_posix() in {
-                "scripts/route.py", "scripts/check_calls.py",
-                "scripts/check_output.py"
-            }
+            allowed = relative.as_posix() == "scripts/route.py"
         if relative.parts[0] == "evals":
             allowed = (relative.as_posix() in {
                 "evals/evals.json", "evals/config.yml", "evals/EVAL.md"

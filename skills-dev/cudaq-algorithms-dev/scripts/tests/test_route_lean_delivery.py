@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Lean delivery: an executable dense reference early, resolved fetch commands,
-no literal placeholders, a lean entry file and unchanged routing decisions.
-
-Written together with the 2026-10-22 patch; not yet executed at the time of
-writing (see the patch summary)."""
+"""Check executable dense references, resolved fetches and lean entry text."""
 import importlib.util
 import json
 import re
@@ -39,8 +35,11 @@ PLACEHOLDERS = ("<skill-dir>", "<this skill's directory>")
 
 
 def cli(prompt, *options):
-    return subprocess.run([sys.executable, str(SCRIPT), *options, prompt],
-                          check=True, capture_output=True, text=True).stdout
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *options, prompt],
+        check=True,
+        capture_output=True,
+        text=True).stdout
 
 
 def context(prompt):
@@ -53,8 +52,8 @@ def context(prompt):
 def test_numerical_prompts_get_one_executable_dense_reference_early(case):
     output = context(EVALS[case])
     recipes = [
-        block for block in re.findall(r"```python\n(.*?)\n```", output,
-                                      re.DOTALL)
+        block
+        for block in re.findall(r"```python\n(.*?)\n```", output, re.DOTALL)
         if "def dense_pauli_matrix(" in block
     ]
     assert len(recipes) == 1
@@ -87,8 +86,12 @@ def test_fully_omitted_sections_get_a_resolved_fetch_command():
     commands = re.findall(r"^Complete section: (.+)$", output, re.MULTILINE)
     assert commands
     for command in commands[:3]:
-        result = subprocess.run(command, shell=True, check=True,
-                                capture_output=True, text=True, cwd="/")
+        result = subprocess.run(command,
+                                shell=True,
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                                cwd="/")
         assert result.stdout.strip()
 
 
@@ -109,18 +112,3 @@ def test_participation_clause_present_where_classical_shortcuts_were_allowed():
         SKILL / "references/qsvt/qsvt.md").read_text()
     assert "names CUDA-Q Algorithms" in (
         SKILL / "references/trotter/trotter.md").read_text()
-
-
-def test_routing_decisions_match_the_frozen_control_router():
-    frozen = (ROOT / ".venv-nvskills/decision-tree-ablation-20261021/"
-              "variants/control/scripts/route.py")
-    if not frozen.is_file():
-        pytest.skip("frozen control router not present")
-    spec = importlib.util.spec_from_file_location("frozen_control_router",
-                                                  frozen)
-    control = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(control)
-    for prompt in EVALS.values():
-        assert router.route(prompt) == control.route(prompt)
-        assert router.focused_records(prompt) == control.focused_records(
-            prompt)

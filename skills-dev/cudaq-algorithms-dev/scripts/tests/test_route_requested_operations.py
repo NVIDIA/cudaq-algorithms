@@ -181,6 +181,68 @@ def test_affirmative_and_explanatory_compression_survives_negated_other_actions(
     assert COMPRESSED in router.focused_records(operation)
 
 
+@pytest.mark.parametrize("restriction", [
+    "without double factorization or other compression",
+    "avoid double-factorization",
+    "do not actually use double factorization",
+    "exclude DF",
+    "double factorization is excluded",
+    "DF is not used",
+    "without double factorization; do not use X-DF",
+    "when using QSVT, avoid double factorization",
+    "use QSVT when double factorization is excluded",
+])
+@pytest.mark.parametrize("options", [(), ("--compact", ),
+                                     ("--stage", "contract")])
+def test_declined_df_does_not_reenter_through_integral_inputs(
+        restriction, options):
+    prompt = (
+        "Plan a pipeline from molecular integrals and an ERI tensor to QSVT dynamics; "
+        f"{restriction}.")
+    available = router.route(prompt) + router.focused_records(prompt)
+    assert "qsvt/qsvt.md" in available
+    assert "chemistry/chemistry-bridges.md" in available
+    assert not any(
+        record.startswith("double-factorization/") for record in available)
+    output = cli(prompt, *options)
+    assert "explicit_double_factorization(" not in output
+    assert 'method="C-DF"' not in output
+    assert str(router.REFS / DF) not in output
+
+
+@pytest.mark.parametrize("operation", [
+    "avoid Trotter and use double factorization",
+    "do not change inputs when using double factorization",
+    "do not skip double factorization",
+    "explain why not double factorization",
+    "explain why we avoid double factorization for these ERIs",
+    "explain when to avoid double factorization for these ERIs",
+    "when should I avoid double factorization?",
+    "explain when double factorization is excluded for these inputs",
+    "avoid double factorization; explain the supplied DoubleFactorization object",
+    "compare double factorization and dense chemistry",
+    "explain why double factorization is excluded for these inputs",
+    "double factorization is not excluded",
+    "use double factorization for one input; double factorization is excluded for the other input",
+    "use X-DF for one input; avoid double factorization for the other input",
+    "double factorization is excluded for one input; use X-DF for the other input",
+    "avoid double factorization for one input; use C-DF for the other input",
+    "avoid double factorization; compute double_factorization_one_norm on supplied leaves",
+    "use double factorization without QR factorization",
+    "compute the double-factorization one-norm of supplied leaves without factorizing again",
+])
+def test_df_exclusion_preserves_affirmative_and_diagnostic_operations(
+        operation):
+    assert DF in router.route(operation) + router.focused_records(operation)
+
+
+def test_generic_df_exclusion_preserves_the_requested_tensor_norm_object():
+    prompt = "Compute the one-norm of this ERI tensor without double factorization."
+    assert NORM not in router.focused_records(prompt)
+    assert DF not in router.route(prompt)
+    assert "double_factorization_one_norm(" not in cli(prompt)
+
+
 @pytest.mark.parametrize("prompt", [
     "Compute the double-factorization LCU one-norm and identity coefficient only.",
     "Compute the LCU norm and identity coefficient of the double factorization only.",

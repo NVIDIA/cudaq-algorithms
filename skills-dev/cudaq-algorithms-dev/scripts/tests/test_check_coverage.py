@@ -190,7 +190,8 @@ class CoverageTests(unittest.TestCase):
         elsewhere = self.root / "unrelated-working-directory"
         elsewhere.mkdir()
         result = subprocess.run(
-            [sys.executable, "-B", str(relocated), "--json"],
+            [sys.executable, "-B",
+             str(relocated), "--json"],
             cwd=elsewhere,
             capture_output=True,
             text=True,

@@ -36,8 +36,6 @@ def package(tmp_path):
             runtime / "SKILL.md": MANIFEST,
             runtime / "skill-card.md": "Catalog entry\n",
             runtime / "scripts/route.py": HEADER + "print('route')\n",
-            runtime / "scripts/check_calls.py": HEADER + "print('check calls')\n",
-            runtime / "scripts/check_output.py": HEADER + "print('check output')\n",
             runtime / "references/quick-contract.md": "Public contract\n",
             runtime / "evals/evals.json": '{"evals": []}',
             runtime / "evals/config.yml": "schema_version: 1\n",
@@ -46,7 +44,7 @@ def package(tmp_path):
             "# Deliberately unmodified fixture\n",
             dev / "authoring/architecture.md": "Maintainer instructions\n",
             dev / "scripts/check.py": HEADER,
-            dev / "scripts/tests/test_check_output.py": HEADER,
+            dev / "scripts/tests/test_runtime.py": HEADER,
             dev / "evals/files/frozen.py":
             "# Deliberately unmodified fixture\n",
     }.items():
@@ -70,10 +68,8 @@ def test_valid_split_package_and_frozen_headerless_fixtures_pass(package):
     assert report["passed"] is True
 
 
-@pytest.mark.parametrize("script",
-                         ["route.py", "check_calls.py", "check_output.py"])
-def test_missing_runtime_script_is_a_placement_failure(package, script):
-    relative = "skills/cudaq-algorithms/scripts/" + script
+def test_missing_router_is_a_placement_failure(package):
+    relative = "skills/cudaq-algorithms/scripts/route.py"
     (package / relative).unlink()
     result, report = run_check(package)
     assert result.returncode == 1
@@ -108,16 +104,13 @@ def test_oversized_entrypoint_fails(package):
 
 @pytest.mark.parametrize("relative,content,code", [
     ("skills/cudaq-algorithms/scripts/route.py", "print('route')", "spdx"),
-    ("skills/cudaq-algorithms/scripts/check_calls.py", "print('check')", "spdx"),
-    ("skills/cudaq-algorithms/scripts/check_output.py", "print('check')", "spdx"),
     ("skills-dev/cudaq-algorithms-dev/scripts/new.py", "pass", "spdx"),
     ("skills/cudaq-algorithms-dev/authoring.md", "Maintainer material",
      "placement"),
     ("skills/cudaq-algorithms/scripts/report_eval.py", HEADER, "separation"),
-    ("skills/cudaq-algorithms/scripts/check_packaging.py", HEADER, "separation"),
-    ("skills/cudaq-algorithms/scripts/tests/test_check_calls.py", HEADER,
+    ("skills/cudaq-algorithms/scripts/check_packaging.py", HEADER,
      "separation"),
-    ("skills/cudaq-algorithms/scripts/tests/test_check_output.py", HEADER,
+    ("skills/cudaq-algorithms/scripts/tests/test_runtime.py", HEADER,
      "separation"),
     ("skills/cudaq-algorithms/evals/runner/cli.py", HEADER, "separation"),
     ("skills/cudaq-algorithms/coverage/features.json", "{}", "separation"),

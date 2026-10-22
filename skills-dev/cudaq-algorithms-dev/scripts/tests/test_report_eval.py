@@ -162,8 +162,9 @@ def test_valid_full_suite_can_be_validated_without_creating_output(
 
 @pytest.mark.parametrize("protected_tree", ["runtime", "development"])
 @pytest.mark.parametrize("through_symlink", [False, True])
-def test_relocated_reporter_protects_both_trees(
-        tmp_path, bundle, protected_tree, through_symlink):
+def test_relocated_reporter_protects_both_trees(tmp_path, bundle,
+                                                protected_tree,
+                                                through_symlink):
     repository = tmp_path / "repository"
     support = repository / "skills-dev" / "cudaq-algorithms-dev"
     runtime = repository / "skills" / "cudaq-algorithms"
@@ -171,7 +172,8 @@ def test_relocated_reporter_protects_both_trees(
     (support / "scripts").mkdir(parents=True)
     reporter = support / "scripts" / "report_eval.py"
     shutil.copyfile(REPORTER, reporter)
-    shutil.copytree(SUPPORT / "evals", support / "evals",
+    shutil.copytree(SUPPORT / "evals",
+                    support / "evals",
                     ignore=shutil.ignore_patterns("__pycache__", "results"))
     protected = runtime if protected_tree == "runtime" else support
     destination = protected / "new-report"
@@ -181,13 +183,16 @@ def test_relocated_reporter_protects_both_trees(
         destination = alias / "new-report"
     source = tmp_path / "synthetic-results.json"
     source.write_text(json.dumps(bundle))
-    result = subprocess.run(
-        [sys.executable, "-B", str(reporter), str(source),
-         "--output", str(destination)],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        timeout=30)
+    result = subprocess.run([
+        sys.executable, "-B",
+        str(reporter),
+        str(source), "--output",
+        str(destination)
+    ],
+                            cwd=tmp_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=30)
     assert result.returncode == 2, result.stdout + result.stderr
     assert "outside shipped skill directories" in result.stderr
     assert not destination.exists()

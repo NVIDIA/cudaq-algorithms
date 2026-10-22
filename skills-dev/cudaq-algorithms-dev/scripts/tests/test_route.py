@@ -3,6 +3,7 @@
 """Route scientific intent without embedding benchmark questions or answers."""
 import importlib.util
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -335,6 +336,46 @@ def route_cli(prompt, *options):
         check=True,
         capture_output=True,
         text=True).stdout
+
+
+def fetch_section_cli(record, title):
+    """Exercise the public fallback for a contract omitted from a bundle."""
+    output = subprocess.run(
+        [sys.executable,
+         str(SCRIPT), "--record", record, "--section", title],
+        check=True,
+        capture_output=True,
+        text=True).stdout
+    line, expected = next(
+        (line, body)
+        for name, line, body in router.markdown_sections((router.REFS /
+                                                          record).read_text())
+        if name == title)
+    assert output == f"## {router.REFS / record}:{line}\n{expected}\n"
+    return output
+
+
+def complete_delivered_section(output, record, title):
+    """Require content or an explicit omission at the advertised source line."""
+    line, expected = next(
+        (line, body)
+        for name, line, body in router.markdown_sections((router.REFS /
+                                                          record).read_text())
+        if name == title)
+    label = f"### {router.REFS / record}:{line}\n"
+    assert label in output
+    excerpt = output.split(label, 1)[1].split("\n### /", 1)[0]
+    # The renderer separates retained list items with blank lines. Preserve
+    # every substantive source line when checking completeness.
+    source_lines = "\n".join(
+        line for line in router.resolve_placeholders(expected).splitlines()
+        if line.strip())
+    excerpt_lines = "\n".join(line for line in excerpt.splitlines()
+                              if line.strip())
+    if source_lines in excerpt_lines:
+        return excerpt
+    assert "[Additional blocks omitted;" in excerpt or "Complete section:" in excerpt
+    return fetch_section_cli(record, title)
 
 
 @pytest.mark.parametrize("prompt,first", [
@@ -695,7 +736,7 @@ def test_section_excerpts_respect_code_fences_and_expose_omissions(
     assert "DO NOT LOAD THIS SECTION" not in output
     assert "x = 'example'" not in output
     assert "omitted" in output.lower()
-    assert "### references/test.md:3" in output
+    assert f"### {record}:3" in output
     assert len(output) <= 1600
 
 
@@ -741,41 +782,73 @@ def test_hf_focus_preserves_other_explicit_preparation_stages():
     assert "run_slater" in output.split("Selected reference text", 1)[1]
 
 
-def test_installation_prefix_does_not_change_bounded_operation_content(
-        tmp_path, monkeypatch):
+def test_relocated_installation_keeps_bounded_contracts_and_working_fetches(
+        tmp_path):
     prompt = ("Prepare a Hartree-Fock reference, then apply a Givens rotation "
               "and a UCC ansatz.")
     records = router.route(prompt) + router.focused_records(prompt)
-    original_refs = router.REFS
-    contexts = []
+    # b4c06be3 made paths absolute and examples budget-dependent. The public
+    # guarantee is usable source/fetch paths and intact contracts, not identical
+    # text at every installation prefix.
     for prefix in (tmp_path / "short", tmp_path / ("long-root-" * 12)):
         refs = prefix / "cudaq-algorithms" / "references"
-        shutil.copytree(original_refs, refs)
-        monkeypatch.setattr(router, "REFS", refs)
-        context = router.reference_context(records, prompt)
-        contexts.append(context)
+        shutil.copytree(router.REFS, refs)
+        script = refs.parent / "scripts/route.py"
+        script.parent.mkdir()
+        shutil.copyfile(SCRIPT, script)
+        spec = importlib.util.spec_from_file_location("relocated_router",
+                                                      script)
+        relocated = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(relocated)
+        context = relocated.reference_context(records, prompt)
         assert len(context) <= router.MAX_CONTEXT_CHARS
-        assert "run_slater" in context
-        labels = re.findall(r"(?m)^### (references/[^:\n]+):(\d+)$", context)
+        assert "For an **orbital determinant**" in context
+        assert "For an **ordered correlated preparation**" in context
+        labels = re.findall(r"(?m)^### (/[^\n]+):(\d+)$", context)
         assert labels
-        for relative, line in labels:
-            source = refs.parent / relative
+        for absolute, line in labels:
+            source = Path(absolute)
+            assert source.is_relative_to(refs)
             assert source.is_file()
             assert 1 <= int(line) <= len(source.read_text().splitlines())
-    assert contexts[0] == contexts[1]
+        commands = re.findall(r"(?m)^Complete section: (.+)$", context)
+        assert commands
+        assert "run_slater" in context or any(
+            "state-preparation/state-preparation.md" in command
+            and "--section Verification" in command for command in commands)
+        for command in commands:
+            args = shlex.split(command)
+            assert args[:2] == [sys.executable, str(script)]
+            result = subprocess.run(args,
+                                    cwd=tmp_path,
+                                    check=True,
+                                    capture_output=True,
+                                    text=True)
+            record = args[args.index("--record") + 1]
+            title = args[args.index("--section") + 1]
+            assert source_section(record, title) in result.stdout
+            if record == "state-preparation/state-preparation.md" and title == "Verification":
+                assert "run_slater" in result.stdout
 
 
-def test_cli_resolves_relative_excerpt_labels_from_one_explicit_root():
-    output = route_cli(
-        "Prepare a Hartree-Fock reference, then apply Givens rotations.")
-    root_line = re.search(r"(?m)^Skill directory: (.+)$", output)
-    assert root_line
-    assert root_line.start() < output.index("## Selected reference text")
-    root = Path(root_line.group(1))
-    assert root == router.REFS.parent
-    labels = re.findall(r"(?m)^### (references/[^:\n]+):(\d+)$", output)
+def test_cli_absolute_excerpt_labels_resolve_from_another_working_directory(
+        tmp_path):
+    output = subprocess.run([
+        sys.executable,
+        str(SCRIPT),
+        "Prepare a Hartree-Fock reference, then apply Givens rotations."
+    ],
+                            cwd=tmp_path,
+                            check=True,
+                            capture_output=True,
+                            text=True).stdout
+    labels = re.findall(r"(?m)^### (/[^\n]+):(\d+)$", output)
     assert labels
-    assert all((root / relative).is_file() for relative, _ in labels)
+    for absolute, line in labels:
+        source = Path(absolute)
+        assert source.is_relative_to(router.REFS)
+        assert source.read_text().splitlines()[int(line) - 1].startswith(
+            ("#", "| Operation |"))
     assert f"Open: {router.REFS / 'state-preparation/state-preparation.md'}" in output
 
 
@@ -793,19 +866,38 @@ def test_unused_excerpt_budget_is_reused_for_a_complete_contract_table(
     assert len(output) <= 2500
 
 
-@pytest.mark.parametrize("prompt", [
-    "Design how molecular integrals, compressed factors and a dynamics "
-    "estimator fit together; explain each interface before implementation.",
-    "Outline a pipeline from chemist ERIs through a low-rank approximation "
-    "to time-dependent observables. Discuss hand-offs; no code changes.",
-    "I need an architecture connecting molecular integrals through a "
-    "compressed representation to dynamics. Do not write code.",
+@pytest.mark.parametrize("prompt,expected", [
+    ("Design how molecular integrals, compressed factors and a dynamics "
+     "estimator fit together; explain each interface before implementation.",
+     ["chemistry/chemistry-bridges.md"]),
+    ("Outline a pipeline from chemist ERIs through a low-rank approximation "
+     "to time-dependent observables. Discuss hand-offs; no code changes.", []),
+    ("I need an architecture connecting molecular integrals through a "
+     "compressed representation to dynamics. Do not write code.",
+     ["chemistry/chemistry-bridges.md"]),
 ])
-def test_advisory_architecture_delivers_representation_and_method_options(
-        prompt):
+def test_advisory_architecture_can_fetch_representation_and_method_options(
+        prompt, expected):
+    # Generic compression does not choose a DF method. SKILL.md directs an
+    # unresolved boundary to composition and the matching catalog records;
+    # b4c06be3 removed the implicit architecture packet.
+    assert router.route(prompt) == expected
     output = route_cli(prompt)
-    assert "Selected reference text" in output
-    context = output.split("Selected reference text", 1)[1]
+    if expected:
+        assert f"Open: {router.REFS / expected[0]}" in output
+    else:
+        assert "No family matched; open references/catalog.md" in output
+    context = fetch_section_cli("application-composition.md",
+                                "Composition procedure")
+    context += fetch_section_cli("application-composition.md",
+                                 "Common application chains")
+    context += fetch_section_cli(
+        "double-factorization/double-factorization.md",
+        "Shared representation - `cudaq_algorithms.double_factorization.DoubleFactorization`"
+    )
+    context += fetch_section_cli(
+        "double-factorization/double-factorization.md",
+        "Selectable operation contracts")
     assert "## Composition procedure" in context
     assert "| Compressed chemistry approximation |" in context
     assert "host-side factorization data, not a quantum kernel or block encoding" in context
@@ -815,7 +907,7 @@ def test_advisory_architecture_delivers_representation_and_method_options(
         prompt)
 
 
-def test_advisory_named_methods_keep_exact_contracts_and_full_output_checks():
+def test_advisory_named_methods_keep_exact_calls_and_retrievable_contracts():
     prompt = (
         "Sketch the architecture joining compressed double factorization of "
         "molecular integrals with QSP phases, Trotter and a qubitization walk. "
@@ -827,29 +919,42 @@ def test_advisory_named_methods_keep_exact_contracts_and_full_output_checks():
     context = router.reference_context(
         router.route(prompt) + router.focused_records(prompt), prompt)
     assert len(context) <= router.MAX_CONTEXT_CHARS
-    assert "## Composition procedure" in context
-    assert "host-side factorization data, not a quantum kernel or block encoding" in context
     assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(
         context.split())
     assert 'default convention is `"qsvt"`' in context
     assert "sim.evolve(ev, ket, time, steps=3, order=2)" in context
     assert "double-factorization/double-factorization-explicit.md" not in router.focused_records(
         prompt)
-    assert "Requested output artifacts" in context
+    artifacts = complete_delivered_section(context, "validation.md",
+                                           "Requested output artifacts")
     assert "payload at another destination does not establish this interface's validity" in " ".join(
-        context.split())
+        artifacts.split())
     assert "## Molecular structure to an energy estimate" not in context
+    assert "## Composition procedure" in fetch_section_cli(
+        "application-composition.md", "Composition procedure")
+    representation = fetch_section_cli(
+        "double-factorization/double-factorization.md",
+        "Shared representation - `cudaq_algorithms.double_factorization.DoubleFactorization`"
+    )
+    assert "host-side factorization data, not a quantum kernel or block encoding" in representation
 
 
-@pytest.mark.parametrize("prompt", [
-    "Plan the interfaces for an integration of a state constructor, block "
-    "encoding and QSVT; no execution, just validation contracts.",
-    "Review the compatibility of Slater preparation, PauliLCU and a "
-    "Chebyshev walk in a multi-stage design.",
+@pytest.mark.parametrize("prompt,required", [
+    ("Plan the interfaces for an integration of a state constructor, block "
+     "encoding and QSVT; no execution, just validation contracts.",
+     {"qsvt/qsvt.md", "block-encoding/block-encoding.md"}),
+    ("Review the compatibility of Slater preparation, PauliLCU and a "
+     "Chebyshev walk in a multi-stage design.", {
+         "state-preparation/state-preparation.md",
+         "block-encoding/block-encoding.md", "qubitization/qubitization.md"
+     }),
 ])
-def test_advisory_nonchemical_composition_avoids_unrelated_compression(prompt):
+def test_advisory_nonchemical_composition_avoids_unrelated_compression(
+        prompt, required):
+    assert required <= set(router.route(prompt))
     output = route_cli(prompt)
-    assert "## Composition procedure" in output
+    assert "## Composition procedure" in fetch_section_cli(
+        "application-composition.md", "Composition procedure")
     assert "| Compressed chemistry approximation |" not in output
     assert "double-factorization/double-factorization.md" not in router.focused_records(
         prompt)
@@ -866,11 +971,17 @@ def test_advisory_nonchemical_composition_avoids_unrelated_compression(prompt):
 def test_advisory_respects_explicit_and_unspecified_factorization(
         prompt, required):
     focused = router.focused_records(prompt)
-    assert required in focused
+    # A family is a starting guide; only the named X-DF method is focused.
+    assert required in router.route(prompt) + focused
     assert "double-factorization/double-factorization-compressed.md" not in focused
-    output = route_cli(prompt)
-    assert "## Composition procedure" in output
-    assert "host-side factorization data, not a quantum kernel or block encoding" in output
+    assert str(router.REFS / required) in route_cli(prompt)
+    assert "## Composition procedure" in fetch_section_cli(
+        "application-composition.md", "Composition procedure")
+    representation = fetch_section_cli(
+        "double-factorization/double-factorization.md",
+        "Shared representation - `cudaq_algorithms.double_factorization.DoubleFactorization`"
+    )
+    assert "host-side factorization data, not a quantum kernel or block encoding" in representation
 
 
 @pytest.mark.parametrize("prompt", [
@@ -886,12 +997,17 @@ def test_advisory_respects_explicit_and_unspecified_factorization(
 def test_advisory_does_not_substitute_factorization_for_alternatives_or_negation(
         prompt):
     output = route_cli(prompt)
-    assert "## Composition procedure" in output
+    assert "## Composition procedure" in fetch_section_cli(
+        "application-composition.md", "Composition procedure")
     assert "| Compressed chemistry approximation |" not in output
-    assert "double-factorization/double-factorization.md" not in router.focused_records(
-        prompt)
-    assert "double-factorization/double-factorization-compressed.md" not in router.focused_records(
-        prompt)
+    # Preserve the scientific exclusion across both starting and focused
+    # routes; checking only the old advisory supplement missed a declined DF
+    # family and its quick-call constructors.
+    assert not any(
+        record.startswith("double-factorization/")
+        for record in router.route(prompt) + router.focused_records(prompt))
+    assert "df.explicit_double_factorization(" not in output
+    assert "df.DoubleFactorization(" not in output
 
 
 def test_advisory_later_positive_compression_clause_remains_actionable():
@@ -900,8 +1016,12 @@ def test_advisory_later_positive_compression_clause_remains_actionable():
         "compress the first input; but use compressed double factorization "
         "for the second input and explain the stage boundaries.")
     output = route_cli(prompt)
-    assert "## Composition procedure" in output
-    assert "| Compressed chemistry approximation |" in output
+    assert "double-factorization/double-factorization-compressed.md" in router.focused_records(
+        prompt)
+    assert "## Composition procedure" in fetch_section_cli(
+        "application-composition.md", "Composition procedure")
+    assert "| Compressed chemistry approximation |" in fetch_section_cli(
+        "application-composition.md", "Common application chains")
     assert "No packaged quantum kernel or end-to-end resource estimator is returned." in " ".join(
         output.split())
 
@@ -926,26 +1046,21 @@ def test_execution_and_incidental_architecture_do_not_load_advisory_contracts(
 
 
 @pytest.mark.parametrize("mode", [None, "--paths", "--full"])
-def test_unmatched_eri_architecture_cli_modes_expose_the_same_records(mode):
+def test_unmatched_eri_architecture_cli_modes_expose_the_catalog_fallback(
+        mode):
     prompt = (
         "Outline a pipeline from chemist ERIs through a compressed "
         "representation to time-dependent observables; explain the hand-offs.")
     output = route_cli(prompt, *([mode] if mode else []))
-    assert "No family matched" not in output
-    assert "references/application-composition.md" in output
-    assert str(router.REFS /
-               "double-factorization/double-factorization.md") in output
-    if mode == "--paths":
-        assert "## Composition procedure" not in output
-        assert "Selected reference text" not in output
-    elif mode is None:
-        assert "## Composition procedure" in output
-        assert "host-side factorization data, not a quantum kernel or block encoding" in output
-        for relative, line in re.findall(
-                r"(?m)^### (references/[^:\n]+):(\d+)$", output):
-            source = router.REFS.parent / relative
-            assert source.is_file()
-            assert 1 <= int(line) <= len(source.read_text().splitlines())
+    assert router.route(prompt) == []
+    assert "No family matched; open references/catalog.md" in output
+    assert "Selected reference text" not in output
+    assert "## Use the selected guides" in output
+    catalog = (router.REFS / "catalog.md").read_text()
+    if mode == "--full":
+        assert catalog in output
+    else:
+        assert "# Primitive catalog" not in output
 
 
 @pytest.mark.parametrize("restriction", [
@@ -961,11 +1076,13 @@ def test_advisory_operation_negation_omits_df_contracts(restriction):
         "Design the architecture from molecular integrals to QSVT dynamics; " +
         restriction + ".")
     focused = router.focused_records(prompt)
-    assert "application-composition.md" in focused
-    assert "double-factorization/double-factorization.md" not in focused
-    assert "double-factorization/double-factorization-compressed.md" not in focused
+    assert "qsvt/qsvt.md" in router.route(prompt)
+    assert not any(
+        record.startswith("double-factorization/")
+        for record in router.route(prompt) + focused)
     output = route_cli(prompt)
-    assert "## Composition procedure" in output
+    assert "## Composition procedure" in fetch_section_cli(
+        "application-composition.md", "Composition procedure")
     assert "| Compressed chemistry approximation |" not in output
     assert 'DoubleFactorization(method="C-DF")' not in output
 
@@ -1055,57 +1172,123 @@ def source_section(record, title):
     ("Use Jordan–Wigner and Bravyi–Kitaev to compute lattice charge dynamics.",
      "fermion-transforms/fermion-transforms.md"),
 ])
-def test_physical_transform_delivers_complete_scientific_checkpoint(
+def test_physical_transform_contracts_are_complete_or_explicitly_retrievable(
         prompt, record):
     output = route_cli(prompt)
+    assert record in router.route(prompt)
+    for selected in router.route(prompt):
+        assert f"Open: {router.REFS / selected}" in output
     # CLI appends a shared checklist; measure the bounded reference context itself.
     context = router.reference_context(
         router.route(prompt) + router.focused_records(prompt), prompt)
     assert len(context) <= router.MAX_CONTEXT_CHARS
+    complete = []
     for title in ("Workflow", "Verification"):
-        assert source_section(record, title) in context
-        assert source_section(record, title) in output
+        complete.append(complete_delivered_section(context, record, title))
+        assert f"### {router.REFS / record}:" in output
     for title in ("Requested task completion", "Requested output artifacts"):
-        assert source_section("validation.md", title) in context
-    assert source_section("workflow.md", "Completion checkpoint") in context
-    assert "def fixed_width_matrix(operator, m):" in context
-    assert "Current public source and tests are authoritative" in context
+        complete.append(
+            complete_delivered_section(context, "validation.md", title))
+    complete.append(
+        complete_delivered_section(context, "workflow.md",
+                                   "Completion checkpoint"))
+    checkpoint = "\n".join(complete)
+    assert "def fixed_width_matrix(operator, m):" in checkpoint
+    assert "Current public source and tests are authoritative" in checkpoint
     if record.startswith("double-factorization/"):
-        assert "chemistry.qubit_hamiltonian(one_body, eri, scalar_offset=constant)" in context
-        assert "h, eri_approx, scalar_offset=offset, tolerance=prune_tol)" in context
+        assert "chemistry.qubit_hamiltonian(" in checkpoint
+        assert "h, eri_approx, scalar_offset=offset, tolerance=prune_tol)" in checkpoint
     else:
-        assert source_section(record, "Shared input representation") in context
-        assert "def occupation_matrix(h, V, offset=0.0):" in context
-        assert "psi_bk[perm] = psi_occ" in context
-        assert "### references/trotter/trotter.md:" not in context
+        representation = fetch_section_cli(record,
+                                           "Shared input representation")
+        assert source_section(record,
+                              "Shared input representation") in representation
+        assert "def occupation_matrix(h, V, offset=0.0):" in checkpoint
+        assert "psi_bk[perm] = psi_occ" in checkpoint
 
 
-@pytest.mark.parametrize("prompt", [
-    "Compute the double-factorization LCU one-norm and identity coefficient only.",
-    "Compute the DF one-norm only; do not calculate ground energies or excitation gaps.",
-    "Report ERI factorization one-norm and sector metadata only; do not evaluate energies or gaps.",
-    "Inspect eigenvalues of the ERI supermatrix to choose Cholesky versus eigendecomposition.",
-    "Compare ERI compression sizes without physical spectrum calculations.",
-    "Compare Bravyi-Kitaev and Jordan-Wigner Pauli weights only; do not calculate dynamics or energies.",
-    "Compile ladder tensors to Jordan-Wigner coefficients and report Pauli words only.",
-    "Explain a pipeline from Jordan-Wigner transforms through block encoding to physical observables.",
-    "Outline a pipeline from ERI compression through double factorization to ground energy; do not execute it.",
-    "Compute ground energy from double factorization and implement a PauliLCU block encoding.",
-    "Use Jordan-Wigner and Suzuki-Trotter to compute time-dependent density.",
-    "Use Bravyi-Kitaev and QSVT evolution to compute a charge trace.",
-    "Compute a double-factorization ground energy and construct a Slater state preparation.",
-    "Compare double-factorization energies using the Bravyi-Kitaev transform.",
-    "Use Jordan-Wigner and a second-order product formula to simulate lattice dynamics and measure density.",
-    "Use Bravyi-Kitaev with Chebyshev moments to estimate the ground energy of a Hubbard chain.",
-    "Use Jordan-Wigner with Krylov to estimate a fixed-sector spectrum.",
-    "Use Jordan-Wigner and sim_utils.evolve to calculate density dynamics.",
-    "Compare ERI compression sizes without calculating ground-state energies.",
-    "Compare ERI factorization norms without estimating energies.",
+@pytest.mark.parametrize("prompt,required,focused", [
+    ("Compute the double-factorization LCU one-norm and identity coefficient only.",
+     {"double-factorization/double-factorization.md"
+      }, "double-factorization/double-factorization-one-norm.md"),
+    ("Compute the DF one-norm only; do not calculate ground energies or excitation gaps.",
+     {"double-factorization/double-factorization.md"
+      }, "double-factorization/double-factorization-one-norm.md"),
+    ("Report ERI factorization one-norm and sector metadata only; do not evaluate energies or gaps.",
+     {"double-factorization/double-factorization.md"
+      }, "double-factorization/double-factorization-one-norm.md"),
+    ("Inspect eigenvalues of the ERI supermatrix to choose Cholesky versus eigendecomposition.",
+     {"double-factorization/double-factorization.md"}, None),
+    ("Compare ERI compression sizes without physical spectrum calculations.",
+     {"double-factorization/double-factorization.md"}, None),
+    ("Compare Bravyi-Kitaev and Jordan-Wigner Pauli weights only; do not calculate dynamics or energies.",
+     {"fermion-transforms/fermion-transforms.md"}, None),
+    ("Compile ladder tensors to Jordan-Wigner coefficients and report Pauli words only.",
+     {"fermion-transforms/fermion-transforms.md"}, None),
+    ("Explain a pipeline from Jordan-Wigner transforms through block encoding to physical observables.",
+     {
+         "fermion-transforms/fermion-transforms.md",
+         "block-encoding/block-encoding.md"
+     }, None),
+    ("Outline a pipeline from ERI compression through double factorization to ground energy; do not execute it.",
+     {"double-factorization/double-factorization.md"}, None),
+    ("Compute ground energy from double factorization and implement a PauliLCU block encoding.",
+     {
+         "double-factorization/double-factorization.md",
+         "block-encoding/block-encoding.md"
+     }, None),
+    ("Use Jordan-Wigner and Suzuki-Trotter to compute time-dependent density.",
+     {"fermion-transforms/fermion-transforms.md", "trotter/trotter.md"}, None),
+    ("Use Bravyi-Kitaev and QSVT evolution to compute a charge trace.",
+     {"fermion-transforms/fermion-transforms.md", "qsvt/qsvt.md"}, None),
+    ("Compute a double-factorization ground energy and construct a Slater state preparation.",
+     {
+         "double-factorization/double-factorization.md",
+         "state-preparation/state-preparation.md"
+     }, None),
+    ("Compare double-factorization energies using the Bravyi-Kitaev transform.",
+     {
+         "double-factorization/double-factorization.md",
+         "fermion-transforms/fermion-transforms.md"
+     }, None),
+    ("Use Jordan-Wigner and a second-order product formula to simulate lattice dynamics and measure density.",
+     {"fermion-transforms/fermion-transforms.md", "trotter/trotter.md"}, None),
+    ("Use Bravyi-Kitaev with Chebyshev moments to estimate the ground energy of a Hubbard chain.",
+     {
+         "fermion-transforms/fermion-transforms.md",
+         "qubitization/qubitization.md"
+     }, None),
+    ("Use Jordan-Wigner with Krylov to estimate a fixed-sector spectrum.", {
+        "fermion-transforms/fermion-transforms.md",
+        "qubitization/qubitization.md"
+    }, None),
+    ("Use Jordan-Wigner and sim_utils.evolve to calculate density dynamics.", {
+        "fermion-transforms/fermion-transforms.md", "trotter/trotter.md"
+    }, "simulation/simulation-evolve.md"),
+    ("Compare ERI compression sizes without calculating ground-state energies.",
+     {"double-factorization/double-factorization.md"}, None),
+    ("Compare ERI factorization norms without estimating energies.",
+     {"double-factorization/double-factorization.md"}, None),
 ])
-def test_physical_transform_packet_preserves_other_tasks_and_named_stages(
-        prompt):
+def test_transform_routes_preserve_other_tasks_and_named_stages(
+        prompt, required, focused):
+    # Replace the removed physical_transform_record implementation probe with
+    # the observable obligation: retain every named stage and avoid adding an
+    # unrelated circuit to a host-only operation.
     records = router.route(prompt) + router.focused_records(prompt)
-    assert router.physical_transform_record(records, prompt) is None
+    assert required <= set(records)
+    unrelated = {
+        "state-preparation/state-preparation.md",
+        "block-encoding/block-encoding.md", "qsvt/qsvt.md",
+        "qubitization/qubitization.md", "trotter/trotter.md"
+    } - required
+    assert not unrelated.intersection(records)
+    output = route_cli(prompt)
+    for record in required:
+        assert str(router.REFS / record) in output
+    if focused:
+        assert focused in router.focused_records(prompt)
+        assert str(router.REFS / focused) in output
 
 
 def test_physical_transform_small_budget_keeps_the_existing_bound():

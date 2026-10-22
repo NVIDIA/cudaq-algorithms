@@ -94,6 +94,16 @@ EXCITATION_PREPARATION = (
     r"\b(?:fermionic?\s+)?excitation[ -](?:operators?|generators?|kernels?|rotations?)\b|"
     r"\b(?:single|double)[_ -]excitations?\b|\bfermionic excitations\b")
 COMPRESSED_METHOD = r"compressed[_ -](double[_ -])?factorization|\b(?:rc|c)-df\b"
+GENERIC_DF_METHOD = r"\bdouble[_ -]factorization\b|\bdf\b"
+DF_METHOD = (
+    COMPRESSED_METHOD +
+    r"|\bexplicit[_ -](?:(?:cholesky|eigendecomposition)[_ -])?(?:double[_ -])?factorization\b|\bx-df\b|"
+    + GENERIC_DF_METHOD)
+DF_API = (
+    r"\b(?:explicit_double_factorization|explicit_cholesky_double_factorization|"
+    r"explicit_eigendecomposition_double_factorization|reconstruct_eri|"
+    r"factorization_error|modified_one_body_integrals|double_factorization_one_norm|doublefactorization)\b"
+)
 NORM_OPERATION = (
     r"\bdouble_factorization_one_norm\b|"
     r"\A(?=[\s\S]*\b(?:double.factor\w*|factoriz\w*|df|eri|leaf|leaves)\b)"
@@ -103,12 +113,15 @@ NORM_OPERATION = (
 def operation_negated(text: str, start: int, end: int | None = None) -> bool:
     """Exclude an operation only when its own verb/object is declined."""
     prefix = re.split(r"[.;\n]", text[:start])[-1]
-    if re.search(r"\bwhy\b[^;\n]*\bnot\b", prefix):
+    explanation = re.search(
+        r"\bwhy\b|\b(?:explain|describe|discuss)\s+when\b|"
+        r"^\s*when\s+(?:should|would|can|could|do|does|is|are)\b", prefix)
+    if explanation:
         return False  # An explanation of a restriction still needs its contract.
     if end is not None and re.match(
             r"\s+(?:is|should be|must be|will be)\s+(?:excluded|omitted|avoided|not (?:used|applied))\b",
             text[end:]):
-        return not re.search(r"\bwhy\b", prefix)
+        return True
     if re.search(r"\b(?:do not|don't|never)\s+(?:skip|omit|exclude|avoid)\s*$",
                  prefix):
         return False
@@ -120,12 +133,26 @@ def operation_negated(text: str, start: int, end: int | None = None) -> bool:
 
 
 def operation_text(text: str) -> str:
-    """Remove declined compression mentions before any routing pass."""
+    """Remove declined factorization mentions before any routing pass."""
     low = text.lower()
     return re.sub(
-        COMPRESSED_METHOD, lambda match: " " * len(match.group())
-        if operation_negated(low, match.start(), match.end()) else match.group(
-        ), low)
+        DF_METHOD, lambda match: " " * len(match.group()) if operation_negated(
+            low, match.start(), match.end()) else match.group(), low)
+
+
+def double_factorization_excluded(text: str) -> bool:
+    """A declined DF stage must not be inferred again from its integral inputs."""
+    low = text.lower()
+    mentions = list(re.finditer(DF_METHOD + "|" + DF_API, low))
+    declined = [
+        match for match in mentions
+        if re.fullmatch(GENERIC_DF_METHOD, match.group())
+        and operation_negated(low, match.start(), match.end())
+    ]
+    # A different input may still request DF before or after the restriction.
+    return bool(declined) and all(
+        operation_negated(low, match.start(), match.end())
+        for match in mentions)
 
 
 def compressed_method_excluded(text: str) -> bool:
@@ -454,6 +481,10 @@ def focused_records(text: str) -> list[str]:
         requested.append("state-preparation/state-preparation.md")
         selected = route(text)
         out.extend(rec for rec in requested if rec not in selected)
+    if double_factorization_excluded(text):
+        out = [
+            rec for rec in out if not rec.startswith("double-factorization/")
+        ]
     return list(dict.fromkeys(out))
 
 
@@ -463,7 +494,7 @@ def route(text: str) -> list[str]:
     low = operation_text(text)
     preparation = preparation_requested(text)
     # In a host norm request, LCU names the formula and the identity coefficient
-    # names an excluded scalar offset. Neither requests a simulation circuit.
+    # names an excluded scalar offset. Neither calls for a simulation circuit.
     if re.search(NORM_OPERATION, low):
         low = re.sub(r"\blcu[ -]+(?:one[ -])?norm\b", "one-norm", low)
         low = re.sub(r"\bidentity coefficient\b", "", low)
@@ -552,6 +583,10 @@ def route(text: str) -> list[str]:
             and re.search(COMPOSITION_OBJECT, low)
             and not re.search(OTHER_PREPARATION + r"|hartree|\bhf\b", low)):
         return ["application-composition.md"]
+    if double_factorization_excluded(text):
+        out = [
+            rec for rec in out if not rec.startswith("double-factorization/")
+        ]
     return list(dict.fromkeys(out))[:MAX_RECORDS]
 
 

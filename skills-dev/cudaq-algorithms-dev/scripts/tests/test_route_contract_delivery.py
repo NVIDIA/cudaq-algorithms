@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Required contracts survive excerpt limits and precede optional examples."""
 import importlib.util
+import json
 import re
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -13,12 +15,52 @@ SPEC = importlib.util.spec_from_file_location("route_contract_delivery",
                                               SCRIPT)
 router = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(router)
+EVALS = json.loads(
+    (ROOT / "skills/cudaq-algorithms/evals/evals.json").read_text())["evals"]
 
 
 def request_context(prompt, **kwargs):
     records = list(
         dict.fromkeys(router.route(prompt) + router.focused_records(prompt)))
     return router.reference_context(records, prompt, **kwargs)
+
+
+@pytest.mark.parametrize("prompt", [
+    "Run a numerical QSVT calibration for an asymmetric Pauli Hamiltonian.",
+    "Simulate PauliLCU probabilistic cooling and compare with a dense matrix.",
+    "Compare Trotter quench dynamics with an independent dense Hamiltonian.",
+] + [
+    case["prompt"] for case in EVALS if case["id"] in {
+        "science-qsvt-calibration-robustness",
+        "science-simulation-probabilistic-cooling",
+    }
+])
+def test_numerical_routes_supply_an_executable_little_endian_reference(prompt):
+    output = request_context(prompt)
+    blocks = re.findall(r"```python\n(.*?)\n```", output, re.DOTALL)
+    recipes = [block for block in blocks if "def dense_pauli_matrix(" in block]
+    assert len(recipes) == 1
+    namespace = {}
+    exec(recipes[0], namespace)
+    dense = namespace["dense_pauli_matrix"]
+    # Independent bit action: X at q0, Y at q2 (including its complex phase),
+    # and a scalar on a register with an idle middle qubit.
+    actual = dense([(0.3, "XII"), (-0.7, "IIY"), (0.2, "III")], 3)
+    expected = np.zeros((8, 8), dtype=complex)
+    for column in range(8):
+        expected[column ^ 1, column] += 0.3
+        expected[column ^ 4, column] += -0.7j * (-1 if column & 4 else 1)
+        expected[column, column] += 0.2
+    np.testing.assert_allclose(actual, expected, atol=1e-14)
+    assert dense([(1.0, "III")], 3).shape == (8, 8)
+    with pytest.raises(ValueError):
+        dense([(1.0, "X")], 3)
+
+
+def test_tensor_matrix_contract_does_not_load_a_pauli_matrix_recipe():
+    prompt = next(case["prompt"] for case in EVALS
+                  if case["id"] == "double-factorization-host-contracts")
+    assert "### Dense Pauli reference" not in request_context(prompt)
 
 
 def test_qsp_delivers_the_existing_exact_call_and_explicit_convention():

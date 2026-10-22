@@ -680,8 +680,8 @@ def render(model, data, report, tiers):
 
 def write_reports(data, cases, groups, evidence, source, destination):
     destination = destination.resolve()
-    for protected in (SUPPORT.resolve(),
-                      (SUPPORT.parents[1] / "skills" / "cudaq-algorithms").resolve()):
+    for protected in (SUPPORT.resolve(), (SUPPORT.parents[1] / "skills" /
+                                          "cudaq-algorithms").resolve()):
         require(not destination.is_relative_to(protected),
                 "write reports outside shipped skill directories")
     require(

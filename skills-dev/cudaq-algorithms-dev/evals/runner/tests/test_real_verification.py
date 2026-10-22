@@ -82,8 +82,8 @@ def test_real_isolated_artifact_verification(case_id, tmp_path):
     attempt = tmp_path / 'attempt'
     staged = workspace.stage_workspace(
         campaign.EVALS.parents[2],
-        campaign.EVALS.parents[2] / 'skills' / 'cudaq-algorithms', campaign.EVALS, case,
-        attempt, 'baseline')
+        campaign.EVALS.parents[2] / 'skills' / 'cudaq-algorithms',
+        campaign.EVALS, case, attempt, 'baseline')
     worker = Path(staged['workspace_path'])
     initial = verification.file_inventory(worker)
     name, body = ARTIFACTS[case_id]
