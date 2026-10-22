@@ -75,10 +75,10 @@ with the skill revision and suite identity recorded.
 
 Check the request's deliverables against the actual answer and artifact:
 
-- **When a result is requested through a named library object:** trace it to
-  that object's returned data or executed operation. Instantiating it only to
-  report its size leaves the calculation unimplemented. An independent oracle
-  validates this path; it does not replace it.
+- **When a request names CUDA-Q Algorithms or a library object:** trace each
+  requested library result to returned data or an executed operation. Creating
+  an unused object leaves that work unimplemented. An independent oracle checks
+  this path; it does not replace it.
 
 - **When state preparation is requested:** supply the preparation operation
   and compatible register/signature. An occupation list or basis index describes
@@ -94,8 +94,9 @@ Check the request's deliverables against the actual answer and artifact:
   If none is given, quantify the change and state what criterion would make it
   sufficient; a feasibility bound alone does not define usefulness.
 
-Numerical predictions alone need not include a new circuit. Match the requested
-execution level, preserving any explicit library or artifact requirements.
+Numerical predictions need no new circuit unless a library operation is
+requested. Match the requested execution level and artifact requirements;
+dense-only work cannot replace required library participation.
 
 ## Requested output artifacts
 

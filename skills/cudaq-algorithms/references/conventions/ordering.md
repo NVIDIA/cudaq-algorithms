@@ -94,3 +94,52 @@ This recipe follows the qubit-index convention in
   wrong-size register.
 - **Source.** `python/cudaq_algorithms/common_kernels.py`
   (`_term_qubit_extent`); the block-encoding and Trotter family records.
+
+## Dense-operator self-test
+
+Build every dense Hamiltonian, operator or statevector reference with a routine
+whose ordering is explicit, and test that routine once before trusting it.
+`word[j]` acts on qubit `j`, and qubit 0 is the least-significant index bit, so
+it is the rightmost Kronecker factor. Norm preservation, Hermiticity and
+agreement between two objects built with the same reversed ordering do not
+detect a reversal; the diagonal test below does.
+
+```python
+import numpy as np
+
+PAULI = {"I": np.eye(2, dtype=complex),
+         "X": np.array([[0, 1], [1, 0]], dtype=complex),
+         "Y": np.array([[0, -1j], [1j, 0]], dtype=complex),
+         "Z": np.diag([1.0 + 0j, -1.0 + 0j])}
+
+
+def dense_pauli_matrix(terms, num_qubits):
+    """Dense sum of c_k P_k; word[j] acts on qubit j, qubit 0 is the least-significant bit."""
+    dim = 2 ** num_qubits
+    matrix = np.zeros((dim, dim), dtype=complex)
+    for coefficient, word in terms:
+        if len(word) != num_qubits or any(c not in PAULI for c in word):
+            raise ValueError(f"word {word!r} must have {num_qubits} characters from IXYZ")
+        factor = np.array([[1.0 + 0j]])
+        for character in reversed(word):  # qubit 0 becomes the fastest index
+            factor = np.kron(factor, PAULI[character])
+        matrix += coefficient * factor
+    return matrix
+
+
+def check_dense_ordering(num_qubits):
+    """Z on qubit 0 alternates sign with the least-significant index bit."""
+    z0 = dense_pauli_matrix([(1.0, "Z" + "I" * (num_qubits - 1))], num_qubits)
+    assert np.allclose(np.diag(z0), np.tile([1.0, -1.0], 2 ** (num_qubits - 1)))
+    x0 = dense_pauli_matrix([(1.0, "X" + "I" * (num_qubits - 1))], num_qubits)
+    assert x0[1, 0] == 1 and x0[0, 1] == 1  # X on qubit 0 swaps indices 0 and 1
+
+
+check_dense_ordering(3)
+```
+
+Use `dense_pauli_matrix` with the same word strings the library receives. For a
+site-specified state, index `i` holds the amplitude of `|q_{n-1} ... q_0>` with
+`q_k = (i >> k) & 1`; check one asymmetric amplitude against the user's
+definition before comparing dynamics. `cudaq.spin.z(0).to_matrix()` follows the
+same convention and is an independent cross-check.

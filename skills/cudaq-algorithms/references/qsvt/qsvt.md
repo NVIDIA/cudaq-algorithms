@@ -44,8 +44,11 @@ time. [Source lookup](../source-provenance.md) gives shared current-source paths
    composition, not a general complex-Hamiltonian recovery contract.
 
 A supplied-filter prediction can use an equivalent signal/operator calculation
-when no circuit is requested. A circuit claim additionally needs evidence for
-that circuit; a successful approximation should not be inferred from its name.
+when no circuit is requested and the request does not name CUDA-Q Algorithms;
+a request that names the library must obtain its numbers from the library
+sequence and keep the signal model as the independent check. A circuit claim
+additionally needs evidence for that circuit; a successful approximation should
+not be inferred from its name.
 
 ## Verification
 

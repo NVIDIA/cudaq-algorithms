@@ -6,6 +6,8 @@
 Usage: python3 scripts/route.py [--paths | --full] "<the request text>"
 Default: routes plus bounded excerpts of relevant contracts and checkpoints.
 --paths prints navigation only; --full prints whole selected guides.
+Optional: --compact, --stage plan|contract|verify, or --record PATH --section HEADING.
+Default delivery is unchanged. Run only the branches needed for unresolved checks.
 This is a navigation aid, not a skill-trigger classifier or an answer generator.
 """
 import argparse
@@ -130,10 +132,6 @@ FOCUSED_ROUTES = [
     (r"\b(?:sim|sim_utils)\.evolve\b", "trotter/trotter.md",
      "simulation/simulation-evolve.md"),
 ]
-DF_METHOD_RECORDS = (
-    "double-factorization/double-factorization-explicit.md",
-    "double-factorization/double-factorization-compressed.md",
-)
 SHARED_RECORDS = ["workflow.md", "validation.md", "conventions/ordering.md"]
 HF_PREPARATION = (r"\bhartree_fock_occupation\b|"
                   r"\b(?:hartree.fock|hf)\b.{0,60}\bprepar\w*|"
@@ -147,7 +145,42 @@ INPUT_STATE_FAMILIES = ("state-preparation/", "block-encoding/",
 INPUT_STATE_PATTERN = (
     r"\b(?:input|prepared|product)[ -]states?\b|\b(?:statevectors?|kets?)\b|"
     r"\btensor[ -](?:product|order)\b|\bendianness\b|"
-    r"\b(?:little|big)[ -]endian\b|\b(?:site|qubit|basis)[ -]amplitudes?\b")
+    r"\b(?:little|big)[ -]endian\b|\b(?:site|qubit|basis)[ -]amplitudes?\b|"
+    r"\binitial(?:ly)?[ -](?:in|state)\b|\bstarting (?:from|in)\b|\\rangle|"
+    r"\|[01+\-]{1,12}>")
+
+# Numerical routes get the executable little-endian dense reference early, so
+# the ordering is not rediscovered by trial and error (conventions/ordering.md).
+DENSE_REFERENCE_FAMILIES = ("trotter/", "simulation/", "qsvt/",
+                            "block-encoding/", "qubitization/")
+DENSE_REFERENCE_EXCLUDED = ("double-factorization/", "chemistry/",
+                            "fermion-transforms/")
+DENSE_REFERENCE_INTENT = (
+    r"\b(?:dense|exact|reference|numerical(?:ly)?|simulat\w*|compar\w*|"
+    r"calibrat\w*|fidelit\w*|probabilit\w*|accura\w*|errors?|dynamics|"
+    r"evolution|evolv\w*|cooling|expectation|observables?|magneti[sz]\w*|"
+    r"energy|energies|spectrum|spectral|leakage|occupation)\b")
+DENSE_REFERENCE_SECTION = "Dense-operator self-test"
+DENSE_REFERENCE_LABEL = "\n### Dense Pauli reference\n"
+PLACEHOLDERS = ("<this skill's directory>", "<skill-dir>")
+
+
+def dense_reference_wanted(records: list[str], text: str) -> bool:
+    """The primary route is numerical and the request compares or simulates."""
+    primary = records[0] if records else ""
+    return (primary.startswith(DENSE_REFERENCE_FAMILIES)
+            and not any(rec.startswith(DENSE_REFERENCE_EXCLUDED)
+                        for rec in records)
+            and bool(re.search(DENSE_REFERENCE_INTENT, text, re.IGNORECASE))
+            and (REFS / "conventions/ordering.md").is_file())
+
+
+def resolve_placeholders(text: str) -> str:
+    """Emit executable paths: the skill directory replaces documentation placeholders."""
+    skill_dir = str(REFS.parent)
+    for placeholder in PLACEHOLDERS:
+        text = text.replace(placeholder, skill_dir)
+    return text
 
 # Require both a scientific object and an outcome: generic words such as
 # "energy", "time", or "geometry" alone should not choose an application.
@@ -174,7 +207,7 @@ SCIENCE_ROUTES = [
      ["chemistry/chemistry-bridges.md"], True),
     (LATTICE_OBJECT, r"evol|quench|dynamics|\btimes?\b|time.depend|transport",
      ["trotter/trotter.md"], True),
-    (LATTICE_OBJECT, r"energ|ground.state|spectr(?:um|a)|eigenvalue|\bgaps?\b|sector",
+    (LATTICE_OBJECT, r"energ|ground.state|spectrum|\bgap\b|sector",
      ["qubitization/qubitization.md"], True),
     (r"ancilla|herald|postselect|success.flag",
      r"probab|discard|trace|condition|observable|density|expectation",
@@ -280,6 +313,10 @@ def standalone_kernel(text: str) -> bool:
         return False
     if any(re.search(pattern, low) for pattern, _, _ in FOCUSED_ROUTES):
         return False
+    # A basic state used by a named algorithm is not a standalone kernel.
+    # Keep unsupported-algorithm notes reachable as well (for example QPE).
+    if re.search(r"\brecover_real_time_evolution\b", low) or notes(text):
+        return False
     if re.search(
             r"hartree|givens|slater|\buccs?d?\b|state_prep|sim_utils|good.subspace|"
             r"\b(?:chemistry|fermion|stateprep|sim|df)\.[a-z_]\w*", low):
@@ -290,76 +327,12 @@ def standalone_kernel(text: str) -> bool:
                    for obj, goal, _, _ in SCIENCE_ROUTES)
 
 
-def affirmative_term(text: str, pattern: str) -> bool:
-    """Keep local negation from adding advisory stages or focused DF recipes."""
-    modifiers = (r"(?:\s+(?:\w+ly|use|using|apply|applying|need|to|for|"
-                 r"asking|you|the|any|optional|additional|compressed|explicit|"
-                 r"double|factorization|or|other|calculat(?:e|ing)|comput(?:e|ing)|"
-                 r"evaluat(?:e|ing)|estimat(?:e|ing))){0,5}\s*$")
-    clauses = re.split(
-        r"[.;!?\n]|\b(?:but|then|however)\b|"
-        r"\band\s+(?=(?:use|include|apply|compare|retain|keep)\b)",
-        text.lower())
-    for clause in clauses:
-        for match in re.finditer(pattern, clause):
-            prefix = clause[:match.start()]
-            # A diagnostic "why not use ...?" needs the named contract.
-            if re.search(r"\bwhy(?:\s+[\w-]+){0,4}\s+not" + modifiers,
-                         prefix):
-                return True
-            # "Do not skip C-DF" is affirmative. Keep exclude/avoid local to
-            # the method, not a different operation such as changing inputs.
-            if re.search(r"\b(?:not|never)\s+(?:avoid|skip|omit|exclude)" +
-                         modifiers, prefix):
-                return True
-            if not re.search(
-                    r"\b(?:not|never|without|no|avoid|skip|omit|exclude)" +
-                    modifiers, prefix):
-                return True
-    return False
-
-
-def architecture_records(text: str) -> list[str]:
-    """Supplement advisory stage contracts without choosing an implementation."""
-    low = text.lower()
-    if standalone_kernel(text) or affirmative_term(
-            text, r"\b(?:run|execute|implement|benchmark|simulate|write|edit)\b"):
-        return []
-    stages = r"architecture|pipeline|workflow|chain|stages?|hand.?off|interfaces?|connect|through|between|fit together|compatib"
-    intent = r"\barchitecture\b|\b(?:outline|sketch|design|plan|review|explain|describe)\b"
-    families = {rec for rec, pattern, _ in FAMILIES if re.search(pattern, low)}
-    physical = re.search(r"molecul|\beris?\b|chemist|hamiltonian|spin.chain", low)
-    outcome = re.search(r"dynamics|time.depend|observable|energ|spectrum|spectral", low)
-    if not (re.search(intent, low) and re.search(stages, low)
-            and (len(families) >= 2 or (physical and outcome))):
-        return []
-    out = ["application-composition.md"]
-    named_df = affirmative_term(text, r"double.factor|\b(?:rc|c|x)-df\b")
-    integral = re.search(r"molecul|\beris?\b|chemist|two.electron integral", low)
-    compression = affirmative_term(text, r"\bcompress\w*|\blow.rank\b")
-    alternative = re.search(
-        r"\bsvd\b|singular.value|tensor.train|tensor.hypercontract|\btucker\b|"
-        r"\bstorage\b|\barchive|\bnpz\b|\blossless\b|file format", low)
-    if named_df or (integral and compression and not alternative):
-        family = "double-factorization/double-factorization.md"
-        out.append(family)
-        # Named operations retain their own focus. Generic compression and
-        # bare DF expose the family options, not an assumed C-DF optimizer.
-        out.extend(focused for pattern, starting, focused in FOCUSED_ROUTES
-                   if starting == family and re.search(pattern, low) and (
-                       focused not in DF_METHOD_RECORDS
-                       or affirmative_term(text, pattern)))
-    return list(dict.fromkeys(out))
-
-
 def focused_records(text: str) -> list[str]:
     """Direct operation hints, independent of heuristic premise candidates."""
     low = text.lower()
     out = [
         focused for pattern, _, focused in FOCUSED_ROUTES
-        if re.search(pattern, low) and (
-            focused not in DF_METHOD_RECORDS
-            or affirmative_term(text, pattern))
+        if re.search(pattern, low)
     ]
     out.extend(leaf for pattern, leaf in PRIMITIVES_LEAVES
                if re.search(pattern, low))
@@ -369,37 +342,7 @@ def focused_records(text: str) -> list[str]:
         out.append("trotter/trotter-planning.md")
     if re.search(HF_PREPARATION, low):
         out.append(HF_RECORD)
-    out.extend(architecture_records(text))
     return list(dict.fromkeys(out))
-
-
-def state_construction(text: str) -> bool:
-    """Recognize constructing states, not spectra or already prepared inputs."""
-    excitation = (r"\b(?:fermionic|single|double)[ -]excitations?\b"
-                  r"(?![ -]+(?:energ|gap|spectr))")
-    provider = r"hartree.fock|\bhf\b|givens|slater|\bucc(?:sd|gsd)?\b|upccgsd"
-    # A construction verb needs a state/preparation as its direct object.
-    # Prepositions prevent e.g. "build a spectrum of the prepared state"
-    # from becoming a request to construct that state.
-    target = (r"(?:(?!\b(?:of|for|from|with|using|via|on|about|regarding|"
-              r"already|report|table)\b)[\w-]+\s+){0,8}"
-              r"(?:states?|preparations?|determinants?|references?)\b"
-              r"(?=\s*(?:$|[,;.:!?]|\b(?:for|of|from|with|using|via|on|in|"
-              r"under|by|and|then|to)\b))")
-    operation = (r"\b(?:prepare|construct|build|create)\s+" + target +
-                 r"|\b(?:apply|compose|exponentiate)\b.*" + excitation +
-                 r".*\b(?:to|into|on)\s+" + target)
-    for clause in re.split(r"[.;!?\n]", text.lower()):
-        if not re.search(excitation + "|" + provider, clause):
-            continue
-        for match in re.finditer(operation, clause):
-            # Keep negation local to this operation, allowing short adverb
-            # modifiers without suppressing a later affirmative clause.
-            if not re.search(
-                    r"(?:\b(?:not|never|without)|n't|\bno\s+need\s+to)"
-                    r"(?:\s+\w+ly){0,2}\s*$", clause[:match.start()]):
-                return True
-    return False
 
 
 def route(text: str) -> list[str]:
@@ -407,8 +350,6 @@ def route(text: str) -> list[str]:
         return []
     low = text.lower()
     molecule = mentions_molecule(text)
-    preparation = state_construction(text)
-    operations = ["state-preparation/state-preparation.md"] if preparation else []
     out = []
     for pattern, rec in ROUTES:
         if re.search(pattern, low) and rec not in out:
@@ -429,24 +370,6 @@ def route(text: str) -> list[str]:
     for obj, goal, recs, chain in SCIENCE_ROUTES:
         matched = re.search(obj, low) or (obj is MOLECULE_OBJECT and molecule)
         if matched and re.search(goal, low):
-            # Computing the energy of a constructed state does not require
-            # finding an unknown eigenstate. Keep named solver routes and
-            # separately requested spectral outcomes; suppress only the
-            # inferred solver for preparation and its diagnostic observables.
-            if (recs == ["qubitization/qubitization.md"] and preparation
-                    and "qubitization/qubitization.md" not in out
-                    and re.search(
-                        r"expectation|variance|coherenc|densit|"
-                        r"\b(?:its|their|expected|mean)\s+(?:[\w-]+\s+){0,2}energ|"
-                        r"energ\w*\s+of\s+(?:this|that|the)\s+state", low)
-                    and not re.search(
-                        r"(?:ground|excited)[ -](?:state[ -])?energ|"
-                        r"(?:lowest|highest|minimum|maximum)[ -]energ|spectr(?:um|a)|"
-                        r"eigenvalue|\bgaps?\b|"
-                        r"\b(?:find|solve|estimate|compute|calculate|determine)\s+"
-                        r"(?:[\w-]+\s+){0,4}ground[ -]state|"
-                        r"ground[ -]state[ -](?:search|estimation)", low)):
-                continue
             science.extend(r for r in recs if r not in science)
             compose = compose or chain
     # A named method takes priority over a default scientific path: a quench
@@ -475,19 +398,16 @@ def route(text: str) -> list[str]:
                 rec for rec in science if rec not in
                 {"trotter/trotter.md", "qubitization/qubitization.md"}
             ]
-        out = explicit + operations + science + chain + out
-    else:
+        out = explicit + science + chain + out
+    elif explicit and ("primitives/primitives.md" in explicit
+                       or not re.search(STATE_PREP_OBJECT, low)):
         # A named primitive is more specific than generic state preparation
         # or injection wording. Keep ordinary state-preparation priority when
         # no primitive was named.
-        out = operations + out
-        if explicit and ("primitives/primitives.md" in explicit
-                         or not re.search(STATE_PREP_OBJECT, low)):
-            out = explicit + out
+        out = explicit + out
     if any(
             rec.startswith(("qsvt/", "qubitization/", "trotter/"))
-            for rec in explicit) and not (preparation or re.search(
-                STATE_PREP_OBJECT, low)):
+            for rec in explicit) and not re.search(STATE_PREP_OBJECT, low):
         # Spectral preparation by the named algorithm is not a request for an
         # unrelated Hartree-Fock, Givens or UCC provider recipe.
         out = [
@@ -501,8 +421,6 @@ def route(text: str) -> list[str]:
             and re.search(COMPOSITION_INTENT, low)
             and re.search(COMPOSITION_OBJECT, low)
             and not re.search(OTHER_PREPARATION + r"|hartree|\bhf\b", low)):
-        return ["application-composition.md"]
-    if not out and architecture_records(text):
         return ["application-composition.md"]
     return list(dict.fromkeys(out))[:MAX_RECORDS]
 
@@ -573,33 +491,6 @@ def relevant_sections(
         if title in wanted and line >= end:
             selected.append((title, line, section))
             end = line + len(section.splitlines())
-    return selected
-
-
-def architecture_sections(record: str, body: str,
-                          records: list[str], text: str) -> list[tuple[str, int, str]]:
-    """Use existing seam contracts instead of broad advisory family recipes."""
-    sections = markdown_sections(body)
-    family = "double-factorization/double-factorization.md"
-    if record == family:
-        wanted = {title for title, _, _ in sections
-                  if title.startswith("Shared representation - ")}
-        if not any(rec in records for rec in DF_METHOD_RECORDS):
-            wanted.add("Selectable operation contracts")
-        return [section for section in sections if section[0] in wanted]
-    selected = relevant_sections(record, body)
-    if (record == "application-composition.md" and family in records
-            and affirmative_term(text, r"\bcompress\w*|\blow.rank\b")):
-        # One verbatim application row is enough; unrelated chains crowd out
-        # the requested method contracts under the shared excerpt budget.
-        header = []
-        for line, value in enumerate(body.splitlines(), 1):
-            if value.startswith(("| Goal |", "| --- | --- | --- |")):
-                header.append(value)
-            elif value.startswith("| Compressed chemistry approximation |"):
-                selected.append(("Compressed chemistry chain", line,
-                                 "\n".join(header + [value])))
-                break
     return selected
 
 
@@ -685,115 +576,29 @@ def markdown_blocks(body: str) -> list[str]:
     return [block for block in blocks if block]
 
 
-def physical_transform_record(records: list[str], text: str) -> str | None:
-    """Prioritize a transform's complete physical check over inferred stages.
-
-    A named downstream algorithm or preparation keeps the normal composed
-    context. Bare LCU one-norm is a cost definition, not a block-encoding task.
-    """
-    if architecture_records(text):
-        return None
-    df = "double-factorization/double-factorization.md"
-    fermion = "fermion-transforms/fermion-transforms.md"
-    for pattern, family in EXPLICIT_ROUTES:
-        if family in (df, fermion):
-            continue
-        if family == "block-encoding/block-encoding.md":
-            pattern = pattern.replace(r"|\blcu\b", "")
-        if affirmative_term(text, pattern):
-            return None
-    # Exact dotted APIs are matched before clause splitting; preserve their
-    # focused contracts even when no broad family keyword names the stage.
-    if any(family not in (df, fermion) and re.search(pattern, text, re.IGNORECASE)
-           for pattern, family, _ in FOCUSED_ROUTES):
-        return None
-    if affirmative_term(text, r"\b(?:hartree[-_ ]fock|slater|givens|ucc\w*|state_prep)\b"):
-        return None
-    fermion_pattern = next(pattern for pattern, family in EXPLICIT_ROUTES
-                           if family == fermion)
-    named_fermion = affirmative_term(
-        text, fermion_pattern + r"|\bfermion[-_ ]transforms?\b")
-
-    def target(pattern):
-        # Keep coordinated requested/negated outputs in the same match.
-        return affirmative_term(text, rf"(?:{pattern})(?:\s+(?:or|and)\s+(?:{pattern}))*")
-
-    energy = r"\b(?:(?:ground(?:[- ]state)?[- ])?energ(?:y|ies)|(?:excitation[- ])?gaps?)\b"
-    if df in records and not named_fermion:
-        allowed = ("double-factorization/", "chemistry/", "block-encoding/",
-                   "conventions/numerical-comparison.md", "application-composition.md")
-        if any(not record.startswith(allowed) for record in records):
-            return None
-        spectrum = (
-            r"\b(?:physical|hamiltonian|many[- ]body|sector)\b.{0,45}\b(?:spectr\w*|eigenvalues?)\b|"
-            r"\b(?:spectr\w*|eigenvalues?)\b.{0,45}\b(?:physical|hamiltonian|sector)\b")
-        construction = r"\b(?:construct|build|assemble|diagonali[sz]\w*|project)\b.{0,70}\b(?:hamiltonian|sector)\b"
-        if target(energy) or target(spectrum) or target(construction):
-            return df
-    if fermion in records and named_fermion and df not in records:
-        allowed = ("fermion-transforms/", "trotter/", "qubitization/", "simulation/",
-                   "conventions/numerical-comparison.md", "application-composition.md")
-        if any(not record.startswith(allowed) for record in records):
-            return None
-        physical = energy + r"|\b(?:dynamic\w*|evol\w*|observables?|expectation\w*|charge|occupanc\w*|density|spectr\w*|eigenvalues?|correlat\w*)\b"
-        if target(physical):
-            return fermion
-    return None
-
-
-def physical_transform_context(records: list[str], text: str, limit: int) -> str:
-    """Deliver whole existing scientific sections, including runnable checks."""
-    record = physical_transform_record(records, text)
-    if record is None:
-        return ""
-    selected = [record]
-    if record.startswith("double-factorization/"):
-        selected.append("chemistry/chemistry-bridges.md")
-    sections = [("quick-contract.md", line, body)
-                for title, line, body in quick_contract_sections(selected, text)
-                if title == "Exact calls"]
-    if not sections:
-        return ""
-    wanted = [(record, "Workflow"), (record, "Verification"),
-              ("validation.md", "Requested task completion"),
-              ("validation.md", "Requested output artifacts"),
-              ("workflow.md", "Completion checkpoint")]
-    if record.startswith("fermion-transforms/"):
-        wanted.insert(0, (record, "Shared input representation"))
-    for path, title in wanted:
-        source = REFS / path
-        if not source.is_file():
-            return ""
-        matches = [(path, line, body) for name, line, body in
-                   markdown_sections(source.read_text()) if name == title]
-        if len(matches) != 1:
-            return ""  # Changed/missing contracts use the ordinary navigation.
-        sections.extend(matches)
-    context = ("\n## Selected reference text\n"
-               "\nSection paths are relative to the skill directory.\n")
-    for path, line, body in sections:
-        context += f"\n### references/{path}:{line}\n{body}\n"
-    context += ("\nOther selected operation records remain available at the navigation paths. "
-                "Follow current source/test links for API behavior.\n")
-    return context if len(context) <= limit else ""
-
-
 def reference_context(records: list[str],
                       text: str,
                       limit: int = MAX_CONTEXT_CHARS) -> str:
     """Load public reference sections, never catalog answers or private grades.
 
     Deliver exact calls first; preserve prose contracts before fenced examples.
-    Paths are relative to the skill directory, printed once by the CLI.
-    This keeps content selection independent of the installation prefix.
+    Omitted blocks remain available at exact paths.
     """
-    physical_context = physical_transform_context(records, text, limit)
-    if physical_context:
-        return physical_context
-    architecture = architecture_records(text)
-    records = list(dict.fromkeys(architecture + records))
-    selected = [(f"\n### references/quick-contract.md:{line}\n", body)
-                for _, line, body in quick_contract_sections(records, text)]
+    selected = [(f"\n### {REFS / 'quick-contract.md'}:{line}\n", body,
+                 "quick-contract.md", title, False)
+                for title, line, body in quick_contract_sections(records, text)]
+    if dense_reference_wanted(records, text):
+        # The executable little-endian dense reference follows the exact calls;
+        # its fence is allocated with the prose so the budget never drops it.
+        for title, _, body in markdown_sections(
+                (REFS / "conventions/ordering.md").read_text()):
+            if title == DENSE_REFERENCE_SECTION:
+                lines = body.splitlines()
+                while lines and re.match(r"^#{1,6}\s+", lines[0]):
+                    lines.pop(0)
+                selected.append((DENSE_REFERENCE_LABEL,
+                                 "\n".join(lines).strip(),
+                                 "conventions/ordering.md", title, True))
     composition_only = records == [
         "application-composition.md"
     ] and not re.search(r"\b(json|csv|schema|stdout|files?|scripts?)\b", text,
@@ -813,36 +618,36 @@ def reference_context(records: list[str],
         path = REFS / record
         if not path.is_file():
             continue  # Navigation reports missing selected records separately.
-        sections = (architecture_sections(record, path.read_text(), architecture, text)
-                    if record in architecture else
-                    relevant_sections(record, path.read_text(), composition_only))
-        for title, line, body in sections:
+        for title, line, body in relevant_sections(record, path.read_text(),
+                                                   composition_only):
             # Delivery requirements can come from the surrounding instructions,
             # not just this routing query. Keep their conditional procedure.
-            selected.append((f"\n### references/{record}:{line}\n", body))
+            selected.append((f"\n### {path}:{line}\n", body, record, title,
+                             False))
     if not selected:
         return ""
-    header = ("\n## Selected reference text\n"
-              "\nSection paths are relative to the skill directory.\n")
+    header = "\n## Selected reference text\n"
     footer = (
         "\nExcerpts may omit blocks or examples. Use the source paths and line "
         "numbers above to resolve any remaining contract before using it; "
         "follow current source/test links for API behavior.\n")
     notice = "\n[Additional blocks omitted; open this section when needed.]\n"
     overhead = len(header) + len(footer) + sum(
-        len(label) + len(notice) + 1 for label, _ in selected)
+        len(label) + len(notice) + 1 for label, *_ in selected)
     if overhead > limit:
         return ""  # Do not emit misleading fragments under an unusable budget.
-    excerpts = [[label, markdown_blocks(body),
-                 set()] for label, body in selected]
+    excerpts = [[label, markdown_blocks(resolve_placeholders(body)), set(), record, title, required]
+                for label, body, record, title, required in selected]
     # A per-section quota favors short boilerplate over an indivisible semantic
     # list or table. Allocate by contract priority instead, before examples.
     remaining = limit - overhead
 
     def section_priority(entry):
-        label, blocks, _ = entry
+        label, blocks, _, _, _, required = entry
         if "quick-contract.md:" in label:
             return 0
+        if required:
+            return 0.5  # Executable dense reference, right after the exact calls.
         if blocks and re.search(r"capabilit|boundar|scientific contract",
                                 blocks[0], re.IGNORECASE):
             return 1  # Preserve whole semantic invariant lists/boundary tables.
@@ -858,20 +663,192 @@ def reference_context(records: list[str],
 
     priority = sorted(excerpts, key=section_priority)
     for examples in (False, True):
-        for _, blocks, kept in priority:
+        for _, blocks, kept, _, _, required in priority:
             for index, block in enumerate(blocks):
                 is_example = bool(re.match(r"^\s*(`{3,}|~{3,})", block))
-                if (is_example == examples and index not in kept
+                # A required recipe keeps its fence in the prose pass; other
+                # fenced examples still follow every prose block.
+                eligible = is_example == examples or (required
+                                                      and not examples)
+                if (eligible and index not in kept
                         and len(block) + 2 <= remaining):
                     kept.add(index)
                     remaining -= len(block) + 2
+    def render_excerpts():
+        rendered = [header]
+        for label, blocks, kept, record, title, _ in excerpts:
+            substantive = any(
+                not all(re.match(r"^#{1,6}\s+", line)
+                        for line in blocks[index].splitlines() if line.strip())
+                for index in kept)
+            if not substantive:
+                # A retained heading is not delivered contract content.
+                rendered.append(label + "Complete section: "
+                                + section_command(record, title) + "\n")
+                continue
+            rendered.append(label + "\n\n".join(
+                block for index, block in enumerate(blocks) if index in kept)
+                            + "\n")
+            if len(kept) < len(blocks):
+                rendered.append(notice)
+        return "".join(rendered + [footer])
+
+    output = render_excerpts()
+    # Resolved fetch commands can exceed the reserved generic notice. Make
+    # room by removing lower-priority blocks, keeping exact calls and the
+    # required dense recipe. Never fall back to a heading-only stub.
+    if len(output) > limit:
+        for examples in (True, False):
+            for _, blocks, kept, record, _, required in reversed(priority):
+                if required or record == "quick-contract.md":
+                    continue
+                for index in sorted(kept, reverse=True):
+                    is_example = bool(re.match(r"^\s*(`{3,}|~{3,})", blocks[index]))
+                    if is_example != examples:
+                        continue
+                    kept.remove(index)
+                    output = render_excerpts()
+                    if len(output) <= limit:
+                        return output
+        return ""  # Even complete navigation cannot fit this caller's budget.
+    return output
+
+
+COMPACT_CONTEXT_CHARS = 7000
+STAGE_CONTEXT_CHARS = 5000
+SECTION_CHARS = 16000
+
+
+def section_command(record: str, title: str) -> str:
+    import shlex
+    if record == "quick-contract.md" and title == "Exact calls":
+        title = "Quick contract (checked against `python/cudaq_algorithms` in this checkout)"
+    return shlex.join([sys.executable, str(Path(__file__).resolve()),
+                       "--record", record, "--section", title])
+
+
+def fetch_section(record: str, title: str, parser) -> None:
+    """Read only a known local reference and a complete named section."""
+    # Reject path traversal, absolute paths, and non-reference inputs.
+    if not re.fullmatch(r"[\w-]+(?:/[\w-]+)*\.md", record):
+        parser.error("--record must be a relative reference Markdown path")
+    try:
+        reference_root = REFS.resolve()
+        path = (reference_root / record).resolve()
+    except (OSError, RuntimeError):
+        parser.error("reference path cannot be resolved")
+    if not path.is_relative_to(reference_root):
+        parser.error("reference resolves outside the skill's references directory")
+    if not path.is_file():
+        parser.error("reference does not exist in this skill")
+    sections = markdown_sections(path.read_text())
+    found = [(line, body) for name, line, body in sections if name == title]
+    if len(found) != 1:
+        parser.error("section must match one unique heading; available: "
+                     + "; ".join(name for name, _, _ in sections))
+    line, body = found[0]
+    if len(body) > SECTION_CHARS:
+        parser.error("section exceeds 16000 characters; choose a narrower heading: "
+                     + "; ".join(name for name, start, _ in sections if start > line))
+    print(f"## {path}:{line}\n{body}")
+
+
+def compact_context(records: list[str], text: str, stage: str = "bundle") -> str:
+    """Keep verbatim semantic blocks; advertise every omitted section explicitly.
+
+    Contracts precede examples. A selected source block is never cut mid-list,
+    table, or fence. Shared delivery rules remain in SKILL.md and are retrievable.
+    The cap applies to this bundle; legacy navigation is additional output.
+    """
+    selected = []
+    if stage != "verify":
+        selected.extend(("quick-contract.md", title, line, body)
+                        for title, line, body in quick_contract_sections(records, text))
+    composition_only = records == ["application-composition.md"] and not re.search(
+        r"\b(json|csv|schema|stdout|files?|scripts?)\b", text, re.I)
+    for record in dict.fromkeys(records):
+        if record == "state-preparation/state-preparation.md":
+            if HF_RECORD in records and not re.search(OTHER_PREPARATION, text, re.I):
+                continue
+            if ("state-preparation/injection-contract.md" in records
+                    and not re.search(OTHER_PREPARATION + r"|hartree|\bhf\b", text, re.I)):
+                continue
+        path = REFS / record
+        if not path.is_file():
+            continue
+        body = path.read_text()
+        for title, line, section in relevant_sections(record, body, composition_only):
+            verify = bool(re.search(r"verif|validat", title, re.I))
+            if stage == "contract" and verify:
+                continue
+            if stage == "verify" and not verify:
+                continue
+            selected.append((record, title, line, section))
+    if stage == "verify":
+        for record in ("validation.md", "workflow.md"):
+            selected.extend((record, title, line, body)
+                            for title, line, body in relevant_sections(
+                                record, (REFS / record).read_text(), composition_only))
+    # Deliver focused contracts before broad recipes, without changing routing.
+    def priority(item):
+        record, title, _, _ = item
+        if record == "quick-contract.md": return 0
+        if re.search(r"capabilit|boundar|scientific contract", title, re.I): return 1
+        if title not in ("Workflow", "Verification"): return 2
+        return 3 if title == "Workflow" else 4
+    selected.sort(key=priority)
+    limit = COMPACT_CONTEXT_CHARS if stage == "bundle" else STAGE_CONTEXT_CHARS
+    header = "\n## Compact reference bundle\n"
+    footer = ("\nReuse these blocks. Fetch a named section only for a missing contract "
+              "or check; follow its current source/test pointers. Fenced examples "
+              "may be omitted. --stage contract or --stage verify with the original "
+              "request selects that branch; --record/--section fetches one complete section.\n")
+    source_paths = []
+    for record in records:
+        path = REFS / record
+        if path.is_file():
+            source_paths.extend(re.findall(
+                r"(?:python/cudaq_algorithms|tests/python|docs/sphinx)/[\w./-]+", path.read_text()))
+    if source_paths:
+        footer += "Current source/tests: " + "; ".join(dict.fromkeys(source_paths)) + "\n"
+    entries = []
+    seen = set()
+    for record, title, line, section in selected:
+        label = f"\n### {record}:{line} — {title}\n"
+        fetch = "\nMore: " + section_command(record, title) + "\n"
+        blocks = []
+        for block in markdown_blocks(section):
+            # A heading need not have a blank line before its prose. Remove
+            # heading lines only; never discard requirements in the same block.
+            lines = block.splitlines()
+            while lines and re.match(r"^#{1,6}\s+", lines[0]):
+                lines.pop(0)
+            block = "\n".join(lines).strip()
+            if not block or block in seen:
+                continue
+            seen.add(block)
+            blocks.append(block)
+        entries.append([label, fetch, blocks, []])
+    # Reserve every follow-up pointer before assigning content budget.
+    overhead = len(header) + len(footer) + sum(len(e[0]) + len(e[1]) for e in entries)
+    if overhead > limit:
+        return header + "Too many sections for one bundle; use --stage plan, then fetch one named section.\n"
+    remaining = limit - overhead
+    for examples in (False, True):
+        for _, _, blocks, kept in entries:
+            for block in blocks:
+                if bool(re.match(r"^\s*(`{3,}|~{3,})", block)) == examples and len(block) + 2 <= remaining:
+                    kept.append(block)
+                    remaining -= len(block) + 2
     rendered = [header]
-    for label, blocks, kept in excerpts:
-        rendered.append(label + "\n\n".join(
-            block
-            for index, block in enumerate(blocks) if index in kept) + "\n")
+    for label, fetch, blocks, kept in entries:
+        rendered.append(label)
+        # Restore original block order, including intact examples if they fit.
+        rendered.append("\n\n".join(block for block in blocks if block in kept))
         if len(kept) < len(blocks):
-            rendered.append(notice)
+            rendered.append(fetch)
+        else:
+            rendered.append("\n")
     rendered.append(footer)
     return "".join(rendered)
 
@@ -886,8 +863,21 @@ def main() -> None:
         "--paths",
         action="store_true",
         help="print navigation only, without reference excerpts")
+    output.add_argument("--compact", action="store_true",
+                        help="experimental smaller bounded contract/check bundle")
+    output.add_argument("--stage", choices=("plan", "contract", "verify"),
+                        help="experimental navigation, contracts, or verification branch")
+    output.add_argument("--plan", action="store_const", const="plan", dest="stage",
+                        help="alias for --stage plan")
+    parser.add_argument("--record", help="reference path from the plan")
+    parser.add_argument("--section", help="exact heading to fetch completely (16000-char cap)")
     parser.add_argument("request", nargs="*")
     args = parser.parse_args()
+    if args.record or args.section:
+        if not (args.record and args.section) or args.full or args.paths or args.compact or args.stage or args.request:
+            parser.error("use --record and --section together, without routing arguments")
+        fetch_section(args.record, args.section, parser)
+        return
     text = " ".join(args.request).strip() or sys.stdin.read()
     if not text:
         print("usage: python3 scripts/route.py \"<the request text>\"")
@@ -976,10 +966,18 @@ def main() -> None:
             ) and rel not in recs and rel not in direct and rel not in focused:
                 focused.append(rel)
     if not args.full and not args.paths:
-        context = reference_context(recs + direct + focused, text)
-        if context:
-            print(f"\nSkill directory: {REFS.parent}")
-            print(context)
+        if args.stage == "plan":
+            print("\nFetch only needed contracts/checks with --stage contract|verify and the original request, or --record PATH --section HEADING.")
+            for record in dict.fromkeys(recs + direct + focused + ["validation.md", "workflow.md"]):
+                path = REFS / record
+                if path.is_file():
+                    print(record + ": " + "; ".join(title for title, _, _ in markdown_sections(path.read_text()) if not title.startswith("Premise")))
+        elif args.compact or args.stage:
+            print(resolve_placeholders(compact_context(
+                recs + direct + focused, text, args.stage or "bundle")))
+        else:
+            print(resolve_placeholders(
+                reference_context(recs + direct + focused, text)))
     if chosen:
         print(
             "\n## Candidate premise rows (check applicability and current source)\n"
@@ -988,7 +986,7 @@ def main() -> None:
             "| If the request claims or assumes | Verdict | Say |\n| --- | --- | --- |"
         )
         for _, claim, line in chosen:
-            print(line)
+            print(resolve_placeholders(line))
     if focused:
         print("\n## Focused records named by the matching rows\n")
         for rel in focused:
@@ -1002,6 +1000,12 @@ def main() -> None:
             f"Input-state representation: {REFS / 'conventions/ordering.md'}"
             "#product-state-amplitudes (product recipe only for product "
             "inputs; verify entangled inputs without assuming factorization)")
+    if dense_reference_wanted(recs + direct + focused, text):
+        print(
+            f"Dense references: {REFS / 'conventions/ordering.md'}"
+            "#dense-operator-self-test (run the self-test before trusting any "
+            "dense operator or statevector reference; fetch this section "
+            "if the selected output mode did not include its recipe)")
     print(CHECKLIST)
 
 

@@ -92,7 +92,9 @@ with the `cat` command shown.
 A requested circuit needs a concrete product-formula construction. Its action
 can be assessed by execution or a faithful operator model; the exact propagator
 alone does not evaluate the chosen product formula. Pure prediction requests do
-not mandate one kernel interface.
+not mandate one kernel interface, but a request that names CUDA-Q Algorithms
+must obtain its numbers from the library construction, with the dense
+propagator kept as the independent check.
 
 ## Verification
 
