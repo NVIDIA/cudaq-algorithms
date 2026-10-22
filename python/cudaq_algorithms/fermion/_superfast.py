@@ -309,29 +309,41 @@ def _tree_path(tree, num_modes, src, dst):
     return path
 
 
-def _stabilizer_words(graph):
-    """One loop stabilizer per independent cycle. Returns a list of
-    (coefficient, word) with the coefficient sign-fixed so that the code
-    subspace is the joint ``+1`` eigenspace.
+def _loop_stabilizer_words(backend):
+    """Loop stabilizers ``A(zeta) = i^s A_{z1 z2} A_{z2 z3} ... A_{zs z1}``
+    (paper Eq. 16), one per fundamental cycle of the interaction graph, as
+    ``(coeff, word)`` pairs whose joint ``+1`` eigenspace is the code
+    subspace (Eq. 17). Shared by the edge and the vertex encodings:
+    ``backend`` supplies ``a_word(i, j)`` (``i < j``), ``edges`` and
+    ``num_modes``.
 
-    The stabilizer is the (unphased) Pauli word of the product of edge
-    operators around a fundamental cycle, times ``(-1)^b`` where ``b`` is the
-    number of cycle edges traversed from a higher to a lower mode index. The
-    fermionic loop operator is a scalar on the code space; this orientation
-    count is exactly the sign that makes that scalar ``+1`` (the raw product's
-    ``i``/``-i`` phases and the cycle length drop out). The resulting operator
-    is a Hermitian involution whose ``+1`` eigenspace is the physical sector
-    (even fermion parity by default; ``parity=1`` moves the sector through
-    the vertex operators, not through these words)."""
-    tree, chords = _spanning_forest(graph)
+    The coefficient is the full phase of the ordered product -- the ``i^s``,
+    the orientation signs (``A_{u,v} = -A_{v,u}`` for an edge traversed
+    against its low -> high direction) and the ``+-1``/``+-i`` phases of the
+    successive Pauli products. Those phases depend on the mode labeling
+    (through the Z-dressing of the edge words) and do not cancel in general,
+    so no sign computed from the orientation count alone is correct for
+    every labeling; a wrong sign selects the eigenspace where the loop
+    relation holds with ``-1`` -- a pi flux through that cycle -- which is
+    not a representation of the fermion algebra for either parity sector.
+    Fundamental cycles are simple, so each ordered product is Hermitian up
+    to ``i^s`` and the coefficient is always ``+-1``."""
+    tree, chords = _spanning_forest(backend)
     stabilizers = []
     for (i, j) in chords:
-        cycle = _tree_path(tree, graph.num_modes, j, i) + [j]  # close the loop
-        backward = sum(1 for a, b in zip(cycle, cycle[1:]) if a > b)
-        word = (0, 0)
-        for a, b in zip(cycle, cycle[1:]):
-            _, word = _wmul(word, _a_word(graph, a, b))
-        stabilizers.append(((-1.0)**backward, word))
+        cycle = _tree_path(tree, backend.num_modes, j, i) + [j]
+        length = len(cycle) - 1
+        coeff, word = (1j)**length, (0, 0)
+        for u, v in zip(cycle, cycle[1:]):
+            ca, aw = backend.a_word(min(u, v), max(u, v))
+            if u > v:  # directed edge: A_{u,v} = -A_{v,u}
+                ca = -ca
+            coeff, word = _word_mul(coeff, word, ca, aw)
+        if abs(coeff.imag) > 1e-12 or abs(abs(coeff.real) - 1.0) > 1e-12:
+            raise RuntimeError(
+                "internal error: loop operator coefficient "
+                f"{coeff} is not +-1 (non-Hermitian stabilizer)")
+        stabilizers.append((coeff, word))
     return stabilizers
 
 
@@ -542,7 +554,14 @@ def _parity_vertex(backend, parity):
 
 class _StandardBackend:
     """The original edge encoding: one qubit per edge (Setia-Whitfield,
-    arXiv:1712.00446). A/B are real Hermitian Pauli words (coeff 1)."""
+    arXiv:1712.00446). A/B are real Hermitian Pauli words (coeff 1).
+
+    Eq. (12) is an operator identity here: every edge is incident to two
+    vertices, so ``prod_i B_i = prod_e Z_e^2 = I`` on the whole qubit space
+    and :func:`_code_space_parity` is always ``+1``. The loop stabilizer
+    signs (Eq. 16) alone therefore decide whether the code space carries a
+    faithful representation, and ``parity=1`` always negates one vertex
+    operator."""
 
     def __init__(self, graph, parity=0):
         self.graph = graph
@@ -563,7 +582,7 @@ class _StandardBackend:
         return sign, _b_word(self.graph, i)
 
     def stabilizers(self):
-        return _stabilizer_words(self.graph)
+        return _loop_stabilizer_words(self)
 
 
 def _word_mul(c1, w1, c2, w2):
@@ -790,28 +809,7 @@ class _GSEBackend:
         return coeff, word
 
     def stabilizers(self):
-        return _gse_stabilizer_words(self)
-
-
-def _gse_stabilizer_words(backend):
-    """Loop stabilizers ``A(zeta) = i^s prod A`` (paper Eq 16) -- one per
-    fundamental cycle. Each is Hermitian and the code subspace is its +1
-    eigenspace (Eq 17, App A Property 4); no extra sign fix is needed, the
-    ``i^s`` of the definition supplies it (``s`` = cycle length)."""
-    tree, chords = _spanning_forest(backend)
-    stabilizers = []
-    for (i, j) in chords:
-        cycle = _tree_path(tree, backend.num_modes, j, i) + [j]
-        length = len(cycle) - 1
-        coeff, word = 1.0 + 0j, (0, 0)
-        for u, v in zip(cycle, cycle[1:]):
-            ca, aw = backend.a_word(min(u, v), max(u, v))
-            if u > v:  # directed edge: A_{u,v} = -A_{v,u}
-                ca = -ca
-            coeff, word = _word_mul(coeff, word, ca, aw)
-        coeff *= (1j)**length
-        stabilizers.append((coeff, word))
-    return stabilizers
+        return _loop_stabilizer_words(self)
 
 
 # --- Even-degree padding and the error-correction graph conditions ---------

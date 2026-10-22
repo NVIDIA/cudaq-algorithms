@@ -21,7 +21,6 @@ from cudaq_algorithms.fermion import (jordan_wigner, bravyi_kitaev_superfast,
                                       bravyi_kitaev_superfast_stabilizers)
 from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
                                                  _anticommute, _build_graph,
-                                                 _stabilizer_words,
                                                  _encoding_backend, _word_mul,
                                                  _error_correcting_local_modes)
 
@@ -370,6 +369,47 @@ def test_code_space_is_the_joint_plus_one_eigenspace(name):
     even = _parity_sector_specs(h, V)[+1]
     assert len(spec) == len(even)
     assert np.max(np.abs(spec - even)) < 1e-10
+
+
+@pytest.mark.parametrize("parity", [0, 1])
+def test_standard_stabilizer_sign_regression(parity):
+    """On this labeling of the 5-ring the i/-i phases of the loop product do
+    not cancel: a stabilizer signed by the orientation count alone selects
+    the wrong eigenspace (its spectrum is the odd sector's here, ground
+    -3.236 instead of the even sector's -2.618). Eq. (16) carries the full
+    phase, for both parities."""
+    h = np.zeros((5, 5), dtype=complex)
+    for i, j in [(0, 1), (0, 2), (1, 3), (2, 4), (3, 4)]:
+        h[i, j] = h[j, i] = -1.0
+    assert _matches_jw(h, local_modes="standard", parity=parity) < 1e-10
+
+
+_CYCLIC_GRAPHS = {
+    "ring-5": _GRAPHS["ring-5"][1],
+    "ring-6": [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (0, 5)],
+    "theta-5": [(0, 1), (1, 2), (2, 3), (3, 4), (0, 4), (1, 4)],
+}
+
+
+@pytest.mark.parametrize("name", list(_CYCLIC_GRAPHS))
+@pytest.mark.parametrize("parity", [0, 1])
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_standard_stabilizer_sign_under_relabeling(name, parity, seed):
+    """The loop sign depends on the mode labeling through the edge words'
+    Z-dressing, and the fixed-labeling presets in ``_GRAPHS`` all happen to
+    be benign. Random relabelings with complex hopping and on-site terms: a
+    wrong sign (a pi flux through the cycle) then matches neither sector."""
+    rng = np.random.default_rng(seed)
+    edges = _CYCLIC_GRAPHS[name]
+    n = 1 + max(m for e in edges for m in e)
+    perm = rng.permutation(n)
+    h = np.zeros((n, n), dtype=complex)
+    for i, j in edges:
+        a, b = perm[i], perm[j]
+        v = rng.normal() + 1j * rng.normal()
+        h[a, b], h[b, a] = v, np.conj(v)
+    h[np.diag_indices(n)] = rng.normal(size=n)
+    assert _matches_jw(h, local_modes="standard", parity=parity) < 1e-10
 
 
 # ----------------------------------------------------------------------
