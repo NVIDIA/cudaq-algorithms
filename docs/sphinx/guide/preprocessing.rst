@@ -142,6 +142,24 @@ input entries and compiled terms below `tolerance` (default ``1e-15``) are
 dropped. The result is a `cudaq.SpinOperator`, ready for
 `PauliLCU`/`Walk`/`QSVT` or `Trotter`.
 
+Both tensors may also be given **sparse**, as mappings from index tuples to
+coefficients (missing entries are zero), with the mode count passed as
+``num_modes`` when no dense tensor fixes it — the natural form for lattice
+models, where a dense two-body tensor is :math:`O(n^4)` storage for
+:math:`O(n)` couplings. Dense and sparse forms may be mixed, and the two
+forms compile to the same operator:
+
+.. code-block:: python
+
+    h = {(0, 1): -1.0, (1, 0): -1.0, (1, 2): -1.0, (2, 1): -1.0}   # hopping
+    V = {(0, 1, 1, 0): 2.0}                                        # 2 n_0 n_1
+    op = jordan_wigner(h, V, num_modes=3)
+
+``num_modes`` is part of the operator's definition rather than something to
+infer from the largest index: it sets the qubit width, and for Bravyi–Kitaev
+the shape of the Fenwick tree. Declared modes that carry no term are allowed.
+`bravyi_kitaev_superfast` accepts the same inputs.
+
 The chemistry bridge (spatial integrals to a qubit Hamiltonian)
 ---------------------------------------------------------------
 

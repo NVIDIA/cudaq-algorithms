@@ -44,10 +44,9 @@ from __future__ import annotations
 import itertools
 import warnings
 
-import numpy as np
-
-from ._compilers import (_Encoding, _fenwick_matrix, _word_product,
-                         _to_spin_operator, _validate_tensors)
+from ._compilers import (_Encoding, _fenwick_matrix, _negligible,
+                         _normalize_integrals, _to_spin_operator,
+                         _word_product)
 
 # ---------------------------------------------------------------------------
 # (x, z)-word helpers  (a word is (x_mask, z_mask); coefficients are separate)
@@ -102,36 +101,32 @@ class _Graph:
         return self.qubit_of[(min(i, j), max(i, j))]
 
 
-def _required_structure(one_body, two_body, tolerance):
-    """Edges every Majorana bilinear needs, and modes carrying a number term."""
-    n = one_body.shape[0]
+def _required_structure(terms):
+    """Edges every Majorana bilinear needs, and modes carrying a number term.
+
+    An off-diagonal one-body entry ``(i, j)`` needs the edge ``(i, j)``; a
+    diagonal entry marks a number mode. Every pair of distinct modes in a
+    two-body entry becomes an edge, so each Majorana bilinear arising from
+    that term is a direct edge operator (no path routing needed for
+    correctness). This also keeps the graph connected -- e.g. Fermi-Hubbard,
+    whose hopping graph is two disconnected spin chains joined only by the
+    on-site Coulomb term -- so the code subspace is a single global-parity
+    sector rather than one parity per component. A dense two-body tensor
+    therefore needs a dense graph (~N^2/2 edges); BKSF's locality advantage
+    is for sparse couplings."""
     edges = set()
     number_modes = set()
-
-    for i in range(n):
-        if abs(one_body[i, i]) > tolerance:
+    for (i, j), _ in terms.one_body:
+        if i == j:
             number_modes.add(i)
-        for j in range(n):
-            if i < j and (abs(one_body[i, j]) > tolerance
-                          or abs(one_body[j, i]) > tolerance):
-                edges.add((i, j))
-
-    if two_body is not None and two_body.size:
-        for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
-            modes = sorted({int(i), int(j), int(k), int(l)})
-            number_modes.update(modes)
-            # Every pair of modes coupled by a two-body term must be an edge,
-            # so each Majorana bilinear arising from that term is a direct edge
-            # operator (no path routing needed for correctness). This also
-            # keeps the graph connected -- e.g. Fermi-Hubbard, whose hopping
-            # graph is two disconnected spin chains joined only by the on-site
-            # Coulomb term -- so the code subspace is a single global-parity
-            # sector rather than one parity per component. A dense two-body
-            # tensor therefore needs a dense graph (~N^2/2 edges); BKSF's
-            # locality advantage is for sparse couplings.
-            for a in range(len(modes)):
-                for b in range(a + 1, len(modes)):
-                    edges.add((modes[a], modes[b]))
+        else:
+            edges.add((min(i, j), max(i, j)))
+    for key, _ in terms.two_body:
+        modes = sorted(set(key))
+        number_modes.update(modes)
+        for a in range(len(modes)):
+            for b in range(a + 1, len(modes)):
+                edges.add((modes[a], modes[b]))
     return edges, number_modes
 
 
@@ -151,9 +146,10 @@ def _connected_components(active, edges):
     return {find(m) for m in active}
 
 
-def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
+def _build_graph(terms, interaction_graph=None):
     """Interaction graph from the nonzero terms (or a caller-supplied edge
-    list).
+    list). Declared modes that carry no term at all are simply absent from
+    the graph (no qubits), as an all-zero dense row/column always was.
 
     A supplied ``interaction_graph`` must be a *superset* of the edges the
     terms require (every pair of modes coupled by a term); extra edges are
@@ -166,8 +162,8 @@ def _build_graph(one_body, two_body, tolerance, interaction_graph=None):
     sector (and an isolated mode carrying only a number term has no faithful
     ``B_i``). Both cases raise, pointing at ``interaction_graph`` to add
     connecting edges (or map the components separately)."""
-    n = one_body.shape[0]
-    required, number_modes = _required_structure(one_body, two_body, tolerance)
+    n = terms.num_modes
+    required, number_modes = _required_structure(terms)
 
     if interaction_graph is None:
         edges = set(required)
@@ -389,7 +385,7 @@ def _normal_order(sequence):
     return sign, tuple(reduced)
 
 
-def _majorana_terms(one_body, two_body, tolerance):
+def _majorana_terms(terms, tolerance):
     """Full Hamiltonian as {sorted-Majorana-tuple: complex coefficient}."""
     accumulator: dict = {}
 
@@ -405,16 +401,14 @@ def _majorana_terms(one_body, two_body, tolerance):
             accumulator[monomial] = accumulator.get(monomial,
                                                     0j) + coeff * sign
 
-    n = one_body.shape[0]
-    for i, j in np.argwhere(np.abs(one_body) > tolerance):
-        expand(complex(one_body[i, j]), [(int(i), True), (int(j), False)])
-    if two_body is not None and two_body.size:
-        for i, j, k, l in np.argwhere(np.abs(two_body) > tolerance):
-            expand(complex(two_body[i, j, k, l]), [(int(i), True),
-                                                   (int(j), True),
-                                                   (int(k), False),
-                                                   (int(l), False)])
-    return {m: c for m, c in accumulator.items() if abs(c) > tolerance}
+    for (i, j), coefficient in terms.one_body:
+        expand(coefficient, [(i, True), (j, False)])
+    for (i, j, k, l), coefficient in terms.two_body:
+        expand(coefficient, [(i, True), (j, True), (k, False), (l, False)])
+    return {
+        m: c
+        for m, c in accumulator.items() if not _negligible(c, tolerance)
+    }
 
 
 def _bilinear_word(mu, nu, backend):
@@ -459,10 +453,9 @@ def _monomial_word(monomial, backend):
     return coeff, word
 
 
-def _compile(backend, one_body, two_body, scalar_offset, tolerance):
+def _compile(backend, terms, scalar_offset, tolerance):
     accumulator: dict = {(0, 0): complex(scalar_offset)}
-    for monomial, coefficient in _majorana_terms(one_body, two_body,
-                                                 tolerance).items():
+    for monomial, coefficient in _majorana_terms(terms, tolerance).items():
         c, word = _monomial_word(monomial, backend)
         accumulator[word] = accumulator.get(word, 0j) + coefficient * c
     return _to_spin_operator(accumulator, tolerance)
@@ -899,18 +892,13 @@ def _validate_error_correcting_graph(graph):
             "(Theorem 1); supply interaction_graph to make it 3-connected.")
 
 
-def _encoding_backend(one_body,
-                      two_body,
-                      tolerance,
-                      interaction_graph,
-                      local_modes,
-                      parity=0):
+def _encoding_backend(terms, interaction_graph, local_modes, parity=0):
     parity = _validate_parity(parity)
     if local_modes == "standard":
-        graph = _build_graph(one_body, two_body, tolerance, interaction_graph)
+        graph = _build_graph(terms, interaction_graph)
         _warn_if_dense(graph)
         return _StandardBackend(graph, parity)
-    base = _build_graph(one_body, two_body, tolerance, interaction_graph)
+    base = _build_graph(terms, interaction_graph)
     min_degree = 6 if local_modes == "error_correcting" else 2
     graph = _Graph(
         base.num_modes,
@@ -932,7 +920,9 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
                             tolerance: float = 1e-15,
                             interaction_graph=None,
                             local_modes="binary_tree",
-                            parity: int = 0):
+                            parity: int = 0,
+                            *,
+                            num_modes: int | None = None):
     """Bravyi-Kitaev Superfast transform of fermionic integrals.
 
     A locality-preserving fermion-to-qubit mapping that places the qubits by
@@ -942,12 +932,32 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     graph edges (``> N`` for dense Hamiltonians -- this mapping is for sparse
     ones).
 
-    Accepts an ``(n, n)`` one-body tensor, optionally with an ``(n, n, n, n)``
-    two-body tensor, or a two-body tensor alone; entries are the coefficients
-    of ``adag_i a_j`` and ``adag_i adag_j a_k a_l``. Arbitrary (complex,
-    non-symmetric) one-body and arbitrary two-body integrals are supported.
-    ``scalar_offset`` is added as an identity term; entries and compiled terms
-    below ``tolerance`` are dropped. Returns a ``cudaq.SpinOperator``.
+    The integrals are the coefficients of ``adag_i a_j`` and
+    ``adag_i adag_j a_k a_l`` (the convention of :func:`jordan_wigner`,
+    compiled exactly as given), either **dense** -- an ``(n, n)`` one-body
+    tensor, optionally with an ``(n, n, n, n)`` two-body tensor, or a
+    two-body tensor alone -- or **sparse**, mappings from index tuples to
+    coefficients whose missing entries are zero. Sparse is the natural form
+    for the lattice models this encoding is for, where a dense two-body
+    tensor is ``O(n^4)`` storage for ``O(n)`` couplings::
+
+        L = 10                                  # Hubbard chain, 2p up / 2p+1 down
+        h = {}
+        for site in range(L - 1):
+            for spin in (0, 1):
+                a, b = 2 * site + spin, 2 * site + 2 + spin
+                h[(a, b)] = h[(b, a)] = -1.0
+        V = {(2 * s, 2 * s + 1, 2 * s + 1, 2 * s): 4.0 for s in range(L)}
+        op = bravyi_kitaev_superfast(h, V, num_modes=2 * L)
+
+    Dense and sparse forms may be mixed; the mode count is read from any
+    dense tensor and must be given as ``num_modes`` when both inputs are
+    mappings. Declared modes that carry no term are not part of the
+    interaction graph and get no qubits (as an all-zero dense row/column
+    never did). Arbitrary (complex, non-symmetric) one-body and arbitrary
+    two-body integrals are supported. ``scalar_offset`` is added as an
+    identity term; input entries (explicit zeros included) and compiled
+    terms below ``tolerance`` are dropped. Returns a ``cudaq.SpinOperator``.
 
     ``local_modes`` selects the construction (Setia, Bravyi, Mezzacapo,
     Whitfield, Phys. Rev. Research 1, 033033, generalizing Bravyi-Kitaev,
@@ -997,11 +1007,12 @@ def bravyi_kitaev_superfast(one_body_or_two_body,
     :func:`bravyi_kitaev_superfast_stabilizers` for the loop stabilizers that
     fix the code subspace.
     """
-    one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
-                                                  two_body)
-    backend = _encoding_backend(one_body, two_body_arr, tolerance,
-                                interaction_graph, local_modes, parity)
-    return _compile(backend, one_body, two_body_arr, scalar_offset, tolerance)
+    terms = _normalize_integrals(one_body_or_two_body,
+                                 two_body,
+                                 num_modes=num_modes,
+                                 tolerance=tolerance)
+    backend = _encoding_backend(terms, interaction_graph, local_modes, parity)
+    return _compile(backend, terms, scalar_offset, tolerance)
 
 
 def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
@@ -1009,7 +1020,9 @@ def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
                                         tolerance: float = 1e-15,
                                         interaction_graph=None,
                                         local_modes="binary_tree",
-                                        parity: int = 0):
+                                        parity: int = 0,
+                                        *,
+                                        num_modes: int | None = None):
     """Loop stabilizers of the Superfast code subspace for the given integrals.
 
     Returns one ``cudaq.SpinOperator`` per independent cycle of the interaction
@@ -1020,16 +1033,17 @@ def bravyi_kitaev_superfast_stabilizers(one_body_or_two_body,
     Restricting the mapped Hamiltonian to that eigenspace recovers the
     fermionic spectrum of the sector.
 
-    ``local_modes``, ``interaction_graph`` and ``parity`` are as in
-    :func:`bravyi_kitaev_superfast` (use the same values for both so the
-    stabilizers act on the matching qubits). The stabilizer words themselves
-    do not depend on ``parity``: the sector is selected by the vertex
-    operators the Hamiltonian compiles to.
+    The integrals, ``local_modes``, ``interaction_graph``, ``parity`` and
+    ``num_modes`` are as in :func:`bravyi_kitaev_superfast` (use the same
+    values for both so the stabilizers act on the matching qubits). The
+    stabilizer words themselves do not depend on ``parity``: the sector is
+    selected by the vertex operators the Hamiltonian compiles to.
     """
-    one_body, two_body_arr, _ = _validate_tensors(one_body_or_two_body,
-                                                  two_body)
-    backend = _encoding_backend(one_body, two_body_arr, tolerance,
-                                interaction_graph, local_modes, parity)
+    terms = _normalize_integrals(one_body_or_two_body,
+                                 two_body,
+                                 num_modes=num_modes,
+                                 tolerance=tolerance)
+    backend = _encoding_backend(terms, interaction_graph, local_modes, parity)
     return [
         _to_spin_operator({word: coeff}, tolerance)
         for coeff, word in backend.stabilizers()

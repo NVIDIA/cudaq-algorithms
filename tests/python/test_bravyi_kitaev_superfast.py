@@ -19,6 +19,7 @@ import cudaq
 
 from cudaq_algorithms.fermion import (jordan_wigner, bravyi_kitaev_superfast,
                                       bravyi_kitaev_superfast_stabilizers)
+from cudaq_algorithms.fermion._compilers import _normalize_integrals
 from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
                                                  _anticommute, _build_graph,
                                                  _encoding_backend, _word_mul,
@@ -81,10 +82,8 @@ def _codespace_spec(h,
     ``to_matrix()`` compacts unused qubit indices, which would misalign the
     projection on graphs whose stabilizers do not touch qubit 0."""
     args = (h, ) if V is None else (h, V)
-    backend = _encoding_backend(
-        np.asarray(h, dtype=complex),
-        np.zeros((0, 0, 0, 0)) if V is None else np.asarray(V, dtype=complex),
-        1e-15, interaction_graph, local_modes, parity)
+    backend = _encoding_backend(_normalize_integrals(*args), interaction_graph,
+                                local_modes, parity)
     nq = backend.num_qubits
     dim = 1 << nq
     Hb = _dense(
@@ -840,8 +839,8 @@ def _k7_error_correcting_backend():
     size = 7
     complete = [(i, j) for i in range(size) for j in range(i + 1, size)]
     one_body = np.zeros((size, size), dtype=complex)
-    backend = _encoding_backend(one_body, np.zeros((0, 0, 0, 0)), 1e-15,
-                                complete, "error_correcting")
+    backend = _encoding_backend(_normalize_integrals(one_body), complete,
+                                "error_correcting")
     return size, complete, backend
 
 
@@ -1052,9 +1051,8 @@ def test_complex_five_mode_model_lands_in_the_requested_sector(
 def _encoded_parity_on_code_space(h, V, local_modes, parity):
     """Eigenvalue of the encoded parity prod_i B_i on the code space (dense)."""
     from cudaq_algorithms.fermion._superfast import _word_mul
-    backend = _encoding_backend(np.asarray(h, dtype=complex),
-                                np.asarray(V, dtype=complex), 1e-15, None,
-                                local_modes, parity)
+    backend = _encoding_backend(_normalize_integrals(h, V), None, local_modes,
+                                parity)
     nq = backend.num_qubits
     coeff, word = 1.0 + 0j, (0, 0)
     for i in sorted({m for edge in backend.edges for m in edge}):
