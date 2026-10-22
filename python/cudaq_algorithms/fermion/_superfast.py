@@ -483,17 +483,30 @@ def _validate_parity(parity) -> int:
 def _stabilizer_subset(words, target):
     """Indices of a subset of Pauli ``words`` whose product has the Pauli
     word ``target`` (GF(2) elimination on the (x, z) bit vectors), or
-    ``None`` when ``target`` is not in the group they generate."""
+    ``None`` when ``target`` is not in the group they generate.
+
+    Each word is packed into one integer as ``x | (z << width)`` with
+    ``width`` the widest mask among the inputs, so the x and z halves never
+    overlap however many qubits the encoding uses (a fixed 64-bit offset
+    once made ``X_64`` and ``Z_0`` indistinguishable)."""
+    words = list(words)
+    width = max(
+        (mask.bit_length() for x, z in (*words, target) for mask in (x, z)),
+        default=0)
+
+    def pack(x, z):
+        return x | (z << width)
+
     rows = []  # (pivot bit, vector, index set)
     for index, (x, z) in enumerate(words):
-        vector, members = x | (z << 64), {index}
+        vector, members = pack(x, z), {index}
         for pivot, basis, basis_members in rows:
             if vector >> pivot & 1:
                 vector ^= basis
                 members ^= basis_members
         if vector:
             rows.append((vector.bit_length() - 1, vector, members))
-    vector, members = target[0] | (target[1] << 64), set()
+    vector, members = pack(*target), set()
     for pivot, basis, basis_members in rows:
         if vector >> pivot & 1:
             vector ^= basis

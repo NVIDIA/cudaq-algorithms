@@ -23,7 +23,8 @@ from cudaq_algorithms.fermion._compilers import _normalize_integrals
 from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
                                                  _anticommute, _build_graph,
                                                  _encoding_backend, _word_mul,
-                                                 _error_correcting_local_modes)
+                                                 _error_correcting_local_modes,
+                                                 _stabilizer_subset)
 
 _PAULI = {
     "I": np.eye(2),
@@ -1083,3 +1084,99 @@ def test_encoded_parity_equals_requested_sector(name, local_modes, parity):
                                          parity) == pytest.approx(
                                              1.0 if parity == 0 else -1.0,
                                              abs=1e-9)
+
+
+# ----------------------------------------------------------------------
+# Regression: the GF(2) stabilizer solver beyond 64 encoding qubits
+# ----------------------------------------------------------------------
+
+
+def _circulant_hopping(n, deltas):
+    """Uniform hopping on the circulant graph C_n(deltas): mode ``i`` is
+    coupled to ``i +- d`` (mod n) for each ``d`` (degree ``2 * len(deltas)``)."""
+    h = {}
+    for i in range(n):
+        for d in deltas:
+            j = (i + d) % n
+            h[i, j] = h[j, i] = -1.0
+    return h
+
+
+def test_stabilizer_subset_distinguishes_x_and_z_beyond_64_qubits():
+    """The solver once packed words as ``x | (z << 64)``, so ``X_64`` and
+    ``Z_0`` were the same GF(2) vector and membership tests were wrong past
+    64 qubits."""
+    x64, z0 = (1 << 64, 0), (0, 1)
+    assert _stabilizer_subset([x64], z0) is None
+    assert _stabilizer_subset([z0], x64) is None
+    assert _stabilizer_subset([x64, z0], (1 << 64, 1)) == [0, 1]
+    assert _stabilizer_subset([x64, z0], (0, 0)) == []
+    assert _stabilizer_subset([], (0, 0)) == []
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_stabilizer_subset_reproduces_target_on_wide_words(seed):
+    """Random words on 99 qubits: the subset returned for a product of some
+    of them reproduces that product exactly, and a word touching a qubit no
+    generator touches is reported absent."""
+    rng = np.random.default_rng(seed)
+
+    def mask():
+        return int(
+            sum(int(b) << k for k, b in enumerate(rng.integers(0, 2, 99))))
+
+    words = [(mask(), mask()) for _ in range(20)]
+    chosen = [k for k in range(20) if rng.integers(0, 2)]
+    tx, tz = 0, 0
+    for k in chosen:
+        tx, tz = tx ^ words[k][0], tz ^ words[k][1]
+    subset = _stabilizer_subset(words, (tx, tz))
+    assert subset is not None
+    px, pz = 0, 0
+    for k in subset:
+        px, pz = px ^ words[k][0], pz ^ words[k][1]
+    assert (px, pz) == (tx, tz)
+    assert _stabilizer_subset(words, (tx | (1 << 99), tz)) is None
+
+
+@pytest.mark.parametrize("parity", [0, 1])
+def test_default_encoding_beyond_64_qubits_builds(parity):
+    """34 modes with nearest- and next-nearest-neighbour hopping (degree 4):
+    68 edges and 68 binary-tree qubits. The encoded parity word reaches bit
+    67 and used to be reported missing from the stabilizer group."""
+    n = 34
+    h = _circulant_hopping(n, (1, 2))
+    op = bravyi_kitaev_superfast(h, num_modes=n, parity=parity)
+    assert op.qubit_count == 68
+    assert op.term_count == 136  # two Paulis per undirected hop
+    stabs = bravyi_kitaev_superfast_stabilizers(h, num_modes=n, parity=parity)
+    assert len(stabs) == 68 - n + 1
+
+
+@pytest.mark.parametrize("local_modes", ["binary_tree", "error_correcting"])
+@pytest.mark.parametrize("parity", [0, 1])
+def test_encoded_parity_subset_beyond_64_qubits(local_modes, parity):
+    """Eq. (12) at 72 qubits without dense matrices: on the degree-6
+    circulant C_24(1, 2, 3) both generalized encodings use three qubits per
+    mode. The encoded parity word is non-trivial, the solver finds it in the
+    stabilizer group, the subset reproduces it exactly, and the coefficient
+    ratio is the requested sector."""
+    n = 24
+    h = _circulant_hopping(n, (1, 2, 3))
+    backend = _encoding_backend(_normalize_integrals(h, num_modes=n), None,
+                                local_modes, parity)
+    assert backend.num_qubits == 72
+    coeff, word = 1.0 + 0j, (0, 0)
+    for i in sorted({m for edge in backend.edges for m in edge}):
+        coeff, word = _word_mul(coeff, word, *backend.b_word(i))
+    assert word != (0, 0)  # unlike the edge encoding, prod_i B_i != I
+    stabilizers = backend.stabilizers()
+    assert len(stabilizers) == len(backend.edges) - n + 1
+    subset = _stabilizer_subset([w for _, w in stabilizers], word)
+    assert subset
+    s_coeff, s_word = 1.0 + 0j, (0, 0)
+    for k in subset:
+        s_coeff, s_word = _word_mul(s_coeff, s_word, *stabilizers[k])
+    assert s_word == word
+    assert complex(coeff) / complex(s_coeff) == pytest.approx(
+        1.0 if parity == 0 else -1.0, abs=1e-12)
