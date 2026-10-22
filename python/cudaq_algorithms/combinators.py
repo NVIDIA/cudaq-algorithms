@@ -114,23 +114,26 @@ class SumEncoding:
     ``num_slots = max(1, ceil(log2 K))`` and a pool as wide as the widest
     summand, so ``num_ancilla = num_slots + 1 + max_i num_ancilla_i``.
     PREPARE puts amplitude ``sqrt(|c_i| alpha_i / alpha)`` on slot ``|i>``
-    (the same binary rotation tree ``PauliLCU`` uses); SELECT computes
-    ``flag <- (slot == i)``, phases the branch by ``-1`` when ``c_i < 0``,
-    and lets the flag drive summand ``i``'s ``controlled_apply_kernel`` on
-    the contiguous ``[flag | pool]`` view. SELECT is block-diagonal over the
-    slot register, each block a unitary on the whole pool, so summands of
-    different widths share the pool and the encoded block is the all-zero
+    (the same binary rotation tree ``PauliLCU`` uses). For each summand,
+    SELECT toggles ``flag ^= (slot == i)``, applies the signed operand
+    controlled by the flag, restores the flag, and repeats the signed
+    controlled operand on the contiguous ``[flag | pool]`` view. Since the
+    signed operand is an involution, the two calls cancel off the selected
+    slot and apply it once on the selected slot, independently of the
+    incoming flag state. SELECT is block-diagonal over the slot register,
+    each block a unitary on the whole pool, so summands of different widths
+    share the pool and the encoded block is the all-zero
     subspace of the entire ancilla register, which the walk's reflection
     covers.
 
-    Each summand's ``apply_kernel`` must be Hermitian, hence an involution
-    (``PREPARE-dagger SELECT PREPARE`` with an involutory SELECT is; so is
-    every encoding in this package and every combinator of them). Then each
-    slot factor and SELECT itself are involutions and the standard walk
-    construction applies. A protocol-conforming encoding that is not
-    Hermitian still yields the right block and first walk step, but wrong
-    walk powers ``>= 2`` and QSVT sequences; the protocol cannot check
-    this, so verify ``U_A^2 = I`` for a foreign encoding before summing it.
+    Each summand's ``apply_kernel`` must be Hermitian on its entire
+    ancilla and system register, hence an involution (``U_A^2 = I``).
+    Its ``controlled_apply_kernel`` must implement exact controlled-``U_A``
+    for arbitrary incoming ancilla states. Then each signed operand
+    ``sign(c_i) U_A``, each slot factor and SELECT itself are involutions,
+    and the standard walk construction applies. An encoding that merely
+    provides the protocol's API members can still violate these properties;
+    verify both for a foreign encoding before summing it.
 
     Parameters
     ----------
@@ -250,7 +253,10 @@ class SumEncoding:
         return unprepare_slots
 
     # ------------------------------------------------------------------
-    # SELECT: one flag-driven factor per slot
+    # SELECT: echo each signed involution around a flag toggle pair.
+    # For predicate p and incoming flag f, the operand A acts with exponent
+    # (f XOR p) + f. Since A^2 = I, this is A^p for either flag value, even
+    # when the flag is entangled with the shared pool or system.
     # ------------------------------------------------------------------
 
     def _slot_kernel(self, index: int):
@@ -284,11 +290,14 @@ class SumEncoding:
             for b in zero_bits:
                 if b >= 0:
                     x(ancilla[b])
+            if negative:
+                z(ancilla[m])
+            controlled(ancilla[m:m + width], system)
 
         return slot
 
     def _controlled_slot_kernel(self, index: int):
-        """Layout ``[control][slot][flag][pool]``: flag <- control AND (slot == index)."""
+        """Layout ``[control][slot][flag][pool]``; predicate is control AND slot match."""
         m = self._num_slots
         negative = self._coefficients[index] < 0.0
         controlled = self._summands[index].controlled_apply_kernel()
@@ -321,6 +330,9 @@ class SumEncoding:
             for b in zero_bits:
                 if b >= 0:
                     x(control_and_ancilla[b])
+            if negative:
+                z(control_and_ancilla[1 + m])
+            controlled(control_and_ancilla[1 + m:1 + m + width], system)
 
         return controlled_slot
 
