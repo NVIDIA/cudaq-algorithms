@@ -736,3 +736,50 @@ def test_spatial_givens_network_realizes_v_up_to_mode_signs(matrix):
         realized_inverse, leak = _one_particle_matrix(*inverse, n, spin)
         assert leak < 1e-12
         np.testing.assert_allclose(realized_inverse, expected.T, atol=1e-12)
+
+
+@pytest.mark.parametrize("diagonal", [(1, ), (-1, ), (1, 1, 1), (-1, 1, -1)])
+@pytest.mark.parametrize("inverse", [False, True])
+def test_diagonal_orbital_program_padding_is_identity(diagonal, inverse):
+    schedule = stateprep.make_orbital_rotation_schedule(np.diag(diagonal))
+    modes, angles = stateprep.orbital_rotation_program(schedule,
+                                                       inverse=inverse)
+    assert modes == [] and angles == []
+    # Follow the documented padding recipe, including on a two-qubit register.
+    modes, angles = [0], [0.0]
+
+    @cudaq.kernel
+    def apply(state: cudaq.State):
+        system = cudaq.qvector(state)
+        stateprep.spatial_givens_network(system, modes, angles)
+
+    rng = np.random.default_rng(71)
+    dimension = 1 << (2 * len(diagonal))
+    ket = rng.normal(size=dimension) + 1j * rng.normal(size=dimension)
+    ket /= np.linalg.norm(ket)
+    # V D is identity for any sign diagonal, in both directions and every
+    # particle-number sector. Compare amplitudes without removing a phase.
+    actual = np.asarray(cudaq.get_state(apply, algorithms.state_from(ket)))
+    np.testing.assert_allclose(actual, ket, atol=_reference_atol())
+
+
+@pytest.mark.parametrize("adjoint", [False, True])
+def test_single_mode_padding_supports_control_and_adjoint(adjoint):
+    modes, angles = [0], [0.0]
+
+    @cudaq.kernel
+    def apply(state: cudaq.State):
+        q = cudaq.qvector(state)
+        system = q[0:2]
+        if adjoint:
+            cudaq.adjoint(stateprep.spatial_givens_network, system, modes,
+                          angles)
+        else:
+            cudaq.control(stateprep.spatial_givens_network, q[2], system,
+                          modes, angles)
+
+    # Include coherent control branches and all one-mode occupations.
+    ket = np.array([1.0, 2j, -3.0, 4j, 5j, -6.0, 7j, 8.0])
+    ket /= np.linalg.norm(ket)
+    actual = np.asarray(cudaq.get_state(apply, algorithms.state_from(ket)))
+    np.testing.assert_allclose(actual, ket, atol=_reference_atol())

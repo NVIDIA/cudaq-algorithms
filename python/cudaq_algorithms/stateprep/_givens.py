@@ -482,14 +482,17 @@ def spatial_givens_rotation(system: cudaq.qview, theta: float, mode: int):
     spin the rotation ``exp(theta (a^dag_p a_{p+1} - a^dag_{p+1} a_p))`` is
     an ``XZY`` / ``YZX`` ``exp_pauli`` pair on the contiguous three-qubit
     window starting at the mode's qubit, whose middle qubit carries the
-    Jordan-Wigner parity of the other spin. A zero angle is the identity.
+    Jordan-Wigner parity of the other spin. A zero angle is the identity
+    without accessing either window, so mode-zero padding is safe even
+    on a single spatial mode (two qubits).
     """
-    up = system[2 * mode:2 * mode + 3]
-    exp_pauli(0.5 * theta, up, "XZY")
-    exp_pauli(-0.5 * theta, up, "YZX")
-    down = system[2 * mode + 1:2 * mode + 4]
-    exp_pauli(0.5 * theta, down, "XZY")
-    exp_pauli(-0.5 * theta, down, "YZX")
+    if theta != 0.0:
+        up = system[2 * mode:2 * mode + 3]
+        exp_pauli(0.5 * theta, up, "XZY")
+        exp_pauli(-0.5 * theta, up, "YZX")
+        down = system[2 * mode + 1:2 * mode + 4]
+        exp_pauli(0.5 * theta, down, "XZY")
+        exp_pauli(-0.5 * theta, down, "YZX")
 
 
 @cudaq.kernel
@@ -571,7 +574,8 @@ def orbital_rotation_program(schedule: OrbitalRotationSchedule, *,
     ``inverse=True`` it realizes the transpose, ``D V^T``: the sweep in
     elimination order. The lists are empty for a diagonal ``V``; no empty
     list may cross the kernel boundary (cuda-quantum#4847), so callers pad
-    with a zero-angle rotation when needed.
+    with ``modes=[0], angles=[0.0]`` when needed. This is an identity even
+    for a single spatial mode (two qubits).
     """
     if inverse:
         pairs = list(schedule.rotations)
