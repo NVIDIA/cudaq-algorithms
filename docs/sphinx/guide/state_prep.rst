@@ -216,6 +216,8 @@ conjugate their encodings with:
    schedule.signs                # residual +-1 per mode: the network gives V D
 
    modes, angles = stateprep.orbital_rotation_program(schedule, inverse=False)
+   if not modes:
+       modes, angles = [0], [0.0]   # identity padding for a diagonal V
    stateprep.spatial_givens_network(system, modes, angles)   # realizes V D
    stateprep.spatial_givens_rotation(system, theta, mode)    # one rotation
 
@@ -226,8 +228,9 @@ network kernel takes, ``inverse=False`` realizing ``V D`` and
 ``inverse=True`` its transpose. The sign per mode is immaterial for
 operators diagonal in the rotated modes and must be accounted for
 otherwise (`RotatedEncoding.mode_signs` reports it). The lists are empty
-for a diagonal ``V``; pad with one zero-angle rotation before crossing the
-kernel boundary.
+for a diagonal ``V``; pad with ``modes=[0], angles=[0.0]`` before crossing
+the kernel boundary. Zero-angle rotations skip the qubit slices, so this
+padding is an identity even for a single spatial mode (two qubits).
 
 State preparation injection
 ---------------------------
