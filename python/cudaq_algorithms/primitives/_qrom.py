@@ -4,7 +4,8 @@
 
 ``QROM(data, address_bits, output_bits)`` mints the lookup
 ``|k>|y> -> |k>|y XOR data[k]>`` behind one kernel signature
-``(address: qview, ladder: qview, output: qview)`` — all little-endian
+``(address: qview, ladder: qview, output: qview)`` — with a leading
+one-qubit ``control`` view when ``controlled=True`` — all little-endian
 (qubit 0 = LSB, ``docs/conventions.md``), ``ladder`` being ``num_ladder``
 clean ancillas (``|0>`` in, ``|0>`` out). Addresses ``k >= len(data)`` read as
 zero. Two constructions sit behind ``variant=``:
@@ -40,13 +41,19 @@ on full uncontrolled trees):
   both the routing and the block writes run twice (compute + unitary
   uncompute).
 - ``controlled=True`` adds an external control qubit and replaces ``W``
-  by its controlled count (the walk's root CNOTs become Toffolis). Only
-  the walk passes carry the control: at control ``|0>`` a controlled walk
-  writes nothing, so the block registers stay ``|0>`` and the routing
-  Fredkins, the copy CNOTs and the un-route/un-write act on ``|0>`` as the
-  identity. The lookup is then the identity at control ``|0>`` and the
-  plain lookup at ``|1>``, with the control as a separate one-qubit view
-  first in the signature, as ``unary_iteration_kernels`` does.
+  by its controlled count (``_walk_toffoli_count(n, m, controlled)``: the
+  walk's root gadgets become Toffolis and its root crossings lose the
+  unguarded shortcut). Only the walk passes carry the control: at control
+  ``|0>`` a controlled walk on a clean ladder writes nothing, so the block
+  registers stay ``|0>`` and the routing Fredkins, the copy CNOTs and the
+  un-route/un-write act on ``|0>`` as the identity. The lookup is then
+  the identity at control ``|0>`` and the plain lookup at ``|1>``, with
+  the control as a separate one-qubit view first in the signature, as
+  ``unary_iteration_kernels`` does. The identity at ``|0>`` is a
+  clean-ladder statement (the clean ladder is the kernel's precondition
+  in any case), not the all-inputs identity of ``cudaq.control`` over the
+  plain lookup: on a dirty ladder the deeper walk Toffolis are gated by
+  ladder lines, not by the control.
 
 The papers' headline counts (``N - 1`` lookup Toffolis for SELECT,
 ``ceil(N/B) + output_bits * (B - 1)`` for QROAM) price ancilla
@@ -68,7 +75,8 @@ Implementation notes: register layout and the ``ladder`` view
 ------------------------------------------------------------------------
 
 Every minted kernel has the same signature, ``(address, ladder,
-output)``, and ``ladder`` is simply **the clean-ancilla register** —
+output)`` (``(control, address, ladder, output)`` when ``controlled``),
+and ``ladder`` is simply **the clean-ancilla register** —
 its contents differ per variant, and for ``select_swap`` the name is
 looser than the physics:
 
@@ -189,7 +197,9 @@ class QROM:
     controlled
         ``True`` mints the externally controlled lookup: the kernel takes
         a leading one-qubit ``control`` view, is the identity at control
-        ``|0>`` and the plain lookup at ``|1>`` (module docstring).
+        ``|0>`` and the plain lookup at ``|1>`` (module docstring). The
+        identity at ``|0>`` holds on the clean ladder the kernel requires
+        anyway; a dirty ladder is outside the contract either way.
 
     The views of the minted kernel may live anywhere (no contiguity
     requirement between them), which is what lets callers weave the QROM
@@ -205,7 +215,9 @@ class QROM:
                  variant: str = "auto",
                  block_size: int | None = None,
                  controlled: bool = False) -> None:
-        controlled = bool(controlled)
+        if not isinstance(controlled, bool):
+            raise ValueError("controlled must be a bool (pass bool(flag) "
+                             "for numpy booleans)")
         if int(address_bits) != address_bits or address_bits < 1:
             raise ValueError("address_bits must be a positive integer")
         if int(output_bits) != output_bits or output_bits < 1:
@@ -438,4 +450,5 @@ class QROM:
                 f"output_bits={self.num_output}, "
                 f"variant={self._variant!r}, "
                 f"block_size={self._block_size}, "
+                f"controlled={self._controlled}, "
                 f"toffolis={self.toffoli_count})")
