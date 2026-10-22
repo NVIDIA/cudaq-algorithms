@@ -779,7 +779,13 @@ def test_hf_focus_preserves_other_explicit_preparation_stages():
     output = route_cli(
         "Prepare a Hartree-Fock reference, then apply a Givens rotation and a UCC ansatz."
     )
-    assert "run_slater" in output.split("Selected reference text", 1)[1]
+    context = output.split("Selected reference text", 1)[1]
+    assert "For an **orbital determinant**" in context
+    assert "For an **ordered correlated preparation**" in context
+    # Longer absolute paths can move optional examples to the section fetch.
+    verification = complete_delivered_section(
+        context, "state-preparation/state-preparation.md", "Verification")
+    assert "run_slater" in verification
 
 
 def test_relocated_installation_keeps_bounded_contracts_and_working_fetches(
