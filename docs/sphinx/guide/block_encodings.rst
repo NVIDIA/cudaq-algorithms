@@ -304,19 +304,29 @@ whole Hamiltonian. (The identity part of ``U`` counts in both numbers.)
 and the summands share one ancilla pool as wide as the widest of them:
 ``num_ancilla = num_slots + 1 + max_i num_ancilla_i``, in the order
 ``[slot][flag][shared pool]``. PREPARE puts amplitude
-``sqrt(|c_i| alpha_i / alpha)`` on slot ``|i>``; SELECT computes
-``flag <- (slot == i)`` and lets the flag drive summand ``i``'s own
-`controlled_apply_kernel` on the contiguous ``[flag | pool]`` view. Pool
-sharing is sound because SELECT is block-diagonal over the slot register,
-each block a unitary on the whole pool, and the encoded block is the
+``sqrt(|c_i| alpha_i / alpha)`` on slot ``|i>``. For each summand, SELECT
+uses the flag to control the signed operand on the contiguous
+``[flag | pool]`` view: toggle ``flag ^= (slot == i)``, apply the signed
+operand, restore the flag, then repeat the signed operand. The two calls
+cancel on inactive slots and apply the signed operand once on the selected
+slot, regardless of the incoming flag state, because each operand is an
+involution. The flag is restored even when it is entangled with the pool
+or system. Pool sharing is sound because SELECT is block-diagonal over the
+slot register, each block a unitary on the whole pool, and the encoded block is the
 all-zero subspace of the entire ``[slot][flag][pool]`` register, which the
 walk's reflection covers; a summand's ancillas need not return to ``|0>``
 (an alias-sampled summand's garbage does not). `RotatedEncoding` adds no
 ancillas.
 
-**Costs.** The slot PREPARE is ``2^num_slots - 1`` controlled rotations per
-application; SELECT adds two ``num_slots``-controlled flag flips per summand
-and one extra control on every gate of every summand. An orbital-rotation
+**Costs.** Each slot PREPARE or unprepare uses ``2^num_slots - 1`` rotations;
+a full block-encoding application uses both. SELECT adds two
+``num_slots``-controlled flag flips and two calls to each summand's
+`controlled_apply_kernel`, including its PREPARE and unprepare costs. A
+negative coefficient also adds two flag Z gates. For controlled SELECT,
+the flag flips have one additional external control. The two operand calls
+are needed even when the incoming flag happens to be zero, and the same
+factor applies at each level of nested sums: a leaf below ``d`` sum levels
+is called ``2^d`` times per path. An orbital-rotation
 network applies ``num_rotations`` adjacent Givens rotations per spin sector
 on entry and again on exit. The ``alpha`` saving is bought with these gates
 and the extra ``num_slots + 1`` ancillas.
@@ -333,12 +343,13 @@ filters and QPE decoders need.
 register as a whole.
 
 **Requirement on operands.** Every operand's `apply_kernel` must be
-Hermitian, hence an involution, as the protocol requires and every encoding
-in this package satisfies. The sum's SELECT is built from the operands'
-``U_A``; with a non-Hermitian operand the block and the first walk step are
-still right but walk powers ``>= 2`` and QSVT sequences are not. The
-protocol cannot check this, so verify ``U_A^2 = I`` for a foreign encoding
-before summing it.
+Hermitian, hence an involution (``U_A^2 = I``), on its entire ancilla and
+system register. Its `controlled_apply_kernel` must implement exact
+controlled-``U_A`` for arbitrary incoming ancilla states. These are the
+protocol's requirements, which every encoding in this package satisfies;
+matching its API members alone does not establish them. Verify both
+properties for a foreign encoding before summing it, since the signed
+operand cancellation and the walk and QSVT constructions rely on them.
 
 **The orbital-rotation constructor.** `RotatedEncoding.from_orbital_rotation(inner, orthogonal)`
 takes a real orthogonal ``n x n`` matrix whose columns are the target
