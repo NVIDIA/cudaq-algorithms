@@ -123,6 +123,39 @@ inverts a linear system through a polynomial approximation of
 :math:`1/x` — the QSVT reading of HHL — changing nothing but the phase
 sequence.
 
+Quantum phase estimation
+------------------------
+
+`PhaseEstimation` estimates eigenvalues of ``H`` from any `BlockEncoding` by
+phase-estimating its qubitization walk: ``W`` has eigenvalues
+``e^{±iθ}`` with ``cos θ = -E/alpha`` on each eigenspace of ``H``, so an
+``m``-bit readout ``j`` decodes as ``E = -alpha cos(2π j / 2^m)``. No time
+evolution and no phase-angle synthesis are needed — the controlled walk,
+the inverse QFT and state preparation are already in the library.
+
+.. code-block:: python
+
+   from cudaq_algorithms import PauliLCU, PhaseEstimation
+
+   qpe = PhaseEstimation(PauliLCU(hamiltonian))
+   kernel = qpe.kernel(num_bits=6, state_prep=prep)   # measurement-free circuit
+   ranked = qpe.energies(6, state_prep=prep, top=3)   # [(energy, probability), ...]
+   raw = qpe.phase_probabilities(6, state_prep=prep)  # 2^6 readout probabilities
+
+The circuit is the textbook ladder — ``2^m - 1`` controlled walk steps and
+an inverse QFT — so ``num_bits`` is the cost knob; the register layout is
+system, then the ``m`` phase qubits (little-endian: phase qubit 0 is the
+least significant readout bit), then the encoding's ancillas. Each
+eigenvalue appears at the mirror readouts ``j`` and ``2^m - j``, and
+`energies` folds the pair into one entry, so a pure eigenstate reads as a
+single dominant energy. The energy resolution is about
+``alpha π / 2^m``; a general input spreads its mass over the spectrum in
+proportion to its overlaps. The worked example
+``08_quantum_phase_estimation.py`` (:doc:`../examples_rst/getting_started`)
+puts a hand-written QPE shell around three oracles — exact time evolution,
+a product formula and this walk — to compare their decoders; `PhaseEstimation`
+packages the walk case.
+
 State preparation injection
 ---------------------------
 
