@@ -15,6 +15,9 @@ Block encodings
 
 .. autofunction:: cudaq_algorithms.pauli_lcu.select_observable
 
+.. autoclass:: cudaq_algorithms.lcu.LCUBlockEncoding
+   :members:
+
 .. autoclass:: cudaq_algorithms.block_encoding.BlockEncoding
    :members:
 
