@@ -232,9 +232,12 @@ def test_compressed_matrix_free_cg_matches_lstsq(backend, eri_scale):
             assert error_gap < 1.0e-6
         else:
             assert error_gap / eri_norm < 1.0e-6
-    # Rank and the rejected solver do not depend on the integral scale.
-    if eri_scale != 1.0:
-        return
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cg_exact_at_true_rank_and_rejects_unknown_solver(backend):
+    # True rank and a rejected solver name do not depend on the integral scale.
+    eri = _synthetic_eri(n=4, num_vectors=3, seed=11)
     # CG is exact at the true rank, like the least-squares solver.
     exact = df.compressed_double_factorization(eri,
                                                num_leaves=3,
