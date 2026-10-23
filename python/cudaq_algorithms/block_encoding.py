@@ -53,8 +53,9 @@ def mint_cached_kernel(cache: dict, encoding: "BlockEncoding",
 class BlockEncoding(Protocol):
     """A zero-flagged block encoding ``U_A`` with ``<0|_anc U_A |0>_anc = H / alpha``.
 
-    ``PauliLCU`` is the provided implementation; double-factorized or
-    sparse-oracle encodings plug in by satisfying the same surface.
+    ``PauliLCU``, ``SparseOracleEncoding`` and ``SparseLCUEncoding`` are the
+    provided implementations; double-factorized or other custom encodings
+    plug in by satisfying the same surface.
     """
 
     @property

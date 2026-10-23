@@ -148,12 +148,79 @@ Register conventions shared by all implementations:
 Implementing the protocol
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because conformance is structural, a sparse-oracle, block-diagonal, or any
-custom encoding plugs into `Walk` and `QSVT` simply by implementing the
-surface above — no base class, no registration. The worked example
+Because conformance is structural, a block-diagonal or any other custom
+encoding plugs into `Walk` and `QSVT` simply by implementing the surface
+above — no base class, no registration. The worked example
 ``06_bring_your_own_encoding.py`` (:doc:`../examples_rst/getting_started`)
 implements a minimal `BlockEncoding` from scratch and runs it through the
 shared consumers, validating it against a dense reference.
+
+Sparse-access encodings
+-----------------------
+
+:mod:`cudaq_algorithms.sparse` block-encodes a real sparse matrix given as
+data (a dense array, a ``scipy.sparse`` matrix, or integer-indexed
+``(rows, cols, vals)`` triples) or as structure oracles, with two
+constructions whose normalizations favour different matrices:
+
+- `SparseOracleEncoding` is the sparse-access construction of Camps,
+  Lin, Van Beeumen and Yang (`arXiv:2203.10236
+  <https://arxiv.org/abs/2203.10236>`_): ``U_A = T† S T`` from a
+  *location* oracle (the column structure) and a *value* oracle
+  (fixed-point matrix-element angles), bundled as `OracleKernels`.
+  ``alpha = d_padded * h`` pays the largest element ``h`` at the padded
+  slot count, so it wins on uniform structured matrices with few nonzeros
+  per row. `banded_oracles` builds the bundle for constant-valued bands,
+  `qrom_oracles` for arbitrary entries; the value oracle writes
+  `quantized_angle` fixed-point angles with ``value_bits`` of precision.
+  Negative off-diagonal entries are fine; a negative diagonal is not
+  representable here (use the LCU construction or a diagonal shift).
+- `SparseLCUEncoding` is a linear combination of unitaries over the
+  entries themselves — transposition and reflection unitaries, one pair
+  per symmetric off-diagonal entry and one per diagonal entry — with the
+  alias-sampled PREPARE and unary-iteration SELECT primitives.
+  ``alpha = sum_{i<j} |H_ij| + sum_i |H_ii|`` is the term one-norm, so it
+  wins whenever a few entries dominate, and it supports negative
+  diagonals. ``mu`` sets the alias-table precision (``discretization_bound``
+  per term weight; ``alpha`` stays the exact one-norm).
+
+.. code-block:: python
+
+   from cudaq_algorithms import encode_sparse, SparseLCUEncoding, Walk
+
+   enc = encode_sparse(matrix, mu=4, value_bits=6)   # cheaper alpha wins
+   enc.report["path"], enc.report["alpha_alternatives"], enc.report["qubits"]
+   enc = encode_sparse(matrix, prefer="oracle")      # override the pricing
+   enc = encode_sparse(a, dilate=True)               # [[0, A], [A^T, 0]] of a general A
+   walk = Walk(enc)                                  # same consumers as PauliLCU
+
+`encode_sparse` prices both constructions classically, builds only the
+winner (ties go to fewer qubits), and attaches the comparison as
+``encoding.report`` (``path``, ``alpha``, ``alpha_alternatives``,
+``qubits``, ``nnz``, ``max_row_nnz``, ``slots``, ``dim``, ``dilated``,
+``ineligible``). Both constructions encode a *symmetric* matrix: a
+non-symmetric input raises unless ``dilate=True`` asks for the Hermitian
+dilation ``[[0, A], [A^T, 0]]`` on one extra system qubit (the halves bit
+is the most significant), as `SparseLCUEncoding.from_general` and
+`SparseOracleEncoding.from_general_oracles` do directly.
+
+**What the oracle contract requires.** An `OracleKernels` bundle supplies
+``o_loc`` / ``o_val`` and their explicit inverses, the slot count ``d``,
+the value bound ``h``, ``value_bits``, the work-qubit count and the
+reverse-slot involution; every inverse must hold on states whose work
+register enters ``|0>`` (flat, work-free oracles such as `banded_oracles`
+invert globally, table oracles built on unary-iteration walks only with
+clean scratch). The bundle records the system width it was built for and
+the encoding rejects a mismatch.
+
+**Register widths and moments.** ``num_ancilla`` counts every ancilla,
+scratch included; `SparseOracleEncoding` exposes ``num_block_ancilla`` and
+``num_scratch``, `SparseLCUEncoding` ``num_index``, ``num_garbage``
+(``2 num_index + 2 mu + 2``) and ``num_select_work``. Neither encoding
+provides `select_observable`, so `Walk.moment` serves even orders only, and
+at these widths the even-order reflection observable would expand to
+``2^num_ancilla`` Pauli terms: `Walk` refuses above 20 ancillas. Take
+Chebyshev data from ``walk_kernel`` powers on a statevector simulator.
 
 Bring your own encoding: the double-factorized example
 ------------------------------------------------------

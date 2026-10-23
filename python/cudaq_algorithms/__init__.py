@@ -5,7 +5,7 @@
 A pure-Python package: the fermion-to-qubit transforms
 (:mod:`.fermion`), the state-preparation kernels and operator pools
 (:mod:`.stateprep`), the quantum primitives (:mod:`.pauli_lcu`,
-:mod:`.qubitization`, :mod:`.qsvt`, :mod:`.trotter`,
+:mod:`.sparse`, :mod:`.qubitization`, :mod:`.qsvt`, :mod:`.trotter`,
 :mod:`.sim_utils`), and the classical double-factorization
 preprocessing (:mod:`.double_factorization`, NumPy/SciPy with optional
 CuPy GPU acceleration) are implemented as CUDA-Q Python kernels and
@@ -31,14 +31,16 @@ __version__ = _resolve_version()
 del _resolve_version
 
 from . import (block_encoding, chemistry, common_kernels, double_factorization,
-               fermion, pauli_lcu, qsvt, qubitization, sim_utils, stateprep,
-               trotter)
+               fermion, pauli_lcu, qsvt, qubitization, sim_utils, sparse,
+               stateprep, trotter)
 from .block_encoding import BlockEncoding
 from .common_kernels import state_from
 from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
 from .qubitization import Walk, reflection_observable
+from .sparse import (OracleKernels, SparseLCUEncoding, SparseOracleEncoding,
+                     banded_oracles, encode_sparse, qrom_oracles)
 from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 
 # The composable device kernels keep their module namespaces
