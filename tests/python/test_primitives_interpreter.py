@@ -20,11 +20,12 @@ import pytest
 import cudaq
 
 from cudaq_algorithms.primitives._unary_iteration import (
-    _BASE_OPS, _CONTROL_OPS, _OP_AND_TT, _OP_AND_WT, _OP_BODY_X, _OP_BODY_X_W,
-    _OP_BODY_Y, _OP_BODY_Z, _OP_BODY_Z_W, _OP_CCX, _OP_CCX_ADDR_ADDR,
-    _OP_CCX_CTRL, _OP_COPY_TW, _OP_CX_ADDR_ADDR, _OP_CX_ADDR_LADDER,
-    _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER, _OP_CX_LADDER_TARGET,
-    _OP_FREE_CX, _OP_FREE_X, _OP_X_ADDR, _OP_X_LADDER, _OP_Z_LADDER, _WORK_OPS,
+    _BASE_OPS, _CONTROL_OPS, _MEASURED_CONTROL_OPS, _MEASURED_OPS, _OP_AND_TT,
+    _OP_AND_WT, _OP_BODY_X, _OP_BODY_X_W, _OP_BODY_Y, _OP_BODY_Z, _OP_BODY_Z_W,
+    _OP_CCX, _OP_CCX_ADDR_ADDR, _OP_CCX_CTRL, _OP_COPY_TW, _OP_CX_ADDR_ADDR,
+    _OP_CX_ADDR_LADDER, _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER,
+    _OP_CX_LADDER_TARGET, _OP_FREE_CX, _OP_FREE_X, _OP_MEAS_UNCOMPUTE,
+    _OP_MEAS_UNCOMPUTE_CTRL, _OP_X_ADDR, _OP_X_LADDER, _OP_Z_LADDER, _WORK_OPS,
     _mint_interpreter)
 
 # Register widths in the harness: control 1, address 2, ladder 2,
@@ -290,3 +291,70 @@ def test_opcode_sets_cover_the_specs():
     # name exactly the same opcodes — a new opcode must land in both.
     spec_ops = {spec[0] for spec in _SPECS.values()}
     assert spec_ops == (_BASE_OPS | _CONTROL_OPS | _WORK_OPS)
+
+
+def test_measured_opcodes_are_declared_separately():
+    # The measured gadgets share this interpreter but must stay out of the
+    # coherent sets the per-opcode pins above cover exactly.
+    assert _MEASURED_OPS == {_OP_MEAS_UNCOMPUTE}
+    assert _MEASURED_CONTROL_OPS == {_OP_MEAS_UNCOMPUTE_CTRL}
+    assert (_MEASURED_OPS
+            | _MEASURED_CONTROL_OPS).isdisjoint(_BASE_OPS | _CONTROL_OPS
+                                                | _WORK_OPS)
+    with pytest.raises(ValueError, match="outside the interpreter"):
+        _mint_interpreter([(_OP_MEAS_UNCOMPUTE_CTRL, 0, 0, 0)],
+                          controlled=False,
+                          has_work=False)
+    with pytest.raises(ValueError, match="outside the interpreter"):
+        _mint_interpreter([(999, 0, 0, 0)], controlled=True, has_work=True)
+
+
+def test_coherent_tapes_keep_sample_control_and_adjoint():
+    # The measured arms live in this interpreter now; a coherent tape must
+    # still run under the three executors the measured contract excludes.
+    interp = _mint_interpreter([(_OP_BODY_X, 0, 1, 0),
+                                (_OP_X_LADDER, 0, 0, 0)],
+                               controlled=False,
+                               has_work=False)
+
+    @cudaq.kernel
+    def sampled():
+        address = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        x(ladder[0])
+        interp(address, ladder, target)
+        mz(target)
+
+    counts = cudaq.sample(sampled, shots_count=20)
+    assert counts.most_probable() == "01"
+
+    @cudaq.kernel
+    def controlled_run():
+        control = cudaq.qvector(1)
+        address = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        h(control[0])
+        x(ladder[0])
+        cudaq.control(interp, control[0], address, ladder, target)
+
+    state = np.asarray(cudaq.get_state(controlled_run))
+    expected = np.zeros(1 << 7, dtype=np.complex128)
+    expected[1 << 3] = 1 / np.sqrt(2)  # control 0: ladder[0] still set
+    expected[1 | (1 << 6)] = 1 / np.sqrt(2)  # control 1: target[1] set
+    np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
+
+    @cudaq.kernel
+    def roundtrip():
+        address = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        x(ladder[0])
+        interp(address, ladder, target)
+        cudaq.adjoint(interp, address, ladder, target)
+
+    state = np.asarray(cudaq.get_state(roundtrip))
+    expected = np.zeros(1 << 6, dtype=np.complex128)
+    expected[1 << 2] = 1
+    np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
