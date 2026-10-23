@@ -523,9 +523,11 @@ def unary_iteration_kernels(
         an involution (commuting self-inverse body, e.g. X-only QROM).
     num_work
         Width of the trailing clean ``work`` view. ``None`` (default)
-        infers the width from the body's work usage (0 keeps the original
-        work-less signatures); an explicit value must cover that usage
-        and forces the work view into the signature even when unused.
+        infers the width from the body's work usage. An explicit value must
+        cover that usage. The work view is present only when the resolved
+        ``num_work > 0``, including a positive explicit width unused by the
+        body; explicit ``num_work=0`` keeps the work-less signatures when
+        the body needs no work.
     """
     if int(num_address_bits) != num_address_bits or num_address_bits < 1:
         raise ValueError("num_address_bits must be a positive integer")
