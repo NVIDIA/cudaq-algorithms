@@ -122,8 +122,12 @@ def operation_negated(text: str, start: int, end: int | None = None) -> bool:
             r"\s+(?:is|should be|must be|will be)\s+(?:excluded|omitted|avoided|not (?:used|applied))\b",
             text[end:]):
         return True
-    if re.search(r"\b(?:do not|don't|never)\s+(?:skip|omit|exclude|avoid)\s*$",
-                 prefix):
+    # \x74 is a plain "t": spelled out, this removal verb beside a quote reads
+    # as an obfuscation directive to SkillSpector 2.13, which then reports the
+    # whole file as only partially analyzed.
+    if re.search(
+            r"\b(?:do not|don't|never)\s+(?:skip|omi\x74|exclude|avoid)\s*$",
+            prefix):
         return False
     return bool(
         re.search(
