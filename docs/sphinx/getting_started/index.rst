@@ -59,8 +59,10 @@ tests:
 
 .. code-block:: console
 
+   $ PYTHONPATH=python python3 -m pytest tests/host -q
    $ PYTHONPATH=python python3 -m pytest tests/python -q
 
+Run the host proofs in a separate process: they do not import CUDA-Q.
 The dense-reference tolerances require an fp64 simulator; ``conftest.py``
 selects ``qpp-cpu`` by default (override with ``CUDAQ_DEFAULT_SIMULATOR``).
 
@@ -98,5 +100,9 @@ Where to go next
   Hamiltonian-simulation routes.
 - :doc:`../guide/preprocessing` — molecule / integrals to a qubit Hamiltonian.
 - :doc:`../guide/state_prep` — Hartree-Fock, UCC, and Givens state preparation.
+- :doc:`../guide/qrom` — coherent QROM lookups: SELECT, SELECT-SWAP,
+  SELECT-COPY, borrowed banks, and fused lookup chains.
+- :doc:`../guide/measured_qrom` — measured SELECT, SELECT-SWAP and
+  SELECT-COPY, image erasure, and retained-bank epochs.
 - :doc:`../conventions` — qubit ordering, integral tensors, and normalization
   conventions (read this before validating any numerics).

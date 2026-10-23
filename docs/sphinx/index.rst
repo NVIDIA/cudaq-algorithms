@@ -23,6 +23,8 @@ kernels.
    guide/trotter
    guide/qubitization_qsvt
    guide/state_prep
+   guide/qrom
+   guide/measured_qrom
 
 .. toctree::
    :caption: Examples
@@ -33,6 +35,7 @@ kernels.
    examples_rst/block_encodings
    examples_rst/state_prep
    examples_rst/hamiltonian_simulation
+   examples_rst/qrom
 
 .. toctree::
    :caption: Reference

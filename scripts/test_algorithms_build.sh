@@ -64,4 +64,6 @@ else
     pythonpath="$repo_root/python:${PYTHONPATH:-}"
 fi
 
+# Pure host oracles must run in a separate process without importing CUDA-Q.
+PYTHONPATH="$pythonpath" "$python" -m pytest -q tests/host
 PYTHONPATH="$pythonpath" "$python" -m pytest -q tests/python

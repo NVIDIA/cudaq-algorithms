@@ -47,6 +47,17 @@ Trotter
 Circuit primitives
 ==================
 
+See :doc:`../guide/qrom` for unitary lookups and
+:doc:`../guide/measured_qrom` for measured lookups, image-only erasure,
+retained-bank lifetimes, and logical resource accounting.
+
+``QROM.kernel``, ``MeasuredQROM.kernel``, ``MeasuredQROM.erase_kernel``,
+``RetainedQROMChain.begin_kernel`` and ``RetainedQROMChain.end_kernel``
+are properties. ``QROMChain.kernels()`` and ``RetainedQROMChain.kernels()``
+are methods returning tuples. Mint these kernels before entering a
+``@cudaq.kernel``. Measured operations require a feedback-capable executor;
+construct their coherent control with ``controlled=True``.
+
 .. automodule:: cudaq_algorithms.primitives
    :members:
 
