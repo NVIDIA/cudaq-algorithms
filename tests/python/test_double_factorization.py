@@ -764,3 +764,26 @@ def test_cg_inner_cores_match_lstsq_below_cg_tolerance(backend):
     # Same fit. The relative CG tolerance shows up in this residual.
     assert (np.linalg.norm(reconstruct(cg) - reconstruct(lstsq)) /
             np.linalg.norm(eri)) < 1.0e-8
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cg_inner_cores_are_zero_for_a_zero_rhs(backend):
+    # R = 0 has minimum-norm solution Z = 0, including when a warm start is set.
+    import cudaq_algorithms.double_factorization._factorization as F
+    from cudaq_algorithms.double_factorization._backend import (
+        resolve_backend, to_device, to_numpy)
+
+    n = 4
+    num_leaves = 2
+    xp, _ = resolve_backend(backend)
+    eri_dev = to_device(np.zeros((n, n, n, n)), xp)
+    rotations = [to_device(np.eye(n), xp) for _ in range(num_leaves)]
+    guess = xp.ones((num_leaves, n, n))
+    cores = F._solve_inner_cores_cg(eri_dev,
+                                    rotations,
+                                    xp,
+                                    max_iterations=1,
+                                    initial_guess=guess)
+    # One iteration from this guess cannot reach 0, so an exact 0 is the early return.
+    for core in cores:
+        assert np.allclose(to_numpy(core), 0.0)

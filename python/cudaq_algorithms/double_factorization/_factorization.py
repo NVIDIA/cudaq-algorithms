@@ -330,6 +330,11 @@ def _solve_inner_cores_cg(
         # A device scalar (0-d array); converted to host only where needed.
         return xp.sum(x * y)
 
+    # R = 0: the (ridge or minimum-norm) solution is Z = 0 whatever the guess.
+    rhs_norm_sq = float(to_numpy(inner_product(rhs, rhs)))
+    if rhs_norm_sq == 0.0:
+        return [xp.zeros((n, n)) for _ in range(num_leaves)]
+
     if initial_guess is None:
         z = xp.zeros((num_leaves, n, n))
         residual = rhs.copy()  # r = rhs - A(0) = rhs since z = 0
@@ -339,7 +344,6 @@ def _solve_inner_cores_cg(
     direction = residual.copy()
     residual_norm_sq = inner_product(residual, residual)
     # Stop when ||r||_F <= tolerance * ||R||_F.
-    rhs_norm_sq = float(to_numpy(inner_product(rhs, rhs)))
     threshold = (tolerance**2) * rhs_norm_sq
     limit = max_iterations if max_iterations is not None else max(
         50, num_leaves * n * n)
