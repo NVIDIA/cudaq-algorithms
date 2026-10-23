@@ -82,11 +82,9 @@ The address register is likewise split by convention, low bits first:
 ``address[0 .. low)`` are the routing bits (low = log2(B)),
 ``address[low ..)`` the block index the walk iterates.
 
-``select_swap`` is built by **composition** (CUDA-Q >= 0.16: kernels
-calling minted kernels compose and ``cudaq.control`` propagates through
-the calls): a parent kernel carves the honest sub-views out of
-``address`` and ``ladder`` with qview slices and calls three
-sub-kernels, ``W S C S^-1 W``:
+``select_swap`` is built by **composition**: a parent kernel carves the
+honest sub-views out of ``address`` and ``ladder`` with qview slices and
+calls three sub-kernels, ``W S C S^-1 W``:
 
 - ``W`` — the block-index walk, a plain
   :func:`~cudaq_algorithms.primitives.unary_iteration_kernels` mint over

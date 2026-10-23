@@ -61,10 +61,8 @@ returns them to ``|0...0>``. The QROM lookup uncomputes itself on the clean
 ladder sector the adjoint provides, whatever the variant (the ladder is
 restored by the compute pass and untouched in between, so re-applying
 the lookup XORs the table back out). These kernels call the QROM and
-CDKM sub-kernels and are therefore NOT flat: do not place them under
-``cudaq.control`` (control-variant generation rejects nested kernel
-calls through CUDA-Q 0.15; the rejection is lifted in 0.16, but the
-contract stands) — consumers control SELECT, not PREPARE.
+CDKM sub-kernels; do not place them under ``cudaq.control`` — consumers
+control SELECT, not PREPARE.
 
 Cost (pinned by ``tests/python/test_primitives_alias_sampling.py``
 against the compiler): each of ``kernel()`` / ``adjoint_kernel()`` costs

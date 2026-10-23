@@ -3,17 +3,17 @@
 """Composition as a supported surface: minted kernels as building blocks.
 
 The package docstring promises that minted kernels may be called from
-user kernels, and (on CUDA-Q >= 0.16) that ``cudaq.control`` applied to
-the whole composition yields the controlled operation. These tests pin
-both halves of that promise:
+user kernels, and that ``cudaq.control`` applied to the whole composition
+yields the controlled operation. These tests pin both halves of that
+promise:
 
-- plain composition (a user kernel calling minted kernels) works on
-  every supported CUDA-Q — kernels calling kernels was always legal;
+- plain composition (a user kernel calling minted kernels) involves no
+  control variant at all and runs everywhere;
 - controlled composition equals the factory's ``controlled=True``
   variant AND the analytic reference, so the two routes cannot agree by
-  being wrong the same way. This half is capability-probed and skips
-  with an honest message where control-variant generation predates the
-  0.16 fix.
+  being wrong the same way. This half carries the ``controlled_composition``
+  marker (conftest.py): it fails on a CUDA-Q that regresses control
+  propagation and skips only below the supported 0.16 line.
 """
 
 import numpy as np
@@ -22,9 +22,6 @@ import pytest
 import cudaq
 
 from cudaq_algorithms.primitives import unary_iteration_kernels
-from test_primitives_qrom import _control_propagates_through_composition
-
-cudaq.set_target("qpp-cpu")
 
 _MARKED = (0, 3)
 
@@ -36,8 +33,8 @@ def _z_body(k):
 def test_user_kernel_composes_minted_walk_and_its_adjoint():
     # Plain composition, no control: a user kernel calls the minted walk
     # and its hand-written inverse back to back — identity on every
-    # branch of a superposed address. Valid on CUDA-Q 0.15 and 0.16
-    # alike; this is the un-gated half of the composition promise.
+    # branch of a superposed address. No control variant is involved;
+    # this is the un-gated half of the composition promise.
     def body(k):
         if k % 2 == 1:
             return [("x", 0), ("z", 0), ("y", 1)]
@@ -72,16 +69,13 @@ def test_user_kernel_composes_minted_walk_and_its_adjoint():
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
+@pytest.mark.controlled_composition
 def test_control_of_composition_matches_builtin_controlled_walk():
-    # The 0.16 half: cudaq.control over a PARENT kernel that calls the
-    # minted (uncontrolled) walk equals the factory's controlled=True
+    # The controlled half: cudaq.control over a PARENT kernel that calls
+    # the minted (uncontrolled) walk equals the factory's controlled=True
     # walk, and both equal the analytic state — on a superposed control
     # and superposed addresses, where a branch-relative phase error
     # would be invisible to classical control values.
-    if not _control_propagates_through_composition():
-        pytest.skip("cudaq.control does not propagate through kernels that "
-                    "call kernels on this CUDA-Q (< 0.16)")
-
     plain = unary_iteration_kernels(2, 4, _z_body)
     builtin = unary_iteration_kernels(2, 4, _z_body, controlled=True)
     plain_kernel = plain.kernel

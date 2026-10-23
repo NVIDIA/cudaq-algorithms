@@ -13,44 +13,12 @@ table (equal (address, output) amplitudes with the clean ancillas traced
 as |0>).
 """
 
-import functools
-
 import numpy as np
 import pytest
 
 import cudaq
 
 from cudaq_algorithms.primitives import QROM
-
-
-@functools.lru_cache(maxsize=1)
-def _control_propagates_through_composition() -> bool:
-    """Whether ``cudaq.control`` works on kernels that call kernels.
-
-    True from CUDA-Q 0.16; through 0.15 control-variant generation
-    rejects the composition ("Unhandled controlled quantum kernel call")
-    and the composed select_swap lookup cannot be externally controlled.
-    """
-
-    @cudaq.kernel
-    def probe_sub(q: cudaq.qview):
-        x(q[0])
-
-    @cudaq.kernel
-    def probe_parent(q: cudaq.qview):
-        probe_sub(q)
-
-    @cudaq.kernel
-    def probe():
-        control = cudaq.qvector(1)
-        q = cudaq.qvector(1)
-        cudaq.control(probe_parent, control[0], q)
-
-    try:
-        cudaq.get_state(probe)
-        return True
-    except RuntimeError:
-        return False
 
 
 def _basis(index: int, num_qubits: int) -> np.ndarray:
@@ -112,7 +80,8 @@ def test_qrom_select_exhaustive_readout(address_bits, num_entries,
 @pytest.mark.parametrize("address_bits,num_entries,output_bits,block_size",
                          [(2, 4, 3, 2), (2, 3, 3, 2), (3, 8, 2, 2),
                           (3, 5, 2, 2), (3, 8, 1, 4), (4, 16, 1, 4),
-                          (4, 11, 1, 2), (4, 9, 1, 8)])
+                          (4, 11, 1, 2), (4, 9, 1, 8), (2, 2, 2, 2),
+                          (3, 4, 1, 4)])
 def test_qrom_select_swap_exhaustive_readout(address_bits, num_entries,
                                              output_bits, block_size):
     rng = np.random.default_rng(3 * address_bits + num_entries + block_size)
@@ -131,10 +100,13 @@ def test_qrom_select_swap_exhaustive_readout(address_bits, num_entries,
 
 
 @pytest.mark.parametrize("variant,block_size", [("select", None),
-                                                ("select_swap", 2)])
+                                                ("select_swap", 2),
+                                                ("select_swap", 4)])
 def test_qrom_is_self_inverse(variant, block_size):
     # X-only write phase: applying the lookup twice XORs the table twice
-    # (and the select_swap sandwich W S C S^-1 W squares to identity).
+    # (and the select_swap sandwich W S C S^-1 W squares to identity; at
+    # B = 4 the routing network has two stages, so S^-1 is the genuinely
+    # reversed Fredkin list, not S itself).
     # Run on all addresses at once (H on the address) with a non-zero
     # initial output word to pin |y XOR d XOR d> = |y>.
     data = [5, 3, 0, 6, 7]
@@ -167,7 +139,8 @@ def test_qrom_is_self_inverse(variant, block_size):
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
-def test_qrom_select_swap_equals_select_on_superposed_addresses():
+@pytest.mark.parametrize("block_size", [2, 4])
+def test_qrom_select_swap_equals_select_on_superposed_addresses(block_size):
     # Same table through both constructions: the (address, output)
     # amplitudes must agree exactly, the ancillas being |0> in both.
     data = [3, 0, 5, 6, 1, 7]
@@ -200,22 +173,20 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
                 address_bits,
                 output_bits,
                 variant="select_swap",
-                block_size=2)
+                block_size=block_size)
     np.testing.assert_allclose(joint_amplitudes(select),
                                joint_amplitudes(swap),
                                atol=1e-12)
 
 
+@pytest.mark.controlled_composition
 def test_qrom_select_swap_external_control_on_the_composition():
-    # The promise behind building select_swap as composed kernels
-    # (CUDA-Q >= 0.16): cudaq.control applied to the WHOLE composition —
-    # the parent kernel that calls the walk and routing sub-kernels —
-    # implements the controlled lookup. Pinned on a superposed control
-    # and superposed addresses against the dense reference
+    # The promise behind building select_swap as composed kernels:
+    # cudaq.control applied to the WHOLE composition — the parent kernel
+    # that calls the walk and routing sub-kernels — implements the
+    # controlled lookup. Pinned on a superposed control and superposed
+    # addresses against the dense reference
     # |c>|k>|0...0>|y> -> |c>|k>|0...0>|y XOR c * data[k]>.
-    if not _control_propagates_through_composition():
-        pytest.skip("cudaq.control does not propagate through kernels that "
-                    "call kernels on this CUDA-Q (< 0.16)")
     data = [3, 0, 5, 6, 1]
     address_bits, output_bits = 3, 3
     qrom = QROM(data,

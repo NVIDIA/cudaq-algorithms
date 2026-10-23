@@ -43,13 +43,12 @@ the gate list for that address as data. The emitter flattens the whole
 tree walk (ladder gadgets + body gates) into parallel opcode/operand
 integer lists, and the minted kernel is a single flat interpreter loop
 over those captured lists, pruned to the dispatch arms whose opcodes the
-tape actually uses (see ``_mint_interpreter``). Flatness was required
-through CUDA-Q 0.15, whose control-variant generation rejected kernels
-that call other kernels; from 0.16 minted kernels compose (they may be
-called from other kernels and the whole composition wrapped in
-``cudaq.control``), and the flat tape remains the design for its own
-reasons: factory-time bodies, inspectability (``describe()``), and
-exhaustive per-opcode verification.
+tape actually uses (see ``_mint_interpreter``). The tape is flat because
+the body is baked at factory time, because a flat tape is inspectable
+(``describe()``), and because every opcode is verified individually
+(``test_primitives_interpreter.py``); minted kernels nevertheless
+compose — call them from other kernels and place the whole composition
+under ``cudaq.control`` (package docstring).
 
 Body instruction set. Each item is a tuple whose head names the gate;
 ``target``/``work`` operands index the target/work registers. The three
