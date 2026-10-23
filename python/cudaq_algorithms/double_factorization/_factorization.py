@@ -558,7 +558,9 @@ def compressed_double_factorization(
     (``optimizer_success``, ``optimizer_nit``, ``optimizer_grad_norm``). A
     ``RuntimeWarning`` is issued if the optimizer does not converge, including
     when it hits ``max_iterations``; the best factorization found is still
-    returned.
+    returned. When ``n == 1``, there are no free antisymmetric parameters, so
+    each leaf rotation is the identity, the cores are the closed-form solution,
+    and ``optimizer_nit`` is 0.
 
     Returns a :class:`DoubleFactorization` with NumPy arrays.
     """
@@ -664,28 +666,40 @@ def compressed_double_factorization(
             gradient_chunks.append(grad_x[lower])
         return loss, np.concatenate(gradient_chunks)
 
-    result = scipy.optimize.minimize(objective_and_gradient,
-                                     x0,
-                                     method="L-BFGS-B",
-                                     jac=True,
-                                     options={
-                                         "maxiter": max_iterations,
-                                         "ftol": tolerance,
-                                         "gtol": tolerance,
-                                     })
+    if n == 1:
+        # No antisymmetric parameters: every leaf rotation is the identity,
+        # and the closed-form cores are already exact.
+        solved_x = np.zeros(0)
+        optimizer_success = True
+        optimizer_nit = 0
+        grad_norm = 0.0
+    else:
+        result = scipy.optimize.minimize(objective_and_gradient,
+                                         x0,
+                                         method="L-BFGS-B",
+                                         jac=True,
+                                         options={
+                                             "maxiter": max_iterations,
+                                             "ftol": tolerance,
+                                             "gtol": tolerance,
+                                         })
 
-    grad_norm = (float(np.linalg.norm(np.asarray(result.jac))) if getattr(
-        result, "jac", None) is not None else None)
-    if not result.success:
-        extra = (f", ||g||={grad_norm:.3e}" if grad_norm is not None else "")
-        warnings.warn(
-            "double_factorization: compressed_double_factorization did not "
-            f"converge (status={result.status}, nit={result.nit}/"
-            f"{max_iterations}, nfev={result.nfev}{extra}): {result.message}",
-            RuntimeWarning)
+        grad_norm = (float(np.linalg.norm(np.asarray(result.jac))) if getattr(
+            result, "jac", None) is not None else None)
+        if not result.success:
+            extra = (f", ||g||={grad_norm:.3e}"
+                     if grad_norm is not None else "")
+            warnings.warn(
+                "double_factorization: compressed_double_factorization did "
+                f"not converge (status={result.status}, nit={result.nit}/"
+                f"{max_iterations}, nfev={result.nfev}{extra}): "
+                f"{result.message}", RuntimeWarning)
+        solved_x = result.x
+        optimizer_success = bool(result.success)
+        optimizer_nit = int(result.nit)
 
     # Final cores at the tight cg_tolerance (warm-started from the last step).
-    _, rotations = unpack(result.x)
+    _, rotations = unpack(solved_x)
     cores = _solve_inner_cores(eri_dev, rotations, xp, regularization,
                                inner_solver, cg_tolerance, cg_max_iterations,
                                warm_state["z"] if use_warm else None)
@@ -693,8 +707,8 @@ def compressed_double_factorization(
                                leaf_rotations=[to_numpy(r) for r in rotations],
                                leaf_cores=[to_numpy(c) for c in cores],
                                method="C-DF",
-                               optimizer_success=bool(result.success),
-                               optimizer_nit=int(result.nit),
+                               optimizer_success=optimizer_success,
+                               optimizer_nit=optimizer_nit,
                                optimizer_grad_norm=grad_norm)
 
 
