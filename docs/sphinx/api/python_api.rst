@@ -65,6 +65,17 @@ Preprocessing
 .. automodule:: cudaq_algorithms.double_factorization
    :members:
 
+Fermionic basis changes
+=======================
+
+The factory and plan class are also available from the package root.
+See :doc:`../guide/fermion_basis_change` for phase conventions, encoding,
+register placement, and explicit QROM composition.
+
+.. automodule:: cudaq_algorithms.basis_change
+   :members:
+   :imported-members:
+
 State preparation
 =================
 
