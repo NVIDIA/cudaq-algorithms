@@ -4,10 +4,13 @@
 """Route an in-scope request by API or scientific object and desired outcome.
 
 Usage: python3 scripts/route.py [--paths | --full] "<the request text>"
-Default: routes plus bounded excerpts of relevant contracts and checkpoints.
+Default: routes, exact calls, the dense reference for numerical tasks, one
+delivery/completion block, then bounded excerpts (about 8 KB / 180 lines in all);
+each omitted section keeps a resolved fetch command in the delivery block.
 --paths prints navigation only; --full prints whole selected guides.
-Optional: --compact, --stage plan|contract|verify, or --record PATH --section HEADING.
-Default delivery is unchanged. Run only the branches needed for unresolved checks.
+Optional: --compact, --stage plan|contract|verify, or --record PATH --section
+HEADING (repeat --section for several sections of one record).
+Run only the branches needed for unresolved checks.
 This is a navigation aid, not a skill-trigger classifier or an answer generator.
 """
 import argparse
@@ -755,13 +758,18 @@ def markdown_blocks(body: str) -> list[str]:
     return [block for block in blocks if block]
 
 
-def reference_context(records: list[str],
-                      text: str,
-                      limit: int = MAX_CONTEXT_CHARS) -> str:
-    """Load public reference sections, never catalog answers or private grades.
+def composition_only(records: list[str], text: str) -> bool:
+    """Abstract composition advice without a requested output interface."""
+    return records == ["application-composition.md"] and not re.search(
+        r"\b(json|csv|schema|stdout|files?|scripts?)\b", text, re.IGNORECASE)
 
-    Deliver exact calls first; preserve prose contracts before fenced examples.
-    Omitted blocks remain available at exact paths.
+
+def context_sections(records: list[str],
+                     text: str) -> list[tuple[str, str, str, str, bool]]:
+    """Select (label, body, record, title, required) in delivery order.
+
+    Exact calls come first, then the required dense reference, then the
+    selected records' sections and the shared completion checks.
     """
     selected = [
         (f"\n### {REFS / 'quick-contract.md'}:{line}\n", body,
@@ -780,10 +788,7 @@ def reference_context(records: list[str],
                 selected.append(
                     (DENSE_REFERENCE_LABEL, "\n".join(lines).strip(),
                      "conventions/ordering.md", title, True))
-    composition_only = records == [
-        "application-composition.md"
-    ] and not re.search(r"\b(json|csv|schema|stdout|files?|scripts?)\b", text,
-                        re.IGNORECASE)
+    composition = composition_only(records, text)
     # Completion applies conditionally to the user's requested deliverables;
     # load it alongside family guidance instead of just linking to it again.
     ordered = list(dict.fromkeys(records + ["validation.md", "workflow.md"]))
@@ -800,11 +805,45 @@ def reference_context(records: list[str],
         if not path.is_file():
             continue  # Navigation reports missing selected records separately.
         for title, line, body in relevant_sections(record, path.read_text(),
-                                                   composition_only, text):
+                                                   composition, text):
             # Delivery requirements can come from the surrounding instructions,
             # not just this routing query. Keep their conditional procedure.
             selected.append(
                 (f"\n### {path}:{line}\n", body, record, title, False))
+    return selected
+
+
+def excerpt_priority(label: str, blocks: list[str], required: bool) -> float:
+    """Contract priority for the excerpt budget; lower values are kept first."""
+    if "quick-contract.md:" in label:
+        return 0
+    if required:
+        return 0.5  # Executable dense reference, right after the exact calls.
+    if blocks and re.search(r"capabilit|boundar|scientific contract",
+                            blocks[0], re.IGNORECASE):
+        return 1  # Preserve whole semantic invariant lists/boundary tables.
+    if "/validation.md:" in label:
+        return 2  # Deliverable/interface checks selected for this request.
+    if "/workflow.md:" in label:
+        return 6
+    if blocks and blocks[0].startswith("## Validation"):
+        return 5  # Evidence inventories follow the operation's requirements.
+    if blocks and blocks[0] in ("## Workflow", "## Verification"):
+        return 4
+    return 3  # Focused representation and composition requirements.
+
+
+def reference_context(records: list[str],
+                      text: str,
+                      limit: int = MAX_CONTEXT_CHARS) -> str:
+    """Load public reference sections, never catalog answers or private grades.
+
+    Deliver exact calls first; preserve prose contracts before fenced examples.
+    Omitted blocks remain available at exact paths. This is the excerpt
+    bundle at a caller-chosen budget; the default CLI output composes the same
+    selected sections with ``default_delivery``.
+    """
+    selected = context_sections(records, text)
     if not selected:
         return ""
     header = "\n## Selected reference text\n"
@@ -825,27 +864,9 @@ def reference_context(records: list[str],
     # A per-section quota favors short boilerplate over an indivisible semantic
     # list or table. Allocate by contract priority instead, before examples.
     remaining = limit - overhead
-
-    def section_priority(entry):
-        label, blocks, _, _, _, required = entry
-        if "quick-contract.md:" in label:
-            return 0
-        if required:
-            return 0.5  # Executable dense reference, right after the exact calls.
-        if blocks and re.search(r"capabilit|boundar|scientific contract",
-                                blocks[0], re.IGNORECASE):
-            return 1  # Preserve whole semantic invariant lists/boundary tables.
-        if "/validation.md:" in label:
-            return 2  # Deliverable/interface checks selected for this request.
-        if "/workflow.md:" in label:
-            return 6
-        if blocks and blocks[0].startswith("## Validation"):
-            return 5  # Evidence inventories follow the operation's requirements.
-        if blocks and blocks[0] in ("## Workflow", "## Verification"):
-            return 4
-        return 3  # Focused representation and composition requirements.
-
-    priority = sorted(excerpts, key=section_priority)
+    priority = sorted(
+        excerpts,
+        key=lambda entry: excerpt_priority(entry[0], entry[1], entry[5]))
     for examples in (False, True):
         for _, blocks, kept, _, _, required in priority:
             for index, block in enumerate(blocks):
@@ -909,18 +930,19 @@ STAGE_CONTEXT_CHARS = 5000
 SECTION_CHARS = 16000
 
 
-def section_command(record: str, title: str) -> str:
+def section_command(record: str, *titles: str) -> str:
+    """A resolved command fetching complete sections of one record."""
     import shlex
-    if record == "quick-contract.md" and title == "Exact calls":
-        title = "Quick contract (checked against `python/cudaq_algorithms` in this checkout)"
-    return shlex.join([
-        sys.executable,
-        str(Path(__file__).resolve()), "--record", record, "--section", title
-    ])
+    args = [sys.executable, str(Path(__file__).resolve()), "--record", record]
+    for title in titles:
+        if record == "quick-contract.md" and title == "Exact calls":
+            title = "Quick contract (checked against `python/cudaq_algorithms` in this checkout)"
+        args += ["--section", title]
+    return shlex.join(args)
 
 
-def fetch_section(record: str, title: str, parser) -> None:
-    """Read only a known local reference and a complete named section."""
+def fetch_section(record: str, titles, parser) -> None:
+    """Read only a known local reference and complete named sections."""
     # Reject path traversal, absolute paths, and non-reference inputs.
     if not re.fullmatch(r"[\w-]+(?:/[\w-]+)*\.md", record):
         parser.error("--record must be a relative reference Markdown path")
@@ -935,16 +957,23 @@ def fetch_section(record: str, title: str, parser) -> None:
     if not path.is_file():
         parser.error("reference does not exist in this skill")
     sections = markdown_sections(path.read_text())
-    found = [(line, body) for name, line, body in sections if name == title]
-    if len(found) != 1:
-        parser.error("section must match one unique heading; available: " +
-                     "; ".join(name for name, _, _ in sections))
-    line, body = found[0]
-    if len(body) > SECTION_CHARS:
-        parser.error(
-            "section exceeds 16000 characters; choose a narrower heading: " +
-            "; ".join(name for name, start, _ in sections if start > line))
-    print(f"## {path}:{line}\n{body}")
+    printed = []
+    # Validate every requested heading before printing any section.
+    for title in dict.fromkeys(
+        [titles] if isinstance(titles, str) else titles):
+        found = [(line, body) for name, line, body in sections
+                 if name == title]
+        if len(found) != 1:
+            parser.error("section must match one unique heading; available: " +
+                         "; ".join(name for name, _, _ in sections))
+        line, body = found[0]
+        if len(body) > SECTION_CHARS:
+            parser.error(
+                "section exceeds 16000 characters; choose a narrower heading: "
+                + "; ".join(name
+                            for name, start, _ in sections if start > line))
+        printed.append(f"## {path}:{line}\n{body}")
+    print("\n\n".join(printed))
 
 
 def compact_context(records: list[str],
@@ -1067,6 +1096,343 @@ def compact_context(records: list[str],
     return "".join(rendered)
 
 
+# The default output is re-read on every later agent turn, so it is capped as a
+# whole (navigation included). Exact calls and the dense reference come first,
+# then one delivery block, so a reader that stops early still has the checks.
+DEFAULT_OUTPUT_BYTES = 8000  # UTF-8 bytes, install paths at CANONICAL_PATH length
+DEFAULT_OUTPUT_LINES = 180
+# Absolute skill and interpreter paths are measured at one fixed length, so a
+# request selects the same sections wherever the skill is installed.
+CANONICAL_PATH = "/" + "p" * 39
+
+
+def output_budget_size(output: str) -> int:
+    """UTF-8 size of ``output`` with install-specific paths at a fixed length."""
+    for path in (sys.executable, str(REFS.parent)):
+        if path:
+            output = output.replace(path, CANONICAL_PATH)
+    return len(output.encode("utf-8"))
+
+
+OUTPUT_CHECK = """\
+- Machine-readable output: make one complete, bare JSON object (no prefix) the
+  last stdout line of the real entrypoint; run that command fresh, parse
+  `json.loads(completed.stdout.splitlines()[-1])` (or read the exact file or
+  returned object) and check the exit status and every declared key, type,
+  shape and unit. A separate file or retyped copy validates nothing."""
+TASK_CHECK = """\
+- Task completion: a result requested from CUDA-Q Algorithms comes from
+  returned library data, which a dense check verifies but never replaces."""
+# Conditional task-completion checks (validation.md), one unwrapped line each.
+PREPARATION_CHECK = (
+    "  A requested preparation needs its operation and a compatible register; "
+    "an occupation list implements nothing.")
+COMPOSITION_CHECK = (
+    "  Composition advice covers representations, capabilities, registers, "
+    "normalization, phases and execution layers.")
+SUFFICIENCY_CHECK = (
+    "  A sufficiency claim uses the user's criterion, or quantifies the change "
+    "and states what criterion would make it sufficient; a feasibility bound "
+    "alone does not define usefulness.")
+SUFFICIENCY_INTENT = r"suffici|improv|enough|adequa|worth|criteri|threshold|useful"
+COMPLETION_CHECK = """\
+- Completion checkpoint: report executed work's artifact, exact command and
+  observed outcome (unexecuted code is a proposal); derive tables, selections
+  and thresholds from the same validated rows and match the prose to them;
+  label assumed and unverified claims."""
+CONTRACT_CHECK = """\
+- Contract checkpoint: compare required and provided capabilities,
+  representations, signatures, register geometry, normalization, ordering,
+  signs, phases and execution layers at every seam; similar names do not
+  establish interchangeability."""
+# The delivery block states these checks, so their source text is delivered
+# last and only whole; a fragment would repeat the summary.
+SUMMARIZED_SECTIONS = {("validation.md", "Requested task completion"),
+                       ("validation.md", "Requested output artifacts"),
+                       ("workflow.md", "Completion checkpoint"),
+                       ("workflow.md", "Match the scientific contracts")}
+PREMISE_LABEL = (
+    "\n### Candidate premise rows (check applicability and current source)\n\n"
+    "| If the request claims or assumes | Verdict | Say |\n| --- | --- | --- |\n"
+)
+# A matching row addresses the request's own claim, so it is the first excerpt;
+# a requested preparation's recipe (Workflow, then Verification) follows.
+PREMISE_PRIORITY = 0.4
+PREPARATION_PRIORITY = {"Workflow": 0.5, "Verification": 0.6}
+# A numerical primary route (it carries the dense reference) keeps its guide's
+# Workflow and Verification ahead of premise rows and boundary excerpts.
+NUMERICAL_GUIDE_PRIORITY = 0.3
+OMITTED_NOTICE = "\n[Additional blocks omitted; fetch command above.]\n"
+
+
+class _Excerpt:
+    """A bounded excerpt: its blocks, the section each block comes from, kept set."""
+    __slots__ = ("label", "blocks", "sources", "priority", "table", "kept")
+
+    def __init__(self, label, blocks, sources, priority, table=False):
+        self.label, self.blocks, self.sources = label, blocks, sources
+        self.priority, self.table, self.kept = priority, table, set()
+
+    def substantive(self) -> bool:
+        # A retained heading alone is not delivered contract content.
+        return any(
+            any(line.strip() and not re.match(r"^#{1,6}\s+", line)
+                for line in self.blocks[index].splitlines())
+            for index in self.kept)
+
+
+def premise_section(record: str) -> str | None:
+    """The record's premise table heading, for a resolved fetch command."""
+    path = REFS / record
+    if not path.is_file():
+        return None
+    return next((title for title, _, _ in markdown_sections(path.read_text())
+                 if title.startswith("Premise check")), None)
+
+
+def delivery_block(composition: bool,
+                   omitted: list[tuple[str, str]],
+                   premise,
+                   named,
+                   input_state: bool,
+                   dense_pointer: bool,
+                   checks=(),
+                   slim: bool = False) -> str:
+    """Output and completion checks, pointers and fetches for omitted text.
+
+    One resolved command per record fetches all of its omitted sections, in
+    the priority order of ``omitted``. ``checks`` are the conditional
+    task-completion lines that apply to this request; ``slim`` drops the two
+    pointer lines that the fetch commands repeat.
+    """
+    later = {}
+    for record, title in omitted:
+        later.setdefault(record, []).append(title)
+    lines = ["\n## Delivery and completion checks"]
+
+    def attach_source(record):
+        # Attach a summarized check's own source text when it was omitted.
+        if record in later:
+            lines.append("Complete section: " +
+                         section_command(record, *later.pop(record)))
+
+    if not composition:
+        lines.append(OUTPUT_CHECK)
+    lines.append(TASK_CHECK)
+    lines.extend(checks)
+    attach_source("validation.md")
+    lines.append(CONTRACT_CHECK if composition else COMPLETION_CHECK)
+    attach_source("workflow.md")
+    if not slim:
+        lines.append(f"- Shared checkpoints: {REFS / 'workflow.md'}; "
+                     f"{REFS / 'validation.md'}")
+    if input_state:
+        lines.append(
+            f"- Input-state representation: {REFS / 'conventions/ordering.md'}"
+            "#product-state-amplitudes (product recipe only for product "
+            "inputs; verify entangled inputs without assuming factorization)")
+    if dense_pointer:
+        lines.append(
+            f"- Dense references: {REFS / 'conventions/ordering.md'}"
+            "#dense-operator-self-test (run the self-test before trusting any "
+            "dense operator or statevector reference)")
+    if premise:
+        lines.append("- Candidate premise rows: claims to verify against "
+                     "current source, not answers:")
+        lines.extend(f"  {record}: {resolve_placeholders(claim)}"
+                     for record, claim, _ in premise)
+        if named:
+            lines.append("  Records named by these rows: " + "; ".join(named))
+    if later:
+        if not slim:
+            lines.append(
+                "Fetch omitted text only for an unresolved requirement:")
+        lines.extend("Complete section: " + section_command(record, *titles)
+                     for record, titles in later.items())
+    return "\n".join(lines) + "\n"
+
+
+def default_delivery(head: str,
+                     records: list[str],
+                     text: str,
+                     premise=(),
+                     named=(),
+                     input_state: bool = False,
+                     operations=()) -> str:
+    """Compose the whole default output within the byte and line caps.
+
+    ``head`` is the notes and navigation. The exact calls and the dense
+    reference follow unchanged, then the delivery block, then excerpts: the
+    request's own claims and named contracts, each selected guide's lead, and
+    remaining prose before fenced examples. A block is kept only if the
+    complete rendered output still fits, so the fetch commands for omitted
+    sections are always paid for. ``premise`` rows are (record, claim, row),
+    ``named`` the records those rows name, ``operations`` the focused records
+    of operations the request names.
+    """
+    composition = composition_only(records, text)
+    preparation = preparation_requested(text)
+    numerical_guide = records[0] if dense_reference_wanted(records,
+                                                           text) else None
+    top, excerpts, summarized, contracts = [], [], [], []
+    for label, body, record, title, required in context_sections(
+            records, text):
+        blocks = markdown_blocks(resolve_placeholders(body))
+        if required or (record == "quick-contract.md"
+                        and title == "Exact calls"):
+            top.append(label + "\n\n".join(blocks) + "\n")
+            continue
+        excerpt = _Excerpt(label, blocks, [(record, title)] * len(blocks),
+                           excerpt_priority(label, blocks, False))
+        if (record, title) in SUMMARIZED_SECTIONS:
+            excerpt.priority = 6
+            summarized.append(excerpt)
+        elif record == numerical_guide and title in ("Workflow",
+                                                     "Verification"):
+            # Leads of both first, then each whole if it fits.
+            excerpt.priority = NUMERICAL_GUIDE_PRIORITY
+        elif (preparation
+              and record == "state-preparation/state-preparation.md"):
+            # The requested preparation's recipe is its operation contract.
+            excerpt.priority = PREPARATION_PRIORITY.get(title, 1)
+        elif record == "application-composition.md":
+            excerpt.priority = 4  # A starting guide's procedure, like Workflow.
+        if record != "quick-contract.md" and (excerpt.priority <= 1
+                                              or record in operations
+                                              and excerpt.priority <= 3):
+            # Contracts of the operations the request names, its preparation,
+            # and boundary/capability sections come before family guidance.
+            contracts.append(excerpt)
+        excerpts.append(excerpt)
+    if premise:
+        excerpts.append(
+            _Excerpt(PREMISE_LABEL,
+                     [resolve_placeholders(row) for _, _, row in premise],
+                     [(record, premise_section(record))
+                      for record, _, _ in premise],
+                     PREMISE_PRIORITY,
+                     table=True))
+        contracts.append(excerpts[-1])
+    excerpts.sort(key=lambda excerpt: excerpt.priority)
+    dense_pointer = (dense_reference_wanted(records, text)
+                     and DENSE_REFERENCE_LABEL not in "".join(top))
+    checks = []
+    if preparation or any(
+            record.startswith("state-preparation/") for record in records):
+        checks.append(PREPARATION_CHECK)
+    if not composition and ("application-composition.md" in records
+                            or re.search(COMPOSITION_INTENT, text.lower())):
+        checks.append(COMPOSITION_CHECK)
+    if re.search(SUFFICIENCY_INTENT, text, re.IGNORECASE):
+        checks.append(SUFFICIENCY_CHECK)
+    slim = False
+
+    def render() -> str:
+        omitted = []
+        for excerpt in excerpts:
+            for index, source in enumerate(excerpt.sources):
+                if (index not in excerpt.kept and source[1]
+                        and source not in omitted):
+                    omitted.append(source)
+        parts = [
+            head, "\n## Selected reference text\n", *top,
+            delivery_block(composition, omitted, premise, named, input_state,
+                           dense_pointer, checks, slim)
+        ]
+        shown = [excerpt for excerpt in excerpts if excerpt.substantive()]
+        if shown:
+            parts.append("\n## Reference excerpts\n")
+        for excerpt in shown:
+            parts.append(excerpt.label +
+                         ("\n" if excerpt.table else "\n\n").join(
+                             block
+                             for index, block in enumerate(excerpt.blocks)
+                             if index in excerpt.kept) + "\n")
+            if len(excerpt.kept) < len(excerpt.blocks):
+                parts.append(OMITTED_NOTICE)
+        return "".join(parts)
+
+    def fits(output: str) -> bool:
+        return (output_budget_size(output) <= DEFAULT_OUTPUT_BYTES
+                and output.count("\n") <= DEFAULT_OUTPUT_LINES)
+
+    def keep(excerpt, indices) -> None:
+        # Keep blocks only if the complete rendered output still fits.
+        added = set(indices) - excerpt.kept
+        excerpt.kept |= added
+        if not fits(render()):
+            excerpt.kept -= added
+
+    def is_example(block: str) -> bool:
+        return bool(re.match(r"^\s*(`{3,}|~{3,})", block))
+
+    def lead(excerpt) -> list[int]:
+        # Leading headings plus the first substantive prose block.
+        indices = []
+        for index, block in enumerate(excerpt.blocks):
+            if is_example(block):
+                continue
+            indices.append(index)
+            if not all(
+                    re.match(r"^#{1,6}\s+", line)
+                    for line in block.splitlines() if line.strip()):
+                break
+        return indices
+
+    def remaining(excerpt) -> int:
+        return sum(
+            len(block) for index, block in enumerate(excerpt.blocks)
+            if index not in excerpt.kept and not is_example(block))
+
+    if not fits(render()):
+        # A very long install path: the fetch commands already name these
+        # records, so drop the repeated pointers before any required text.
+        slim = True
+    # Exact calls, the dense reference and every fetch command are never
+    # dropped. Then, tier by tier (a numerical primary guide's Workflow and
+    # Verification, premise rows, the requested preparation's Workflow then
+    # Verification, boundary/capability contracts, other sections of the
+    # operations the request names), the request's own claims and named
+    # contracts: their leads, then each section whole if it fits
+    # (smallest first, premise rows one by one). Then the lead of each
+    # selected guide's procedure, the lead of every other section, remaining
+    # prose in priority order, fenced examples, and last the shared sections
+    # the delivery block already summarizes.
+    regular = [excerpt for excerpt in excerpts if excerpt not in summarized]
+    for tier in sorted({excerpt.priority for excerpt in contracts}):
+        group = [item for item in contracts if item.priority == tier]
+        for excerpt in sorted(group,
+                              key=lambda item: sum(
+                                  len(item.blocks[index])
+                                  for index in lead(item))):
+            keep(excerpt, lead(excerpt))
+        for excerpt in sorted(group, key=remaining):
+            prose = [
+                index for index, block in enumerate(excerpt.blocks)
+                if not is_example(block)
+            ]
+            for chunk in ([[index]
+                           for index in prose] if excerpt.table else [prose]):
+                keep(excerpt, chunk)
+    guides = [
+        excerpt for excerpt in regular
+        if excerpt.priority == 4 and excerpt not in contracts
+    ]
+    for excerpt in guides + [
+            item
+            for item in regular if item not in contracts and item not in guides
+    ]:
+        keep(excerpt, lead(excerpt))
+    for examples in (False, True):
+        for excerpt in regular:
+            for index, block in enumerate(excerpt.blocks):
+                if is_example(block) == examples:
+                    keep(excerpt, [index])
+    for excerpt in summarized:
+        keep(excerpt, range(len(excerpt.blocks)))  # whole or not at all
+    return render()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     output = parser.add_mutually_exclusive_group()
@@ -1092,7 +1458,9 @@ def main() -> None:
                         help="alias for --stage plan")
     parser.add_argument("--record", help="reference path from the plan")
     parser.add_argument(
-        "--section", help="exact heading to fetch completely (16000-char cap)")
+        "--section",
+        action="append",
+        help="exact heading to fetch completely (16000-char cap); repeatable")
     parser.add_argument("request", nargs="*")
     args = parser.parse_args()
     if args.record or args.section:
@@ -1113,10 +1481,15 @@ def main() -> None:
             "Standalone Bell/basic CUDA-Q kernels are outside this skill's scope."
         )
         return
-    for note in notes(text):
-        print(f"\n## Note\n{note}")
+    # Navigation lines are collected so the default output can be capped whole;
+    # every other mode prints them unchanged. The default output omits each
+    # guide's heading list: its delivery block fetches every omitted section.
+    default = not (args.full or args.paths or args.compact or args.stage)
+    navigation = [f"\n## Note\n{note}" for note in notes(text)]
     recs = route(text)
     if not recs:
+        for line in navigation:
+            print(line)
         print(
             "No family matched; open references/catalog.md and pick the family by mathematical object."
         )
@@ -1126,25 +1499,28 @@ def main() -> None:
         return
     printed = []
     for rec in recs:
-        print(f"\n## references/{rec}")
+        navigation.append(f"\n## references/{rec}")
         if not (REFS / rec).is_file():
             # Report a missing record loudly instead of dropping the route.
-            print(f"MISSING: {REFS / rec} (route table names a record that "
-                  "is not in this skill copy; open references/catalog.md)")
+            navigation.append(
+                f"MISSING: {REFS / rec} (route table names a record that "
+                "is not in this skill copy; open references/catalog.md)")
             continue
         body = (REFS / rec).read_text()
-        printed.append(body)
+        printed.append((rec, body))
         if args.full:
-            print(body)
+            navigation.append(body)
         else:
-            print(f"Open: {REFS / rec}")
-            print("Sections: " +
-                  "; ".join(re.findall(r"^## (.+)$", body, re.MULTILINE)))
+            navigation.append(f"Open: {REFS / rec}")
+            if not default:
+                navigation.append(
+                    "Sections: " +
+                    "; ".join(re.findall(r"^## (.+)$", body, re.MULTILINE)))
     direct = [rec for rec in focused_records(text) if rec not in recs]
     if direct:
-        print("\n## Focused operation records (reuse excerpts below)\n")
-        for rec in direct:
-            print(REFS / rec)
+        navigation.append(
+            "\n## Focused operation records (reuse excerpts below)\n")
+        navigation.extend(str(REFS / rec) for rec in direct)
     # Premise rows are for boundary/diagnostic intent, not ordinary operation
     # queries sharing only a family name or generic evolution/count words.
     diagnostic = re.search(
@@ -1163,7 +1539,7 @@ def main() -> None:
     }
     words = {w for w in re.findall(r"[a-z_]{4,}", text.lower())} - stop
     scored = []
-    for body in printed if diagnostic else []:
+    for rec, body in printed if diagnostic else []:
         start = body.find("## Premise check")
         if start < 0:
             continue
@@ -1180,7 +1556,7 @@ def main() -> None:
                 {w
                  for w in re.findall(r"[a-z_]{4,}", cells[0].lower())} - stop))
             if overlap >= 2:
-                scored.append((overlap, cells[0], line))
+                scored.append((overlap, cells[0], line, rec))
     scored.sort(key=lambda t: -t[0])
     if compressed_method_excluded(text):
         scored = [
@@ -1190,12 +1566,26 @@ def main() -> None:
     best = scored[0][0] if scored else 0
     chosen = [t for t in scored if t[0] >= 3 or t[0] == best][:3]
     focused = []
-    for _, claim, line in chosen:
+    for _, claim, line, _ in chosen:
         for m in re.finditer(r"references/([\w./-]+\.md)`", line):
             rel = m.group(1)
             if (REFS / rel).is_file(
             ) and rel not in recs and rel not in direct and rel not in focused:
                 focused.append(rel)
+    if default:
+        output = default_delivery(
+            "\n".join(navigation) + "\n",
+            recs + direct + focused,
+            text,
+            premise=[(rec, claim, line) for _, claim, line, rec in chosen],
+            named=focused,
+            input_state=bool(
+                any(rec.startswith(INPUT_STATE_FAMILIES) for rec in recs)
+                and re.search(INPUT_STATE_PATTERN, text.lower())),
+            operations=direct)
+        print(output, end="")
+        return
+    print("\n".join(navigation))
     if not args.full and not args.paths:
         if args.stage == "plan":
             print(
@@ -1209,15 +1599,11 @@ def main() -> None:
                         title
                         for title, _, _ in markdown_sections(path.read_text())
                         if not title.startswith("Premise")))
-        elif args.compact or args.stage:
+        else:
             print(
                 resolve_placeholders(
                     compact_context(recs + direct + focused, text, args.stage
                                     or "bundle")))
-        else:
-            print(
-                resolve_placeholders(
-                    reference_context(recs + direct + focused, text)))
     if chosen:
         print(
             "\n## Candidate premise rows (check applicability and current source)\n"
@@ -1225,7 +1611,7 @@ def main() -> None:
         print(
             "| If the request claims or assumes | Verdict | Say |\n| --- | --- | --- |"
         )
-        for _, claim, line in chosen:
+        for _, claim, line, _ in chosen:
             print(resolve_placeholders(line))
     if focused:
         print("\n## Focused records named by the matching rows\n")
