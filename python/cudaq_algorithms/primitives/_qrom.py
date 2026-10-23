@@ -4,7 +4,8 @@
 
 ``QROM(data, address_bits, output_bits)`` mints the lookup
 ``|k>|y> -> |k>|y XOR data[k]>`` behind one kernel signature
-``(address: qview, ladder: qview, output: qview)`` — all little-endian
+``(address: qview, ladder: qview, output: qview)`` — with a leading
+one-qubit ``control`` view when ``controlled=True`` — all little-endian
 (qubit 0 = LSB, ``docs/conventions.md``), ``ladder`` being ``num_ladder``
 clean ancillas (``|0>`` in, ``|0>`` out). Addresses ``k >= len(data)`` read as
 zero. Two constructions sit behind ``variant=``:
@@ -39,6 +40,20 @@ on full uncontrolled trees):
   binary routing network is ``B - 1`` register swaps per direction, and
   both the routing and the block writes run twice (compute + unitary
   uncompute).
+- ``controlled=True`` adds an external control qubit and replaces ``W``
+  by its controlled count (``_walk_toffoli_count(n, m, controlled)``: the
+  walk's root gadgets become Toffolis and its root crossings lose the
+  unguarded shortcut). Only the walk passes carry the control: at control
+  ``|0>`` a controlled walk on a clean ladder writes nothing, so the block
+  registers stay ``|0>`` and the routing Fredkins, the copy CNOTs and the
+  un-route/un-write act on ``|0>`` as the identity. The lookup is then
+  the identity at control ``|0>`` and the plain lookup at ``|1>``, with
+  the control as a separate one-qubit view first in the signature, as
+  ``unary_iteration_kernels`` does. The identity at ``|0>`` is a
+  clean-ladder statement (the clean ladder is the kernel's precondition
+  in any case), not the all-inputs identity of ``cudaq.control`` over the
+  plain lookup: on a dirty ladder the deeper walk Toffolis are gated by
+  ladder lines, not by the control.
 
 The papers' headline counts (``N - 1`` lookup Toffolis for SELECT,
 ``ceil(N/B) + output_bits * (B - 1)`` for QROAM) price ancilla
@@ -60,7 +75,8 @@ Implementation notes: register layout and the ``ladder`` view
 ------------------------------------------------------------------------
 
 Every minted kernel has the same signature, ``(address, ladder,
-output)``, and ``ladder`` is simply **the clean-ancilla register** —
+output)`` (``(control, address, ladder, output)`` when ``controlled``),
+and ``ladder`` is simply **the clean-ancilla register** —
 its contents differ per variant, and for ``select_swap`` the name is
 looser than the physics:
 
@@ -146,13 +162,16 @@ _ADDRESS_OPERANDS = {
 }
 
 
-def _select_swap_cost(address_bits: int, num_entries: int, output_bits: int,
-                      block_size: int) -> int:
+def _select_swap_cost(address_bits: int,
+                      num_entries: int,
+                      output_bits: int,
+                      block_size: int,
+                      controlled: bool = False) -> int:
     """Documented Toffoli price of the select_swap variant."""
     high_bits = address_bits - (block_size.bit_length() - 1)
     num_blocks = -(-num_entries // block_size)
-    return (2 * _walk_toffoli_count(high_bits, num_blocks) + 2 * output_bits *
-            (block_size - 1))
+    return (2 * _walk_toffoli_count(high_bits, num_blocks, controlled) +
+            2 * output_bits * (block_size - 1))
 
 
 class QROM:
@@ -175,8 +194,14 @@ class QROM:
         ``[2, 2^(address_bits - 1)]``. Only valid with
         ``variant="select_swap"``; ``None`` there picks the power of two
         minimizing the documented Toffoli count.
+    controlled
+        ``True`` mints the externally controlled lookup: the kernel takes
+        a leading one-qubit ``control`` view, is the identity at control
+        ``|0>`` and the plain lookup at ``|1>`` (module docstring). The
+        identity at ``|0>`` holds on the clean ladder the kernel requires
+        anyway; a dirty ladder is outside the contract either way.
 
-    The three views of the minted kernel may live anywhere (no contiguity
+    The views of the minted kernel may live anywhere (no contiguity
     requirement between them), which is what lets callers weave the QROM
     into their own ancilla layouts. Whatever the variant, the kernel is
     exactly self-inverse — apply it again to uncompute.
@@ -188,7 +213,11 @@ class QROM:
                  output_bits: int,
                  *,
                  variant: str = "auto",
-                 block_size: int | None = None) -> None:
+                 block_size: int | None = None,
+                 controlled: bool = False) -> None:
+        if not isinstance(controlled, bool):
+            raise ValueError("controlled must be a bool (pass bool(flag) "
+                             "for numpy booleans)")
         if int(address_bits) != address_bits or address_bits < 1:
             raise ValueError("address_bits must be a positive integer")
         if int(output_bits) != output_bits or output_bits < 1:
@@ -238,12 +267,14 @@ class QROM:
                     f"index address bit: max is 2^(address_bits - 1) = "
                     f"{1 << (address_bits - 1)}")
 
-        select_cost = _walk_toffoli_count(address_bits, len(entries))
+        select_cost = _walk_toffoli_count(address_bits, len(entries),
+                                          controlled)
         swap_candidates = [1 << s for s in range(1, address_bits)
                            ] if block_size is None else [block_size]
         swap_costs = {
-            size: _select_swap_cost(address_bits, len(entries), output_bits,
-                                    size)
+            size:
+            _select_swap_cost(address_bits, len(entries), output_bits, size,
+                              controlled)
             for size in swap_candidates
         }
         if variant == "auto":
@@ -265,6 +296,7 @@ class QROM:
         self._output_bits = output_bits
         self._variant = variant
         self._block_size = block_size
+        self._controlled = controlled
         if variant == "select":
             self._build_select()
         else:
@@ -282,6 +314,7 @@ class QROM:
         walk = unary_iteration_kernels(self._num_address,
                                        len(entries),
                                        body,
+                                       controlled=self._controlled,
                                        include_adjoint=False)
         self._kernel = walk.kernel
         self._num_ladder = walk.num_ladder
@@ -304,7 +337,11 @@ class QROM:
                     ("x", i * b + t) for t in range(b) if (word >> t) & 1)
             return gates
 
-        walk_ops = _emit_walk(high_bits, num_blocks, False, block_write)
+        # Only the walk passes carry the external control (module
+        # docstring): at control |0> nothing is written, so the routing
+        # and copy below act on |0> blocks as the identity.
+        walk_ops = _emit_walk(high_bits, num_blocks, self._controlled,
+                              block_write)
         # This IS the textbook SELECT-SWAP: a unary-iteration walk over
         # the high (block-index) bits whose leaf action writes each
         # block, then a low-bit-controlled swap network routes the
@@ -354,7 +391,9 @@ class QROM:
         # ancillas and an exactly self-inverse lookup.
         ops = (walk_ops + swap_ops + copy_ops + list(reversed(swap_ops)) +
                walk_ops)
-        self._kernel = _mint_interpreter(ops, controlled=False, has_work=False)
+        self._kernel = _mint_interpreter(ops,
+                                         controlled=self._controlled,
+                                         has_work=False)
         self._num_ladder = high_bits + size * b
         self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
 
@@ -395,8 +434,14 @@ class QROM:
         return self._toffoli_count
 
     @property
+    def controlled(self) -> bool:
+        """Whether the kernel takes a leading one-qubit ``control`` view."""
+        return self._controlled
+
+    @property
     def kernel(self):
-        """The lookup kernel ``(address, ladder, output)`` — self-inverse."""
+        """The lookup kernel — self-inverse. ``(address, ladder, output)``,
+        or ``(control, address, ladder, output)`` when ``controlled``."""
         return self._kernel
 
     def __repr__(self) -> str:
@@ -405,4 +450,5 @@ class QROM:
                 f"output_bits={self.num_output}, "
                 f"variant={self._variant!r}, "
                 f"block_size={self._block_size}, "
+                f"controlled={self._controlled}, "
                 f"toffolis={self.toffoli_count})")
