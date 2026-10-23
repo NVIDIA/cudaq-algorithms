@@ -302,6 +302,8 @@ def _solve_inner_cores_cg(
     curvature guards sync to host. This scales to large orbital counts where the
     explicit design matrix is infeasible.
 
+    ``tolerance`` is relative to the right-hand side: iteration stops when
+    ``||r||_F <= tolerance * ||R||_F`` (and immediately when ``R`` is zero).
     ``initial_guess`` (a stacked ``(num_leaves, n, n)`` array) warm-starts CG. In
     the C-DF optimizer the rotations -- and hence the cores -- change slowly
     between L-BFGS steps, so seeding from the previous step's solution collapses
@@ -336,7 +338,9 @@ def _solve_inner_cores_cg(
         residual = rhs - apply_operator(z)
     direction = residual.copy()
     residual_norm_sq = inner_product(residual, residual)
-    threshold = (tolerance**2) * max(float(to_numpy(residual_norm_sq)), 1.0)
+    # Stop when ||r||_F <= tolerance * ||R||_F.
+    rhs_norm_sq = float(to_numpy(inner_product(rhs, rhs)))
+    threshold = (tolerance**2) * rhs_norm_sq
     limit = max_iterations if max_iterations is not None else max(
         50, num_leaves * n * n)
 
