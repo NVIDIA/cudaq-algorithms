@@ -202,9 +202,10 @@ def test_rcdf_regularization_shrinks_cores_and_one_norm(backend):
 @pytest.mark.parametrize("eri_scale", [1.0, 1.0e-12])
 def test_compressed_matrix_free_cg_matches_lstsq(backend, eri_scale):
     # The matrix-free conjugate-gradient inner solve (RC-DF Eqs. 25-30) is an
-    # alternative to the explicit design-matrix least squares; both must reach
-    # the same reconstruction accuracy, with and without regularization.
-    # eri_scale=1e-12 is the same tensor with ||R||_F below cg_tolerance.
+    # alternative to the explicit design-matrix least squares; both must give
+    # the same reconstruction error, with and without regularization.
+    # eri_scale=1e-12 keeps ||R||_F below cg_tolerance. L-BFGS then stops at
+    # the X-DF start, so that arm compares the core solve at fixed rotations.
     eri = eri_scale * _synthetic_eri(n=4, num_vectors=3, seed=11)
     eri_norm = float(np.linalg.norm(eri))
     for regularization in (0.0, 1.0e-2):
@@ -230,7 +231,7 @@ def test_compressed_matrix_free_cg_matches_lstsq(backend, eri_scale):
         if eri_scale == 1.0:
             assert error_gap < 1.0e-6
         else:
-            assert error_gap / eri_norm < 1.0e-3
+            assert error_gap / eri_norm < 1.0e-6
     # Rank and the rejected solver do not depend on the integral scale.
     if eri_scale != 1.0:
         return
