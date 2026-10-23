@@ -720,8 +720,8 @@ def _core_frobenius(cores):
 
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_cg_inner_cores_match_lstsq_below_cg_tolerance(backend):
-    # CG tolerance is relative to ||R||_F, so the cores must match lstsq
-    # when the projected RHS is nonzero and smaller than cg_tolerance.
+    # CG tolerance is relative to ||R||_F, so the reconstruction must match
+    # lstsq when the projected RHS is nonzero and smaller than cg_tolerance.
     import cudaq_algorithms.double_factorization._factorization as F
     from cudaq_algorithms.double_factorization._backend import (
         resolve_backend, to_device, to_numpy)
@@ -751,8 +751,16 @@ def test_cg_inner_cores_match_lstsq_below_cg_tolerance(backend):
         to_numpy(core)
         for core in F._solve_inner_cores_lstsq(eri_dev, rotations, xp)
     ]
-    z_lstsq = _core_frobenius(lstsq)
-    # Least squares returns a nonzero core for this RHS.
-    assert z_lstsq > 0.0
-    # Relative, so the comparison stays meaningful when both stacks are ~1e-11.
-    assert abs(_core_frobenius(cg) - z_lstsq) / z_lstsq < 1.0e-2
+
+    def reconstruct(cores):
+        # (J, -J) is a null vector of the two-leaf design, so the core stacks
+        # are a gauge choice. The reconstructed ERI is not.
+        return sum(
+            np.einsum("pk,qk,kl,rl,sl->pqrs", u, u, z, u, u)
+            for u, z in zip(explicit.leaf_rotations, cores))
+
+    # CG returns a nonzero core for this RHS.
+    assert _core_frobenius(cg) > 0.0
+    # Same fit. The relative CG tolerance shows up in this residual.
+    assert (np.linalg.norm(reconstruct(cg) - reconstruct(lstsq)) /
+            np.linalg.norm(eri)) < 1.0e-8
