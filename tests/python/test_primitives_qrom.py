@@ -80,7 +80,8 @@ def test_qrom_select_exhaustive_readout(address_bits, num_entries,
 @pytest.mark.parametrize("address_bits,num_entries,output_bits,block_size",
                          [(2, 4, 3, 2), (2, 3, 3, 2), (3, 8, 2, 2),
                           (3, 5, 2, 2), (3, 8, 1, 4), (4, 16, 1, 4),
-                          (4, 11, 1, 2), (4, 9, 1, 8)])
+                          (4, 11, 1, 2), (4, 9, 1, 8), (2, 2, 2, 2),
+                          (3, 4, 1, 4)])
 def test_qrom_select_swap_exhaustive_readout(address_bits, num_entries,
                                              output_bits, block_size):
     rng = np.random.default_rng(3 * address_bits + num_entries + block_size)
@@ -99,10 +100,13 @@ def test_qrom_select_swap_exhaustive_readout(address_bits, num_entries,
 
 
 @pytest.mark.parametrize("variant,block_size", [("select", None),
-                                                ("select_swap", 2)])
+                                                ("select_swap", 2),
+                                                ("select_swap", 4)])
 def test_qrom_is_self_inverse(variant, block_size):
     # X-only write phase: applying the lookup twice XORs the table twice
-    # (and the select_swap sandwich W S C S^-1 W squares to identity).
+    # (and the select_swap sandwich W S C S^-1 W squares to identity; at
+    # B = 4 the routing network has two stages, so S^-1 is the genuinely
+    # reversed Fredkin list, not S itself).
     # Run on all addresses at once (H on the address) with a non-zero
     # initial output word to pin |y XOR d XOR d> = |y>.
     data = [5, 3, 0, 6, 7]
@@ -135,7 +139,8 @@ def test_qrom_is_self_inverse(variant, block_size):
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
-def test_qrom_select_swap_equals_select_on_superposed_addresses():
+@pytest.mark.parametrize("block_size", [2, 4])
+def test_qrom_select_swap_equals_select_on_superposed_addresses(block_size):
     # Same table through both constructions: the (address, output)
     # amplitudes must agree exactly, the ancillas being |0> in both.
     data = [3, 0, 5, 6, 1, 7]
@@ -168,10 +173,53 @@ def test_qrom_select_swap_equals_select_on_superposed_addresses():
                 address_bits,
                 output_bits,
                 variant="select_swap",
-                block_size=2)
+                block_size=block_size)
     np.testing.assert_allclose(joint_amplitudes(select),
                                joint_amplitudes(swap),
                                atol=1e-12)
+
+
+@pytest.mark.controlled_composition
+def test_qrom_select_swap_external_control_on_the_composition():
+    # The promise behind building select_swap as composed kernels:
+    # cudaq.control applied to the WHOLE composition — the parent kernel
+    # that calls the walk and routing sub-kernels — implements the
+    # controlled lookup. Pinned on a superposed control and superposed
+    # addresses against the dense reference
+    # |c>|k>|0...0>|y> -> |c>|k>|0...0>|y XOR c * data[k]>.
+    data = [3, 0, 5, 6, 1]
+    address_bits, output_bits = 3, 3
+    qrom = QROM(data,
+                address_bits,
+                output_bits,
+                variant="select_swap",
+                block_size=2)
+    lookup = qrom.kernel
+    num_ladder = qrom.num_ladder
+    theta = 2 * np.arccos(0.6)  # control amplitudes (0.6, 0.8)
+
+    @cudaq.kernel
+    def run():
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(address_bits)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(output_bits)
+        ry(theta, control[0])
+        for b in range(address_bits):
+            h(address_reg[b])
+        cudaq.control(lookup, control[0], address_reg, ladder, output)
+
+    state = np.array(cudaq.get_state(run))
+    total = 1 + address_bits + num_ladder + output_bits
+    shift = 1 + address_bits + num_ladder
+    amp = {0: 0.6, 1: 0.8}
+    expected = np.zeros(1 << total, dtype=np.complex128)
+    for c in range(2):
+        for k in range(1 << address_bits):
+            word = data[k] if (c == 1 and k < len(data)) else 0
+            index = c + (k << 1) + (word << shift)
+            expected[index] = amp[c] / np.sqrt(1 << address_bits)
+    np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
 def test_qrom_auto_dispatch_picks_the_cheaper_variant():

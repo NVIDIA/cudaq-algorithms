@@ -39,6 +39,16 @@ priced by ``variant="auto"``, and the CDKM comparator — realizing a
 weighted index-register marginal exactly, up to a derived ``mu``-bit
 discretization bound.
 
+Composition: minted kernels are building blocks — call them from your
+own kernels, and wrap the whole composition in ``cudaq.control`` to
+obtain the controlled operation. This is the intended consumption model
+for SELECT-style constructions (the select_swap QROM is itself a parent
+kernel composing a walk, a routing network and a copy), and it is pinned
+by ``tests/python/test_primitives_composition.py``. Where a controlled
+walk is what you need, the factory's ``controlled=True`` variants are
+the cheaper route: the control is folded into the walk's root gadgets
+instead of being added to every gate.
+
 Import the subpackage directly (``from cudaq_algorithms.primitives
 import QROM``); nothing here is re-exported from the package root.
 """
