@@ -93,7 +93,14 @@ class BlockEncoding(Protocol):
         ...
 
     def apply_kernel(self) -> Kernel:
-        """``(ancilla: qview, system: qview)``: the full block encoding U_A."""
+        """``(ancilla: qview, system: qview)``: the full block encoding U_A.
+
+        ``U_A`` must be Hermitian, hence an involution (``U_A^2 = I``), as
+        ``PREPARE-dagger SELECT PREPARE`` with an involutory SELECT is.
+        ``QSVT`` (which applies ``U_A`` for both walk directions) and
+        ``SumEncoding`` (whose SELECT is built from its operands' ``U_A``)
+        rely on it.
+        """
         ...
 
     def controlled_apply_kernel(self) -> Kernel:
