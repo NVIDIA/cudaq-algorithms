@@ -1,19 +1,14 @@
-name: Skill evaluation offline checks
+name: Skills dev tests
 
 on:
-  pull_request:
-    paths:
-      - 'skills-dev/cudaq-algorithms-dev/**'
-      - 'skills/cudaq-algorithms/**'
-      - '.github/workflows/skill_evaluation.yaml'
-  workflow_dispatch:
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  offline:
+  skills-dev-tests:
     name: Suite, runner and reporting contracts
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -22,6 +17,14 @@ jobs:
       # The CI job never opts into namespace, scientific-runtime or model probes.
       CUDAQ_RUNNER_TEST_ISOLATION: '0'
       CUDAQ_RUNNER_TEST_PYTHON: ''
+      # The checker tests run many small dense matrix exponentials. With the
+      # default BLAS thread pool each one pays multi-thread coordination
+      # overhead far larger than the arithmetic, turning a sub-minute suite
+      # into several minutes. The runner already pins these for the oracle
+      # and sandbox; the test process needs the same.
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
