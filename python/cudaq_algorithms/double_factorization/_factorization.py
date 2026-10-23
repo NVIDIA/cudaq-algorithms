@@ -549,7 +549,9 @@ def compressed_double_factorization(
     (default) forms an explicit design matrix, while ``"cg"`` is the matrix-free
     conjugate-gradient solve (RC-DF Eqs. 25-30) that avoids the ``n^4``-row design
     matrix and scales to large orbital counts. ``cg_tolerance`` and
-    ``cg_max_iterations`` control the CG solve.
+    ``cg_max_iterations`` control the CG solve. ``cg_tolerance`` is relative
+    to the projected right-hand-side norm ``||R||_F``;
+    ``cg_optimization_tolerance`` inherits the same meaning.
 
     For ``inner_solver="cg"`` two accelerators cut the per-step CG cost without
     changing the final accuracy: ``cg_warm_start`` (default ``True``) seeds each
