@@ -21,13 +21,20 @@ produced it. Everything below is pure-Python CUDA-Q kernels requiring only
 `cudaq` and numpy; qubit ordering, integral-tensor, and normalization
 conventions are collected in :doc:`../conventions`.
 
-Two encodings ship in the package — `PauliLCU` (from a Pauli sum, with an
-exact multiplexed-rotation PREPARE) and `LCUBlockEncoding` (from term
-weights and SELECT bodies, with an alias-sampled PREPARE and a
-unary-iteration SELECT) — and any object satisfying the structural
+Two encodings ship in the package, and they play different roles.
+`PauliLCU` is the front door for a Hamiltonian given as a Pauli sum: it
+reads the terms and builds the encoding with an exact multiplexed-rotation
+PREPARE. `LCUBlockEncoding` is the body-programmed primitive underneath
+such constructions: it takes term weights and, per term, a SELECT *body*
+in the unary-iteration gate vocabulary — controlled Paulis, but also the
+extended gates that use work qubits — so its terms need not be Pauli
+words; it realizes an alias-sampled PREPARE and a unary-iteration SELECT.
+Encodings built from structured data (the double-factorized example
+below, the sparse-access encodings) program it directly. Any object
+satisfying the structural
 :class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol plugs into
-the same consumers. A complete worked encoding (the double-factorized
-example, below) demonstrates the protocol at full scale.
+the same consumers, and the worked double-factorized encoding demonstrates
+the protocol at full scale.
 
 The block-encoding idea and ``PauliLCU``
 ----------------------------------------

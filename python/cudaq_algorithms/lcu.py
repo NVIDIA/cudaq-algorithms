@@ -330,10 +330,15 @@ class LCUBlockEncoding:
     def _build_kernels(self) -> None:
         # Unpack into scalar locals: tuples (and self) cannot be
         # closure-captured into kernels.
-        m = self._preparation.num_index
-        g = self._preparation.num_garbage
-        l0 = self._preparation.ladder_offset
-        w = self._num_work
+        num_index = self._preparation.num_index
+        num_garbage = self._preparation.num_garbage
+        ladder_offset = self._preparation.ladder_offset
+        num_work = self._num_work
+        # Ancilla layout: [index | garbage | work], with SELECT's ladder
+        # reusing the PREPARE QROM ladder inside the garbage view (at
+        # ``ladder_offset`` from the garbage start, ``num_index`` wide).
+        ladder_start = num_index + ladder_offset
+        work_start = num_index + num_garbage
         prepare = self._preparation.kernel()
         unprepare = self._preparation.adjoint_kernel()
         select = self._select.kernel
@@ -344,10 +349,13 @@ class LCUBlockEncoding:
             """U_A = PREPARE-dagger SELECT PREPARE (self-adjoint,
             involutory). SELECT's ladder reuses the PREPARE QROM ladder
             (clean between the sandwich halves)."""
-            prepare(ancilla.front(m), ancilla[m:m + g])
-            select(ancilla.front(m), ancilla[m + l0:m + l0 + m], system,
-                   ancilla[m + g:m + g + w])
-            unprepare(ancilla.front(m), ancilla[m:m + g])
+            index = ancilla[0:num_index]
+            garbage = ancilla[num_index:num_index + num_garbage]
+            ladder = ancilla[ladder_start:ladder_start + num_index]
+            work = ancilla[work_start:work_start + num_work]
+            prepare(index, garbage)
+            select(index, ladder, system, work)
+            unprepare(index, garbage)
 
         @cudaq.kernel
         def lcu_controlled_apply(control_and_ancilla: cudaq.qview,
@@ -360,26 +368,32 @@ class LCUBlockEncoding:
             mixes a qview with a bare qubit, and PREPARE — which calls
             sub-kernels — never sits under a control variant.
             """
-            prepare(control_and_ancilla[1:1 + m],
-                    control_and_ancilla[1 + m:1 + m + g])
-            controlled_select(control_and_ancilla.front(1),
-                              control_and_ancilla[1:1 + m],
-                              control_and_ancilla[1 + m + l0:1 + m + l0 + m],
-                              system,
-                              control_and_ancilla[1 + m + g:1 + m + g + w])
-            unprepare(control_and_ancilla[1:1 + m],
-                      control_and_ancilla[1 + m:1 + m + g])
+            control = control_and_ancilla[0:1]
+            index = control_and_ancilla[1:1 + num_index]
+            garbage = control_and_ancilla[1 + num_index:1 + num_index +
+                                          num_garbage]
+            ladder = control_and_ancilla[1 + ladder_start:1 + ladder_start +
+                                         num_index]
+            work = control_and_ancilla[1 + work_start:1 + work_start +
+                                       num_work]
+            prepare(index, garbage)
+            controlled_select(control, index, ladder, system, work)
+            unprepare(index, garbage)
 
         @cudaq.kernel
         def lcu_prepare(ancilla: cudaq.qview):
             """The alias PREPARE on [index | garbage]: the protocol's
             prepare hook (the walk runs in the PREPARE frame)."""
-            prepare(ancilla.front(m), ancilla[m:m + g])
+            index = ancilla[0:num_index]
+            garbage = ancilla[num_index:num_index + num_garbage]
+            prepare(index, garbage)
 
         @cudaq.kernel
         def lcu_unprepare(ancilla: cudaq.qview):
             """PREPARE-dagger on [index | garbage]."""
-            unprepare(ancilla.front(m), ancilla[m:m + g])
+            index = ancilla[0:num_index]
+            garbage = ancilla[num_index:num_index + num_garbage]
+            unprepare(index, garbage)
 
         @cudaq.kernel
         def lcu_walk_step(ancilla: cudaq.qview, system: cudaq.qview):
@@ -387,21 +401,27 @@ class LCUBlockEncoding:
             about the PREPARE state. R covers the full ancilla register,
             garbage included (see the module docstring). SELECT's ladder
             and the work scratch are clean here, as after every step."""
-            select(ancilla.front(m), ancilla[m + l0:m + l0 + m], system,
-                   ancilla[m + g:m + g + w])
-            unprepare(ancilla.front(m), ancilla[m:m + g])
+            index = ancilla[0:num_index]
+            garbage = ancilla[num_index:num_index + num_garbage]
+            ladder = ancilla[ladder_start:ladder_start + num_index]
+            work = ancilla[work_start:work_start + num_work]
+            select(index, ladder, system, work)
+            unprepare(index, garbage)
             reflect_about_zero(ancilla)
-            prepare(ancilla.front(m), ancilla[m:m + g])
+            prepare(index, garbage)
 
         @cudaq.kernel
         def lcu_adjoint_walk_step(ancilla: cudaq.qview, system: cudaq.qview):
             """W-dagger = SELECT PREPARE R PREPARE-dagger (SELECT is
             self-adjoint)."""
-            unprepare(ancilla.front(m), ancilla[m:m + g])
+            index = ancilla[0:num_index]
+            garbage = ancilla[num_index:num_index + num_garbage]
+            ladder = ancilla[ladder_start:ladder_start + num_index]
+            work = ancilla[work_start:work_start + num_work]
+            unprepare(index, garbage)
             reflect_about_zero(ancilla)
-            prepare(ancilla.front(m), ancilla[m:m + g])
-            select(ancilla.front(m), ancilla[m + l0:m + l0 + m], system,
-                   ancilla[m + g:m + g + w])
+            prepare(index, garbage)
+            select(index, ladder, system, work)
 
         @cudaq.kernel
         def lcu_controlled_walk_step(control_and_ancilla: cudaq.qview,
@@ -410,31 +430,35 @@ class LCUBlockEncoding:
             R, PREPARE. Only the two Hermitian factors carry the control;
             the uncontrolled PREPARE pair cancels at control |0>, and
             PREPARE never sits under a control variant."""
-            controlled_select(control_and_ancilla.front(1),
-                              control_and_ancilla[1:1 + m],
-                              control_and_ancilla[1 + m + l0:1 + m + l0 + m],
-                              system,
-                              control_and_ancilla[1 + m + g:1 + m + g + w])
-            unprepare(control_and_ancilla[1:1 + m],
-                      control_and_ancilla[1 + m:1 + m + g])
+            control = control_and_ancilla[0:1]
+            index = control_and_ancilla[1:1 + num_index]
+            garbage = control_and_ancilla[1 + num_index:1 + num_index +
+                                          num_garbage]
+            ladder = control_and_ancilla[1 + ladder_start:1 + ladder_start +
+                                         num_index]
+            work = control_and_ancilla[1 + work_start:1 + work_start +
+                                       num_work]
+            controlled_select(control, index, ladder, system, work)
+            unprepare(index, garbage)
             controlled_reflect_about_zero(control_and_ancilla)
-            prepare(control_and_ancilla[1:1 + m],
-                    control_and_ancilla[1 + m:1 + m + g])
+            prepare(index, garbage)
 
         @cudaq.kernel
         def lcu_controlled_adjoint_walk_step(control_and_ancilla: cudaq.qview,
                                              system: cudaq.qview):
             """Controlled W-dagger."""
-            unprepare(control_and_ancilla[1:1 + m],
-                      control_and_ancilla[1 + m:1 + m + g])
+            control = control_and_ancilla[0:1]
+            index = control_and_ancilla[1:1 + num_index]
+            garbage = control_and_ancilla[1 + num_index:1 + num_index +
+                                          num_garbage]
+            ladder = control_and_ancilla[1 + ladder_start:1 + ladder_start +
+                                         num_index]
+            work = control_and_ancilla[1 + work_start:1 + work_start +
+                                       num_work]
+            unprepare(index, garbage)
             controlled_reflect_about_zero(control_and_ancilla)
-            prepare(control_and_ancilla[1:1 + m],
-                    control_and_ancilla[1 + m:1 + m + g])
-            controlled_select(control_and_ancilla.front(1),
-                              control_and_ancilla[1:1 + m],
-                              control_and_ancilla[1 + m + l0:1 + m + l0 + m],
-                              system,
-                              control_and_ancilla[1 + m + g:1 + m + g + w])
+            prepare(index, garbage)
+            controlled_select(control, index, ladder, system, work)
 
         _retain(lcu_apply, lcu_controlled_apply, lcu_prepare, lcu_unprepare,
                 lcu_walk_step, lcu_adjoint_walk_step, lcu_controlled_walk_step,
