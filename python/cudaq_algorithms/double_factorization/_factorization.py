@@ -677,8 +677,8 @@ def compressed_double_factorization(
         return loss, np.concatenate(gradient_chunks)
 
     if per_leaf == 0:
-        # No antisymmetric parameters: every leaf rotation is the identity,
-        # and the closed-form cores are already exact.
+        # No antisymmetric parameters: every leaf rotation is the identity.
+        # The cores are the closed-form solve at the identity rotations.
         solved_x = np.zeros(0)
         optimizer_success = True
         optimizer_nit = 0
