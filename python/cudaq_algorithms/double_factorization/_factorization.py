@@ -676,7 +676,7 @@ def compressed_double_factorization(
             gradient_chunks.append(grad_x[lower])
         return loss, np.concatenate(gradient_chunks)
 
-    if n == 1:
+    if per_leaf == 0:
         # No antisymmetric parameters: every leaf rotation is the identity,
         # and the closed-form cores are already exact.
         solved_x = np.zeros(0)
