@@ -56,7 +56,8 @@ flag | ladder(qrom.num_ladder) | carry]`` — i.e.
 ``"select"`` walk (``num_ladder = num_index``; always the case for the
 small tables where select wins ``"auto"``'s pricing). Both registers
 must be ``|0...0>`` on entry to ``kernel()``; ``adjoint_kernel()`` is the
-literal gate-reversal (no ``cudaq.adjoint``, cuda-quantum#4897/#4898) and
+block-wise reversal of ``kernel()`` with the self-inverse lookup
+re-applied (no ``cudaq.adjoint``, cuda-quantum#4897/#4898) and
 returns them to ``|0...0>``. The QROM lookup uncomputes itself on the clean
 ladder sector the adjoint provides, whatever the variant (the ladder is
 restored by the compute pass and untouched in between, so re-applying
@@ -161,13 +162,21 @@ class AliasSamplingPrepare:
         Keyword-only; forwarded verbatim to the :class:`QROM`
         constructor (default ``"auto"``: price the variants and mint
         the cheapest). The chosen variant controls the garbage-register
-        size through ``qrom.num_ladder`` (see ``num_garbage``).
+        size through ``qrom.num_ladder`` (see ``num_garbage``). The
+        default may now choose a blocked construction with a bank, which
+        widens ``num_garbage``; see the QROM guide and ``max_ancillas``.
     block_size
         Keyword-only; forwarded verbatim to the :class:`QROM`
-        constructor (only meaningful with ``variant="select_swap"``;
+        constructor (for ``variant="select_swap"`` or ``"select_copy"``;
         ``None`` lets the QROM pick). Also shapes ``qrom.num_ladder``
         and hence ``num_garbage``. Invalid combinations raise the
         QROM's own ``ValueError``.
+    alpha
+        Optional SELECT-COPY packet count, forwarded to :class:`QROM`.
+    max_ancillas
+        Optional bound on ``qrom.num_ladder``, the lookup's workspace. It
+        does not bound the other alias-sampling garbage registers; use
+        ``num_garbage`` for their total size.
 
     Garbage caveat: the per-bin garbage vectors ``|g_k>`` are NOT
     mutually orthogonal, so the reduced state on the index register is
@@ -183,7 +192,9 @@ class AliasSamplingPrepare:
                  mu: int,
                  *,
                  variant: str = "auto",
-                 block_size: int | None = None) -> None:
+                 block_size: int | None = None,
+                 alpha: int | None = None,
+                 max_ancillas: int | None = None) -> None:
         values = [float(w) for w in weights]
         if len(values) == 0:
             raise ValueError("weights must be non-empty")
@@ -220,7 +231,7 @@ class AliasSamplingPrepare:
         #   bits [num_index, num_index+mu) = keep[k]  (the keep threshold)
         # so one lookup emits alias into garbage's alias register and keep
         # into its keep register (see the garbage-layout docstring).
-        # variant/block_size pass through verbatim (default "auto"
+        # QROM strategy options pass through verbatim (default "auto"
         # prices the constructions); the chosen variant's ladder width
         # shapes the garbage layout below. QROM validation errors
         # propagate as-is.
@@ -229,7 +240,9 @@ class AliasSamplingPrepare:
             address_bits=num_index,
             output_bits=num_index + mu,
             variant=variant,
-            block_size=block_size)
+            block_size=block_size,
+            alpha=alpha,
+            max_ancillas=max_ancillas)
         self._build_kernels()
 
     # ------------------------------------------------------------------
@@ -274,7 +287,9 @@ class AliasSamplingPrepare:
         @cudaq.kernel
         def primitives_alias_prepare_adj(index: cudaq.qview,
                                          garbage: cudaq.qview):
-            """Hand-written gate-reversal of ``primitives_alias_prepare``."""
+            """Hand-written inverse of ``primitives_alias_prepare``: the gate
+            sequence reversed block by block, with the self-inverse QROM
+            lookup re-applied on the clean-ladder sector."""
             for j in range(m):
                 b = m - 1 - j
                 swap.ctrl(garbage[flag], index[b], garbage[b])
@@ -394,5 +409,6 @@ class AliasSamplingPrepare:
         return self._prepare
 
     def adjoint_kernel(self):
-        """PREPARE^dagger ``(index, garbage)`` — the exact inverse."""
+        """PREPARE^dagger ``(index, garbage)`` — the exact inverse on the
+        clean-ladder sector ``kernel()`` leaves behind."""
         return self._prepare_adj
