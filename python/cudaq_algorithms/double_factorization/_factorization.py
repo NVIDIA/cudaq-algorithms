@@ -46,6 +46,8 @@ class DoubleFactorization:
 
     C-DF fills ``optimizer_success``, ``optimizer_nit``, and
     ``optimizer_grad_norm`` from the L-BFGS-B result (``None`` on X-DF).
+    When ``n == 1``, no optimization runs, so those fields are ``True``,
+    ``0``, and ``0.0``.
     """
 
     num_orbitals: int
