@@ -602,6 +602,27 @@ def test_cdf_exact_rank_is_marked_converged(backend, n, num_vectors,
     assert df.factorization_error(eri, factorization) < 1.0e-4
 
 
+@pytest.mark.parametrize("backend", _BACKENDS)
+@pytest.mark.parametrize("inner_solver", ["lstsq", "cg"])
+def test_one_orbital_small_eri_keeps_the_closed_form_core(
+        backend, inner_solver):
+    # n == 1 skips L-BFGS. Both inner solvers must return the closed-form
+    # core when the ERI is scaled below cg_tolerance.
+    eri = 1.0e-12 * _synthetic_eri(1, 1, seed=11)
+    eri_norm = float(np.linalg.norm(eri))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        factorization = df.compressed_double_factorization(
+            eri, num_leaves=1, inner_solver=inner_solver, backend=backend)
+    # The one-orbital skip reports convergence and does not warn.
+    assert factorization.optimizer_success is True
+    # Relative: this tensor is ~1e-12, so a zero core still passes an
+    # absolute bound of 1e-4.
+    assert eri_norm > 0.0
+    assert df.factorization_error(eri, factorization) / eri_norm < 1.0e-6
+    assert float(np.linalg.norm(factorization.leaf_cores[0])) > 0.0
+
+
 def test_xdf_leaves_optimizer_status_unset():
     # optimizer_* is a C-DF field; X-DF does not run L-BFGS.
     eri = _synthetic_eri(4, 2, seed=3)
