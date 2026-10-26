@@ -46,6 +46,8 @@ class DoubleFactorization:
 
     C-DF fills ``optimizer_success``, ``optimizer_nit``, and
     ``optimizer_grad_norm`` from the L-BFGS-B result (``None`` on X-DF).
+    When ``n == 1``, no optimization runs, so those fields are ``True``,
+    ``0``, and ``0.0``.
     """
 
     num_orbitals: int
@@ -302,6 +304,8 @@ def _solve_inner_cores_cg(
     curvature guards sync to host. This scales to large orbital counts where the
     explicit design matrix is infeasible.
 
+    ``tolerance`` is relative to the right-hand side: iteration stops when
+    ``||r||_F <= tolerance * ||R||_F`` (and immediately when ``R`` is zero).
     ``initial_guess`` (a stacked ``(num_leaves, n, n)`` array) warm-starts CG. In
     the C-DF optimizer the rotations -- and hence the cores -- change slowly
     between L-BFGS steps, so seeding from the previous step's solution collapses
@@ -328,6 +332,11 @@ def _solve_inner_cores_cg(
         # A device scalar (0-d array); converted to host only where needed.
         return xp.sum(x * y)
 
+    # R = 0: the (ridge or minimum-norm) solution is Z = 0 whatever the guess.
+    rhs_norm_sq = float(to_numpy(inner_product(rhs, rhs)))
+    if rhs_norm_sq == 0.0:
+        return [xp.zeros((n, n)) for _ in range(num_leaves)]
+
     if initial_guess is None:
         z = xp.zeros((num_leaves, n, n))
         residual = rhs.copy()  # r = rhs - A(0) = rhs since z = 0
@@ -336,7 +345,8 @@ def _solve_inner_cores_cg(
         residual = rhs - apply_operator(z)
     direction = residual.copy()
     residual_norm_sq = inner_product(residual, residual)
-    threshold = (tolerance**2) * max(float(to_numpy(residual_norm_sq)), 1.0)
+    # Stop when ||r||_F <= tolerance * ||R||_F.
+    threshold = (tolerance**2) * rhs_norm_sq
     limit = max_iterations if max_iterations is not None else max(
         50, num_leaves * n * n)
 
@@ -541,7 +551,9 @@ def compressed_double_factorization(
     (default) forms an explicit design matrix, while ``"cg"`` is the matrix-free
     conjugate-gradient solve (RC-DF Eqs. 25-30) that avoids the ``n^4``-row design
     matrix and scales to large orbital counts. ``cg_tolerance`` and
-    ``cg_max_iterations`` control the CG solve.
+    ``cg_max_iterations`` control the CG solve. ``cg_tolerance`` is relative
+    to the projected right-hand-side norm ``||R||_F``;
+    ``cg_optimization_tolerance`` inherits the same meaning.
 
     For ``inner_solver="cg"`` two accelerators cut the per-step CG cost without
     changing the final accuracy: ``cg_warm_start`` (default ``True``) seeds each
@@ -666,9 +678,9 @@ def compressed_double_factorization(
             gradient_chunks.append(grad_x[lower])
         return loss, np.concatenate(gradient_chunks)
 
-    if n == 1:
-        # No antisymmetric parameters: every leaf rotation is the identity,
-        # and the closed-form cores are already exact.
+    if per_leaf == 0:
+        # No antisymmetric parameters: every leaf rotation is the identity.
+        # The cores are the closed-form solve at the identity rotations.
         solved_x = np.zeros(0)
         optimizer_success = True
         optimizer_nit = 0
