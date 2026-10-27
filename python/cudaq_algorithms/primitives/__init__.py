@@ -46,8 +46,14 @@ for SELECT-style constructions (the select_swap QROM is itself a parent
 kernel composing a walk, a routing network and a copy), and it is pinned
 by ``tests/python/test_primitives_composition.py``. Where a controlled
 walk is what you need, the factory's ``controlled=True`` variants are
-the cheaper route: the control is folded into the walk's root gadgets
-instead of being added to every gate.
+the cheaper route by a wide margin: ``cudaq.control`` over a composition
+adds a control to every gate, so each of the walk's Toffolis becomes a
+3-controlled X and each root or ladder CNOT becomes a Toffoli, while the
+factory folds the control into the root gadgets. Measured with
+``cudaq.estimate_resources`` on CUDA-Q 0.16.0 (one-gate bodies): a 4-bit,
+16-item walk costs 44 Toffolis plus 19 3-controlled X under
+``cudaq.control`` against 23 Toffolis from the factory; a 5-bit, 32-item
+walk 87 Toffolis plus 43 3-controlled X against 47.
 
 Import the subpackage directly (``from cudaq_algorithms.primitives
 import QROM``); nothing here is re-exported from the package root.
