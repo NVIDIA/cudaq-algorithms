@@ -22,8 +22,6 @@ while the Draper QFT family uses only ``r1`` rotations. Each number is stated
 on the kernel's own docstring; the tests pin it.
 """
 
-import re
-
 import numpy as np
 import pytest
 
@@ -721,24 +719,9 @@ def test_qft_comparator_costs_rotations_not_toffolis(n):
 # Controlled composition (cudaq.control of a kernel that calls a sub-kernel)
 # ----------------------------------------------------------------------
 #
-# cudaq.control of a device kernel that calls another @cudaq.kernel regressed
-# on CUDA-Q 0.15.x (kernel-specialization failure: "Unhandled controlled
-# quantum kernel call"); it is correct on 0.14.2 and again on 0.16.0. Since the
-# library targets 0.16, this pins the controlled-composition behaviour there and
-# skips on the affected 0.15.x line.
-
-
-def _cudaq_version():
-    match = re.search(r"(\d+)\.(\d+)\.(\d+)", cudaq.__version__)
-    if match is None:
-        # Fail loudly rather than fall back to (0, 0, 0), which would skip the
-        # controlled-composition test silently and permanently.
-        raise RuntimeError(f"could not parse a version from cudaq.__version__="
-                           f"{cudaq.__version__!r}")
-    return tuple(int(part) for part in match.groups())
-
-
-_CONTROLLED_COMPOSITION_OK = _cudaq_version() >= (0, 16, 0)
+# Pinned on the supported CUDA-Q line through the ``controlled_composition``
+# marker (conftest.py): the test fails on a 0.16.x that regresses control
+# propagation and skips only on an older CUDA-Q.
 
 
 @cudaq.kernel
@@ -753,10 +736,7 @@ def _run_controlled_add_constant_qft(n: int, tval: int, constant: int):
     cudaq.control(arith.add_constant_qft, ctrl, target, constant)
 
 
-@pytest.mark.skipif(
-    not _CONTROLLED_COMPOSITION_OK,
-    reason="cudaq.control of a composed kernel regressed on 0.15.x "
-    "(specialization failure); correct on 0.14.2 and 0.16.0")
+@pytest.mark.controlled_composition
 @pytest.mark.parametrize("n", [2, 3])
 def test_controlled_add_constant_qft_superposed_control(n):
     # A superposed control: the branch that fires must, and the other must not.
