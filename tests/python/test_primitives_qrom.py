@@ -318,3 +318,252 @@ def test_qrom_validation_raises():
              output_bits=1,
              variant="select_swap",
              block_size=8)
+    # The control flag is a bool, not a truthy value: a stray string or
+    # int would otherwise mint a controlled (or plain) lookup silently.
+    with pytest.raises(ValueError, match="controlled must be a bool"):
+        QROM([1, 2], address_bits=1, output_bits=2, controlled=1)
+    with pytest.raises(ValueError, match="controlled must be a bool"):
+        QROM([1, 2], address_bits=1, output_bits=2, controlled="no")
+
+
+# ----------------------------------------------------------------------
+# Externally controlled lookups
+# ----------------------------------------------------------------------
+
+from cudaq_algorithms.primitives._qrom import _select_swap_cost
+from cudaq_algorithms.primitives._unary_iteration import _walk_toffoli_count
+
+_CTRL_DATA = [5, 3, 0, 6, 7]
+
+# (data, address_bits, output_bits, variant, block_size, preloaded output
+# word): both variants on the fixture table, a one-bit address (select
+# only), a single block-index bit (B = 2^(address_bits - 1)) and a
+# zero-padded last block at B > 2.
+_CTRL_GEOMETRIES = [
+    pytest.param(_CTRL_DATA, 3, 3, "select", None, 0b101, id="select-3b-5e"),
+    pytest.param(_CTRL_DATA, 3, 3, "select_swap", 2, 0b101,
+                 id="swap-3b-5e-B2"),
+    pytest.param([5, 2], 1, 3, "select", None, 0b011, id="select-1b-2e"),
+    pytest.param([1, 3, 0, 2, 3],
+                 3,
+                 2,
+                 "select_swap",
+                 4,
+                 0b01,
+                 id="swap-3b-5e-B4-one-high-bit"),
+    pytest.param([1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1],
+                 4,
+                 1,
+                 "select_swap",
+                 2,
+                 0b1,
+                 id="swap-4b-11e-B2"),
+    pytest.param([1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1],
+                 4,
+                 1,
+                 "select_swap",
+                 8,
+                 0b1,
+                 id="swap-4b-11e-B8-padded-block"),
+]
+
+
+def _controlled_fixture(data, address_bits, output_bits, variant, block_size):
+    plain = QROM(data,
+                 address_bits,
+                 output_bits,
+                 variant=variant,
+                 block_size=block_size)
+    ctrl = QROM(data,
+                address_bits,
+                output_bits,
+                variant=variant,
+                block_size=block_size,
+                controlled=True)
+    assert plain.controlled is False and ctrl.controlled is True
+    assert ctrl.variant == plain.variant
+    assert ctrl.num_ladder == plain.num_ladder
+    return plain, ctrl
+
+
+def _superposed_input_state(address_bits, num_ladder, output_bits, preload):
+    """H on every address bit, output preloaded with ``preload``, ladder |0>."""
+
+    @cudaq.kernel
+    def run():
+        address_reg = cudaq.qvector(address_bits)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(output_bits)
+        for b in range(address_bits):
+            h(address_reg[b])
+        for t in range(output_bits):
+            if ((preload >> t) & 1) == 1:
+                x(output[t])
+
+    return np.array(cudaq.get_state(run))
+
+
+def _expected_lookup_state(data, address_bits, num_ladder, output_bits,
+                           preload):
+    """The table itself: ``|k>|0>|preload XOR data[k]>`` over all ``k``."""
+    state = np.zeros(1 << (address_bits + num_ladder + output_bits),
+                     dtype=complex)
+    amplitude = 1.0 / np.sqrt(1 << address_bits)
+    for k in range(1 << address_bits):
+        word = preload ^ (data[k] if k < len(data) else 0)
+        state[k | (word << (address_bits + num_ladder))] = amplitude
+    return state
+
+
+def _plain_lookup_state(qrom: QROM, preload):
+    lookup = qrom.kernel
+    address_bits = qrom.num_address
+    num_ladder = qrom.num_ladder
+    output_bits = qrom.num_output
+
+    @cudaq.kernel
+    def run():
+        address_reg = cudaq.qvector(address_bits)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(output_bits)
+        for b in range(address_bits):
+            h(address_reg[b])
+        for t in range(output_bits):
+            if ((preload >> t) & 1) == 1:
+                x(output[t])
+        lookup(address_reg, ladder, output)
+
+    return np.array(cudaq.get_state(run))
+
+
+def _controlled_lookup_state(qrom: QROM, preload, control_mode: int):
+    """control_mode: 0 -> |0>, 1 -> |1>, 2 -> |+>; the control is qubit 0."""
+    lookup = qrom.kernel
+    address_bits = qrom.num_address
+    num_ladder = qrom.num_ladder
+    output_bits = qrom.num_output
+
+    @cudaq.kernel
+    def run(mode: int):
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(address_bits)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(output_bits)
+        if mode == 1:
+            x(control[0])
+        if mode == 2:
+            h(control[0])
+        for b in range(address_bits):
+            h(address_reg[b])
+        for t in range(output_bits):
+            if ((preload >> t) & 1) == 1:
+                x(output[t])
+        lookup(control, address_reg, ladder, output)
+
+    # Reshape so column c holds the amplitudes with the control in |c>.
+    return np.array(cudaq.get_state(run, control_mode)).reshape(-1, 2)
+
+
+@pytest.mark.parametrize(
+    "data,address_bits,output_bits,variant,block_size,preload",
+    _CTRL_GEOMETRIES)
+def test_controlled_qrom_control_conventions(data, address_bits, output_bits,
+                                             variant, block_size, preload):
+    # Control |0>: the whole register is untouched (superposed addresses,
+    # a non-zero output word). Control |1>: exactly the plain lookup,
+    # which is the table itself. Control |+>: the two branches side by
+    # side, each with weight 1/2.
+    plain, ctrl = _controlled_fixture(data, address_bits, output_bits, variant,
+                                      block_size)
+    before = _superposed_input_state(address_bits, ctrl.num_ladder,
+                                     output_bits, preload)
+    after = _plain_lookup_state(plain, preload)
+    np.testing.assert_allclose(after,
+                               _expected_lookup_state(data, address_bits,
+                                                      ctrl.num_ladder,
+                                                      output_bits, preload),
+                               atol=1e-12)
+
+    at_zero = _controlled_lookup_state(ctrl, preload, 0)
+    np.testing.assert_allclose(at_zero[:, 0], before, atol=1e-12)
+    np.testing.assert_allclose(at_zero[:, 1], 0.0, atol=1e-12)
+
+    at_one = _controlled_lookup_state(ctrl, preload, 1)
+    np.testing.assert_allclose(at_one[:, 1], after, atol=1e-12)
+    np.testing.assert_allclose(at_one[:, 0], 0.0, atol=1e-12)
+
+    at_plus = _controlled_lookup_state(ctrl, preload, 2)
+    np.testing.assert_allclose(at_plus[:, 0], before / np.sqrt(2), atol=1e-12)
+    np.testing.assert_allclose(at_plus[:, 1], after / np.sqrt(2), atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "data,address_bits,output_bits,variant,block_size,preload",
+    _CTRL_GEOMETRIES)
+def test_controlled_qrom_is_self_inverse(data, address_bits, output_bits,
+                                         variant, block_size, preload):
+    _, ctrl = _controlled_fixture(data, address_bits, output_bits, variant,
+                                  block_size)
+    lookup = ctrl.kernel
+    num_ladder = ctrl.num_ladder
+
+    @cudaq.kernel
+    def run():
+        control = cudaq.qvector(1)
+        address_reg = cudaq.qvector(address_bits)
+        ladder = cudaq.qvector(num_ladder)
+        output = cudaq.qvector(output_bits)
+        h(control[0])
+        for b in range(address_bits):
+            h(address_reg[b])
+        for t in range(output_bits):
+            if ((preload >> t) & 1) == 1:
+                x(output[t])
+        lookup(control, address_reg, ladder, output)
+        lookup(control, address_reg, ladder, output)
+
+    state = np.array(cudaq.get_state(run)).reshape(-1, 2)
+    before = _superposed_input_state(address_bits, num_ladder, output_bits,
+                                     preload)
+    np.testing.assert_allclose(state[:, 0], before / np.sqrt(2), atol=1e-12)
+    np.testing.assert_allclose(state[:, 1], before / np.sqrt(2), atol=1e-12)
+
+
+def test_controlled_qrom_toffoli_counts_follow_the_documented_contract():
+    # Only the walk passes carry the control, so the price is the
+    # controlled walk count in place of W; the routing and copy are
+    # unchanged (the select_swap delta is twice the per-walk delta).
+    plain_select, ctrl_select = _controlled_fixture(_CTRL_DATA, 3, 3, "select",
+                                                    None)
+    assert ctrl_select.toffoli_count == _walk_toffoli_count(3, 5, True)
+    assert plain_select.toffoli_count == _walk_toffoli_count(3, 5, False)
+    plain_swap, ctrl_swap = _controlled_fixture(_CTRL_DATA, 3, 3,
+                                                "select_swap", 2)
+    assert ctrl_swap.toffoli_count == _select_swap_cost(3, 5, 3, 2, True)
+    assert plain_swap.toffoli_count == _select_swap_cost(3, 5, 3, 2, False)
+    per_walk = ctrl_select.toffoli_count - plain_select.toffoli_count
+    assert per_walk > 0
+    assert ctrl_swap.toffoli_count - plain_swap.toffoli_count == 2 * (
+        _walk_toffoli_count(2, 3, True) - _walk_toffoli_count(2, 3, False))
+    assert "controlled=True" in repr(ctrl_swap)
+    assert "controlled=False" in repr(plain_swap)
+
+
+def test_controlled_qrom_auto_prices_controlled_candidates():
+    # variant="auto" on a controlled lookup compares the controlled costs
+    # against each other, never a controlled count against a plain one.
+    # Seven one-bit entries over three address bits make the choice
+    # visible: plain pricing picks select_swap with B = 2, controlled
+    # pricing picks B = 4 (controlled walks over few high bits are
+    # relatively dearer, so the control pushes the optimum toward larger
+    # blocks); either mixed pricing would land on B = 2 or on select.
+    table = [1, 0, 1, 1, 0, 1, 1]
+    plain = QROM(table, 3, 1)
+    ctrl = QROM(table, 3, 1, controlled=True)
+    assert (plain.variant, plain.block_size) == ("select_swap", 2)
+    assert (ctrl.variant, ctrl.block_size) == ("select_swap", 4)
+    assert plain.toffoli_count == _select_swap_cost(3, 7, 1, 2, False)
+    assert ctrl.toffoli_count == _select_swap_cost(3, 7, 1, 4, True)
+    assert ctrl.toffoli_count == min(
+        _walk_toffoli_count(3, 7, True),
+        min(_select_swap_cost(3, 7, 1, size, True) for size in (2, 4)))

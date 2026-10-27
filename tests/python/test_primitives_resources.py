@@ -142,18 +142,25 @@ def test_partial_tree_costs_no_more_than_full():
     assert partial < full
 
 
+@pytest.mark.parametrize("controlled", [False, True])
 @pytest.mark.parametrize("variant,block_size", [("select", None),
                                                 ("select_swap", 2),
                                                 ("select_swap", 4)])
-def test_qrom_compiled_toffolis_match_emitter_count(variant, block_size):
+def test_qrom_compiled_toffolis_match_emitter_count(variant, block_size,
+                                                    controlled):
     data = [3, 0, 5, 6, 1, 7, 2, 2, 4, 1, 6]
     qrom = QROM(data,
                 address_bits=4,
                 output_bits=3,
                 variant=variant,
-                block_size=block_size)
-    compiled = _compiled_toffolis_of(qrom.kernel, qrom.num_address,
-                                     qrom.num_ladder, qrom.num_output)
+                block_size=block_size,
+                controlled=controlled)
+    if controlled:
+        compiled = _compiled_toffolis_of(qrom.kernel, 1, qrom.num_address,
+                                         qrom.num_ladder, qrom.num_output)
+    else:
+        compiled = _compiled_toffolis_of(qrom.kernel, qrom.num_address,
+                                         qrom.num_ladder, qrom.num_output)
     assert compiled == qrom.toffoli_count
 
 
