@@ -8,6 +8,8 @@ transform of the rotated one-body tensor); the combinators themselves
 never feed a reference.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -609,3 +611,16 @@ def test_rotated_rejects_non_kernels_and_degenerate_rotations():
     with pytest.raises(ValueError, match="real matrix"):
         RotatedEncoding.from_orbital_rotation(PauliLCU({"ZIII": 0.5}),
                                               np.eye(2, dtype=complex))
+
+
+def test_from_orbital_rotation_warns_for_off_diagonal_inner():
+    # The network reproduces V up to a sign per mode; a PauliLCU inner with
+    # X or Y words sees those signs, a diagonal (I/Z) inner does not.
+    rotation = np.array([[0.6, -0.8], [0.8, 0.6]])
+    diagonal = PauliLCU({"ZIII": 0.5, "IZII": -0.25, "IIZZ": 0.75})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        RotatedEncoding.from_orbital_rotation(diagonal, rotation)
+    hopping = PauliLCU({"XZXI": 0.5, "ZIII": 0.25})
+    with pytest.warns(RuntimeWarning, match="X or Y factors"):
+        RotatedEncoding.from_orbital_rotation(hopping, rotation)

@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import warnings
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
@@ -511,9 +512,25 @@ class RotatedEncoding:
         the double-factorized example does. The network reproduces ``V``
         up to a sign per mode, which is immaterial when the inner encoding
         is diagonal in the rotated modes (number operators) — the intended
-        use — and must be accounted for otherwise.
+        use — and must be accounted for otherwise. When ``inner`` exposes
+        its Pauli ``terms`` (a `PauliLCU`), a word with an ``X`` or ``Y``
+        factor is exactly a term that sees those signs, and a
+        ``RuntimeWarning`` says so.
         """
         _require_encoding(inner, "inner")
+        terms = getattr(inner, "terms", None)
+        if terms is not None:
+            off_diagonal = [
+                word for _, word in terms if any(c in "XY" for c in word)
+            ]
+            if off_diagonal:
+                warnings.warn(
+                    "RotatedEncoding.from_orbital_rotation: the inner encoding "
+                    f"has {len(off_diagonal)} Pauli word(s) with X or Y factors "
+                    f"(first: {off_diagonal[0]!r}); the rotation network "
+                    "reproduces V only up to a sign per mode, which such terms "
+                    "see. The sign-free use is an inner encoding diagonal in "
+                    "the rotated modes (I/Z words only).", RuntimeWarning)
         if np.iscomplexobj(orthogonal):
             raise ValueError("orthogonal must be a real matrix")
         matrix = np.asarray(orthogonal, dtype=float)

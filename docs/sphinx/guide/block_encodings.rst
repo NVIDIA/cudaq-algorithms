@@ -329,7 +329,14 @@ factor applies at each level of nested sums: a leaf below ``d`` sum levels
 is called ``2^d`` times per path. An orbital-rotation
 network applies ``num_rotations`` adjacent Givens rotations per spin sector
 on entry and again on exit. The ``alpha`` saving is bought with these gates
-and the extra ``num_slots + 1`` ancillas.
+and the extra ``num_slots + 1`` ancillas. The win is ``alpha`` and the
+multi-controlled gate count, not the total gate count: on the 2x2 Hubbard
+example, one combined ``apply_kernel`` is about 1270 gates (388 CNOTs plus
+192 ``rx`` and 96 ``rz`` from the Givens network, run twice by the SELECT
+echo) against about 520 for the flat `PauliLCU` of the same Hamiltonian,
+of which 160 are multi-controlled, while ``alpha`` drops from 24 to 20 —
+an advantage that grows with the lattice (1.20x at 2x2, 1.31x at 2x3,
+1.39x at 3x3, 1.45x at 4x4).
 
 **Negative coefficients.** A term with ``c_i < 0`` is phased by ``-1`` on
 its slot branch, so ``SumEncoding([(1.0, encoding), (-e_ref, identity)])``
