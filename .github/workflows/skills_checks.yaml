@@ -10,7 +10,7 @@ permissions:
 jobs:
   skills-checks:
     name: SkillEvaluator static checks and skill tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && 'linux-amd64-cpu8' || 'ubuntu-latest' }}
     timeout-minutes: 15
     env:
       # Pinned so a scanner release cannot change the gate silently.

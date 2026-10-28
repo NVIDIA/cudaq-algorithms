@@ -10,7 +10,7 @@ permissions:
 jobs:
   skills-dev-tests:
     name: Suite, runner and reporting contracts
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && 'linux-amd64-cpu8' || 'ubuntu-latest' }}
     timeout-minutes: 15
     env:
       PYTHONDONTWRITEBYTECODE: '1'
