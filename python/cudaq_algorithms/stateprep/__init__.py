@@ -33,7 +33,7 @@ from ._givens import (
     make_givens_rotation_schedule, make_orbital_rotation_schedule,
     orbital_rotation_program, phase_givens_rotation, slater_determinant,
     slater_determinant_kernel, spatial_givens_network, spatial_givens_rotation,
-    validate_givens_rotation_schedule)
+    spatial_givens_segment, validate_givens_rotation_schedule)
 from ._hartree_fock import (
     FixedParameterUccResourceEstimate, HartreeFockResourceEstimate,
     estimate_fixed_parameter_ucc_resources,
@@ -98,4 +98,5 @@ __all__ = [
     "orbital_rotation_program",
     "spatial_givens_rotation",
     "spatial_givens_network",
+    "spatial_givens_segment",
 ]

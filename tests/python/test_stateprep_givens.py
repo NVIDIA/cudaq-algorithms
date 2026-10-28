@@ -739,6 +739,39 @@ def test_spatial_givens_network_realizes_v_up_to_mode_signs(matrix):
         np.testing.assert_allclose(realized_inverse, expected.T, atol=1e-12)
 
 
+@pytest.mark.parametrize("start,count", [(0, 0), (0, 1), (1, 2), (2, 1),
+                                         (0, 3)])
+def test_spatial_givens_segment_matches_the_sliced_network(start, count):
+    # A segment of a flat rotation list applies exactly the rotations
+    # start .. start + count - 1, the network over that slice; count = 0 is
+    # the identity. The frames of a factorized operator share one list.
+    schedule = stateprep.make_orbital_rotation_schedule(
+        _random_orthogonal(3, 23))
+    modes, angles = stateprep.orbital_rotation_program(schedule, inverse=False)
+    assert len(modes) == 3
+    sliced_modes = modes[start:start + count] or [0]
+    sliced_angles = angles[start:start + count] or [0.0]
+
+    @cudaq.kernel
+    def segment(state: cudaq.State):
+        system = cudaq.qvector(state)
+        stateprep.spatial_givens_segment(system, modes, angles, start, count)
+
+    @cudaq.kernel
+    def network(state: cudaq.State):
+        system = cudaq.qvector(state)
+        stateprep.spatial_givens_network(system, sliced_modes, sliced_angles)
+
+    rng = np.random.default_rng(37)
+    ket = rng.normal(size=64) + 1j * rng.normal(size=64)
+    ket /= np.linalg.norm(ket)
+    expected = np.asarray(cudaq.get_state(network, algorithms.state_from(ket)))
+    actual = np.asarray(cudaq.get_state(segment, algorithms.state_from(ket)))
+    np.testing.assert_allclose(actual, expected, atol=_reference_atol())
+    if count == 0:
+        np.testing.assert_allclose(actual, ket, atol=_reference_atol())
+
+
 @pytest.mark.parametrize("diagonal", [(1, ), (-1, ), (1, 1, 1), (-1, 1, -1)])
 @pytest.mark.parametrize("inverse", [False, True])
 def test_diagonal_orbital_program_padding_is_identity(diagonal, inverse):

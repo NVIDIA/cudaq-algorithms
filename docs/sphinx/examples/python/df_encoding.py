@@ -76,11 +76,10 @@ from cudaq_algorithms.pauli_lcu import (controlled_reflect_about_prepare,
                                         unprepare)
 from cudaq_algorithms.stateprep import (make_orbital_rotation_schedule,
                                         orbital_rotation_program,
-                                        spatial_givens_rotation)
+                                        spatial_givens_segment)
 
 __all__ = [
     "DoubleFactorizedEncoding",
-    "apply_basis_rotations",
     "select",
     "controlled_select",
     "apply",
@@ -138,21 +137,6 @@ def _prepare_angles(probabilities) -> list[float]:
 
 
 @cudaq.kernel
-def apply_basis_rotations(system: cudaq.qview, start: int, count: int,
-                          rot_orbitals: list[int], rot_angles: list[float]):
-    """Apply ``count`` spatial Givens rotations starting at ``start``.
-
-    Rotation ``i`` mixes adjacent spatial orbitals ``p, p + 1``
-    (``p = rot_orbitals[start + i]``) with angle ``rot_angles[start + i]``,
-    lifted to both spin sectors of the interleaved Jordan-Wigner register
-    by ``stateprep.spatial_givens_rotation``.
-    """
-    for i in range(count):
-        spatial_givens_rotation(system, rot_angles[start + i],
-                                rot_orbitals[start + i])
-
-
-@cudaq.kernel
 def select(ancilla: cudaq.qview, system: cudaq.qview, term_controls: list[int],
            term_targets: list[int], term_lengths: list[int],
            term_signs: list[int], frame_term_counts: list[int],
@@ -179,8 +163,8 @@ def select(ancilla: cudaq.qview, system: cudaq.qview, term_controls: list[int],
     ptr_tgt = 0
     term_i = 0
     for f in range(len(frame_term_counts)):
-        apply_basis_rotations(system, rot_ptr, segment_rot_counts[f],
-                              rot_orbitals, rot_angles)
+        spatial_givens_segment(system, rot_orbitals, rot_angles, rot_ptr,
+                               segment_rot_counts[f])
         rot_ptr += segment_rot_counts[f]
         for _ in range(frame_term_counts[f]):
             for b in range(n_anc):
@@ -201,9 +185,8 @@ def select(ancilla: cudaq.qview, system: cudaq.qview, term_controls: list[int],
                     x(ancilla[n_anc - 1 - b])
                 back -= 1
             term_i += 1
-    apply_basis_rotations(system, rot_ptr,
-                          segment_rot_counts[len(frame_term_counts)],
-                          rot_orbitals, rot_angles)
+    spatial_givens_segment(system, rot_orbitals, rot_angles, rot_ptr,
+                           segment_rot_counts[len(frame_term_counts)])
 
 
 @cudaq.kernel
@@ -225,8 +208,8 @@ def controlled_select(control_and_ancilla: cudaq.qview, system: cudaq.qview,
     ptr_tgt = 0
     term_i = 0
     for f in range(len(frame_term_counts)):
-        apply_basis_rotations(system, rot_ptr, segment_rot_counts[f],
-                              rot_orbitals, rot_angles)
+        spatial_givens_segment(system, rot_orbitals, rot_angles, rot_ptr,
+                               segment_rot_counts[f])
         rot_ptr += segment_rot_counts[f]
         for _ in range(frame_term_counts[f]):
             for b in range(n_anc):
@@ -246,9 +229,8 @@ def controlled_select(control_and_ancilla: cudaq.qview, system: cudaq.qview,
                     x(control_and_ancilla[n_anc - b])
                 back -= 1
             term_i += 1
-    apply_basis_rotations(system, rot_ptr,
-                          segment_rot_counts[len(frame_term_counts)],
-                          rot_orbitals, rot_angles)
+    spatial_givens_segment(system, rot_orbitals, rot_angles, rot_ptr,
+                           segment_rot_counts[len(frame_term_counts)])
 
 
 @cudaq.kernel

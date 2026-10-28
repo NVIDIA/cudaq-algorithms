@@ -496,13 +496,23 @@ def spatial_givens_rotation(system: cudaq.qview, theta: float, mode: int):
 
 
 @cudaq.kernel
+def spatial_givens_segment(system: cudaq.qview, modes: list[int],
+                           angles: list[float], start: int, count: int):
+    """Apply ``spatial_givens_rotation(system, angles[i], modes[i])`` for
+    ``i`` from ``start`` to ``start + count - 1`` in order: one segment of
+    a flat rotation list shared by several frames (a kernel cannot slice a
+    sub-list to hand to another kernel)."""
+    for i in range(count):
+        spatial_givens_rotation(system, angles[start + i], modes[start + i])
+
+
+@cudaq.kernel
 def spatial_givens_network(system: cudaq.qview, modes: list[int],
                            angles: list[float]):
     """Apply ``spatial_givens_rotation(system, angles[i], modes[i])`` for
     each ``i`` in order (the flattened form of an
     ``orbital_rotation_program``)."""
-    for i in range(len(modes)):
-        spatial_givens_rotation(system, angles[i], modes[i])
+    spatial_givens_segment(system, modes, angles, 0, len(modes))
 
 
 @dataclass(frozen=True)
@@ -514,9 +524,12 @@ class OrbitalRotationSchedule:
     ``V`` in turn they reduce it to a diagonal of signs,
     ``R_m ... R_1 V = diag(signs)``. ``signs`` is that residual, one
     ``+-1`` per mode: the networks built from the schedule reproduce
-    ``V diag(signs)``, i.e. ``V`` up to a sign per mode, which is
+    ``V diag(signs)``, i.e. ``V`` up to a sign per mode. That is
     immaterial for operators diagonal in the rotated modes (number
-    operators) and must be accounted for otherwise.
+    operators); ``RotatedEncoding.from_orbital_rotation`` cancels it with
+    a ``Z`` on both spin orbitals of each mode with sign ``-1``
+    (``Z_p a_p Z_p = -a_p`` under Jordan-Wigner), so its frame kernels
+    realize ``V`` exactly.
     """
 
     num_modes: int

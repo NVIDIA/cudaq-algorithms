@@ -224,11 +224,14 @@ rotations of adjacent rows, bottom-up, leaving a diagonal of signs ``D``;
 `orbital_rotation_program` turns the schedule into the flattened lists the
 network kernel takes, ``inverse=False`` realizing ``V D`` and
 ``inverse=True`` its transpose. The sign per mode is immaterial for
-operators diagonal in the rotated modes and must be accounted for
-otherwise (`RotatedEncoding.mode_signs` reports it). The lists are empty
-for a diagonal ``V``; pad with ``modes=[0], angles=[0.0]`` before crossing
-the kernel boundary. Zero-angle rotations skip the qubit slices, so this
-padding is an identity even for a single spatial mode (two qubits).
+operators diagonal in the rotated modes; `RotatedEncoding.from_orbital_rotation`
+cancels it with a ``Z`` on both spin orbitals of each such mode
+(``mode_signs`` reports it), so its frame kernels realize ``V`` exactly.
+For a diagonal ``V`` the program is the single zero-angle rotation
+``[0], [0.0]``: an identity on any register, including a single spatial
+mode (two qubits), so no empty list crosses the kernel boundary.
+`spatial_givens_segment` applies ``count`` rotations from ``start`` of a
+flat list shared by several frames.
 
 State preparation injection
 ---------------------------
