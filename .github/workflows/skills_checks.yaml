@@ -11,6 +11,10 @@ jobs:
   skills-checks:
     name: SkillEvaluator static checks and skill tests
     runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && 'linux-amd64-cpu8' || 'ubuntu-latest' }}
+    # SkillEvaluator sanitizes scanner subprocess environments, removing
+    # LD_LIBRARY_PATH. Use a Python runtime that does not need that variable
+    # to find its own libraries on self-hosted runners.
+    container: python:3.12
     timeout-minutes: 15
     env:
       # Pinned so a scanner release cannot change the gate silently.
@@ -23,11 +27,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
 
       - name: Install SkillEvaluator and scanners
         shell: bash
