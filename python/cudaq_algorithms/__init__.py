@@ -30,10 +30,11 @@ def _resolve_version() -> str:
 __version__ = _resolve_version()
 del _resolve_version
 
-from . import (block_encoding, chemistry, common_kernels, double_factorization,
-               fermion, lcu, pauli_lcu, qsvt, qubitization, sim_utils,
-               stateprep, trotter)
+from . import (block_encoding, chemistry, combinators, common_kernels,
+               double_factorization, fermion, lcu, pauli_lcu, qsvt,
+               qubitization, sim_utils, stateprep, trotter)
 from .block_encoding import BlockEncoding
+from .combinators import RotatedEncoding, SumEncoding
 from .common_kernels import state_from
 from .lcu import LCUBlockEncoding
 from .pauli_lcu import PauliLCU, select_observable

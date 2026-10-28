@@ -158,3 +158,26 @@ with the register: at 12 counting qubits the same circuits reach roughly
 .. literalinclude:: ../examples/python/08_quantum_phase_estimation.py
    :language: python
    :start-after: [Begin Documentation]
+
+Combine block encodings: Fermi-Hubbard with T in momentum space
+---------------------------------------------------------------
+
+The Fermi-Hubbard Hamiltonian ``H = T + U`` has two pieces that are each
+diagonal in a different basis: the hopping ``T`` in momentum space, where
+its analytic dispersion ``eps(k)`` makes it a sum of single-qubit Z words,
+and the interaction ``U`` in real space. Encode each where it is cheap and
+combine: `RotatedEncoding.from_orbital_rotation` conjugates the
+momentum-diagonal `PauliLCU` of ``T`` by the Givens network of the
+standing-wave basis, and `SumEncoding` adds it to the real-space ``U`` with
+one slot qubit and one flag qubit, at ``alpha = alpha_T + alpha_U`` --
+below the flat `PauliLCU` of the same Hamiltonian (20 vs 24 on the 2x2
+ring). The T/U split is the structure of Campbell's Hubbard resource
+analysis (`arXiv:2012.09238 <https://arxiv.org/abs/2012.09238>`_), realized
+here at the block-encoding level. The combined object is a `BlockEncoding`
+like any other: every block, the controlled variants, the even walk
+moments, a negative-coefficient shift ``H - E_ref I``, and a QSVT sequence
+are verified against an independent sparse Jordan-Wigner reference.
+
+.. literalinclude:: ../examples/python/09_hubbard_combined_encoding.py
+   :language: python
+   :start-after: [Begin Documentation]
