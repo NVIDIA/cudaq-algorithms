@@ -1,0 +1,99 @@
+name: Skills checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  skills-checks:
+    name: SkillEvaluator static checks and skill tests
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && 'linux-amd64-cpu8' || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    env:
+      # Pinned so a scanner release cannot change the gate silently.
+      SKILLEVALUATOR_REF: v0.6.0
+      SKILLSPECTOR_REF: v2.13.1
+      GITLEAKS_VERSION: 8.30.1
+      # Keep pytest from leaving __pycache__ inside the skill tree, which
+      # SkillSpector reports as a shipped-bytecode finding.
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install SkillEvaluator and scanners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install \
+            "skillevaluator[all] @ git+https://github.com/NVIDIA/SkillEvaluator.git@${SKILLEVALUATOR_REF}" \
+            "git+https://github.com/NVIDIA/SkillSpector.git@${SKILLSPECTOR_REF}" \
+            semgrep pytest PyYAML
+          # gitleaks ships as a static binary, not a Python package.
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Report scanner versions
+        shell: bash
+        run: |
+          skillevaluator --version
+          skillspector --version || true
+          semgrep --version
+          gitleaks version
+
+      # Tier 1 treats a missing scanner as a failed check, so the install
+      # step above is part of the gate, not a convenience.
+      # The console shows the summary panel; the JSON report carries every
+      # finding with file, line, severity and suggestion, and is uploaded
+      # as a run artifact below.
+      - name: SkillEvaluator Tier 1 static validation
+        shell: bash
+        run: |
+          echo "The panel below is the summary. Full Tier 1 findings (file, line, severity," \
+               "suggestion) are in the JSON inside the 'skillevaluator-tier1-report' artifact" \
+               "on this run, alongside a draft BENCHMARK.md in the format the official" \
+               "NVSkills CI run produces (live tiers marked not run)."
+          skillevaluator validate skills/cudaq-algorithms \
+            --tiers 1 --no-llm --no-dedup \
+            --report cli,json --output-dir "$RUNNER_TEMP/skillevaluator"
+
+      - name: Upload SkillEvaluator Tier 1 report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: skillevaluator-tier1-report
+          path: ${{ runner.temp }}/skillevaluator/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: SkillEvaluator Tier 3 dataset validation
+        shell: bash
+        run: skillevaluator tier3 validate skills/cudaq-algorithms --strict
+
+      - name: Skill routing and packaging tests
+        shell: bash
+        run: |
+          python -B -m pytest -q -p no:cacheprovider \
+            skills-dev/cudaq-algorithms-dev/scripts/tests/test_route*.py \
+            skills-dev/cudaq-algorithms-dev/scripts/tests/test_catalog_routes.py \
+            skills-dev/cudaq-algorithms-dev/scripts/tests/test_skill_package.py \
+            skills-dev/cudaq-algorithms-dev/scripts/tests/test_check_packaging.py
+
+      - name: Check skill coverage and links
+        shell: bash
+        run: python -B skills-dev/cudaq-algorithms-dev/scripts/check_coverage.py
+
+      - name: Check skill packaging and token budget
+        shell: bash
+        run: python -B skills-dev/cudaq-algorithms-dev/scripts/check_packaging.py
