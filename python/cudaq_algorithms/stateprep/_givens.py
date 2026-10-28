@@ -525,7 +525,7 @@ class OrbitalRotationSchedule:
 
 
 def make_orbital_rotation_schedule(orthogonal,
-                                   tolerance: float = 1.0e-10
+                                   tolerance: float = 1.0e-12
                                    ) -> OrbitalRotationSchedule:
     """Decompose a real orthogonal ``n x n`` matrix (target modes as
     columns) into adjacent plane rotations.
@@ -572,14 +572,16 @@ def orbital_rotation_program(schedule: OrbitalRotationSchedule, *,
     ``V D = R_1^T ... R_m^T``, so the sweep is applied reversed with negated
     angles (the last elimination first in circuit time). With
     ``inverse=True`` it realizes the transpose, ``D V^T``: the sweep in
-    elimination order. The lists are empty for a diagonal ``V``; no empty
-    list may cross the kernel boundary (cuda-quantum#4847), so callers pad
-    with ``modes=[0], angles=[0.0]`` when needed. This is an identity even
-    for a single spatial mode (two qubits).
+    elimination order. A diagonal ``V`` has no rotations; the lists are
+    then the single zero-angle rotation ``[0], [0.0]`` — an identity on any
+    register, including a single spatial mode — so that they are never
+    empty when they cross the kernel boundary (cuda-quantum#4847).
     """
     if inverse:
         pairs = list(schedule.rotations)
     else:
         pairs = [(mode, -theta)
                  for mode, theta in reversed(schedule.rotations)]
+    if not pairs:
+        return [0], [0.0]
     return [mode for mode, _ in pairs], [theta for _, theta in pairs]

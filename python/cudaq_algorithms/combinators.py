@@ -557,9 +557,6 @@ class RotatedEncoding:
                                                              inverse=True)
         exit_modes, exit_angles = orbital_rotation_program(schedule,
                                                            inverse=False)
-        if not enter_modes:  # diagonal V: no empty list crosses the boundary
-            enter_modes, enter_angles = [0], [0.0]
-            exit_modes, exit_angles = [0], [0.0]
 
         @cudaq.kernel
         def enter(system: cudaq.qview):

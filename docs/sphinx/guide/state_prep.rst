@@ -216,8 +216,6 @@ conjugate their encodings with:
    schedule.signs                # residual +-1 per mode: the network gives V D
 
    modes, angles = stateprep.orbital_rotation_program(schedule, inverse=False)
-   if not modes:
-       modes, angles = [0], [0.0]   # identity padding for a diagonal V
    stateprep.spatial_givens_network(system, modes, angles)   # realizes V D
    stateprep.spatial_givens_rotation(system, theta, mode)    # one rotation
 
