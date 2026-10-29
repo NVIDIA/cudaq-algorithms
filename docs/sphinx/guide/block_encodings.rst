@@ -361,12 +361,15 @@ operand cancellation and the walk and QSVT constructions rely on them.
 **The orbital-rotation constructor.** `RotatedEncoding.from_orbital_rotation(inner, orthogonal)`
 takes a real orthogonal ``n x n`` matrix whose columns are the target
 modes, with ``2 n == inner.num_system`` in the interleaved spin-orbital
-layout (``2p`` up, ``2p + 1`` down), and compiles it to a network of
-adjacent Givens rotations applied to both spin sectors. The network
-reproduces ``V`` *up to a sign per mode*. That is immaterial when the inner
-encoding is diagonal in the rotated modes (number operators, the intended
-use) and must be accounted for otherwise; for an arbitrary ``V``, supply
-your own ``enter``/``exit`` kernels.
+layout (``2p`` up, ``2p + 1`` down), and compiles it with the
+:mod:`cudaq_algorithms.stateprep` orbital-rotation schedule to a network of
+adjacent Givens rotations applied to both spin sectors (see
+:doc:`state_prep`). The Givens sweep alone realizes ``V`` *up to a sign per
+mode* (``mode_signs`` reports those signs); the constructor cancels them
+with a ``Z`` on both spin orbitals of each such mode, so the frame kernels
+realize ``V`` exactly and any inner encoding is valid — hopping terms
+included. For a rotation that is not a real orthogonal matrix on the
+interleaved layout, supply your own ``enter``/``exit`` kernels.
 
 **Not available: the odd-moment observable.** Both combinators raise
 ``NotImplementedError`` from `select_observable`. The sum's SELECT drives

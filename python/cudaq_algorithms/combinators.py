@@ -23,7 +23,9 @@ unchanged and the combinators nest:
     Because the rotation touches only the system register it commutes with
     every ancilla-side operation, so each protocol kernel of the inner
     encoding is simply sandwiched between the two rotations; the controlled
-    variants come for free.
+    variants come for free. ``from_orbital_rotation`` builds the kernels
+    from the ``stateprep`` orbital-rotation schedule and its spin-lifted
+    Givens network.
 
 The payoff is choosing *where* each piece is cheap to encode: a hopping
 term is diagonal in momentum space (``alpha_T = sum_k |eps_k|``) while the
@@ -49,7 +51,6 @@ from __future__ import annotations
 
 import math
 import numbers
-import warnings
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
@@ -60,6 +61,8 @@ import cudaq
 from .common_kernels import (_real_coefficient, controlled_reflect_about_zero,
                              reflect_about_zero)
 from .pauli_lcu import _prepare_angles, prepare, unprepare
+from .stateprep import (make_orbital_rotation_schedule,
+                        orbital_rotation_program, spatial_givens_network)
 
 if TYPE_CHECKING:
     from .block_encoding import BlockEncoding, Kernel
@@ -499,6 +502,7 @@ class RotatedEncoding:
         self._enter = enter
         self._exit = exit
         self._num_rotations: int | None = None
+        self._mode_signs: tuple[int, ...] | None = None
 
     @classmethod
     def from_orbital_rotation(cls, inner: "BlockEncoding",
@@ -507,30 +511,16 @@ class RotatedEncoding:
 
         ``orthogonal`` is ``n x n`` with the target modes as columns and
         ``2 n == inner.num_system`` (spin orbital ``2p`` is mode ``p`` spin
-        up, ``2p + 1`` spin down). The rotation is compiled to a network of
-        adjacent plane rotations applied to both spin sectors, exactly as
-        the double-factorized example does. The network reproduces ``V``
-        up to a sign per mode, which is immaterial when the inner encoding
-        is diagonal in the rotated modes (number operators) — the intended
-        use — and must be accounted for otherwise. When ``inner`` exposes
-        its Pauli ``terms`` (a `PauliLCU`), a word with an ``X`` or ``Y``
-        factor is exactly a term that sees those signs, and a
-        ``RuntimeWarning`` says so.
+        up, ``2p + 1`` spin down). The rotation is compiled with the
+        ``stateprep`` orbital-rotation schedule to its adjacent Givens
+        network on both spin sectors (``spatial_givens_network``). The
+        Givens sweep alone realizes ``V D`` for a diagonal of signs ``D``
+        (``mode_signs`` reports it); a ``Z`` on both spin orbitals of every
+        mode with sign ``-1`` cancels ``D`` (``Z_p a_p Z_p = -a_p`` under
+        Jordan-Wigner), so ``exit`` realizes exactly ``V`` and ``enter``
+        exactly ``V^T``, for any inner encoding.
         """
         _require_encoding(inner, "inner")
-        terms = getattr(inner, "terms", None)
-        if terms is not None:
-            off_diagonal = [
-                word for _, word in terms if any(c in "XY" for c in word)
-            ]
-            if off_diagonal:
-                warnings.warn(
-                    "RotatedEncoding.from_orbital_rotation: the inner encoding "
-                    f"has {len(off_diagonal)} Pauli word(s) with X or Y factors "
-                    f"(first: {off_diagonal[0]!r}); the rotation network "
-                    "reproduces V only up to a sign per mode, which such terms "
-                    "see. The sign-free use is an inner encoding diagonal in "
-                    "the rotated modes (I/Z words only).", RuntimeWarning)
         if np.iscomplexobj(orthogonal):
             raise ValueError("orthogonal must be a real matrix")
         matrix = np.asarray(orthogonal, dtype=float)
@@ -546,22 +536,39 @@ class RotatedEncoding:
                 f"a {n} x {n} orbital rotation needs {2 * n} system qubits "
                 f"(interleaved spin orbitals); the encoding has "
                 f"{inner.num_system}")
-        if not np.allclose(matrix.T @ matrix, np.eye(n), atol=1e-10):
-            raise ValueError("orthogonal must have orthonormal columns")
-        sweep = _givens_sweep(matrix)
-        enter_orbitals, enter_angles = _rotation_lists(sweep, reverse=False)
-        exit_orbitals, exit_angles = _rotation_lists(sweep, reverse=True)
+        schedule = make_orbital_rotation_schedule(matrix)
+        enter_modes, enter_angles = orbital_rotation_program(schedule,
+                                                             inverse=True)
+        exit_modes, exit_angles = orbital_rotation_program(schedule,
+                                                           inverse=False)
+        # Z on both spin orbitals of every mode the sweep leaves with sign
+        # -1: Gamma(D) in Jordan-Wigner. exit = network(V D) after Gamma(D)
+        # is Gamma(V); enter = Gamma(D) after network(D V^T) is Gamma(V^T).
+        # A -1 sentinel keeps the list non-empty across the kernel boundary
+        # (cuda-quantum#4847) when D is the identity.
+        flip_qubits = [
+            2 * mode + spin
+            for mode, sign in enumerate(schedule.signs) if sign < 0
+            for spin in (0, 1)
+        ] or [-1]
 
         @cudaq.kernel
         def enter(system: cudaq.qview):
-            _spin_orbital_rotations(system, enter_orbitals, enter_angles)
+            spatial_givens_network(system, enter_modes, enter_angles)
+            for q in flip_qubits:
+                if q >= 0:
+                    z(system[q])
 
         @cudaq.kernel
         def exit(system: cudaq.qview):
-            _spin_orbital_rotations(system, exit_orbitals, exit_angles)
+            for q in flip_qubits:
+                if q >= 0:
+                    z(system[q])
+            spatial_givens_network(system, exit_modes, exit_angles)
 
         rotated = cls(inner, enter, exit)
-        rotated._num_rotations = len(sweep)
+        rotated._num_rotations = len(schedule.rotations)
+        rotated._mode_signs = schedule.signs
         return rotated
 
     @property
@@ -574,6 +581,15 @@ class RotatedEncoding:
         ``from_orbital_rotation`` network, applied on entry and again on
         exit; ``None`` for user-supplied kernels."""
         return self._num_rotations
+
+    @property
+    def mode_signs(self) -> tuple[int, ...] | None:
+        """The per-mode signs ``D`` the Givens sweep of a
+        ``from_orbital_rotation`` leaves (its network alone realizes
+        ``V D``); the constructor cancels them with ``Z`` gates, so the
+        frame kernels realize ``V`` exactly. ``None`` for user-supplied
+        kernels."""
+        return self._mode_signs
 
     @property
     def num_system(self) -> int:
@@ -671,49 +687,3 @@ def _encode_kernel(encoding, state_prep):
         apply(ancilla, system)
 
     return encoded
-
-
-def _givens_sweep(orthogonal: np.ndarray) -> list[tuple[int, float]]:
-    """Adjacent plane rotations ``(p, theta)`` on rows ``(p, p + 1)`` that
-    reduce ``orthogonal`` to a diagonal of signs (column by column)."""
-    work = np.array(orthogonal, dtype=float, copy=True)
-    n = work.shape[0]
-    rotations: list[tuple[int, float]] = []
-    for column in range(n):
-        for row in range(n - 1, column, -1):
-            upper, lower = work[row - 1, column], work[row, column]
-            if abs(lower) > 1e-14:
-                theta = math.atan2(lower, upper)
-                c, s = math.cos(theta), math.sin(theta)
-                rotation = np.array([[c, s], [-s, c]])
-                work[row - 1:row + 1, :] = rotation @ work[row - 1:row + 1, :]
-                rotations.append((row - 1, theta))
-    return rotations
-
-
-def _rotation_lists(sweep, reverse: bool):
-    pairs = ([(p, -theta)
-              for p, theta in reversed(sweep)] if reverse else list(sweep))
-    if not pairs:
-        pairs = [(0, 0.0)]  # empty lists cannot cross the kernel boundary
-    return [p for p, _ in pairs], [theta for _, theta in pairs]
-
-
-@cudaq.kernel
-def _spin_orbital_rotations(system: cudaq.qview, orbitals: list[int],
-                            angles: list[float]):
-    """Adjacent spatial plane rotations lifted to both spin sectors.
-
-    Mode ``p`` lives on qubits ``2p`` (up) and ``2p + 1`` (down); the
-    rotation on modes ``(p, p + 1)`` is ``exp(-i theta/2 (X Z Y - Y Z X))``
-    on the three-qubit window of each spin. Zero angles are the identity.
-    """
-    for i in range(len(orbitals)):
-        p = orbitals[i]
-        theta = angles[i]
-        up = system[2 * p:2 * p + 3]
-        exp_pauli(0.5 * theta, up, "XZY")
-        exp_pauli(-0.5 * theta, up, "YZX")
-        down = system[2 * p + 1:2 * p + 4]
-        exp_pauli(0.5 * theta, down, "XZY")
-        exp_pauli(-0.5 * theta, down, "YZX")
