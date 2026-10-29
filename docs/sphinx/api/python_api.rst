@@ -83,4 +83,7 @@ Simulation utilities
 .. automodule:: cudaq_algorithms.sim_utils
    :members:
 
+.. automodule:: cudaq_algorithms.sim_utils.qpe
+   :members:
+
 .. autofunction:: cudaq_algorithms.common_kernels.state_from

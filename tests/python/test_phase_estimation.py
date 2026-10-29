@@ -6,7 +6,7 @@ Textbook QPE on the qubitization walk of a ``PauliLCU``. Recovered energies
 are checked against the Hamiltonian's exact eigenvalues within the
 phase-estimation resolution ``~ alpha * pi / 2^num_bits`` (the half-bin
 rounding of the walk eigenphase), with the probability masses the input's
-spectral weights predict. qpp-cpu / fp64. Each ``energies`` call costs
+spectral weights predict. qpp-cpu / fp64. Each ``sim_utils.qpe.energies`` call costs
 ``2^num_bits - 1`` controlled walk steps (about 0.6 s each here), so the
 instances stay at ``num_bits <= 6``.
 """
@@ -18,7 +18,8 @@ import pytest
 
 import cudaq
 
-from cudaq_algorithms import PauliLCU, PhaseEstimation
+from cudaq_algorithms import PauliLCU, PhaseEstimation, state_from
+from cudaq_algorithms import sim_utils as sim
 
 
 def resolution_tol(num_bits: int, alpha: float) -> float:
@@ -67,7 +68,7 @@ def test_eigenstate_readout_concentrates_on_its_energy():
     enc = PauliLCU({"Z": 0.3, "X": 0.4})
     qpe = PhaseEstimation(enc)
     m = 5
-    ranked = qpe.energies(m, state_prep=prep_plus)
+    ranked = sim.qpe.energies(qpe, m, state_prep=prep_plus)
     tol = resolution_tol(m, enc.alpha)
     # The +0.5 eigenstate reads +0.5 within resolution, with essentially all
     # the probability on readouts near that energy (the +/-theta mirror pair,
@@ -86,7 +87,7 @@ def test_mixed_input_recovers_both_eigenvalues():
     qpe = PhaseEstimation(enc)
     m = 5
     # Input |0>: 80% overlap with the +0.5 eigenstate, 20% with -0.5.
-    ranked = qpe.energies(m, ket=np.array([1.0, 0.0], dtype=complex))
+    ranked = sim.qpe.energies(qpe, m, ket=np.array([1.0, 0.0], dtype=complex))
     tol = resolution_tol(m, enc.alpha)
     # Dominant distinct energy ~ +0.5 (the larger overlap) with ~0.8 of the
     # mass, the minority eigenvalue -0.5 with ~0.2: the spectral weights of
@@ -105,7 +106,7 @@ def test_two_qubit_diagonal_ground_energy():
     assert enc.alpha == pytest.approx(1.0, abs=1e-12)
     qpe = PhaseEstimation(enc)
     m = 6
-    ranked = qpe.energies(m, state_prep=prep_11)
+    ranked = sim.qpe.energies(qpe, m, state_prep=prep_11)
     tol = resolution_tol(m, enc.alpha)
     assert ranked[0][0] == pytest.approx(-0.6, abs=tol)
     # This eigenphase is mid-bin, so the +/-theta lobes each split across
@@ -127,13 +128,16 @@ def test_validation():
     with pytest.raises(ValueError, match="num_bits"):
         qpe.kernel(True)
     with pytest.raises(ValueError, match="exactly one"):
-        qpe.energies(4)
+        sim.qpe.energies(qpe, 4)
     with pytest.raises(ValueError, match="exactly one"):
-        qpe.energies(4, ket=np.array([1.0, 0.0]), state_prep=prep_plus)
+        sim.qpe.energies(qpe,
+                         4,
+                         ket=np.array([1.0, 0.0]),
+                         state_prep=prep_plus)
     with pytest.raises(ValueError, match="top"):
-        qpe.energies(2, ket=np.array([1.0, 0.0]), top=0)
+        sim.qpe.energies(qpe, 2, ket=np.array([1.0, 0.0]), top=0)
     with pytest.raises(ValueError, match="top"):
-        qpe.energies(2, ket=np.array([1.0, 0.0]), top=-1)
+        sim.qpe.energies(qpe, 2, ket=np.array([1.0, 0.0]), top=-1)
     assert repr(qpe) == f"PhaseEstimation({enc!r})"
 
 
@@ -148,10 +152,12 @@ def test_one_bit_readout_splits_by_spectral_weight():
     # weights on the +alpha / -alpha bins in textbook-QPE proportions.
     enc = PauliLCU({"Z": 0.3, "X": 0.4})
     qpe = PhaseEstimation(enc)
-    probabilities = qpe.phase_probabilities(1, ket=np.array([1.0, 0.0]))
+    probabilities = sim.qpe.phase_probabilities(qpe,
+                                                1,
+                                                ket=np.array([1.0, 0.0]))
     assert probabilities.shape == (2, )
     assert probabilities.sum() == pytest.approx(1.0, abs=1e-12)
-    ranked = qpe.energies(1, ket=np.array([1.0, 0.0]))
+    ranked = sim.qpe.energies(qpe, 1, ket=np.array([1.0, 0.0]))
     assert len(ranked) == 2
     assert sorted(e for e, _ in ranked) == pytest.approx([-0.7, 0.7],
                                                          abs=1e-12)
@@ -164,7 +170,7 @@ def test_on_grid_eigenvalue_reads_exactly():
     # readout j = 0 exactly -- a single-term encoding with an idle ancilla.
     enc = PauliLCU({"Z": 0.5})
     qpe = PhaseEstimation(enc)
-    ranked = qpe.energies(3, ket=np.array([0.0, 1.0]), top=1)
+    ranked = sim.qpe.energies(qpe, 3, ket=np.array([0.0, 1.0]), top=1)
     assert ranked == [(pytest.approx(-0.5,
                                      abs=1e-12), pytest.approx(1.0,
                                                                abs=1e-10))]
@@ -176,13 +182,15 @@ def test_ket_and_state_prep_inputs_agree():
     plus = np.array([math.cos(_PHI_PLUS / 2),
                      math.sin(_PHI_PLUS / 2)],
                     dtype=complex)
-    from_ket = qpe.phase_probabilities(4, ket=plus)
-    from_state = qpe.phase_probabilities(4, ket=cudaq.State.from_data(plus))
-    from_prep = qpe.phase_probabilities(4, state_prep=prep_plus)
+    from_ket = sim.qpe.phase_probabilities(qpe, 4, ket=plus)
+    from_state = sim.qpe.phase_probabilities(qpe,
+                                             4,
+                                             ket=cudaq.State.from_data(plus))
+    from_prep = sim.qpe.phase_probabilities(qpe, 4, state_prep=prep_plus)
     np.testing.assert_allclose(from_ket, from_prep, atol=1e-10)
     np.testing.assert_allclose(from_state, from_prep, atol=1e-10)
     # The folded energies are the mirror sums of the raw marginal.
-    ranked = dict(qpe.energies(4, ket=plus))
+    ranked = dict(sim.qpe.energies(qpe, 4, ket=plus))
     half = 1 << 3
     folded = from_ket[:half + 1].copy()
     folded[1:half] += from_ket[-1:half:-1]
@@ -223,20 +231,109 @@ def test_phase_probabilities_simulates_on_the_large_stack(monkeypatch):
     # The 2^m - 1 walk steps grow the host stack by about 1 kB each on the
     # simulator (captured tables re-materialized per loop iteration), so
     # the statevector is taken on the large-stack worker.
-    from cudaq_algorithms import phase_estimation as module
-
     calls = []
-    real = module.run_on_large_stack
+    real = sim.qpe.run_on_large_stack
 
     def recording(function, /, *args, **kwargs):
         calls.append(function)
         return real(function, *args, **kwargs)
 
-    monkeypatch.setattr(module, "run_on_large_stack", recording)
+    monkeypatch.setattr(sim.qpe, "run_on_large_stack", recording)
     qpe = PhaseEstimation(PauliLCU({"Z": 0.3, "X": 0.4}))
-    direct = qpe.phase_probabilities(2, state_prep=prep_plus)
+    direct = sim.qpe.phase_probabilities(qpe, 2, state_prep=prep_plus)
     assert calls == [cudaq.get_state]
     ket = np.array([math.cos(_PHI_PLUS / 2), math.sin(_PHI_PLUS / 2)])
-    from_ket = qpe.phase_probabilities(2, ket=ket)
+    from_ket = sim.qpe.phase_probabilities(qpe, 2, ket=ket)
     assert calls == [cudaq.get_state, cudaq.get_state]
     np.testing.assert_allclose(from_ket, direct, atol=1e-12)
+
+
+# ----------------------------------------------------------------------
+# Sampled readout: measured circuit + classical decoding (any target)
+# ----------------------------------------------------------------------
+
+
+@cudaq.kernel
+def prep_1(q: cudaq.qview):
+    x(q[0])
+
+
+def test_measured_circuit_counts_decode_to_the_energy():
+    # H = 0.5 Z, |1> sits exactly on readout j = 0 (E = -alpha): every shot
+    # of the measured circuit lands on the phase register's zero string,
+    # for the state_prep form and the state-argument form alike.
+    enc = PauliLCU({"Z": 0.5})
+    qpe = PhaseEstimation(enc)
+    m = 3
+    counts = cudaq.sample(qpe.kernel(m, state_prep=prep_1, measure=True),
+                          shots_count=100)
+    strings = {bits for bits, _ in counts.items()}
+    assert strings == {"0" * m}
+    assert qpe.energies_from_counts(counts, m,
+                                    top=1) == [(pytest.approx(-0.5,
+                                                              abs=1e-12), 1.0)]
+    probabilities = qpe.phase_probabilities_from_counts(counts, m)
+    assert probabilities.shape == (1 << m, )
+    assert probabilities[0] == 1.0
+    from_state = cudaq.sample(qpe.kernel(m, measure=True),
+                              state_from(np.array([0.0, 1.0])),
+                              shots_count=100)
+    assert qpe.energies_from_counts(from_state, m,
+                                    top=1) == [(pytest.approx(-0.5,
+                                                              abs=1e-12), 1.0)]
+
+
+def test_counts_decoder_matches_the_statevector_marginal():
+    enc = PauliLCU({"Z": 0.3, "X": 0.4})
+    qpe = PhaseEstimation(enc)
+    m = 4
+    exact = sim.qpe.phase_probabilities(qpe, m, state_prep=prep_plus)
+    cudaq.set_random_seed(7)
+    counts = cudaq.sample(qpe.kernel(m, state_prep=prep_plus, measure=True),
+                          shots_count=4000)
+    sampled = qpe.phase_probabilities_from_counts(counts, m)
+    assert sampled.sum() == pytest.approx(1.0, abs=1e-12)
+    np.testing.assert_allclose(sampled, exact, atol=0.04)
+    ranked = qpe.energies_from_counts(counts, m, top=1)
+    assert ranked[0][0] == pytest.approx(sim.qpe.energies(qpe,
+                                                          m,
+                                                          state_prep=prep_plus,
+                                                          top=1)[0][0],
+                                         abs=1e-12)
+    assert ranked[0][1] > 0.8
+
+
+def test_counts_decoder_slices_full_register_strings_and_takes_mappings():
+    # Sampling the measurement-free circuit measures every qubit; the
+    # decoder picks the phase bits out of the system | phase | ancilla
+    # layout. A plain mapping of bitstrings to counts works the same way,
+    # and a string of any other width is rejected.
+    enc = PauliLCU({"Z": 0.5})
+    qpe = PhaseEstimation(enc)
+    m = 3
+    width = enc.num_system + m + enc.num_ancilla
+    counts = cudaq.sample(qpe.kernel(m, state_prep=prep_1), shots_count=50)
+    assert {len(bits) for bits, _ in counts.items()} == {width}
+    assert qpe.energies_from_counts(counts, m,
+                                    top=1) == [(pytest.approx(-0.5,
+                                                              abs=1e-12), 1.0)]
+    # Phase readout j = 5 = 0b101 is the string "101" (qubit 0 first), and
+    # the fold pairs it with j = 3; the mapping form reports both.
+    ranked = dict(qpe.energies_from_counts({"101": 3, "110": 1}, m))
+    assert ranked[qpe.phase_to_energy(3, m)] == pytest.approx(1.0)
+    probabilities = qpe.phase_probabilities_from_counts({
+        "101": 3,
+        "110": 1
+    }, m)
+    assert probabilities[5] == pytest.approx(0.75)
+    assert probabilities[3] == pytest.approx(0.25)
+    with pytest.raises(ValueError, match="bits; expected"):
+        qpe.energies_from_counts({"1010": 1}, m)
+    with pytest.raises(ValueError, match="no shots"):
+        qpe.energies_from_counts({}, m)
+    with pytest.raises(ValueError, match="shape"):
+        qpe.energies_from_probabilities(np.ones(4) / 4, m)
+    with pytest.raises(ValueError, match="top"):
+        qpe.energies_from_probabilities(np.ones(8) / 8, m, top=0)
+    with pytest.raises(ValueError, match="measure"):
+        qpe.kernel(m, measure=1)

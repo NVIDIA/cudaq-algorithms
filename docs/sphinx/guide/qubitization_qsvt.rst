@@ -140,12 +140,22 @@ the inverse QFT and state preparation are already in the library.
 
 .. code-block:: python
 
-   from cudaq_algorithms import PauliLCU, PhaseEstimation
+   from cudaq_algorithms import PauliLCU, PhaseEstimation, sim_utils
 
    qpe = PhaseEstimation(PauliLCU(hamiltonian))
-   kernel = qpe.kernel(num_bits=6, state_prep=prep)   # measurement-free circuit
-   ranked = qpe.energies(6, state_prep=prep, top=3)   # [(energy, probability), ...]
-   raw = qpe.phase_probabilities(6, state_prep=prep)  # 2^6 readout probabilities
+   circuit = qpe.kernel(6, state_prep=prep)                # measurement-free
+   measured = qpe.kernel(6, state_prep=prep, measure=True) # measures the phase register
+   counts = cudaq.sample(measured, shots_count=2000)       # any target
+   ranked = qpe.energies_from_counts(counts, 6, top=3)     # [(energy, probability), ...]
+   exact = sim_utils.qpe.energies(qpe, 6, state_prep=prep, top=3)  # statevector, simulators
+
+The class builds circuits and decodes readouts; running a circuit is your
+executor on your target. ``measure=True`` measures the phase register
+alone, so the sampled bitstrings are that register (qubit 0 first);
+`PhaseEstimation.energies_from_counts` also accepts counts over every
+qubit, as sampling the measurement-free circuit produces, and plain
+mappings. The statevector shortcut, `sim_utils.qpe.phase_probabilities`
+and `sim_utils.qpe.energies`, gives the exact marginal on a simulator.
 
 The circuit is the textbook ladder — ``2^m - 1`` controlled walk steps and
 an inverse QFT — so ``num_bits`` is the cost knob; the register layout is
@@ -161,10 +171,10 @@ Two simulation notes for long ladders. The compiler re-materializes the
 walk step's captured tables on the host stack on every loop iteration
 (about 1 kB per step for a `PauliLCU`), so from ``num_bits = 13`` the
 circuit outgrows the default 8 MiB thread stack and the process dies with
-a segmentation fault; `energies` and `phase_probabilities` run the
-simulation on a worker thread with a large stack, and a circuit from
-`PhaseEstimation.kernel` that you execute yourself needs the same
-(``sim_utils.run_on_large_stack(cudaq.sample, kernel, shots_count=...)``).
+a segmentation fault; the `sim_utils.qpe` helpers run the simulation on a
+worker thread with a large stack, and a circuit you sample on a simulator
+needs the same
+(``sim_utils.run_on_large_stack(cudaq.sample, measured, shots_count=...)``).
 On the ``nvidia`` target, gate fusion's host-side cost grows with the
 circuit length; with fusion off (``CUDAQ_FUSION_MAX_QUBITS=0``) a 13-bit
 H2 ladder runs in about half a minute on one GPU. The worked example
