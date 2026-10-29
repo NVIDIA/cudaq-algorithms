@@ -53,7 +53,12 @@ on full uncontrolled trees):
   ``|0>`` and the plain lookup at ``|1>``, with the control as a separate
   one-qubit view first in the signature, as ``unary_iteration_kernels``
   does — and at a fraction of the price of ``cudaq.control`` over the
-  composition, which would add a control to every gate. The identity at
+  composition, which would add a control to every gate: for eleven 3-bit
+  entries over four address bits the native lookup compiles to 19 / 26 /
+  28 Toffolis (select, select_swap with ``B = 2`` and ``B = 4``) against
+  15 / 18 / 22 plain, where the wrapped composition costs two to three
+  times the native count, widest on select_swap because the wrapper also
+  controls the Fredkins and the copy CNOTs. The identity at
   ``|0>`` is a clean-ladder statement (the clean ladder is the kernel's
   precondition in any case): on a dirty ladder the deeper walk Toffolis
   are gated by ladder lines, not by the control.
@@ -209,6 +214,12 @@ class QROM:
         ``|0>`` and the plain lookup at ``|1>`` (module docstring). The
         identity at ``|0>`` holds on the clean ladder the kernel requires
         anyway; a dirty ladder is outside the contract either way.
+        ``variant="auto"`` prices the controlled candidates against each
+        other on Toffolis alone, and the optimum can sit at a larger block
+        than the plain lookup's, with more block registers: size the
+        ladder from this instance's ``num_ladder`` rather than assume the
+        plain and controlled lookups share a layout (seven one-bit entries
+        over three address bits take 5 ladder qubits controlled, 4 plain).
 
     The views of the minted kernel may live anywhere (no contiguity
     requirement between them), which is what lets callers weave the QROM
@@ -383,7 +394,11 @@ class QROM:
         # W S C S^-1 W: write, route, copy, unroute, unwrite — clean
         # ancillas and an exactly self-inverse lookup. The parent carves
         # the documented sub-views out of the public (address, ladder,
-        # output) signature and composes the sub-kernels.
+        # output) signature and composes the sub-kernels. Two parents on
+        # purpose: they differ only in the walk calls and share the route
+        # and copy sub-kernels; the plain one keeps the three-view
+        # signature of the composition contract, and a dummy control would
+        # cost every plain caller a qubit.
         if self._controlled:
 
             @cudaq.kernel
