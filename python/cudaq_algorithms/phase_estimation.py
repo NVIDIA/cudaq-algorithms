@@ -23,6 +23,15 @@ This is the textbook form: an ``m``-qubit phase register, a controlled
 ``W^{2^k}`` ladder, and an inverse QFT, costing ``2^m - 1`` controlled walk
 steps. The phase register is little-endian (qubit 0 the least significant
 bit), matching ``primitives.iqft``.
+
+Simulating the ladder uses host stack in proportion to its length: the
+compiler re-materializes the walk step's captured tables on the stack on
+every loop iteration (about 1 kB per step for a ``PauliLCU``), so from
+``m = 13`` the circuit outgrows the default 8 MiB thread stack and the
+process dies with a segmentation fault. ``phase_probabilities`` and
+``energies`` therefore run the simulation on a worker thread with a large
+stack (``sim_utils.run_on_large_stack``); a circuit from ``kernel``
+executed directly needs the same wrapper, or a raised stack limit.
 """
 
 from __future__ import annotations
@@ -36,6 +45,7 @@ import numpy as np
 from .block_encoding import mint_cached_kernel
 from .common_kernels import state_from
 from .primitives import iqft
+from .sim_utils import run_on_large_stack
 
 if TYPE_CHECKING:
     from .block_encoding import BlockEncoding, Kernel
@@ -117,7 +127,10 @@ class PhaseEstimation:
         qubits (little-endian: phase qubit 0 is the least significant
         readout bit), then the encoding's ancillas. The returned circuit
         leaves the phase register ready to read (measure it, or take its
-        marginal through ``phase_probabilities`` / ``energies``).
+        marginal through ``phase_probabilities`` / ``energies``). Executing
+        a long ladder yourself needs a large thread stack, about 1 kB per
+        walk step (``sim_utils.run_on_large_stack(cudaq.sample, kernel,
+        ...)``; module docstring).
         """
         m = _validate_num_bits(num_bits)
         key = (m, None if state_prep is None else id(state_prep))
@@ -196,8 +209,9 @@ class PhaseEstimation:
         """The raw phase-register marginal: ``2^num_bits`` probabilities,
         entry ``j`` for readout ``j`` (little-endian), summing to 1.
 
-        Taken from ``cudaq.get_state`` (deterministic, no shot noise).
-        Provide exactly one of ``ket`` (array-like / ``cudaq.State``) or
+        Taken from ``cudaq.get_state`` (deterministic, no shot noise), run
+        on a worker thread with a large stack (module docstring). Provide
+        exactly one of ``ket`` (array-like / ``cudaq.State``) or
         ``state_prep``. Each eigenvalue of ``H`` shows up at the two mirror
         readouts ``j`` and ``2^m - j``; ``energies`` folds them.
         """
@@ -209,10 +223,11 @@ class PhaseEstimation:
 
         kernel = self.kernel(m, state_prep=state_prep)
         if state_prep is not None:
-            state = np.array(cudaq.get_state(kernel))
+            state = np.array(run_on_large_stack(cudaq.get_state, kernel))
         else:
             source = ket if isinstance(ket, cudaq.State) else state_from(ket)
-            state = np.array(cudaq.get_state(kernel, source))
+            state = np.array(
+                run_on_large_stack(cudaq.get_state, kernel, source))
 
         # Little-endian layout: system (lowest bits) | phase | ancilla.
         reshaped = state.reshape(1 << n_anc, 1 << m, 1 << n_sys)

@@ -189,3 +189,54 @@ def test_ket_and_state_prep_inputs_agree():
     for j in range(half + 1):
         assert ranked[qpe.phase_to_energy(j, 4)] == pytest.approx(folded[j],
                                                                   abs=1e-12)
+
+
+# ----------------------------------------------------------------------
+# Simulation runs on a large-stack worker thread
+# ----------------------------------------------------------------------
+
+
+def test_run_on_large_stack_runs_the_call_on_a_worker_thread():
+    import threading
+
+    from cudaq_algorithms import sim_utils
+
+    seen = {}
+
+    def probe(a, b=1):
+        seen["thread"] = threading.current_thread()
+        return a + b
+
+    assert sim_utils.run_on_large_stack(probe, 2, b=3) == 5
+    assert seen["thread"] is not threading.main_thread()
+    assert threading.stack_size() == 0  # the process default is restored
+
+    def fail():
+        raise ZeroDivisionError("propagated")
+
+    with pytest.raises(ZeroDivisionError, match="propagated"):
+        sim_utils.run_on_large_stack(fail)
+    assert threading.stack_size() == 0
+
+
+def test_phase_probabilities_simulates_on_the_large_stack(monkeypatch):
+    # The 2^m - 1 walk steps grow the host stack by about 1 kB each on the
+    # simulator (captured tables re-materialized per loop iteration), so
+    # the statevector is taken on the large-stack worker.
+    from cudaq_algorithms import phase_estimation as module
+
+    calls = []
+    real = module.run_on_large_stack
+
+    def recording(function, /, *args, **kwargs):
+        calls.append(function)
+        return real(function, *args, **kwargs)
+
+    monkeypatch.setattr(module, "run_on_large_stack", recording)
+    qpe = PhaseEstimation(PauliLCU({"Z": 0.3, "X": 0.4}))
+    direct = qpe.phase_probabilities(2, state_prep=prep_plus)
+    assert calls == [cudaq.get_state]
+    ket = np.array([math.cos(_PHI_PLUS / 2), math.sin(_PHI_PLUS / 2)])
+    from_ket = qpe.phase_probabilities(2, ket=ket)
+    assert calls == [cudaq.get_state, cudaq.get_state]
+    np.testing.assert_allclose(from_ket, direct, atol=1e-12)

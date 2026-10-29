@@ -155,7 +155,19 @@ eigenvalue appears at the mirror readouts ``j`` and ``2^m - j``, and
 `energies` folds the pair into one entry, so a pure eigenstate reads as a
 single dominant energy. The energy resolution is about
 ``alpha π / 2^m``; a general input spreads its mass over the spectrum in
-proportion to its overlaps. The worked example
+proportion to its overlaps.
+
+Two simulation notes for long ladders. The compiler re-materializes the
+walk step's captured tables on the host stack on every loop iteration
+(about 1 kB per step for a `PauliLCU`), so from ``num_bits = 13`` the
+circuit outgrows the default 8 MiB thread stack and the process dies with
+a segmentation fault; `energies` and `phase_probabilities` run the
+simulation on a worker thread with a large stack, and a circuit from
+`PhaseEstimation.kernel` that you execute yourself needs the same
+(``sim_utils.run_on_large_stack(cudaq.sample, kernel, shots_count=...)``).
+On the ``nvidia`` target, gate fusion's host-side cost grows with the
+circuit length; with fusion off (``CUDAQ_FUSION_MAX_QUBITS=0``) a 13-bit
+H2 ladder runs in about half a minute on one GPU. The worked example
 ``08_quantum_phase_estimation.py`` (:doc:`../examples_rst/getting_started`)
 puts a hand-written QPE shell around three oracles — exact time evolution,
 a product formula and this walk — to compare their decoders; `PhaseEstimation`
