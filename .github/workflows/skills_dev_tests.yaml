@@ -1,0 +1,58 @@
+name: Skills dev tests
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  skills-dev-tests:
+    name: Suite, runner and reporting contracts
+    runs-on: ${{ startsWith(github.repository, 'NVIDIA/cudaq-algorithms') && 'linux-amd64-cpu8' || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      # The CI job never opts into namespace, scientific-runtime or model probes.
+      CUDAQ_RUNNER_TEST_ISOLATION: '0'
+      CUDAQ_RUNNER_TEST_PYTHON: ''
+      # The checker tests run many small dense matrix exponentials. With the
+      # default BLAS thread pool each one pays multi-thread coordination
+      # overhead far larger than the arithmetic, turning a sub-minute suite
+      # into several minutes. The runner already pins these for the oracle
+      # and sandbox; the test process needs the same.
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: python -m pip install pytest jsonschema PyYAML numpy scipy pyscf openfermion
+
+      - name: Validate canonical suite and private grading
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python -B -m unittest discover -s skills-dev/cudaq-algorithms-dev/evals/tests
+
+      - name: Test routing, coverage and reporting
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python -B -m pytest -q -p no:cacheprovider skills-dev/cudaq-algorithms-dev/scripts/tests
+
+      - name: Test runner with offline transports and trusted test commands
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python -B -m pytest -q -p no:cacheprovider skills-dev/cudaq-algorithms-dev/evals/runner/tests
+
+      - name: Check skill coverage and links
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python -B skills-dev/cudaq-algorithms-dev/scripts/check_coverage.py

@@ -60,9 +60,14 @@ There are two moment observables. The **even** moments use the reflection
 observable ``2|0..0><0..0| - I``, which needs only the register geometry, so
 `Walk` derives it without an encoding hook. The **odd** moments use the
 encoding-specific `select_observable`, measured after PREPARE and ``p`` walk
-steps (no UNPREPARE), whose expectation is ``<T_{2p+1}(H/alpha)>``. For an
-LCU this is ``sum_i sign_i |i><i|_anc x P_i``; encodings that cannot supply
-it (for example `DoubleFactorizedEncoding`) raise `NotImplementedError` on
+steps (no UNPREPARE), whose expectation is ``<T_{2p+1}(H/alpha)>``. This
+presumes a walk step defined in the PREPARE frame (``W = PREPARE R
+PREPARE-dagger SELECT``), as both `PauliLCU` and `LCUBlockEncoding` do. For
+an LCU this is ``sum_i sign_i |i><i|_anc x P_i`` (`select_observable(enc)`
+serves both `PauliLCU` backends; `LCUBlockEncoding` derives it when every
+SELECT body is a Pauli word); encodings that cannot supply it
+(for example `DoubleFactorizedEncoding`, or `LCUBlockEncoding` with a body
+in the extended vocabulary) raise `NotImplementedError` on
 `select_observable`, and only even moments are available there.
 
 QSVT and phase sequences

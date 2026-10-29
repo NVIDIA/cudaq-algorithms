@@ -199,11 +199,15 @@ def test_rcdf_regularization_shrinks_cores_and_one_norm(backend):
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
-def test_compressed_matrix_free_cg_matches_lstsq(backend):
-    eri = _synthetic_eri(n=4, num_vectors=3, seed=11)
+@pytest.mark.parametrize("eri_scale", [1.0, 1.0e-12])
+def test_compressed_matrix_free_cg_matches_lstsq(backend, eri_scale):
     # The matrix-free conjugate-gradient inner solve (RC-DF Eqs. 25-30) is an
-    # alternative to the explicit design-matrix least squares; both must reach
-    # the same reconstruction accuracy, with and without regularization.
+    # alternative to the explicit design-matrix least squares; both must give
+    # the same reconstruction error, with and without regularization.
+    # eri_scale=1e-12 keeps ||R||_F below cg_tolerance. L-BFGS then stops at
+    # the X-DF start, so that arm compares the core solve at fixed rotations.
+    eri = eri_scale * _synthetic_eri(n=4, num_vectors=3, seed=11)
+    eri_norm = float(np.linalg.norm(eri))
     for regularization in (0.0, 1.0e-2):
         lstsq = df.compressed_double_factorization(
             eri,
@@ -219,9 +223,21 @@ def test_compressed_matrix_free_cg_matches_lstsq(backend):
                                                 inner_solver="cg",
                                                 backend=backend)
         assert cg.method == "C-DF"
-        assert abs(
+        error_gap = abs(
             df.factorization_error(eri, cg) -
-            df.factorization_error(eri, lstsq)) < 1.0e-6
+            df.factorization_error(eri, lstsq))
+        # Absolute slack on O(1) integrals. Relative to ||eri|| when the
+        # tensor itself is smaller than that slack.
+        if eri_scale == 1.0:
+            assert error_gap < 1.0e-6
+        else:
+            assert error_gap / eri_norm < 1.0e-6
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cg_exact_at_true_rank_and_rejects_unknown_solver(backend):
+    # True rank and a rejected solver name do not depend on the integral scale.
+    eri = _synthetic_eri(n=4, num_vectors=3, seed=11)
     # CG is exact at the true rank, like the least-squares solver.
     exact = df.compressed_double_factorization(eri,
                                                num_leaves=3,
@@ -566,20 +582,45 @@ def test_cdf_reports_when_optimizer_hits_iteration_limit(backend):
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
-def test_cdf_exact_rank_is_marked_converged(backend):
+@pytest.mark.parametrize("n, num_vectors, num_leaves", [(4, 3, 3), (1, 1, 1)])
+def test_cdf_exact_rank_is_marked_converged(backend, n, num_vectors,
+                                            num_leaves):
     # At the true leaf rank the X-DF warm start is already a minimizer, so
-    # L-BFGS must report success and must not warn.
-    eri = _synthetic_eri(4, 3, seed=11)
+    # L-BFGS must report success and must not warn. n == 1 has no free
+    # parameters, so the identity and closed-form cores are already exact.
+    eri = _synthetic_eri(n, num_vectors, seed=11)
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
-        factorization = df.compressed_double_factorization(eri,
-                                                           num_leaves=3,
-                                                           max_iterations=1500,
-                                                           backend=backend)
+        factorization = df.compressed_double_factorization(
+            eri, num_leaves=num_leaves, max_iterations=1500, backend=backend)
+    # Status records that this stationary point was accepted.
     assert factorization.optimizer_success is True
+    # Stationary, including the empty parameter vector when n == 1.
     assert factorization.optimizer_grad_norm is not None
     assert factorization.optimizer_grad_norm < 1.0e-8
+    # Closed-form cores at the true rank must reproduce the ERI.
     assert df.factorization_error(eri, factorization) < 1.0e-4
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+@pytest.mark.parametrize("inner_solver", ["lstsq", "cg"])
+def test_one_orbital_small_eri_keeps_the_closed_form_core(
+        backend, inner_solver):
+    # n == 1 skips L-BFGS. Both inner solvers must return the closed-form
+    # core when the ERI is scaled below cg_tolerance.
+    eri = 1.0e-12 * _synthetic_eri(1, 1, seed=11)
+    eri_norm = float(np.linalg.norm(eri))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        factorization = df.compressed_double_factorization(
+            eri, num_leaves=1, inner_solver=inner_solver, backend=backend)
+    # The one-orbital skip reports convergence and does not warn.
+    assert factorization.optimizer_success is True
+    # Relative: this tensor is ~1e-12, so a zero core still passes an
+    # absolute bound of 1e-4.
+    assert eri_norm > 0.0
+    assert df.factorization_error(eri, factorization) / eri_norm < 1.0e-6
+    assert float(np.linalg.norm(factorization.leaf_cores[0])) > 0.0
 
 
 def test_xdf_leaves_optimizer_status_unset():
@@ -696,3 +737,78 @@ def test_explicit_cupy_backend_errors_when_kernel_probe_fails(monkeypatch):
             match=r"not usable \(not installed, no device, or the kernel "
             r"probe failed\)"):
         df.explicit_double_factorization(eri, threshold=0.0, backend="cupy")
+
+
+def _core_frobenius(cores):
+    return float(np.sqrt(sum(np.sum(np.asarray(core)**2) for core in cores)))
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cg_inner_cores_match_lstsq_below_cg_tolerance(backend):
+    # CG tolerance is relative to ||R||_F, so the reconstruction must match
+    # lstsq when the projected RHS is nonzero and smaller than cg_tolerance.
+    import cudaq_algorithms.double_factorization._factorization as F
+    from cudaq_algorithms.double_factorization._backend import (
+        resolve_backend, to_device, to_numpy)
+
+    base = _synthetic_eri(n=4, num_vectors=3, seed=11)
+    explicit = df.explicit_double_factorization(base,
+                                                threshold=0.0,
+                                                max_num_leaves=2,
+                                                backend=backend)
+    # Fixed rotations, then scale only the ERI, so both solvers see the same U.
+    eri = 1.0e-12 * base
+    tolerance = 1.0e-10
+    xp, _ = resolve_backend(backend)
+    eri_dev = to_device(eri, xp)
+    rotations = [to_device(u, xp) for u in explicit.leaf_rotations]
+    rhs = xp.stack(
+        [F._project_eri_into_leaf(eri_dev, u, xp) for u in rotations])
+    rhs_norm = float(np.sqrt(to_numpy(xp.sum(rhs * rhs))))
+    # The projected RHS is nonzero and smaller than cg_tolerance.
+    assert 0.0 < rhs_norm < tolerance
+
+    cg = [
+        to_numpy(core) for core in F._solve_inner_cores_cg(
+            eri_dev, rotations, xp, tolerance=tolerance)
+    ]
+    lstsq = [
+        to_numpy(core)
+        for core in F._solve_inner_cores_lstsq(eri_dev, rotations, xp)
+    ]
+
+    def reconstruct(cores):
+        # (J, -J) is a null vector of the two-leaf design, so the core stacks
+        # are a gauge choice. The reconstructed ERI is not.
+        return sum(
+            np.einsum("pk,qk,kl,rl,sl->pqrs", u, u, z, u, u)
+            for u, z in zip(explicit.leaf_rotations, cores))
+
+    # CG returns a nonzero core for this RHS.
+    assert _core_frobenius(cg) > 0.0
+    # Same fit. The relative CG tolerance shows up in this residual.
+    assert (np.linalg.norm(reconstruct(cg) - reconstruct(lstsq)) /
+            np.linalg.norm(eri)) < 1.0e-8
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_cg_inner_cores_are_zero_for_a_zero_rhs(backend):
+    # R = 0 has minimum-norm solution Z = 0, including when a warm start is set.
+    import cudaq_algorithms.double_factorization._factorization as F
+    from cudaq_algorithms.double_factorization._backend import (
+        resolve_backend, to_device, to_numpy)
+
+    n = 4
+    num_leaves = 2
+    xp, _ = resolve_backend(backend)
+    eri_dev = to_device(np.zeros((n, n, n, n)), xp)
+    rotations = [to_device(np.eye(n), xp) for _ in range(num_leaves)]
+    guess = xp.ones((num_leaves, n, n))
+    cores = F._solve_inner_cores_cg(eri_dev,
+                                    rotations,
+                                    xp,
+                                    max_iterations=1,
+                                    initial_guess=guess)
+    # One iteration from this guess cannot reach 0, so an exact 0 is the early return.
+    for core in cores:
+        assert np.allclose(to_numpy(core), 0.0)

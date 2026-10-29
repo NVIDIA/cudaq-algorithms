@@ -199,6 +199,40 @@ supplying the flattened arrays that cross the kernel boundary:
 `two_qubit_gate_count_proxy`, `depth_proxy`) — decomposition-independent
 proxies, not transpiled gate counts.
 
+Orbital rotations
+~~~~~~~~~~~~~~~~~
+
+The same module compiles a real orthogonal one-particle matrix ``V``
+(``n x n``, target modes as columns) to an adjacent Givens network on
+*spatial* modes, applied to both spin sectors of the interleaved layout
+(mode ``p`` on qubits ``2p`` and ``2p + 1``). This is the basis change
+`RotatedEncoding.from_orbital_rotation` and the double-factorized example
+conjugate their encodings with:
+
+.. code-block:: python
+
+   schedule = stateprep.make_orbital_rotation_schedule(V)
+   schedule.rotations            # (mode, theta) on modes (mode, mode + 1)
+   schedule.signs                # residual +-1 per mode: the network gives V D
+
+   modes, angles = stateprep.orbital_rotation_program(schedule, inverse=False)
+   stateprep.spatial_givens_network(system, modes, angles)   # realizes V D
+   stateprep.spatial_givens_rotation(system, theta, mode)    # one rotation
+
+`make_orbital_rotation_schedule` zeroes each column's sub-diagonal with
+rotations of adjacent rows, bottom-up, leaving a diagonal of signs ``D``;
+`orbital_rotation_program` turns the schedule into the flattened lists the
+network kernel takes, ``inverse=False`` realizing ``V D`` and
+``inverse=True`` its transpose. The sign per mode is immaterial for
+operators diagonal in the rotated modes; `RotatedEncoding.from_orbital_rotation`
+cancels it with a ``Z`` on both spin orbitals of each such mode
+(``mode_signs`` reports it), so its frame kernels realize ``V`` exactly.
+For a diagonal ``V`` the program is the single zero-angle rotation
+``[0], [0.0]``: an identity on any register, including a single spatial
+mode (two qubits), so no empty list crosses the kernel boundary.
+`spatial_givens_segment` applies ``count`` rotations from ``start`` of a
+flat list shared by several frames.
+
 State preparation injection
 ---------------------------
 
@@ -258,10 +292,11 @@ Package conventions
   `n_alpha = num_electrons - n_beta`. `spin == 0` selects the
   closed-shell forms; `spin > 0` requires an even `num_qubits` and
   produces the interleaved open-shell occupations and excitations.
-- **Error types**: two error cases raise `RuntimeError` (odd qubit count
-  and
-  odd-electrons-at-spin-0 in `get_uccsd_excitations`); every guard added
-  in the pure implementation raises `ValueError`.
+- **Error types**: every input guard raises `ValueError`.
+  `get_uccsd_excitations` and `make_hartree_fock_occupation` apply the
+  same `(num_qubits, num_electrons, spin)` checks with the same messages;
+  in particular both reject an odd `num_electrons - spin` when `spin > 0`,
+  since the beta floor would otherwise silently realize `spin + 1`.
 - **CEO orbital counts**: the CEO helpers (`make_ceo_operator_pool`,
   `get_ceo_pauli_lists`) take `num_orbitals` in *spatial* orbitals — the
   pool acts on `2 * num_orbitals` qubits.

@@ -4,7 +4,8 @@
 
 ``QROM(data, address_bits, output_bits)`` mints the lookup
 ``|k>|y> -> |k>|y XOR data[k]>`` behind one kernel signature
-``(address: qview, ladder: qview, output: qview)`` — all little-endian
+``(address: qview, ladder: qview, output: qview)`` — with a leading
+one-qubit ``control`` view when ``controlled=True`` — all little-endian
 (qubit 0 = LSB, ``docs/conventions.md``), ``ladder`` being ``num_ladder``
 clean ancillas (``|0>`` in, ``|0>`` out). Addresses ``k >= len(data)`` read as
 zero. Two constructions sit behind ``variant=``:
@@ -39,6 +40,28 @@ on full uncontrolled trees):
   binary routing network is ``B - 1`` register swaps per direction, and
   both the routing and the block writes run twice (compute + unitary
   uncompute).
+- ``controlled=True`` adds an external control qubit and replaces ``W``
+  by its controlled count (``_walk_toffoli_count(n, m, controlled)``: the
+  walk's root gadgets become Toffolis and its root crossings lose the
+  unguarded shortcut). Only the walk passes carry the control: the walk
+  sub-kernel is minted ``controlled=True`` and the parent passes the
+  control view to both walk passes, while the routing network and the
+  copy are the plain kernels. At control ``|0>`` a controlled walk on a
+  clean ladder writes nothing, so the block registers stay ``|0>`` and
+  the routing Fredkins, the copy CNOTs and the un-route/un-write act on
+  ``|0>`` as the identity. The lookup is then the identity at control
+  ``|0>`` and the plain lookup at ``|1>``, with the control as a separate
+  one-qubit view first in the signature, as ``unary_iteration_kernels``
+  does — and at a fraction of the price of ``cudaq.control`` over the
+  composition, which would add a control to every gate: for eleven 3-bit
+  entries over four address bits the native lookup compiles to 19 / 26 /
+  28 Toffolis (select, select_swap with ``B = 2`` and ``B = 4``) against
+  15 / 18 / 22 plain, where the wrapped composition costs two to three
+  times the native count, widest on select_swap because the wrapper also
+  controls the Fredkins and the copy CNOTs. The identity at
+  ``|0>`` is a clean-ladder statement (the clean ladder is the kernel's
+  precondition in any case): on a dirty ladder the deeper walk Toffolis
+  are gated by ladder lines, not by the control.
 
 The papers' headline counts (``N - 1`` lookup Toffolis for SELECT,
 ``ceil(N/B) + output_bits * (B - 1)`` for QROAM) price ancilla
@@ -60,7 +83,8 @@ Implementation notes: register layout and the ``ladder`` view
 ------------------------------------------------------------------------
 
 Every minted kernel has the same signature, ``(address, ladder,
-output)``, and ``ladder`` is simply **the clean-ancilla register** —
+output)`` (``(control, address, ladder, output)`` when ``controlled``),
+and ``ladder`` is simply **the clean-ancilla register** —
 its contents differ per variant, and for ``select_swap`` the name is
 looser than the physics:
 
@@ -80,28 +104,23 @@ looser than the physics:
 
 The address register is likewise split by convention, low bits first:
 ``address[0 .. low)`` are the routing bits (low = log2(B)),
-``address[low ..)`` the block index the walk iterates. The block-index
-walk is emitted by ``_emit_walk`` as if its address register started at
-wire 0, then *rebased*: every address operand is shifted up by ``low``
-(the ``_ADDRESS_OPERANDS`` table names which operand slots to shift).
+``address[low ..)`` the block index the walk iterates.
 
-**Why "ladder-to-ladder CNOTs" appear** (``_OP_CX_LADDER_LADDER``):
-the interpreter's opcodes name *registers*, not roles, so this one
-opcode serves three distinct jobs:
+``select_swap`` is built by **composition**: a parent kernel carves the
+honest sub-views out of ``address`` and ``ladder`` with qview slices and
+calls three sub-kernels, ``W S C S^-1 W``:
 
-1. In the plain walk: parent-line -> child-line CNOTs (sibling
-   crossings) — genuinely ladder-to-ladder.
-2. In the ``select_swap`` write stage: ``_emit_walk`` emits the block
-   writes as leaf-controlled body X's onto its *target* register, but
-   here the write destination is the block registers, which live in
-   the ``ladder`` view — so each ``_OP_BODY_X`` is rewritten to a
-   ladder-to-ladder CNOT from the word line onto a block-register
-   qubit (the rebase loop in ``_build_select_swap``).
-3. In the routing network: each controlled register swap is ``b``
-   Fredkins, decomposed ``cswap(c; u, v) = cx(v,u) ccx(u,c,v)
-   cx(v,u)`` — the outer CNOTs connect two block-register qubits,
-   again both inside ``ladder``. The middle Toffoli reuses the walk's
-   ``_OP_CCX`` shape with a low address bit as its second control.
+- ``W`` — the block-index walk, a plain
+  :func:`~cudaq_algorithms.primitives.unary_iteration_kernels` mint over
+  the high address bits whose *target view is the block registers*: the
+  per-block body X's write the visited block's ``B`` entries.
+- ``S`` — a dedicated routing kernel over ``(low address bits,
+  blocks)``: ``low`` rounds of Fredkins, each controlled register swap
+  being ``b`` Fredkins decomposed ``cswap(c; u, v) = cx(v,u) ccx(u,c,v)
+  cx(v,u)``. ``S^-1`` is the same Fredkin list reversed (each Fredkin
+  is self-inverse).
+- ``C`` — ``b`` CNOTs copying block slot 0 onto ``output``, inline in
+  the parent.
 
 End-to-end, ``select_swap`` is the five-step program (with
 ``h + low = address_bits``, ``B = 2^low`` entries per block):
@@ -123,36 +142,50 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ._unary_iteration import (_OP_BODY_X, _OP_CCX, _OP_CCX_ADDR_ADDR,
-                               _OP_CCX_CTRL, _OP_CX_ADDR_ADDR,
-                               _OP_CX_ADDR_LADDER, _OP_CX_LADDER_LADDER,
-                               _OP_CX_LADDER_TARGET, _OP_X_ADDR,
-                               _TOFFOLI_OPCODES, _emit_walk, _mint_interpreter,
-                               _walk_toffoli_count, unary_iteration_kernels)
+import cudaq
+
+from ._unary_iteration import (_retain, _walk_toffoli_count,
+                               unary_iteration_kernels)
 
 __all__ = ["QROM"]
 
 _VARIANTS = ("auto", "select", "select_swap")
 
-# Walk opcodes whose (a, b) operands index the address register, used to
-# shift the block-index walk onto the high address bits.
-_ADDRESS_OPERANDS = {
-    _OP_X_ADDR: (0, ),
-    _OP_CX_ADDR_LADDER: (0, ),
-    _OP_CCX: (1, ),
-    _OP_CCX_CTRL: (1, ),
-    _OP_CX_ADDR_ADDR: (0, 1),
-    _OP_CCX_ADDR_ADDR: (0, 1),
-}
+
+def _mint_route(swap_c: list, swap_u: list, swap_v: list):
+    """Mint the routing kernel: Fredkin ``i`` swaps ``blocks[swap_u[i]]``
+    and ``blocks[swap_v[i]]`` controlled on ``low[swap_c[i]]``.
+
+    The inverse network is this same mint over the reversed lists (each
+    Fredkin is self-inverse).
+    """
+    num_swaps = len(swap_c)
+
+    @cudaq.kernel
+    def primitives_qrom_route(low: cudaq.qview, blocks: cudaq.qview):
+        for i in range(num_swaps):
+            c = swap_c[i]
+            u = swap_u[i]
+            v = swap_v[i]
+            # cswap(low[c]; blocks[u], blocks[v]) via one Toffoli.
+            cx(blocks[v], blocks[u])
+            x.ctrl(blocks[u], low[c], blocks[v])
+            cx(blocks[v], blocks[u])
+
+    _retain(primitives_qrom_route)
+    return primitives_qrom_route
 
 
-def _select_swap_cost(address_bits: int, num_entries: int, output_bits: int,
-                      block_size: int) -> int:
+def _select_swap_cost(address_bits: int,
+                      num_entries: int,
+                      output_bits: int,
+                      block_size: int,
+                      controlled: bool = False) -> int:
     """Documented Toffoli price of the select_swap variant."""
     high_bits = address_bits - (block_size.bit_length() - 1)
     num_blocks = -(-num_entries // block_size)
-    return (2 * _walk_toffoli_count(high_bits, num_blocks) + 2 * output_bits *
-            (block_size - 1))
+    return (2 * _walk_toffoli_count(high_bits, num_blocks, controlled) +
+            2 * output_bits * (block_size - 1))
 
 
 class QROM:
@@ -175,8 +208,20 @@ class QROM:
         ``[2, 2^(address_bits - 1)]``. Only valid with
         ``variant="select_swap"``; ``None`` there picks the power of two
         minimizing the documented Toffoli count.
+    controlled
+        ``True`` mints the externally controlled lookup: the kernel takes
+        a leading one-qubit ``control`` view, is the identity at control
+        ``|0>`` and the plain lookup at ``|1>`` (module docstring). The
+        identity at ``|0>`` holds on the clean ladder the kernel requires
+        anyway; a dirty ladder is outside the contract either way.
+        ``variant="auto"`` prices the controlled candidates against each
+        other on Toffolis alone, and the optimum can sit at a larger block
+        than the plain lookup's, with more block registers: size the
+        ladder from this instance's ``num_ladder`` rather than assume the
+        plain and controlled lookups share a layout (seven one-bit entries
+        over three address bits take 5 ladder qubits controlled, 4 plain).
 
-    The three views of the minted kernel may live anywhere (no contiguity
+    The views of the minted kernel may live anywhere (no contiguity
     requirement between them), which is what lets callers weave the QROM
     into their own ancilla layouts. Whatever the variant, the kernel is
     exactly self-inverse — apply it again to uncompute.
@@ -188,7 +233,11 @@ class QROM:
                  output_bits: int,
                  *,
                  variant: str = "auto",
-                 block_size: int | None = None) -> None:
+                 block_size: int | None = None,
+                 controlled: bool = False) -> None:
+        if not isinstance(controlled, bool):
+            raise ValueError("controlled must be a bool (pass bool(flag) "
+                             "for numpy booleans)")
         if int(address_bits) != address_bits or address_bits < 1:
             raise ValueError("address_bits must be a positive integer")
         if int(output_bits) != output_bits or output_bits < 1:
@@ -238,12 +287,14 @@ class QROM:
                     f"index address bit: max is 2^(address_bits - 1) = "
                     f"{1 << (address_bits - 1)}")
 
-        select_cost = _walk_toffoli_count(address_bits, len(entries))
+        select_cost = _walk_toffoli_count(address_bits, len(entries),
+                                          controlled)
         swap_candidates = [1 << s for s in range(1, address_bits)
                            ] if block_size is None else [block_size]
         swap_costs = {
-            size: _select_swap_cost(address_bits, len(entries), output_bits,
-                                    size)
+            size:
+            _select_swap_cost(address_bits, len(entries), output_bits, size,
+                              controlled)
             for size in swap_candidates
         }
         if variant == "auto":
@@ -265,6 +316,7 @@ class QROM:
         self._output_bits = output_bits
         self._variant = variant
         self._block_size = block_size
+        self._controlled = controlled
         if variant == "select":
             self._build_select()
         else:
@@ -282,6 +334,7 @@ class QROM:
         walk = unary_iteration_kernels(self._num_address,
                                        len(entries),
                                        body,
+                                       controlled=self._controlled,
                                        include_adjoint=False)
         self._kernel = walk.kernel
         self._num_ladder = walk.num_ladder
@@ -304,59 +357,89 @@ class QROM:
                     ("x", i * b + t) for t in range(b) if (word >> t) & 1)
             return gates
 
-        walk_ops = _emit_walk(high_bits, num_blocks, False, block_write)
         # This IS the textbook SELECT-SWAP: a unary-iteration walk over
-        # the high (block-index) bits whose leaf action writes each
-        # block, then a low-bit-controlled swap network routes the
-        # selected entry. We reuse the walk EMITTER rather than a minted
-        # walk kernel because CUDA-Q kernels cannot call kernels: the
-        # whole lookup must be one flat tape, so the walk's instructions
-        # are rebased into the combined kernel's wire layout here.
-        # In that layout (see "select_swap register layout" in
-        # _unary_iteration's docstring) the block registers ride in the
-        # ladder VIEW after the walk lines — "ladder" names the wire
-        # bundle, not a role — so the walk's leaf-controlled block-write
-        # X lands as a CNOT between two ladder-view wires.
-        ops = []
-        for op in walk_ops:
-            opcode, a, bb, c = op
-            if opcode == _OP_BODY_X:
-                ops.append((_OP_CX_LADDER_LADDER, a, high_bits + bb, 0))
-                continue
-            operands = [a, bb, c]
-            for position in _ADDRESS_OPERANDS.get(opcode, ()):
-                operands[position] += low_bits
-            ops.append((opcode, *operands))
-        walk_ops = ops
+        # the high (block-index) bits whose target view is the block
+        # registers (the leaf action writes each visited block), then a
+        # low-bit-controlled swap network routes the selected entry.
+        # X-only body: the walk is an involution, skip the adjoint mint.
+        # Only the walk passes carry the external control (module
+        # docstring): at control |0> nothing is written, so the routing
+        # and copy below act on |0> blocks as the identity.
+        walk = unary_iteration_kernels(high_bits,
+                                       num_blocks,
+                                       block_write,
+                                       controlled=self._controlled,
+                                       include_adjoint=False)
+        walk_kernel = walk.kernel
 
         # Binary routing network: after stage s (controlled on
         # address[s]), block slot i (i = 0 mod 2^(s+1)) holds the entry
         # at low-address offset (i + a_s 2^s + ... + a_0); slot 0 ends
         # holding the selected entry. Each controlled register swap is b
-        # Fredkins: cswap(c; u, v) = cx(v, u) ccx(c, u, v) cx(v, u).
-        # u and v are block-register wires (which live in the ladder
-        # view — see the rebase note above), so the outer CNOTs of each
-        # Fredkin appear as _OP_CX_LADDER_LADDER: CNOTs purely between
-        # the data blocks, exactly the routing network's own gates.
-        swap_ops = []
+        # Fredkins (one Toffoli each).
+        swap_c: list[int] = []
+        swap_u: list[int] = []
+        swap_v: list[int] = []
         for s in range(low_bits):
             for i in range(0, size, 1 << (s + 1)):
                 for t in range(b):
-                    u = high_bits + i * b + t
-                    v = high_bits + (i + (1 << s)) * b + t
-                    swap_ops.append((_OP_CX_LADDER_LADDER, v, u, 0))
-                    swap_ops.append((_OP_CCX, u, s, v))
-                    swap_ops.append((_OP_CX_LADDER_LADDER, v, u, 0))
-        copy_ops = [(_OP_CX_LADDER_TARGET, high_bits + t, t, 0)
-                    for t in range(b)]
+                    swap_c.append(s)
+                    swap_u.append(i * b + t)
+                    swap_v.append((i + (1 << s)) * b + t)
+        route_kernel = _mint_route(swap_c, swap_u, swap_v)
+        unroute_kernel = _mint_route(list(reversed(swap_c)),
+                                     list(reversed(swap_u)),
+                                     list(reversed(swap_v)))
 
         # W S C S^-1 W: write, route, copy, unroute, unwrite — clean
-        # ancillas and an exactly self-inverse lookup.
-        ops = (walk_ops + swap_ops + copy_ops + list(reversed(swap_ops)) +
-               walk_ops)
-        self._kernel = _mint_interpreter(ops, controlled=False, has_work=False)
+        # ancillas and an exactly self-inverse lookup. The parent carves
+        # the documented sub-views out of the public (address, ladder,
+        # output) signature and composes the sub-kernels. Two parents on
+        # purpose: they differ only in the walk calls and share the route
+        # and copy sub-kernels; the plain one keeps the three-view
+        # signature of the composition contract, and a dummy control would
+        # cost every plain caller a qubit.
+        if self._controlled:
+
+            @cudaq.kernel
+            def primitives_qrom_select_swap_ctrl(control: cudaq.qview,
+                                                 address: cudaq.qview,
+                                                 ladder: cudaq.qview,
+                                                 output: cudaq.qview):
+                low = address[0:low_bits]
+                high = address[low_bits:]
+                lines = ladder[0:high_bits]
+                blocks = ladder[high_bits:]
+                walk_kernel(control, high, lines, blocks)
+                route_kernel(low, blocks)
+                for t in range(b):
+                    cx(blocks[t], output[t])
+                unroute_kernel(low, blocks)
+                walk_kernel(control, high, lines, blocks)
+
+            _retain(primitives_qrom_select_swap_ctrl)
+            self._kernel = primitives_qrom_select_swap_ctrl
+        else:
+
+            @cudaq.kernel
+            def primitives_qrom_select_swap(address: cudaq.qview,
+                                            ladder: cudaq.qview,
+                                            output: cudaq.qview):
+                low = address[0:low_bits]
+                high = address[low_bits:]
+                lines = ladder[0:high_bits]
+                blocks = ladder[high_bits:]
+                walk_kernel(high, lines, blocks)
+                route_kernel(low, blocks)
+                for t in range(b):
+                    cx(blocks[t], output[t])
+                unroute_kernel(low, blocks)
+                walk_kernel(high, lines, blocks)
+
+            _retain(primitives_qrom_select_swap)
+            self._kernel = primitives_qrom_select_swap
         self._num_ladder = high_bits + size * b
-        self._toffoli_count = sum(1 for op in ops if op[0] in _TOFFOLI_OPCODES)
+        self._toffoli_count = 2 * walk.toffoli_count + 2 * len(swap_c)
 
     @property
     def data(self) -> tuple[int, ...]:
@@ -395,8 +478,14 @@ class QROM:
         return self._toffoli_count
 
     @property
+    def controlled(self) -> bool:
+        """Whether the kernel takes a leading one-qubit ``control`` view."""
+        return self._controlled
+
+    @property
     def kernel(self):
-        """The lookup kernel ``(address, ladder, output)`` — self-inverse."""
+        """The lookup kernel — self-inverse. ``(address, ladder, output)``,
+        or ``(control, address, ladder, output)`` when ``controlled``."""
         return self._kernel
 
     def __repr__(self) -> str:
@@ -405,4 +494,5 @@ class QROM:
                 f"output_bits={self.num_output}, "
                 f"variant={self._variant!r}, "
                 f"block_size={self._block_size}, "
+                f"controlled={self._controlled}, "
                 f"toffolis={self.toffoli_count})")

@@ -465,3 +465,136 @@ def estimate_givens_resources(
         num_phase_rotations=num_phase_rotations,
         two_qubit_gate_count_proxy=num_exp_pauli_calls,
         depth_proxy=num_exp_pauli_calls + num_phase_rotations)
+
+
+# ============================================================================
+# Orbital rotations: a real orthogonal one-particle matrix as an adjacent
+# Givens network applied to both spin sectors
+# ============================================================================
+
+
+@cudaq.kernel
+def spatial_givens_rotation(system: cudaq.qview, theta: float, mode: int):
+    """Rotate adjacent spatial modes ``mode`` and ``mode + 1`` by ``theta``
+    on both spin sectors of the interleaved register.
+
+    Mode ``p`` lives on qubits ``2p`` (up) and ``2p + 1`` (down). On each
+    spin the rotation ``exp(theta (a^dag_p a_{p+1} - a^dag_{p+1} a_p))`` is
+    an ``XZY`` / ``YZX`` ``exp_pauli`` pair on the contiguous three-qubit
+    window starting at the mode's qubit, whose middle qubit carries the
+    Jordan-Wigner parity of the other spin. A zero angle is the identity
+    without accessing either window, so mode-zero padding is safe even
+    on a single spatial mode (two qubits).
+    """
+    if theta != 0.0:
+        up = system[2 * mode:2 * mode + 3]
+        exp_pauli(0.5 * theta, up, "XZY")
+        exp_pauli(-0.5 * theta, up, "YZX")
+        down = system[2 * mode + 1:2 * mode + 4]
+        exp_pauli(0.5 * theta, down, "XZY")
+        exp_pauli(-0.5 * theta, down, "YZX")
+
+
+@cudaq.kernel
+def spatial_givens_segment(system: cudaq.qview, modes: list[int],
+                           angles: list[float], start: int, count: int):
+    """Apply ``spatial_givens_rotation(system, angles[i], modes[i])`` for
+    ``i`` from ``start`` to ``start + count - 1`` in order: one segment of
+    a flat rotation list shared by several frames (a kernel cannot slice a
+    sub-list to hand to another kernel)."""
+    for i in range(count):
+        spatial_givens_rotation(system, angles[start + i], modes[start + i])
+
+
+@cudaq.kernel
+def spatial_givens_network(system: cudaq.qview, modes: list[int],
+                           angles: list[float]):
+    """Apply ``spatial_givens_rotation(system, angles[i], modes[i])`` for
+    each ``i`` in order (the flattened form of an
+    ``orbital_rotation_program``)."""
+    spatial_givens_segment(system, modes, angles, 0, len(modes))
+
+
+@dataclass(frozen=True)
+class OrbitalRotationSchedule:
+    """An adjacent Givens sweep of a real orthogonal matrix ``V``.
+
+    ``rotations`` are ``(mode, theta)`` plane rotations on modes
+    ``(mode, mode + 1)`` in elimination order: applied to the rows of
+    ``V`` in turn they reduce it to a diagonal of signs,
+    ``R_m ... R_1 V = diag(signs)``. ``signs`` is that residual, one
+    ``+-1`` per mode: the networks built from the schedule reproduce
+    ``V diag(signs)``, i.e. ``V`` up to a sign per mode. That is
+    immaterial for operators diagonal in the rotated modes (number
+    operators); ``RotatedEncoding.from_orbital_rotation`` cancels it with
+    a ``Z`` on both spin orbitals of each mode with sign ``-1``
+    (``Z_p a_p Z_p = -a_p`` under Jordan-Wigner), so its frame kernels
+    realize ``V`` exactly.
+    """
+
+    num_modes: int
+    rotations: tuple[tuple[int, float], ...]
+    signs: tuple[int, ...]
+
+
+def make_orbital_rotation_schedule(orthogonal,
+                                   tolerance: float = 1.0e-12
+                                   ) -> OrbitalRotationSchedule:
+    """Decompose a real orthogonal ``n x n`` matrix (target modes as
+    columns) into adjacent plane rotations.
+
+    Column by column, bottom-up, each rotation on rows ``(p, p + 1)``
+    zeroes the lower entry — the orthogonal-matrix analogue of
+    ``make_givens_rotation_schedule``, acting on spatial modes rather than
+    spin orbitals. Raises ``ValueError`` for a complex, non-square or
+    non-orthonormal input.
+    """
+    if np.iscomplexobj(orthogonal):
+        raise ValueError("orthogonal must be a real matrix")
+    work = np.array(orthogonal, dtype=float, copy=True)
+    if work.ndim != 2 or work.shape[0] != work.shape[1]:
+        raise ValueError("orthogonal must be a square matrix")
+    n = work.shape[0]
+    if not np.allclose(work.T @ work, np.eye(n), atol=tolerance):
+        raise ValueError("orthogonal must have orthonormal columns")
+    rotations: list[tuple[int, float]] = []
+    for column in range(n):
+        for row in range(n - 1, column, -1):
+            upper, lower = work[row - 1, column], work[row, column]
+            if abs(lower) > 1e-14:
+                theta = math.atan2(lower, upper)
+                c, s = math.cos(theta), math.sin(theta)
+                rotation = np.array([[c, s], [-s, c]])
+                work[row - 1:row + 1, :] = rotation @ work[row - 1:row + 1, :]
+                rotations.append((row - 1, theta))
+    signs = tuple(1 if work[i, i] >= 0.0 else -1 for i in range(n))
+    if not np.allclose(work, np.diag(signs), atol=1e3 * tolerance):
+        raise ValueError("the Givens sweep did not reduce orthogonal to a "
+                         "diagonal of signs; is it orthonormal?")
+    return OrbitalRotationSchedule(num_modes=n,
+                                   rotations=tuple(rotations),
+                                   signs=signs)
+
+
+def orbital_rotation_program(schedule: OrbitalRotationSchedule, *,
+                             inverse: bool) -> tuple[list[int], list[float]]:
+    """Flattened ``(modes, angles)`` lists for ``spatial_givens_network``.
+
+    With ``inverse=False`` the network realizes ``V diag(signs)`` on the
+    one-particle space of each spin: from ``R_m ... R_1 V = D`` follows
+    ``V D = R_1^T ... R_m^T``, so the sweep is applied reversed with negated
+    angles (the last elimination first in circuit time). With
+    ``inverse=True`` it realizes the transpose, ``D V^T``: the sweep in
+    elimination order. A diagonal ``V`` has no rotations; the lists are
+    then the single zero-angle rotation ``[0], [0.0]`` — an identity on any
+    register, including a single spatial mode — so that they are never
+    empty when they cross the kernel boundary (cuda-quantum#4847).
+    """
+    if inverse:
+        pairs = list(schedule.rotations)
+    else:
+        pairs = [(mode, -theta)
+                 for mode, theta in reversed(schedule.rotations)]
+    if not pairs:
+        return [0], [0.0]
+    return [mode for mode, _ in pairs], [theta for _, theta in pairs]

@@ -69,7 +69,8 @@ class Walk:
 
     Generic over the ``BlockEncoding`` protocol: encoding-specific
     circuits and the odd-moment observable are delegated to the injected
-    encoding (``PauliLCU`` is the provided implementation).
+    encoding (``PauliLCU`` and ``LCUBlockEncoding`` are the provided
+    implementations).
 
     Provides walk/adjoint-walk kernel factories and Chebyshev-moment
     measurement in the QEL even/odd convention. Requires ``num_ancilla >= 1``

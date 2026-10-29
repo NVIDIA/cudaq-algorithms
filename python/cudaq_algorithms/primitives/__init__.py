@@ -10,7 +10,8 @@ per-address body exactly when the address register equals ``k``.
 ``QROM`` builds coherent
 classical-table lookups on top of it, either as the plain
 unary-iteration SELECT or as the SELECT-SWAP / QROAM construction of
-Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`).
+Low, Kliuchnikov and Schaeffer (`arXiv:1812.00954`), either one
+optionally under an external control (``controlled=True``).
 
 Everything here is strictly unitary: the papers' headline Toffoli counts
 assume measurement-based ancilla uncomputation, which this library does
@@ -38,6 +39,22 @@ PREPARE-with-garbage of Babbush et al. (`arXiv:1805.03662`, Sec. III.D)
 priced by ``variant="auto"``, and the CDKM comparator — realizing a
 weighted index-register marginal exactly, up to a derived ``mu``-bit
 discretization bound.
+
+Composition: minted kernels are building blocks — call them from your
+own kernels, and wrap the whole composition in ``cudaq.control`` to
+obtain the controlled operation. This is the intended consumption model
+for SELECT-style constructions (the select_swap QROM is itself a parent
+kernel composing a walk, a routing network and a copy), and it is pinned
+by ``tests/python/test_primitives_composition.py``. Where a controlled
+walk is what you need, the factory's ``controlled=True`` variants are
+the cheaper route by a wide margin: ``cudaq.control`` over a composition
+adds a control to every gate, so each of the walk's Toffolis becomes a
+3-controlled X and each root or ladder CNOT becomes a Toffoli, while the
+factory folds the control into the root gadgets. Measured with
+``cudaq.estimate_resources`` on CUDA-Q 0.16.0 (one-gate bodies): a 4-bit,
+16-item walk costs 44 Toffolis plus 19 3-controlled X under
+``cudaq.control`` against 23 Toffolis from the factory; a 5-bit, 32-item
+walk 87 Toffolis plus 43 3-controlled X against 47.
 
 Import the subpackage directly (``from cudaq_algorithms.primitives
 import QROM``); nothing here is re-exported from the package root.

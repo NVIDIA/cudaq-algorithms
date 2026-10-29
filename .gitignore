@@ -5,6 +5,10 @@ dist/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv-nvskills/
 compile_commands.json
 timer.dat
 docs/sphinx/_build/
+
+# Skill-development run evidence stays out of the repository
+skills-dev/cudaq-algorithms-dev/evals/results/

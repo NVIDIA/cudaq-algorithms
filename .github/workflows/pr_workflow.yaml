@@ -22,6 +22,8 @@ jobs:
       build-cudaq: ${{ steps.filter.outputs.build-cudaq }}
       build-algorithms: ${{ steps.filter.outputs.build-algorithms }}
       build-wheels: ${{ steps.filter.outputs.build-wheels }}
+      skills-checks: ${{ steps.filter.outputs.skills-checks }}
+      skills-dev-tests: ${{ steps.filter.outputs.skills-dev-tests }}
       pr-number: ${{ steps.export-pr-info.outputs.pr_number }}
     steps:
       - name: Checkout repository
@@ -76,6 +78,27 @@ jobs:
               - '.github/workflows/scripts/**'
               - 'scripts/ci/**'
               - 'pyproject.toml'
+            skills-checks:
+              # The catalog-bound skill: SkillEvaluator static checks plus
+              # the routing, packaging, coverage and link tests for it.
+              - '.github/workflows/skills_checks.yaml'
+              - 'skills/cudaq-algorithms/**'
+              # The skill's tests, the coverage registry and the packaging
+              # checker live in the dev tree but gate the skill, not the harness.
+              - 'skills-dev/cudaq-algorithms-dev/scripts/check_coverage.py'
+              - 'skills-dev/cudaq-algorithms-dev/scripts/check_packaging.py'
+              - 'skills-dev/cudaq-algorithms-dev/scripts/tests/test_route*.py'
+              - 'skills-dev/cudaq-algorithms-dev/scripts/tests/test_catalog_routes.py'
+              - 'skills-dev/cudaq-algorithms-dev/scripts/tests/test_skill_package.py'
+              - 'skills-dev/cudaq-algorithms-dev/scripts/tests/test_check_packaging.py'
+              - 'skills-dev/cudaq-algorithms-dev/coverage/**'
+            skills-dev-tests:
+              # Offline tests of the evaluation harness itself.
+              - '.github/workflows/skills_dev_tests.yaml'
+              - 'skills-dev/cudaq-algorithms-dev/**'
+              # test_catalog_evals.py asserts the skill's eval copy matches
+              # the dev suite, so eval edits on either side must run it.
+              - 'skills/cudaq-algorithms/evals/**'
 
   build-cudaq:
     name: Build CUDA-Q
@@ -171,6 +194,26 @@ jobs:
     secrets:
       CUDAQ_ACCESS_TOKEN: ${{ secrets.CUDAQ_ACCESS_TOKEN }}
 
+  skills-checks:
+    name: Skills checks
+    needs: [check-changes]
+    if: |
+      !failure() && !cancelled() &&
+      needs.check-changes.outputs.skills-checks == 'true'
+    uses: ./.github/workflows/skills_checks.yaml
+    permissions:
+      contents: read
+
+  skills-dev-tests:
+    name: Skills dev tests
+    needs: [check-changes]
+    if: |
+      !failure() && !cancelled() &&
+      needs.check-changes.outputs.skills-dev-tests == 'true'
+    uses: ./.github/workflows/skills_dev_tests.yaml
+    permissions:
+      contents: read
+
   verify:
     name: Verify PR
     if: ${{ always() }}
@@ -181,6 +224,8 @@ jobs:
       - build-algorithms-source
       - build-wheels
       - build-wheels-source
+      - skills-checks
+      - skills-dev-tests
     runs-on: ubuntu-latest
     steps:
       - name: Check results
@@ -204,6 +249,8 @@ jobs:
           check_result "build-algorithms-source" "${{ needs.build-algorithms-source.result }}"
           check_result "build-wheels"            "${{ needs.build-wheels.result }}"
           check_result "build-wheels-source"     "${{ needs.build-wheels-source.result }}"
+          check_result "skills-checks"            "${{ needs.skills-checks.result }}"
+          check_result "skills-dev-tests"         "${{ needs.skills-dev-tests.result }}"
 
           if [[ "$status" != "success" ]]; then
             exit 1

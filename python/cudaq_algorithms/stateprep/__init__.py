@@ -12,24 +12,28 @@ shell, or open shell via ``make_hartree_fock_occupation``), and
 operator pool at fixed, non-variational amplitudes on top of it. The
 Givens-rotation Slater-determinant kernels and schedule helpers
 (:mod:`._givens`) follow the same split: composable device kernels plus
-host-side planning.
+host-side planning; the same module holds the orbital-rotation schedule
+and the spin-lifted Givens network that `RotatedEncoding` and the
+double-factorized example conjugate encodings with.
 
-Error-type convention: the two error cases the compiled bindings
-defined keep their historical ``RuntimeError`` (odd qubit count and
-odd-electrons-at-spin-0 in ``get_uccsd_excitations``); every guard
-added in the pure implementation raises ``ValueError``. Note also that
-the CEO helpers take ``num_orbitals`` in *spatial* orbitals (the pool
-acts on ``2 * num_orbitals`` qubits), matching the compiled API.
+Error-type convention: every input guard raises ``ValueError``, and
+``get_uccsd_excitations`` and ``make_hartree_fock_occupation`` apply the
+same ``(num_qubits, num_electrons, spin)`` checks with the same messages
+(``spin`` is ``2*S_z``, so ``num_electrons - spin`` must be even). Note
+also that the CEO helpers take ``num_orbitals`` in *spatial* orbitals
+(the pool acts on ``2 * num_orbitals`` qubits), matching the compiled
+API.
 """
 
-from ._givens import (GivensResourceEstimate, GivensRotation,
-                      GivensRotationSchedule, complex_slater_determinant,
-                      estimate_givens_resources, get_givens_rotation_angles,
-                      get_givens_rotation_indices, get_givens_rotation_phases,
-                      givens_rotation, make_givens_rotation_schedule,
-                      phase_givens_rotation, slater_determinant,
-                      slater_determinant_kernel,
-                      validate_givens_rotation_schedule)
+from ._givens import (
+    GivensResourceEstimate, GivensRotation, GivensRotationSchedule,
+    OrbitalRotationSchedule, complex_slater_determinant,
+    estimate_givens_resources, get_givens_rotation_angles,
+    get_givens_rotation_indices, get_givens_rotation_phases, givens_rotation,
+    make_givens_rotation_schedule, make_orbital_rotation_schedule,
+    orbital_rotation_program, phase_givens_rotation, slater_determinant,
+    slater_determinant_kernel, spatial_givens_network, spatial_givens_rotation,
+    spatial_givens_segment, validate_givens_rotation_schedule)
 from ._hartree_fock import (
     FixedParameterUccResourceEstimate, HartreeFockResourceEstimate,
     estimate_fixed_parameter_ucc_resources,
@@ -54,6 +58,8 @@ __all__ = [
     "hartree_fock",
     "hartree_fock_occupation",
     "fixed_parameter_ucc",
+    "single_excitation",
+    "double_excitation",
     "get_uccsd_excitations",
     "get_num_uccsd_parameters",
     "get_uccgsd_pauli_lists",
@@ -87,4 +93,10 @@ __all__ = [
     "get_givens_rotation_angles",
     "get_givens_rotation_phases",
     "estimate_givens_resources",
+    "OrbitalRotationSchedule",
+    "make_orbital_rotation_schedule",
+    "orbital_rotation_program",
+    "spatial_givens_rotation",
+    "spatial_givens_network",
+    "spatial_givens_segment",
 ]
