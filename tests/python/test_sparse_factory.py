@@ -332,6 +332,16 @@ def test_argument_validation_raises():
         encode_sparse(np.eye(2), dim=3)
     with pytest.raises(ValueError, match="dim is required"):
         encode_sparse(([0], [0], [1.0]))
+    # Finiteness is checked on both parts of an entry before the real
+    # tolerance, and alpha = d_padded * h must be finite.
+    with pytest.raises(ValueError, match="finite"):
+        encode_sparse(np.array([[complex(1.0, float("nan"))]]))
+    with pytest.raises(ValueError, match="finite"):
+        qrom_oracles(np.array([[complex(1.0, float("inf"))]]), 4)
+    with pytest.raises(ValueError, match="complex"):
+        encode_sparse(np.array([[1.0 + 1.0j]]))
+    with pytest.raises(ValueError, match="overflows"):
+        encode_sparse(1e308 * np.eye(2))
 
 
 def test_report_distinguishes_row_sparsity_from_slots():

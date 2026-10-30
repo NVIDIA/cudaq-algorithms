@@ -36,6 +36,8 @@ is ``None`` on encodings built directly.
 
 from __future__ import annotations
 
+import math
+
 from ._entries import _coerce_entries, _first_asymmetry
 from ._from_data import _assign_slots, qrom_oracles
 from ._sparse_oracle import SparseOracleEncoding
@@ -146,6 +148,11 @@ def encode_sparse(matrix,
     m1 = max(1, (d_slots - 1).bit_length())
     h = max(abs(v) for v in entries.values())
     alpha = float((1 << m1) * h)
+    if not math.isfinite(alpha):
+        raise ValueError(
+            f"alpha = d_padded * h = {1 << m1} * {h} overflows to infinity; "
+            "rescale the matrix (the encoding is of H / alpha, so a common "
+            "factor costs nothing)")
     qubits = (num_system + (m1 + 2 + num_system) +
               (value_bits + 2 + (2 * num_system + d_slots)))
 

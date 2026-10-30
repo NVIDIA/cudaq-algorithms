@@ -93,14 +93,22 @@ register enters in ``|0>`` (and leave it ``|0>``); it need not be a
 global matrix inverse. ``num_system`` records the system width the
 kernels were built for and is checked against the encoding's.
 
-``o_val`` XOR-loads, for slot ``s`` and register content ``x`` (the *row*
-index, i.e. after ``o_loc``): the ``value_bits``-bit fixed point of
-``theta = arcsin(sqrt(|H_{x, cinv(s, x)}| / h))`` (as ``round(theta /
-(pi/2) * 2^value_bits)``, clamped to ``2^value_bits - 1``) into
-``value_and_sign[0:value_bits]``, the sign bit into
+Every nonzero entry ``H_{x, y}`` is *assigned* to exactly one slot ``s``
+with ``y = cinv(s, x)``; the remaining mappings of a slot only complete
+its permutation and carry no entry. ``o_val`` XOR-loads, for slot ``s``
+and register content ``x`` (the *row* index, i.e. after ``o_loc``), the
+entry assigned to ``(s, x)`` — and nothing when ``(s, x)`` is such a
+filler mapping, even if ``H_{x, cinv(s, x)}`` is nonzero and assigned to
+another slot (loading it again would count it twice): the
+``value_bits``-bit fixed point of ``theta = arcsin(sqrt(|H_{x, y}| / h))``
+(as ``round(theta / (pi/2) * 2^value_bits)``, clamped to ``2^value_bits -
+1``) into ``value_and_sign[0:value_bits]``, the sign bit into
 ``value_and_sign[value_bits]``, and the upper bit (row < column) into
-``value_and_sign[value_bits + 1]``. ``work`` provides ``num_work`` scratch
-qubits that must be returned to ``|0>``.
+``value_and_sign[value_bits + 1]``. The assignment must be consistent
+across reverse slots: the entry ``H_{x, y}`` of slot ``s`` and its mirror
+``H_{y, x}`` of slot ``slot_flip[s]`` carry the same magnitude and sign.
+``work`` provides ``num_work`` scratch qubits that must be returned to
+``|0>``.
 
 ``slot_flip`` is the reverse-slot involution: ``c(slot_flip[s], c(s, x)) =
 x`` for all ``x``. Non-trivial pairs must be bit-0 adjacent (``2k <->
@@ -177,6 +185,8 @@ class OracleKernels:
     o_loc, o_loc_adj, o_val, o_val_adj
         ``@cudaq.kernel`` device kernels with the documented signatures;
         every inverse is explicit (``cudaq.adjoint`` is off-limits).
+        ``o_val`` loads only the entries assigned to a slot; a mapping
+        that merely completes a slot's permutation loads zero.
     d
         Number of structure slots (>= 1); padded to ``2^ceil(log2 d)``.
     h
@@ -251,6 +261,11 @@ class SparseOracleEncoding:
         d = int(oracles.d)
         m = max(1, (d - 1).bit_length())
         d_padded = 1 << m
+        if not math.isfinite(d_padded * float(oracles.h)):
+            raise ValueError(
+                f"alpha = d_padded * h = {d_padded} * {oracles.h} overflows "
+                "to infinity; rescale the matrix (the encoding is of H / "
+                "alpha, so a common factor costs nothing)")
         flip = oracles.slot_flip
         if flip is None:
             raise ValueError(

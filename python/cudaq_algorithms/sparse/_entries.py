@@ -20,13 +20,13 @@ __all__ = ["_coerce_entries", "_first_asymmetry", "_real_entry"]
 
 def _real_entry(value, i: int, j: int) -> float:
     entry = complex(value)
+    if not (math.isfinite(entry.real) and math.isfinite(entry.imag)):
+        raise ValueError(f"matrix entry ({i}, {j}) must be finite, "
+                         f"got {value!r}")
     if abs(entry.imag) > 1e-12:
         raise ValueError(
             f"matrix entry ({i}, {j}) is complex ({value!r}): complex "
             "matrices are not supported (deferred; encode real data)")
-    if not math.isfinite(entry.real):
-        raise ValueError(f"matrix entry ({i}, {j}) must be finite, "
-                         f"got {value!r}")
     return entry.real
 
 

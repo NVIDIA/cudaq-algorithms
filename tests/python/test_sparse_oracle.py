@@ -550,6 +550,10 @@ def test_banded_validation_raises():
         banded_oracles([0, 1], [1.0, 0.5], num_system=2, value_bits=4)
     with pytest.raises(ValueError, match="symmetric values"):
         banded_oracles([-1, 1], [0.5, 0.7], num_system=2, value_bits=4)
+    with pytest.raises(ValueError, match="offsets must be integers"):
+        banded_oracles([0.9], [1.0], num_system=2, value_bits=4)
+    with pytest.raises(ValueError, match="offsets must be integers"):
+        banded_oracles([True], [1.0], num_system=2, value_bits=4)
     with pytest.raises(ValueError, match="negative diagonal"):
         banded_oracles([-1, 0, 1], [0.5, -1.0, 0.5],
                        num_system=2,
@@ -622,3 +626,193 @@ def test_bundle_width_must_match_the_encoding():
         SparseOracleEncoding.from_general_oracles(general, num_system=3)
     # Width-agnostic hand-written bundles (num_system=None) stay accepted.
     assert permutation_encoding().num_system == 2
+
+
+# ----------------------------------------------------------------------
+# Band symmetry is judged relative to the band scale
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scale", [1e-13, 1.0, 1e6])
+def test_banded_symmetry_check_is_scale_relative(scale):
+    # Lopsided bands are rejected at every scale: a value against zero,
+    # two different magnitudes, and opposite signs. A fixed absolute floor
+    # would wave the 1e-13 cases through and encode a zero block.
+    for values in ([scale, 0.0], [scale, 0.5 * scale], [scale, -scale]):
+        with pytest.raises(ValueError, match="symmetric values"):
+            banded_oracles([-1, 1], values, num_system=1, value_bits=6)
+    # Equal tiny bands are symmetric and encode the expected quantized
+    # block: alpha = 2 * scale, and |H_10| / h = 1 quantizes to the
+    # top-of-range angle, so the off-diagonal reads sin^2(63/64 * pi/2)/2.
+    oracles = banded_oracles([-1, 1], [scale, scale],
+                             num_system=1,
+                             value_bits=6)
+    encoding = SparseOracleEncoding(oracles, num_system=1)
+    assert encoding.alpha == pytest.approx(2.0 * scale)
+    expected = banded_quantized_dense([-1, 1], [scale, scale], 1, 6,
+                                      scale) / encoding.alpha
+    np.testing.assert_allclose(encoded_matrix(encoding), expected, atol=1e-10)
+    assert abs(expected[1, 0] - 0.5) < 1e-3 and expected[1, 0] != 0.0
+
+
+def test_alpha_overflow_is_rejected():
+    with pytest.raises(ValueError, match="overflows"):
+        SparseOracleEncoding(banded_oracles([0], [1e308], 1, 4), num_system=1)
+    with pytest.raises(ValueError, match="overflows"):
+        SparseOracleEncoding(qrom_oracles(1e308 * np.eye(2), 4), num_system=1)
+
+
+# ----------------------------------------------------------------------
+# Band offsets are applied exactly, whatever their magnitude
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("num_system,offset", [(2, 3), (3, 7), (3, -5)])
+def test_extreme_offsets_encode_the_clipped_band(num_system, offset):
+    # |offset| near 2^n leaves few elements in range, and the adder's
+    # residues for +offset / -offset sit far apart mod 2^n: the block must
+    # still be the clipped band, element for element. (Kept at <= 3 system
+    # qubits and 4 angle bits: the banded kernels inline a QFT per slot.)
+    values = [0.3, 0.3]
+    offsets = [offset, -offset]
+    oracles = banded_oracles(offsets, values, num_system, 4)
+    encoding = SparseOracleEncoding(oracles, num_system=num_system)
+    expected = banded_quantized_dense(offsets, values, num_system, 4,
+                                      oracles.h) / encoding.alpha
+    assert np.count_nonzero(expected) == 2 * ((1 << num_system) - abs(offset))
+    np.testing.assert_allclose(encoded_matrix(encoding), expected, atol=1e-10)
+
+
+def test_overlapping_modular_shifts_keep_their_own_supports():
+    # On 4 elements the shifts +1 and -3 are the same permutation mod 4, as
+    # are -1 and +3, but their in-range supports differ (three elements
+    # against one): the comparator gates each band's value onto its own
+    # support, so the block is the non-periodic band matrix.
+    offsets = [1, -1, 3, -3]
+    values = [0.4, 0.4, 0.2, 0.2]
+    oracles = banded_oracles(offsets, values, 2, 6)
+    encoding = SparseOracleEncoding(oracles, num_system=2)
+    assert encoding.d == 4 and encoding.alpha == pytest.approx(1.6)
+    expected = banded_quantized_dense(offsets, values, 2, 6,
+                                      oracles.h) / encoding.alpha
+    assert np.count_nonzero(expected) == 8
+    np.testing.assert_allclose(encoded_matrix(encoding), expected, atol=1e-10)
+
+
+def test_large_offsets_reduce_per_bit_without_a_statevector():
+    # The Fourier-basis adder rotates bit t by 2 pi (K mod 2^(t+1)) /
+    # 2^(t+1). Reduced first, as an integer, the argument is exact for any
+    # K; pushed through a double unreduced, K = 2^53 + 1 loses its low bit
+    # and the rotation is off by pi on the low bits. Checked analytically
+    # against exact rational phases, plus the 54-qubit bundle builds.
+    from fractions import Fraction
+
+    from cudaq_algorithms.sparse._banded import _residues
+
+    for num_system, offset in ((31, 2**30 + 1), (54, 2**53 + 1),
+                               (54, -(2**53 + 1))):
+        residues = _residues(offset, num_system)
+        assert len(residues) == num_system
+        assert all(0 <= r < (1 << (t + 1)) for t, r in enumerate(residues))
+        assert residues[-1] == offset % (1 << num_system)
+        for t, r in enumerate(residues):
+            exact = Fraction(offset % (1 << (t + 1)), 1 << (t + 1))
+            assert Fraction(r, 1 << (t + 1)) == exact
+            reduced = 2.0 * math.pi * r / (1 << (t + 1))
+            assert abs(reduced - 2.0 * math.pi * float(exact)) < 1e-12
+    # The unreduced float argument for 2^53 + 1 is wrong by pi on bit 0
+    # (that is the defect the per-bit residues remove).
+    naive = (2.0 * math.pi * float(2**53 + 1) / 2.0) % (2.0 * math.pi)
+    assert abs(naive - math.pi) > 1.0
+    oracles = banded_oracles([2**53 + 1, -(2**53 + 1)], [1.0, 1.0],
+                             num_system=54,
+                             value_bits=4)
+    assert oracles.d == 2 and oracles.num_system == 54
+
+
+# ----------------------------------------------------------------------
+# The oracle contract: one slot per entry, fillers load zero
+# ----------------------------------------------------------------------
+
+
+@cudaq.kernel
+def _contract_o_loc(slot: cudaq.qview, system: cudaq.qview, work: cudaq.qview):
+    # Slot 0 swaps rows 1 <-> 2 (and fixes 0 and 3); slot 1 is the identity.
+    x(slot[0])
+    swap.ctrl(slot[0], system[0], system[1])
+    x(slot[0])
+
+
+@cudaq.kernel
+def _contract_o_val(slot: cudaq.qview, system: cudaq.qview,
+                    value_and_sign: cudaq.qview, work: cudaq.qview):
+    # value_bits = 6, h = 0.5: every assigned entry is 0.5, angle 63.
+    # Slot 0 owns H[1, 2] (row 1, upper) and H[2, 1] (row 2); slot 1 owns
+    # H[0, 0]. Row 0 of slot 0 is a filler mapping and loads nothing,
+    # although H[0, 0] is nonzero.
+    x(slot[0])
+    x(system[1])
+    for k in range(6):
+        x.ctrl(slot[0], system[0], system[1], value_and_sign[k])
+    x.ctrl(slot[0], system[0], system[1], value_and_sign[7])
+    x(system[1])
+    x(system[0])
+    for k in range(6):
+        x.ctrl(slot[0], system[0], system[1], value_and_sign[k])
+    x(system[0])
+    x(slot[0])
+    x(system[0])
+    x(system[1])
+    for k in range(6):
+        x.ctrl(slot[0], system[0], system[1], value_and_sign[k])
+    x(system[1])
+    x(system[0])
+
+
+@cudaq.kernel
+def _double_counting_o_val(slot: cudaq.qview, system: cudaq.qview,
+                           value_and_sign: cudaq.qview, work: cudaq.qview):
+    # The same oracle, but slot 0 also loads H[0, 0] on its filler mapping
+    # of row 0 -- the reading of the contract that counts the entry twice.
+    _contract_o_val(slot, system, value_and_sign, work)
+    x(slot[0])
+    x(system[0])
+    x(system[1])
+    for k in range(6):
+        x.ctrl(slot[0], system[0], system[1], value_and_sign[k])
+    x(system[1])
+    x(system[0])
+    x(slot[0])
+
+
+def test_handwritten_oracle_fillers_load_zero():
+    matrix = np.zeros((4, 4))
+    matrix[0, 0] = matrix[1, 2] = matrix[2, 1] = 0.5
+    bundle = dict(o_loc=_contract_o_loc,
+                  o_loc_adj=_contract_o_loc,
+                  d=2,
+                  h=0.5,
+                  value_bits=6,
+                  num_work=0,
+                  slot_flip=[0, 1],
+                  num_system=2)
+    encoding = SparseOracleEncoding(OracleKernels(o_val=_contract_o_val,
+                                                  o_val_adj=_contract_o_val,
+                                                  **bundle),
+                                    num_system=2)
+    assert encoding.alpha == pytest.approx(1.0)
+    magnitude = 0.5 * math.sin(63 / 64 * 0.5 * math.pi)**2
+    expected = np.where(matrix != 0.0, magnitude, 0.0) / encoding.alpha
+    np.testing.assert_allclose(encoded_matrix(encoding), expected, atol=1e-10)
+    # Loading the filler mapping too counts H[0, 0] in both slots: the
+    # diagonal entry comes out doubled, nothing else changes.
+    doubled = SparseOracleEncoding(OracleKernels(
+        o_val=_double_counting_o_val,
+        o_val_adj=_double_counting_o_val,
+        **bundle),
+                                   num_system=2)
+    block = encoded_matrix(doubled)
+    assert block[0, 0] == pytest.approx(2.0 * expected[0, 0], abs=1e-10)
+    off_diagonal = block.copy()
+    off_diagonal[0, 0] = expected[0, 0]
+    np.testing.assert_allclose(off_diagonal, expected, atol=1e-10)

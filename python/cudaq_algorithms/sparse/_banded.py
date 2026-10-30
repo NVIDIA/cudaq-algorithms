@@ -61,6 +61,13 @@ def quantized_angle(value: float, h: float, value_bits: int) -> int:
                int(round(theta / (0.5 * math.pi) * (1 << value_bits))))
 
 
+def _residues(constant: int, bits: int) -> list[int]:
+    """``constant mod 2^(t+1)`` for ``t`` in ``range(bits)``: the per-bit
+    constants of a Fourier-basis adder, exact integers (negative constants
+    reduce to their non-negative residues, i.e. subtraction mod 2^bits)."""
+    return [constant % (1 << (t + 1)) for t in range(bits)]
+
+
 def banded_oracles(offsets: Sequence[int],
                    band_values: Sequence[float],
                    num_system: int,
@@ -73,9 +80,11 @@ def banded_oracles(offsets: Sequence[int],
     Parameters
     ----------
     offsets
-        Distinct band offsets ``o`` (``|o| < 2^num_system``); band ``o``
-        holds the elements ``H[j + o, j]`` for all in-range ``j`` (no
-        periodic wrap-around).
+        Distinct integer band offsets ``o`` (``|o| < 2^num_system``); band
+        ``o`` holds the elements ``H[j + o, j]`` for all in-range ``j`` (no
+        periodic wrap-around). Offsets of any magnitude are applied exactly:
+        the adder and comparator rotations take each constant reduced per
+        bit as an integer.
     band_values
         One real value per offset.
     num_system
@@ -87,9 +96,13 @@ def banded_oracles(offsets: Sequence[int],
         satisfy ``h >= max |band_values|``.
     hermitian
         Validate and lay out for direct encoding (see the module
-        docstring); ``False`` produces a dilation-only bundle
-        (``slot_flip=None``).
+        docstring): offsets closed under negation, band values symmetric
+        to ``1e-12 * max |band_values|``, non-negative diagonal; ``False``
+        produces a dilation-only bundle (``slot_flip=None``).
     """
+    for o in offsets:
+        if isinstance(o, bool) or int(o) != o:
+            raise ValueError(f"band offsets must be integers, got {o!r}")
     offsets = [int(o) for o in offsets]
     values = [float(v) for v in band_values]
     if len(offsets) == 0:
@@ -128,7 +141,9 @@ def banded_oracles(offsets: Sequence[int],
                     f"hermitian banded oracles need offsets closed under "
                     f"negation: offset {o} has no partner {-o} (pass "
                     f"hermitian=False for a dilation-only bundle)")
-            if abs(v - by_offset[-o]) > 1e-12:
+            # Scale-relative, like the matrix-data symmetry check: a fixed
+            # absolute floor would call lopsided tiny bands symmetric.
+            if abs(v - by_offset[-o]) > 1e-12 * max_value:
                 raise ValueError(
                     f"hermitian banded oracles need symmetric values: "
                     f"band {o} has {v} but band {-o} has {by_offset[-o]}")
@@ -193,6 +208,15 @@ def banded_oracles(offsets: Sequence[int],
     n = int(num_system)
     vb = int(value_bits)
     big_d = d_padded
+    # Fourier-basis rotations take the constant reduced per bit as an
+    # integer: bit t of a Draper adder sees only K mod 2^(t+1), and
+    # reducing first keeps the rotation argument in [0, 2 pi) instead of
+    # pushing a large K through a double (exact for any offset, including
+    # |K| >= 2^53, where 2 pi K / 2^(t+1) as a float loses the low bits).
+    loc_residues = [r for offset in slot_offsets for r in _residues(offset, n)]
+    cmp_residues = [
+        r for constant in cmp_constants for r in _residues(constant, n + 1)
+    ]
 
     @cudaq.kernel
     def banded_o_loc(slot: cudaq.qview, system: cudaq.qview,
@@ -212,8 +236,9 @@ def banded_oracles(offsets: Sequence[int],
                     if ((s >> b) & 1) == 0:
                         x(slot[b])
                 for t in range(n):
-                    r1.ctrl(6.283185307179586 * offset / (1 << (t + 1)), slot,
-                            system[t])
+                    r1.ctrl(
+                        6.283185307179586 * loc_residues[s * n + t] /
+                        (1 << (t + 1)), slot, system[t])
                 for b in range(m):
                     if ((s >> b) & 1) == 0:
                         x(slot[b])
@@ -242,8 +267,9 @@ def banded_oracles(offsets: Sequence[int],
                     if ((s >> b) & 1) == 0:
                         x(slot[b])
                 for t in range(n):
-                    r1.ctrl(-6.283185307179586 * offset / (1 << (t + 1)), slot,
-                            system[t])
+                    r1.ctrl(
+                        -6.283185307179586 * loc_residues[s * n + t] /
+                        (1 << (t + 1)), slot, system[t])
                 for b in range(m):
                     if ((s >> b) & 1) == 0:
                         x(slot[b])
@@ -290,9 +316,13 @@ def banded_oracles(offsets: Sequence[int],
                             r1.ctrl(3.141592653589793 / (1 << (t - c)),
                                     system[c], system[t])
                     for t in range(n):
-                        r1(-6.283185307179586 * constant / (1 << (t + 1)),
-                           system[t])
-                    r1(-6.283185307179586 * constant / (1 << (n + 1)), work[1])
+                        r1(
+                            -6.283185307179586 *
+                            cmp_residues[s * (n + 1) + t] / (1 << (t + 1)),
+                            system[t])
+                    r1(
+                        -6.283185307179586 * cmp_residues[s * (n + 1) + n] /
+                        (1 << (n + 1)), work[1])
                     for t in range(n):
                         for k in range(t):
                             c = t - 1 - k
@@ -328,11 +358,14 @@ def banded_oracles(offsets: Sequence[int],
                         for c in range(t):
                             r1.ctrl(3.141592653589793 / (1 << (t - c)),
                                     system[c], system[t])
-                    r1(6.283185307179586 * constant / (1 << (n + 1)), work[1])
+                    r1(
+                        6.283185307179586 * cmp_residues[s * (n + 1) + n] /
+                        (1 << (n + 1)), work[1])
                     for k in range(n):
                         t = n - 1 - k
-                        r1(6.283185307179586 * constant / (1 << (t + 1)),
-                           system[t])
+                        r1(
+                            6.283185307179586 * cmp_residues[s * (n + 1) + t] /
+                            (1 << (t + 1)), system[t])
                     for t in range(n):
                         for k in range(t):
                             c = t - 1 - k
