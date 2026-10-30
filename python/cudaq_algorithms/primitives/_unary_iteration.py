@@ -43,11 +43,12 @@ the gate list for that address as data. The emitter flattens the whole
 tree walk (ladder gadgets + body gates) into parallel opcode/operand
 integer lists, and the minted kernel is a single flat interpreter loop
 over those captured lists, pruned to the dispatch arms whose opcodes the
-tape actually uses (see ``_mint_interpreter``). Flatness is load-bearing:
-CUDA-Q's
-control-variant generation rejects kernels that call other kernels, so
-anything built this way stays ``cudaq.control``-compatible and can sit
-inside a controlled SELECT.
+tape actually uses (see ``_mint_interpreter``). The tape is flat because
+the body is baked at factory time, because a flat tape is inspectable
+(``describe()``), and because every opcode is verified individually
+(``test_primitives_interpreter.py``); minted kernels nevertheless
+compose — call them from other kernels and place the whole composition
+under ``cudaq.control`` (package docstring).
 
 Body instruction set. Each item is a tuple whose head names the gate;
 ``target``/``work`` operands index the target/work registers. The three
@@ -174,7 +175,6 @@ _OP_BODY_Z_W = 16  # z.ctrl(ladder[a], work[b])
 _OP_Z_LADDER = 17  # z(ladder[a])
 _OP_CX_ADDR_ADDR = 18  # cx(address[a], address[b])
 _OP_CCX_ADDR_ADDR = 19  # x.ctrl(address[a], address[b], ladder[c])
-_OP_CX_LADDER_TARGET = 20  # cx(ladder[a], target[b])
 
 _BODY_OPCODES = {"x": _OP_BODY_X, "y": _OP_BODY_Y, "z": _OP_BODY_Z}
 
@@ -206,7 +206,7 @@ _TOFFOLI_OPCODES = (_OP_CCX, _OP_CCX_CTRL, _OP_AND_TT, _OP_AND_WT,
 _BASE_OPS = frozenset({
     _OP_X_ADDR, _OP_X_LADDER, _OP_CX_ADDR_LADDER, _OP_CX_LADDER_LADDER,
     _OP_CCX, _OP_BODY_X, _OP_BODY_Y, _OP_BODY_Z, _OP_FREE_X, _OP_FREE_CX,
-    _OP_Z_LADDER, _OP_CX_ADDR_ADDR, _OP_CCX_ADDR_ADDR, _OP_CX_LADDER_TARGET
+    _OP_Z_LADDER, _OP_CX_ADDR_ADDR, _OP_CCX_ADDR_ADDR
 })
 _CONTROL_OPS = frozenset({_OP_CX_CTRL_LADDER, _OP_CCX_CTRL})
 _WORK_OPS = frozenset(
@@ -245,7 +245,6 @@ _OP_DESCRIPTIONS = {
     _OP_CX_ADDR_ADDR: "cx(address[{a}] -> address[{b}])",
     _OP_CCX_ADDR_ADDR:
     "ccx(address[{a}], address[{b}] -> ladder[{c}])  # Toffoli",
-    _OP_CX_LADDER_TARGET: "cx(ladder[{a}] -> target[{b}])",
 }
 
 
@@ -523,9 +522,11 @@ def unary_iteration_kernels(
         an involution (commuting self-inverse body, e.g. X-only QROM).
     num_work
         Width of the trailing clean ``work`` view. ``None`` (default)
-        infers the width from the body's work usage (0 keeps the original
-        work-less signatures); an explicit value must cover that usage
-        and forces the work view into the signature even when unused.
+        infers the width from the body's work usage. An explicit value must
+        cover that usage. The work view is present only when the resolved
+        ``num_work > 0``, including a positive explicit width unused by the
+        body; explicit ``num_work=0`` keeps the work-less signatures when
+        the body needs no work.
     """
     if int(num_address_bits) != num_address_bits or num_address_bits < 1:
         raise ValueError("num_address_bits must be a positive integer")
@@ -636,7 +637,6 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     op_z_ladder = _OP_Z_LADDER
     op_cx_addr_addr = _OP_CX_ADDR_ADDR
     op_ccx_addr_addr = _OP_CCX_ADDR_ADDR
-    op_cx_ladder_target = _OP_CX_LADDER_TARGET
 
     # Per-arm pruning flags (see the docstring): captured bools fold at
     # kernel-compile time, so a False flag removes its arm entirely.
@@ -660,7 +660,6 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
     use_z_ladder = _OP_Z_LADDER in present
     use_cx_addr_addr = _OP_CX_ADDR_ADDR in present
     use_ccx_addr_addr = _OP_CCX_ADDR_ADDR in present
-    use_cx_ladder_target = _OP_CX_LADDER_TARGET in present
 
     if controlled and has_work:
 
@@ -735,9 +734,6 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 if use_ccx_addr_addr:
                     if op == op_ccx_addr_addr:
                         x.ctrl(address[a], address[b], ladder[c])
-                if use_cx_ladder_target:
-                    if op == op_cx_ladder_target:
-                        cx(ladder[a], target[b])
 
         _retain(primitives_unary_walk_work_ctrl)
         return primitives_unary_walk_work_ctrl
@@ -807,9 +803,6 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 if use_ccx_addr_addr:
                     if op == op_ccx_addr_addr:
                         x.ctrl(address[a], address[b], ladder[c])
-                if use_cx_ladder_target:
-                    if op == op_cx_ladder_target:
-                        cx(ladder[a], target[b])
 
         _retain(primitives_unary_walk_work)
         return primitives_unary_walk_work
@@ -871,9 +864,6 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
                 if use_ccx_addr_addr:
                     if op == op_ccx_addr_addr:
                         x.ctrl(address[a], address[b], ladder[c])
-                if use_cx_ladder_target:
-                    if op == op_cx_ladder_target:
-                        cx(ladder[a], target[b])
 
         _retain(primitives_unary_walk_ctrl)
         return primitives_unary_walk_ctrl
@@ -925,9 +915,6 @@ def _mint_interpreter(ops: list, controlled: bool, has_work: bool):
             if use_ccx_addr_addr:
                 if op == op_ccx_addr_addr:
                     x.ctrl(address[a], address[b], ladder[c])
-            if use_cx_ladder_target:
-                if op == op_cx_ladder_target:
-                    cx(ladder[a], target[b])
 
     _retain(primitives_unary_walk)
     return primitives_unary_walk

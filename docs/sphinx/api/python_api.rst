@@ -15,6 +15,9 @@ Block encodings
 
 .. autofunction:: cudaq_algorithms.pauli_lcu.select_observable
 
+.. autoclass:: cudaq_algorithms.lcu.LCUBlockEncoding
+   :members:
+
 .. autoclass:: cudaq_algorithms.block_encoding.BlockEncoding
    :members:
 
@@ -36,6 +39,9 @@ Qubitization and QSVT
    :members:
 
 .. autofunction:: cudaq_algorithms.qsvt.recover_real_time_evolution
+
+.. autoclass:: cudaq_algorithms.phase_estimation.PhaseEstimation
+   :members:
 
 .. autodata:: cudaq_algorithms.qsvt.FORWARD
 
@@ -65,17 +71,6 @@ Preprocessing
 .. automodule:: cudaq_algorithms.double_factorization
    :members:
 
-Fermionic basis changes
-=======================
-
-The factory and plan class are also available from the package root.
-See :doc:`../guide/fermion_basis_change` for phase conventions, encoding,
-register placement, and explicit QROM composition.
-
-.. automodule:: cudaq_algorithms.basis_change
-   :members:
-   :imported-members:
-
 State preparation
 =================
 
@@ -86,6 +81,9 @@ Simulation utilities
 ====================
 
 .. automodule:: cudaq_algorithms.sim_utils
+   :members:
+
+.. automodule:: cudaq_algorithms.sim_utils.qpe
    :members:
 
 .. autofunction:: cudaq_algorithms.common_kernels.state_from

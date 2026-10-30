@@ -514,10 +514,11 @@ class RotatedEncoding:
         up, ``2p + 1`` spin down). The rotation is compiled with the
         ``stateprep`` orbital-rotation schedule to its adjacent Givens
         network on both spin sectors (``spatial_givens_network``). The
-        network reproduces ``V`` up to a sign per mode — ``mode_signs``
-        reports them — which is immaterial when the inner encoding is
-        diagonal in the rotated modes (number operators), the intended use,
-        and must be accounted for otherwise.
+        Givens sweep alone realizes ``V D`` for a diagonal of signs ``D``
+        (``mode_signs`` reports it); a ``Z`` on both spin orbitals of every
+        mode with sign ``-1`` cancels ``D`` (``Z_p a_p Z_p = -a_p`` under
+        Jordan-Wigner), so ``exit`` realizes exactly ``V`` and ``enter``
+        exactly ``V^T``, for any inner encoding.
         """
         _require_encoding(inner, "inner")
         if np.iscomplexobj(orthogonal):
@@ -540,16 +541,29 @@ class RotatedEncoding:
                                                              inverse=True)
         exit_modes, exit_angles = orbital_rotation_program(schedule,
                                                            inverse=False)
-        if not enter_modes:  # diagonal V: no empty list crosses the boundary
-            enter_modes, enter_angles = [0], [0.0]
-            exit_modes, exit_angles = [0], [0.0]
+        # Z on both spin orbitals of every mode the sweep leaves with sign
+        # -1: Gamma(D) in Jordan-Wigner. exit = network(V D) after Gamma(D)
+        # is Gamma(V); enter = Gamma(D) after network(D V^T) is Gamma(V^T).
+        # A -1 sentinel keeps the list non-empty across the kernel boundary
+        # (cuda-quantum#4847) when D is the identity.
+        flip_qubits = [
+            2 * mode + spin
+            for mode, sign in enumerate(schedule.signs) if sign < 0
+            for spin in (0, 1)
+        ] or [-1]
 
         @cudaq.kernel
         def enter(system: cudaq.qview):
             spatial_givens_network(system, enter_modes, enter_angles)
+            for q in flip_qubits:
+                if q >= 0:
+                    z(system[q])
 
         @cudaq.kernel
         def exit(system: cudaq.qview):
+            for q in flip_qubits:
+                if q >= 0:
+                    z(system[q])
             spatial_givens_network(system, exit_modes, exit_angles)
 
         rotated = cls(inner, enter, exit)
@@ -570,9 +584,11 @@ class RotatedEncoding:
 
     @property
     def mode_signs(self) -> tuple[int, ...] | None:
-        """The per-mode signs ``D`` with which a ``from_orbital_rotation``
-        network reproduces ``V`` (it realizes ``V D``); ``None`` for
-        user-supplied kernels."""
+        """The per-mode signs ``D`` the Givens sweep of a
+        ``from_orbital_rotation`` leaves (its network alone realizes
+        ``V D``); the constructor cancels them with ``Z`` gates, so the
+        frame kernels realize ``V`` exactly. ``None`` for user-supplied
+        kernels."""
         return self._mode_signs
 
     @property

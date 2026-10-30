@@ -713,7 +713,8 @@ def test_orbital_rotation_schedule_edge_cases_and_validation():
     with pytest.raises(ValueError, match="orthonormal"):
         stateprep.make_orbital_rotation_schedule(np.ones((2, 2)))
     modes, angles = stateprep.orbital_rotation_program(identity, inverse=False)
-    assert modes == [] and angles == []
+    # No rotations: the program is the single zero-angle (identity) rotation.
+    assert modes == [0] and angles == [0.0]
 
 
 @pytest.mark.parametrize("matrix", [
@@ -738,15 +739,48 @@ def test_spatial_givens_network_realizes_v_up_to_mode_signs(matrix):
         np.testing.assert_allclose(realized_inverse, expected.T, atol=1e-12)
 
 
+@pytest.mark.parametrize("start,count", [(0, 0), (0, 1), (1, 2), (2, 1),
+                                         (0, 3)])
+def test_spatial_givens_segment_matches_the_sliced_network(start, count):
+    # A segment of a flat rotation list applies exactly the rotations
+    # start .. start + count - 1, the network over that slice; count = 0 is
+    # the identity. The frames of a factorized operator share one list.
+    schedule = stateprep.make_orbital_rotation_schedule(
+        _random_orthogonal(3, 23))
+    modes, angles = stateprep.orbital_rotation_program(schedule, inverse=False)
+    assert len(modes) == 3
+    sliced_modes = modes[start:start + count] or [0]
+    sliced_angles = angles[start:start + count] or [0.0]
+
+    @cudaq.kernel
+    def segment(state: cudaq.State):
+        system = cudaq.qvector(state)
+        stateprep.spatial_givens_segment(system, modes, angles, start, count)
+
+    @cudaq.kernel
+    def network(state: cudaq.State):
+        system = cudaq.qvector(state)
+        stateprep.spatial_givens_network(system, sliced_modes, sliced_angles)
+
+    rng = np.random.default_rng(37)
+    ket = rng.normal(size=64) + 1j * rng.normal(size=64)
+    ket /= np.linalg.norm(ket)
+    expected = np.asarray(cudaq.get_state(network, algorithms.state_from(ket)))
+    actual = np.asarray(cudaq.get_state(segment, algorithms.state_from(ket)))
+    np.testing.assert_allclose(actual, expected, atol=_reference_atol())
+    if count == 0:
+        np.testing.assert_allclose(actual, ket, atol=_reference_atol())
+
+
 @pytest.mark.parametrize("diagonal", [(1, ), (-1, ), (1, 1, 1), (-1, 1, -1)])
 @pytest.mark.parametrize("inverse", [False, True])
 def test_diagonal_orbital_program_padding_is_identity(diagonal, inverse):
     schedule = stateprep.make_orbital_rotation_schedule(np.diag(diagonal))
     modes, angles = stateprep.orbital_rotation_program(schedule,
                                                        inverse=inverse)
-    assert modes == [] and angles == []
-    # Follow the documented padding recipe, including on a two-qubit register.
-    modes, angles = [0], [0.0]
+    # A diagonal V has no rotations: the program is the single zero-angle
+    # rotation, an identity on any register including two qubits.
+    assert modes == [0] and angles == [0.0]
 
     @cudaq.kernel
     def apply(state: cudaq.State):
@@ -783,3 +817,53 @@ def test_single_mode_padding_supports_control_and_adjoint(adjoint):
     ket /= np.linalg.norm(ket)
     actual = np.asarray(cudaq.get_state(apply, algorithms.state_from(ket)))
     np.testing.assert_allclose(actual, ket, atol=_reference_atol())
+
+
+def _jw_creation(qubit, num_qubits):
+    """Jordan-Wigner creation operator on ``qubit`` as a dense matrix over
+    the little-endian amplitude index (bit k of the index = qubit k)."""
+    dim = 1 << num_qubits
+    op = np.zeros((dim, dim))
+    for index in range(dim):
+        if not (index >> qubit) & 1:
+            parity = (index & ((1 << qubit) - 1)).bit_count()
+            op[index | (1 << qubit), index] = (-1.0)**parity
+    return op
+
+
+@pytest.mark.parametrize("occupied", [((0, 0), (1, 1)), ((1, 0), (1, 1)),
+                                      ((0, 0), (2, 0))],
+                         ids=["up0-down1", "up1-down1", "up0-up2"])
+def test_spatial_givens_network_two_electron_parity(occupied):
+    # One-particle sectors never exercise the middle Z of the XZY / YZX
+    # words: the other spin is empty there. With one electron per spin the
+    # Z fires whenever the other spin's orbital inside a window is occupied,
+    # so this is where a missing or misplaced Z would show.
+    n = 3
+    nq = 2 * n
+    matrix = _random_orthogonal(n, 7)
+    schedule = stateprep.make_orbital_rotation_schedule(matrix)
+    modes, angles = stateprep.orbital_rotation_program(schedule, inverse=False)
+    realized = matrix @ np.diag(schedule.signs)  # the network gives V D
+    cdag = {
+        (p, s): _jw_creation(2 * p + s, nq)
+        for p in range(n)
+        for s in (0, 1)
+    }
+    vacuum = np.zeros(1 << nq, dtype=np.complex128)
+    vacuum[0] = 1.0
+    ket = vacuum
+    expected = vacuum
+    for p, s in reversed(occupied):
+        ket = cdag[(p, s)] @ ket
+        # U c_p^dag U^dag = sum_q realized[q, p] c_q^dag, the same for both spins.
+        expected = sum(realized[q, p] * cdag[(q, s)]
+                       for q in range(n)) @ expected
+
+    @cudaq.kernel
+    def apply(state: cudaq.State):
+        system = cudaq.qvector(state)
+        stateprep.spatial_givens_network(system, modes, angles)
+
+    out = np.asarray(cudaq.get_state(apply, algorithms.state_from(ket)))
+    np.testing.assert_allclose(out, expected, atol=_reference_atol())

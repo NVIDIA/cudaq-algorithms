@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "scope": "Import every symbol in features.json plus shared documented exports. Absence probes watch explicit names and naming patterns in public modules, not arbitrary future spellings or behavioral capabilities. When a matching API lands, update its records/evals and these probes together; do not remove the API to preserve an obsolete claim.",
+  "additional_symbols": [
+    "cudaq_algorithms.BlockEncoding",
+    "cudaq_algorithms.state_from",
+    "cudaq_algorithms.stateprep.make_hartree_fock_occupation",
+    "cudaq_algorithms.stateprep.get_uccsd_excitations",
+    "cudaq_algorithms.stateprep.get_num_uccsd_parameters",
+    "cudaq_algorithms.stateprep.GivensRotationSchedule",
+    "cudaq_algorithms.double_factorization.DoubleFactorization"
+  ],
+  "absent": [
+    {
+      "id": "contextual-local-phase",
+      "claim": "apply_local_phase is not a current public package API.",
+      "sources": ["skills/cudaq-algorithms/evals/evals.json#contextual-existing-primitive"],
+      "name_patterns": ["apply_local_phase"]
+    },
+    {
+      "id": "thc-block-encoding",
+      "claim": "There is no installed THC/tensor-hypercontraction block-encoding API.",
+      "sources": ["skills/cudaq-algorithms/evals/evals.json#unknown-future-primitive"],
+      "name_patterns": ["(?i).*thc.*", "(?i).*tensor_?hypercontraction.*"]
+    },
+    {
+      "id": "vqe-driver",
+      "claim": "The package does not supply a VQE optimizer workflow.",
+      "sources": ["skills/cudaq-algorithms/evals/evals.json#unsupported-library-workflow"],
+      "name_patterns": ["(?i).*vqe.*", "(?i).*variational_?quantum_?eigensolver.*"]
+    },
+    {
+      "id": "qpe-primitive",
+      "claim": "Quantum phase estimation is an example/caller composition, not a packaged primitive.",
+      "sources": ["skills/cudaq-algorithms/references/catalog.md", "skills/cudaq-algorithms/references/application-composition.md"],
+      "name_patterns": ["(?i).*qpe.*", "(?i).*quantum_?phase_?estimation.*", "PhaseEstimation", "phase_estimation"]
+    },
+    {
+      "id": "example-only-double-factorized-encoding",
+      "claim": "DoubleFactorizedEncoding is example-only; DoubleFactorization is packaged host data.",
+      "sources": ["skills/cudaq-algorithms/references/double-factorization/double-factorization.md", "skills/cudaq-algorithms/references/source-provenance.md"],
+      "name_patterns": ["DoubleFactorizedEncoding", "(?i)double_?factorized_?(?:block_?)?encoding"]
+    },
+    {
+      "id": "qsvt-phase-generation",
+      "claim": "QSP/QSVT phase generation is outside the installed library; example phase solvers are not public package APIs.",
+      "sources": ["skills/cudaq-algorithms/references/qsvt/qsvt.md", "skills/cudaq-algorithms/references/catalog.md"],
+      "name_patterns": ["jacobi_anger_phases", "qsppack_phases", "(?i).*(?:phase|angle).*(?:generat|synthesi|solver).*", "(?i).*(?:generat|synthesi|solve).*(?:phase|angle).*"]
+    },
+    {
+      "id": "qsvt-degree-selection",
+      "claim": "Polynomial-degree selection is absent from the installed library.",
+      "sources": ["skills/cudaq-algorithms/references/qsvt/qsvt.md", "skills/cudaq-algorithms/references/catalog.md"],
+      "name_patterns": ["(?i).*(?:select|choos|estimat).*(?:polynomial_?)?degree.*", "(?i).*degree.*(?:select|choos|estimat).*"]
+    },
+    {
+      "id": "controlled-trotter-factory",
+      "claim": "Trotter does not expose a packaged controlled-kernel factory.",
+      "sources": ["skills/cudaq-algorithms/references/trotter/trotter.md"],
+      "symbols": ["cudaq_algorithms.Trotter.controlled_kernel"]
+    }
+  ]
+}

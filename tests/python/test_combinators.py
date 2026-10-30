@@ -523,7 +523,8 @@ def test_rotated_around_sum():
 
 
 # ----------------------------------------------------------------------
-# The Givens network realizes V up to a sign per mode, on both spins
+# from_orbital_rotation: the Givens sweep leaves a sign per mode, the Z
+# gates cancel it, and the frame kernels realize V on both spins
 # ----------------------------------------------------------------------
 
 
@@ -552,34 +553,22 @@ def _one_particle_matrix(kernel, num_modes, spin):
     return matrix, leak
 
 
-def test_orbital_rotation_network_realizes_the_matrix_up_to_mode_signs():
-    # A mode swap has determinant -1, so the Givens sweep must end in a
-    # sign matrix D != I: the realized one-particle matrix is V D with
-    # D = diag(+-1), identically on both spins, and enter is its transpose.
+def test_orbital_rotation_frame_realizes_the_matrix_exactly():
+    # A mode swap has determinant -1, so the Givens sweep ends in a sign
+    # matrix D != I (mode_signs reports it); the Z gates cancel D, so the
+    # exit kernel realizes V itself on both spins and enter its transpose.
     swap = np.array([[0.0, 1.0], [1.0, 0.0]])
     rotated = RotatedEncoding.from_orbital_rotation(PauliLCU({"ZIII": 0.5}),
                                                     swap)
     assert rotated.num_rotations == 1
     assert rotated.mode_signs is not None and -1 in rotated.mode_signs
-    realized = {}
     for spin in (0, 1):
         exit_matrix, leak = _one_particle_matrix(rotated._exit, 2, spin)
         assert leak < 1e-12
-        np.testing.assert_allclose(np.abs(exit_matrix),
-                                   np.abs(swap),
-                                   atol=1e-12)
-        signs = np.array(
-            [exit_matrix[1, 0] / swap[1, 0], exit_matrix[0, 1] / swap[0, 1]])
-        np.testing.assert_allclose(np.abs(signs), 1.0, atol=1e-12)
-        np.testing.assert_allclose(exit_matrix,
-                                   swap @ np.diag(signs),
-                                   atol=1e-12)
-        np.testing.assert_allclose(signs, rotated.mode_signs, atol=1e-12)
+        np.testing.assert_allclose(exit_matrix, swap, atol=1e-12)
         enter_matrix, leak = _one_particle_matrix(rotated._enter, 2, spin)
         assert leak < 1e-12
-        np.testing.assert_allclose(enter_matrix, exit_matrix.T, atol=1e-12)
-        realized[spin] = exit_matrix
-    np.testing.assert_allclose(realized[0], realized[1], atol=1e-12)
+        np.testing.assert_allclose(enter_matrix, swap.T, atol=1e-12)
 
 
 # ----------------------------------------------------------------------
@@ -618,3 +607,47 @@ def test_rotated_rejects_non_kernels_and_degenerate_rotations():
     with pytest.raises(ValueError, match="real matrix"):
         RotatedEncoding.from_orbital_rotation(PauliLCU({"ZIII": 0.5}),
                                               np.eye(2, dtype=complex))
+
+
+def _hopping_case(orthogonal, seed):
+    """A generic one-body operator over the 2n spin orbitals (hopping
+    between modes and spins, so X/Y words) and the dense matrix of its
+    rotation by V on the spatial index: Gamma(V) H[g] Gamma(V)^T = H[V_so g
+    V_so^T] with V_so = V (x) I_2 on the interleaved layout."""
+    n = orthogonal.shape[0]
+    rng = np.random.default_rng(seed)
+    g = rng.normal(size=(2 * n, 2 * n))
+    g = (g + g.T) / 2.0
+    inner = PauliLCU(fermion.jordan_wigner(g))
+    lifted = np.kron(orthogonal, np.eye(2))
+    reference = PauliLCU(fermion.jordan_wigner(lifted @ g @ lifted.T))
+    return inner, _dense(reference)
+
+
+def _reflection(n, seed):
+    q, _ = np.linalg.qr(np.random.default_rng(seed).normal(size=(n, n)))
+    if np.linalg.det(q) > 0:
+        q[:, 0] = -q[:, 0]
+    return q
+
+
+@pytest.mark.parametrize("orthogonal", [
+    np.array([[0.0, 1.0], [1.0, 0.0]]),
+    np.array([[np.cos(0.7), -np.sin(0.7)], [np.sin(0.7),
+                                            np.cos(0.7)]]),
+    _reflection(3, 11),
+],
+                         ids=["swap", "rotation", "reflection3"])
+def test_from_orbital_rotation_is_exact_for_a_hopping_inner(orthogonal):
+    # Hopping terms (X/Y words) see any per-mode sign the Givens sweep
+    # leaves; with the signs cancelled the rotated block is the rotated
+    # operator over alpha for every real orthogonal V, det -1 included.
+    inner, dense = _hopping_case(orthogonal, seed=3)
+    assert any(c in "XY" for _, word in inner.terms for c in word)
+    rotated = RotatedEncoding.from_orbital_rotation(inner, orthogonal)
+    if np.linalg.det(orthogonal) < 0:
+        assert -1 in rotated.mode_signs
+    nq = rotated.num_system
+    ket = random_ket(nq, 12)
+    block = _block(rotated, rotated.encode_kernel(), ket)
+    np.testing.assert_allclose(block, dense @ ket / rotated.alpha, atol=1e-12)

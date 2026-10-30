@@ -21,13 +21,23 @@ produced it. Everything below is pure-Python CUDA-Q kernels requiring only
 `cudaq` and numpy; qubit ordering, integral-tensor, and normalization
 conventions are collected in :doc:`../conventions`.
 
-One encoding ships in the package — `PauliLCU` (from a Pauli sum) — and
-any object satisfying the structural
-:class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol plugs into
-the same consumers. Two *combinators*, `SumEncoding` and `RotatedEncoding`,
-build new protocol-conforming encodings out of existing ones (see
-`Combining encodings`_). A complete worked encoding (the double-factorized
-example, below) demonstrates the protocol at full scale.
+Two encodings ship in the package, and they play different roles.
+`PauliLCU` is the front door for a Hamiltonian given as a Pauli sum: it
+reads the terms and builds the encoding with an exact multiplexed-rotation
+PREPARE by default, or with the alias-sampled PREPARE and unary-iteration
+SELECT under ``backend="alias"``. `LCUBlockEncoding` is the body-programmed
+primitive underneath such constructions (the alias backend delegates to
+it): it takes term weights and, per term, a SELECT *body* in the
+unary-iteration gate vocabulary — controlled Paulis, but also the extended
+gates that use work qubits — so its terms need not be Pauli words; it
+realizes an alias-sampled PREPARE and a unary-iteration SELECT. Encodings
+built from structured data (the double-factorized example below, the
+sparse-access encodings) program it directly. Any object satisfying the
+structural :class:`cudaq_algorithms.block_encoding.BlockEncoding` protocol
+plugs into the same consumers. Two *combinators*, `SumEncoding` and
+`RotatedEncoding`, build new protocol-conforming encodings out of existing
+ones (see `Combining encodings`_), and the worked double-factorized
+encoding demonstrates the protocol at full scale.
 
 The block-encoding idea and ``PauliLCU``
 ----------------------------------------
@@ -47,6 +57,7 @@ list of ``(coeff, word)`` pairs:
    enc = PauliLCU({"ZI": 0.70, "IZ": -0.43, "XX": 0.19, "YZ": 0.11})
    enc = PauliLCU(spin_op, num_qubits=2)
    enc = PauliLCU([(0.7, "ZI"), (-0.43, "IZ")])
+   enc = PauliLCU(spin_op, num_qubits=2, backend="alias", mu=4)  # see below
 
 The encoding exposes its geometry and coefficients for inspection:
 
@@ -77,6 +88,68 @@ These stages are available as composable, module-level device kernels
 inside user kernels, with ``enc.kernel_args`` supplying the flattened arrays
 they take as arguments. They live in the module namespace rather than the
 package root because their names are too generic to re-export.
+
+The ``"alias"`` backend
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``PauliLCU(..., backend="alias", mu=...)`` builds the same encoding from the
+alias-sampled PREPARE and unary-iteration SELECT primitives by delegating to
+`LCUBlockEncoding` (next section), with each Pauli word as a SELECT body.
+The rotations of the exact PREPARE become Toffoli-style gates, at the cost
+of extra ancillas — ``3 m + 2 mu + 3`` qubits for ``m`` index bits, so 20
+rather than 3 for a five-term Hamiltonian at ``mu = 4`` — and of rounding
+each term weight to ``mu`` bits (``alpha`` stays the exact one-norm). The
+API is otherwise the same: every kernel factory, `Walk`, `QSVT` and
+`select_observable` work unchanged, and `kernel_args` (the exact backend's
+flattened arrays) is the one member that raises.
+
+``LCUBlockEncoding``: alias-sampled PREPARE, unary-iteration SELECT
+--------------------------------------------------------------------
+
+`LCUBlockEncoding` builds the same ``PREPARE-dagger . SELECT . PREPARE``
+structure from the circuit primitives in :mod:`cudaq_algorithms.primitives`:
+PREPARE is coherent alias sampling over the term weights and SELECT is a
+unary-iteration walk over the term index. It takes the Hamiltonian as term
+data rather than Pauli strings — the weights ``|c_k|`` and, per term, a
+SELECT *body* describing the Hermitian involution ``U_k`` in the
+unary-iteration gate vocabulary — so the term unitaries need not be Pauli
+words:
+
+.. code-block:: python
+
+   from cudaq_algorithms import LCUBlockEncoding
+
+   # H = 0.6 Z0 - 0.4 Y1 + 0.5 X0 X1: the weights |c_k| and one SELECT body
+   # per term; a negative coefficient is a ("sign",) op on its branch.
+   enc = LCUBlockEncoding(
+       num_system=2,
+       weights=[0.6, 0.4, 0.5],
+       bodies=[[("z", 0)], [("y", 1), ("sign",)], [("x", 0), ("x", 1)]],
+       mu=4)
+
+   enc.alpha                      # sum_k |c_k|
+   enc.num_ancilla                # index + alias garbage + SELECT work
+   enc.discretized_weights        # the weights the alias tables realize
+   enc.discretization_bound       # per-bin rounding bound, set by mu
+   kernel = enc.encode_kernel()   # @cudaq.kernel(state): full U_A
+
+Every body op is validated at construction (known op, operand count,
+system targets within ``num_system``, and a Hermitian product for
+Pauli-word bodies) with a ``ValueError`` naming the term and op. The alias
+tables hold the weights to ``mu`` bits, so the encoded operator is ``H``
+with each weight ``|c_k|`` realized within ``alpha * discretization_bound``
+while ``alpha`` stays the exact one-norm. The ancilla register is
+``index(m) + garbage(2m + 2mu + 2) + work`` qubits with
+``m = max(1, ceil(log2(num_terms)))``, so ``mu`` drives the width: a
+five-term, two-qubit Hamiltonian is 22 qubits in total at ``mu = 4`` and
+30 at the default ``mu = 8``, sized for resource estimation rather than
+for the CI simulators. The walk and QSVT consumers work unchanged. The
+walk runs in the PREPARE frame like `PauliLCU`'s, so `Walk.moment` serves
+odd orders through the derived `select_observable` whenever every body is
+a Pauli word (a body in the extended vocabulary raises
+`NotImplementedError` there); even orders use the geometry-only
+reflection observable, whose ``2^num_ancilla`` terms are practical only
+at small ``mu``.
 
 The ``BlockEncoding`` protocol
 ------------------------------
@@ -256,7 +329,14 @@ factor applies at each level of nested sums: a leaf below ``d`` sum levels
 is called ``2^d`` times per path. An orbital-rotation
 network applies ``num_rotations`` adjacent Givens rotations per spin sector
 on entry and again on exit. The ``alpha`` saving is bought with these gates
-and the extra ``num_slots + 1`` ancillas.
+and the extra ``num_slots + 1`` ancillas. The win is ``alpha`` and the
+multi-controlled gate count, not the total gate count: on the 2x2 Hubbard
+example, one combined ``apply_kernel`` is about 1270 gates (388 CNOTs plus
+192 ``rx`` and 96 ``rz`` from the Givens network, run twice by the SELECT
+echo) against about 520 for the flat `PauliLCU` of the same Hamiltonian,
+of which 160 are multi-controlled, while ``alpha`` drops from 24 to 20 —
+an advantage that grows with the lattice (1.20x at 2x2, 1.31x at 2x3,
+1.39x at 3x3, 1.45x at 4x4).
 
 **Negative coefficients.** A term with ``c_i < 0`` is phased by ``-1`` on
 its slot branch, so ``SumEncoding([(1.0, encoding), (-e_ref, identity)])``
@@ -284,11 +364,12 @@ modes, with ``2 n == inner.num_system`` in the interleaved spin-orbital
 layout (``2p`` up, ``2p + 1`` down), and compiles it with the
 :mod:`cudaq_algorithms.stateprep` orbital-rotation schedule to a network of
 adjacent Givens rotations applied to both spin sectors (see
-:doc:`state_prep`). The network reproduces ``V`` *up to a sign per mode*,
-reported by ``mode_signs``. That is immaterial when the inner encoding is
-diagonal in the rotated modes (number operators, the intended use) and must
-be accounted for otherwise; for an arbitrary ``V``, supply your own
-``enter``/``exit`` kernels.
+:doc:`state_prep`). The Givens sweep alone realizes ``V`` *up to a sign per
+mode* (``mode_signs`` reports those signs); the constructor cancels them
+with a ``Z`` on both spin orbitals of each such mode, so the frame kernels
+realize ``V`` exactly and any inner encoding is valid — hopping terms
+included. For a rotation that is not a real orthogonal matrix on the
+interleaved layout, supply your own ``enter``/``exit`` kernels.
 
 **Not available: the odd-moment observable.** Both combinators raise
 ``NotImplementedError`` from `select_observable`. The sum's SELECT drives

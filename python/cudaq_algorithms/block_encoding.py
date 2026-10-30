@@ -53,8 +53,9 @@ def mint_cached_kernel(cache: dict, encoding: "BlockEncoding",
 class BlockEncoding(Protocol):
     """A zero-flagged block encoding ``U_A`` with ``<0|_anc U_A |0>_anc = H / alpha``.
 
-    ``PauliLCU`` is the provided implementation; double-factorized or
-    sparse-oracle encodings plug in by satisfying the same surface.
+    ``PauliLCU`` and ``LCUBlockEncoding`` are the provided implementations;
+    double-factorized or sparse-oracle encodings plug in by satisfying the
+    same surface.
     """
 
     @property
@@ -134,9 +135,14 @@ class BlockEncoding(Protocol):
 
         Measured after PREPARE and ``p`` walk steps (no UNPREPARE), its
         expectation is the odd Chebyshev moment ``<T_{2p+1}(H/alpha)>``.
-        The construction is encoding-specific (for an LCU it is
-        ``sum_i sign_i |i><i|_anc x P_i``); the even-moment reflection
-        observable ``2|0..0><0..0| - I`` needs only the register geometry,
-        so ``Walk`` derives it without an encoding hook.
+        This presumes the walk step is defined in the PREPARE frame
+        (``W = PREPARE R PREPARE† SELECT`` with real ``prepare_kernel`` /
+        ``unprepare_kernel``), as the provided encodings do. The
+        construction is encoding-specific (for an LCU it is
+        ``sum_i sign_i |i><i|_anc x P_i``); encodings that cannot supply it
+        raise ``NotImplementedError``, and ``Walk.moment`` then serves even
+        orders only. The even-moment reflection observable
+        ``2|0..0><0..0| - I`` needs only the register geometry, so ``Walk``
+        derives it without an encoding hook.
         """
         ...

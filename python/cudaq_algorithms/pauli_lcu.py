@@ -36,6 +36,7 @@ from .common_kernels import (_bit_projector, _real_coefficient,
                              controlled_reflect_about_zero,
                              controlled_signal_phase, reflect_about_zero,
                              signal_phase, state_from)
+from .lcu import LCUBlockEncoding
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
@@ -56,6 +57,11 @@ LCUKernelArgs: TypeAlias = tuple[list[float], list[int], list[int], list[int],
                                  list[int]]
 
 _PAULI_CODES = {"X": 1, "Y": 2, "Z": 3}
+
+# PauliLCU backends. The alias path spells each Pauli factor as a
+# unary-iteration SELECT body op for ``LCUBlockEncoding``.
+_BACKENDS = ("exact", "alias")
+_PAULI_BODY_OPS = {"X": "x", "Y": "y", "Z": "z"}
 
 # ============================================================================
 # Device kernels (module level, composable from user kernels)
@@ -423,9 +429,15 @@ def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
 
     LCU-specific: built from the encoding's signed Pauli terms. Its
     expectation after PREPARE and p walk steps is the odd Chebyshev moment
-    <T_{2p+1}(H/alpha)> (the BlockEncoding.select_observable hook).
+    <T_{2p+1}(H/alpha)> (the BlockEncoding.select_observable hook). On the
+    alias backend the projectors act on the ``LCUBlockEncoding`` index
+    register alone (the first ``num_index`` ancillas, little-endian), so
+    the operator is taken from there.
     """
     from cudaq import spin
+
+    if encoding._lcu is not None:
+        return encoding._lcu.select_observable()
 
     offset = encoding.num_system
     n_anc = encoding.num_ancilla
@@ -455,6 +467,24 @@ def select_observable(encoding: PauliLCU) -> cudaq.SpinOperator:
 class PauliLCU:
     """Block encoding of H / alpha via a linear combination of Pauli strings.
 
+    Two backends build the same ``PREPARE-dagger . SELECT . PREPARE``
+    encoding. ``backend="exact"`` (the default) is an exact multiplexed-Ry
+    amplitude PREPARE with an address-indexed controlled-Pauli SELECT on
+    ``max(1, ceil(log2(num_terms)))`` ancillas; single-term (and
+    identity-only) Hamiltonians get one idle ancilla, so every encoding
+    works uniformly with ``Walk``/``QSVT`` and no flattened kernel argument
+    is ever empty. ``backend="alias"`` delegates to ``LCUBlockEncoding``:
+    the alias-sampled PREPARE and unary-iteration (QROM) SELECT primitives,
+    with each Pauli word as a SELECT body and a ``("sign",)`` op carrying a
+    negative coefficient. That replaces the rotations with Toffoli-style
+    gates at the cost of extra ancillas (index + alias garbage + SELECT
+    work: ``3 m + 2 mu + 3`` qubits for ``m`` index bits) and a rounding of
+    the term weights to ``mu`` bits (within ``alpha * discretization_bound``
+    each; ``alpha`` stays the exact one-norm). Both backends serve every
+    consumer, including ``Walk.moment`` odd orders through
+    ``select_observable``; on the alias backend the even orders' reflection
+    observable has ``2^num_ancilla`` terms, practical only at small ``mu``.
+
     Parameters
     ----------
     hamiltonian
@@ -469,10 +499,12 @@ class PauliLCU:
         (their sum is always reported as ``constant_term``).
     coefficient_threshold
         Terms with ``|coefficient|`` below this are dropped.
-
-    ``num_ancilla`` is always at least 1: single-term (and identity-only)
-    Hamiltonians get one idle ancilla, so every encoding works uniformly
-    with ``Walk``/``QSVT`` and no flattened kernel argument is ever empty.
+    backend
+        ``"exact"`` (default) or ``"alias"``; see above.
+    mu
+        Alias-table keep precision in bits (``>= 1``, default 8) for
+        ``backend="alias"``; not accepted with ``"exact"``, which has no
+        alias table.
     """
 
     def __init__(self,
@@ -480,9 +512,19 @@ class PauliLCU:
                  num_qubits: int | None = None,
                  *,
                  include_identity: bool = True,
-                 coefficient_threshold: float = 1e-12) -> None:
+                 coefficient_threshold: float = 1e-12,
+                 backend: str = "exact",
+                 mu: int | None = None) -> None:
         pairs, width = _terms_from_input(hamiltonian, num_qubits)
 
+        if backend not in _BACKENDS:
+            raise ValueError(
+                f"backend must be one of {_BACKENDS}, got {backend!r}")
+        if backend == "exact" and mu is not None:
+            raise ValueError("mu applies to backend='alias' only; the exact "
+                             "backend has no alias table")
+        self._backend = backend
+        self._mu: int | None = mu  # validated by LCUBlockEncoding
         self._num_system = width
         self._constant = 0.0
         kept = []
@@ -500,6 +542,12 @@ class PauliLCU:
 
         self._terms = kept
         self._alpha = sum(abs(c) for c, _ in kept)
+
+        self._lcu: LCUBlockEncoding | None = None
+        if self._backend == "alias":
+            self._build_alias_encoding(kept)
+            return
+
         # At least one ancilla even for a single term (amplitude [1, 0] on
         # one idle qubit): empty flattened lists cannot cross the kernel
         # boundary (cuda-quantum#4847), and a degenerate 0-ancilla encoding
@@ -532,6 +580,27 @@ class PauliLCU:
             # lists cannot cross the kernel boundary (cuda-quantum#4847).
             self._term_ops = [0, 0]
 
+    def _build_alias_encoding(self, kept: list[tuple[float, str]]) -> None:
+        """Build the alias backend: the term weights and one Pauli-word
+        SELECT body per term, fed to ``LCUBlockEncoding``, which then owns
+        the register geometry, every kernel factory and the odd-moment
+        observable."""
+        weights = [abs(c) for c, _ in kept]
+        bodies = []
+        for coeff, word in kept:
+            body: list[tuple] = [(_PAULI_BODY_OPS[ch], qubit)
+                                 for qubit, ch in enumerate(word)
+                                 if ch in _PAULI_BODY_OPS]
+            if coeff < 0.0:
+                body.append(("sign", ))
+            bodies.append(body)
+        self._lcu = LCUBlockEncoding(self._num_system,
+                                     weights,
+                                     bodies,
+                                     mu=8 if self._mu is None else self._mu)
+        self._mu = self._lcu.mu
+        self._num_ancilla = self._lcu.num_ancilla
+
     # ------------------------------------------------------------------
     # Inspection
     # ------------------------------------------------------------------
@@ -539,6 +608,17 @@ class PauliLCU:
     @property
     def num_system(self) -> int:
         return self._num_system
+
+    @property
+    def backend(self) -> str:
+        """``"exact"`` or ``"alias"`` (see the class docstring)."""
+        return self._backend
+
+    @property
+    def mu(self) -> int | None:
+        """Alias-table keep precision in bits; ``None`` on the exact
+        backend."""
+        return self._mu
 
     @property
     def num_ancilla(self) -> int:
@@ -564,6 +644,10 @@ class PauliLCU:
     @property
     def _kernel_data(self) -> LCUKernelArgs:
         """Internal, uncopied flattened arrays for the kernel factories."""
+        if self._lcu is not None:
+            raise NotImplementedError(
+                "kernel_args is specific to the exact backend; the alias "
+                "backend composes primitives — use the kernel factories")
         return (self._angles, self._term_controls, self._term_ops,
                 self._term_lengths, self._term_signs)
 
@@ -573,14 +657,18 @@ class PauliLCU:
 
         Escape hatch for composing the module-level kernels inside your own
         ``@cudaq.kernel``; the factory methods below capture these for you.
-        Returns defensive copies.
+        Returns defensive copies. Available for the exact backend only (the
+        alias backend has no such flattened arrays).
         """
-        return (list(self._angles), list(self._term_controls),
-                list(self._term_ops), list(self._term_lengths),
-                list(self._term_signs))
+        angles, controls, ops, lengths, signs = self._kernel_data
+        return (list(angles), list(controls), list(ops), list(lengths),
+                list(signs))
 
     def __repr__(self) -> str:
-        return (f"PauliLCU(terms={self.num_terms}, "
+        detail = f"backend={self._backend!r}"
+        if self._backend == "alias":
+            detail += f", mu={self._mu}"
+        return (f"PauliLCU(terms={self.num_terms}, {detail}, "
                 f"system_qubits={self.num_system}, "
                 f"ancilla_qubits={self.num_ancilla}, "
                 f"alpha={self.alpha:.6g})")
@@ -598,6 +686,8 @@ class PauliLCU:
         kernel): a zero-argument kernel that allocates the system register
         in ``|0...0>``, runs ``state_prep`` on it, then applies the encoding.
         """
+        if self._lcu is not None:
+            return self._lcu.encode_kernel(state_prep)
         angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
         n_sys = self.num_system
@@ -632,6 +722,8 @@ class PauliLCU:
         ``cudaq.State``-taking kernel, or a zero-argument kernel when
         ``state_prep`` is given.
         """
+        if self._lcu is not None:
+            return self._lcu.walk_kernel(power, state_prep)
         angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
         n_sys = self.num_system
@@ -674,6 +766,8 @@ class PauliLCU:
 
     def prepare_kernel(self) -> Kernel:
         """``(ancilla: qview)``: PREPARE with this encoding's angles."""
+        if self._lcu is not None:
+            return self._lcu.prepare_kernel()
         angles = self._angles
 
         @cudaq.kernel
@@ -684,6 +778,8 @@ class PauliLCU:
 
     def unprepare_kernel(self) -> Kernel:
         """``(ancilla: qview)``: PREPARE dagger with this encoding's angles."""
+        if self._lcu is not None:
+            return self._lcu.unprepare_kernel()
         angles = self._angles
 
         @cudaq.kernel
@@ -694,6 +790,8 @@ class PauliLCU:
 
     def apply_kernel(self) -> Kernel:
         """``(ancilla, system)``: the full block encoding U_A."""
+        if self._lcu is not None:
+            return self._lcu.apply_kernel()
         angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
@@ -708,6 +806,8 @@ class PauliLCU:
         Uncontrolled PREPARE pairs wrap the controlled SELECT, so the
         circuit is the identity at control ``|0>``.
         """
+        if self._lcu is not None:
+            return self._lcu.controlled_apply_kernel()
         angles, controls, ops, lengths, signs = self._kernel_data
         n_anc = self.num_ancilla
 
@@ -723,6 +823,8 @@ class PauliLCU:
 
     def walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one qubitization walk step W."""
+        if self._lcu is not None:
+            return self._lcu.walk_step_kernel()
         angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
@@ -733,6 +835,8 @@ class PauliLCU:
 
     def adjoint_walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one adjoint walk step W†."""
+        if self._lcu is not None:
+            return self._lcu.adjoint_walk_step_kernel()
         angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
@@ -744,6 +848,8 @@ class PauliLCU:
 
     def controlled_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled walk step."""
+        if self._lcu is not None:
+            return self._lcu.controlled_walk_step_kernel()
         angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
@@ -756,6 +862,8 @@ class PauliLCU:
 
     def controlled_adjoint_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled adjoint walk step."""
+        if self._lcu is not None:
+            return self._lcu.controlled_adjoint_walk_step_kernel()
         angles, controls, ops, lengths, signs = self._kernel_data
 
         @cudaq.kernel
@@ -770,6 +878,6 @@ class PauliLCU:
         """The odd-moment SELECT observable for this encoding.
 
         BlockEncoding protocol hook; delegates to the module-level
-        ``select_observable``.
+        ``select_observable``, which serves both backends.
         """
         return select_observable(self)
