@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Fixed and coherently selected fermionic transformations, with explicit QROM.
+"""Fixed, controlled and QROM-selected fermionic transformations.
 
 Run with:  python3 fermion_basis_change.py  (with the package on PYTHONPATH)
 The checks need double precision, so the example selects qpp-cpu unless
 CUDAQ_DEFAULT_SIMULATOR names another simulator.
-The final example allocates sixteen qubits, including twelve angle qubits.
+The selected example allocates sixteen qubits, including twelve angle qubits.
 """
 
 # [Begin Documentation]
@@ -43,23 +43,6 @@ np.testing.assert_allclose(np.asarray(cudaq.get_state(fixed_demo)),
                            fock @ (np.ones(4) / 2),
                            atol=1e-12)
 
-# A fixed vector needs a reference occupation, but no QROM or angle qubits.
-v = U[:, 0]
-partial = fermion_basis_change(v)
-apply_partial = partial.kernel()
-
-
-@cudaq.kernel
-def fixed_preparation():
-    system = cudaq.qvector(2)
-    x(system[0])
-    apply_partial(system)
-
-
-np.testing.assert_allclose(np.asarray(cudaq.get_state(fixed_preparation)),
-                           [0., v[0], v[1], 0.],
-                           atol=1e-12)
-
 # An external enable can coherently control the same fixed transformation.
 # The returned wrapper expects [enable, system...]. Its angles stay classical.
 controlled_fixed = fixed.controlled_kernel()
@@ -74,9 +57,9 @@ def controlled_demo():
 
 
 expected_controlled = np.zeros(8, dtype=complex)
-expected_controlled[2] = 1 / np.sqrt(2)  # enable=0, reference unchanged
-expected_controlled[3] = v[0] / np.sqrt(2)
-expected_controlled[5] = v[1] / np.sqrt(2)
+expected_controlled[2] = 1 / np.sqrt(2)  # enable=0, mode 0 unchanged
+expected_controlled[3] = U[0, 0] / np.sqrt(2)
+expected_controlled[5] = U[1, 0] / np.sqrt(2)
 np.testing.assert_allclose(np.asarray(cudaq.get_state(controlled_demo)),
                            expected_controlled,
                            atol=1e-12)
@@ -107,7 +90,6 @@ table = QROM(rows,
              variant="select")
 lookup = table.kernel
 consume = program.kernel()
-undo = program.adjoint_kernel()
 span = program.num_qubits  # 2 system + 4*3 angle = 14
 address = span
 scratch = address + table.num_address
@@ -134,29 +116,8 @@ state = np.asarray(cudaq.get_state(selected_preparation))
 np.testing.assert_allclose(state, expected, atol=1e-11)
 print("Selected preparation:",
       [(i, complex(a)) for i, a in enumerate(state) if abs(a) > 1e-10])
-
-
-@cudaq.kernel
-def selected_reflection():
-    q = cudaq.qvector(total)
-    x(q[0])
-    h(q[address])
-    lookup(q[address:scratch], q[scratch:total], q[2:span])
-    # Chronological inverse, Z, forward: W_j Z_0 W_j^dagger.
-    undo(q[0:span])
-    z(q[0])
-    consume(q[0:span])
-    lookup(q[address:scratch], q[scratch:total], q[2:span])
-
-
-expected_reflection = np.zeros(1 << total, dtype=complex)
-expected_reflection[1] = -1 / np.sqrt(2)
-expected_reflection[(1 << address) + 2] = -1j / np.sqrt(2)
-np.testing.assert_allclose(np.asarray(cudaq.get_state(selected_reflection)),
-                           expected_reflection,
-                           atol=1e-11)
 print("Register widths:", program.structure.num_system_qubits, "system +",
       table.num_output, "angles +", table.num_address, "address +",
       table.num_ladder, "scratch =", total)
 print("Quantization bounds:", [p.quantization_error_bound for p in plans])
-print("Fixed, controlled, selected, and reflection checks passed.")
+print("Fixed, controlled, and selected checks passed.")

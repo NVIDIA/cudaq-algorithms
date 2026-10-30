@@ -23,7 +23,7 @@ kernels.
    guide/trotter
    guide/qubitization_qsvt
    guide/state_prep
-   guide/fermion_basis_change
+   guide/chemistry_primitives
 
 .. toctree::
    :caption: Examples
@@ -33,6 +33,7 @@ kernels.
    examples_rst/preprocessing
    examples_rst/block_encodings
    examples_rst/state_prep
+   examples_rst/chemistry_primitives
    examples_rst/hamiltonian_simulation
 
 .. toctree::

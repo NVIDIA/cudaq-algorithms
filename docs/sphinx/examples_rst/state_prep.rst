@@ -31,18 +31,3 @@ Both are validated against their dense Slater-determinant references.
 .. literalinclude:: ../examples/python/givens_slater_determinant.py
    :language: python
    :start-after: [Begin Documentation]
-
-Fermionic basis changes with explicit QROM
-------------------------------------------
-
-Applies a fixed two-mode basis change, prepares one orbital from a
-reference occupation, enables the fixed change with an external control,
-and then selects between two transformations with a quantum address: a
-`QROM` lookup loads the angle words, the programmable plan consumes them,
-and the inverse lookup clears them. The last check reflects about the
-selected orbital. Each step is compared with its exact state. See
-:doc:`../guide/fermion_basis_change`.
-
-.. literalinclude:: ../examples/python/fermion_basis_change.py
-   :language: python
-   :start-after: [Begin Documentation]

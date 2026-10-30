@@ -71,15 +71,24 @@ Preprocessing
 .. automodule:: cudaq_algorithms.double_factorization
    :members:
 
+State preparation
+=================
+
+.. automodule:: cudaq_algorithms.stateprep
+   :members:
+
+Chemistry primitives
+====================
+
 Fermionic basis changes
-=======================
+-----------------------
 
 The factory and plan class are also available from the package root.
 See :doc:`../guide/fermion_basis_change` for phase conventions, encoding,
 register placement, and explicit QROM composition.
 ``GivensOperation``, ``GivensStructure`` and ``GivensBasisChangeSchedule``
 here describe basis changes over spin-orbital modes, one per qubit. The
-similarly named ``stateprep`` symbols below differ: ``GivensRotation`` and
+similarly named ``stateprep`` symbols above differ: ``GivensRotation`` and
 ``GivensRotationSchedule`` (from ``make_givens_rotation_schedule``)
 prepare Slater determinants, and ``OrbitalRotationSchedule`` (from
 ``make_orbital_rotation_schedule``) rotates spatial modes in both spin
@@ -88,12 +97,6 @@ sectors.
 .. automodule:: cudaq_algorithms.basis_change
    :members:
    :imported-members:
-
-State preparation
-=================
-
-.. automodule:: cudaq_algorithms.stateprep
-   :members:
 
 Simulation utilities
 ====================
