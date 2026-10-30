@@ -189,4 +189,8 @@ statevector simulator). Use an fp64 target for the test suite — the
 ``nvidia`` target is fp32 and misses the 1e-8..1e-10 tolerances (precision,
 not correctness). State construction goes through ``state_from``, which
 matches the input dtype to the active target's precision (`cudaq.complex()`),
-since fp32 simulators reject complex128 initial-state data.
+since fp32 simulators reject complex128 initial-state data. Pass
+``num_qubits=encoding.num_system`` to have it check the width: a
+state-taking kernel allocates whatever register the data implies, so an
+oversized ket would silently widen the system and an undersized one fail
+inside the simulator.

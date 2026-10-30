@@ -564,9 +564,12 @@ class SparseOracleEncoding:
 
         Without ``state_prep``: a ``@cudaq.kernel(state)`` allocating the
         system register from ``state`` and the ancilla register (in
-        ``|0...0>``) after it. With ``state_prep`` (a ``(qubits: qview)``
-        kernel): a zero-argument kernel that allocates the system register
-        in ``|0...0>``, runs ``state_prep`` on it, then applies the encoding.
+        ``|0...0>``) after it; the state must hold exactly ``2^num_system``
+        amplitudes (``state_from(ket, num_qubits=encoding.num_system)``
+        checks that, which the kernel boundary cannot). With ``state_prep``
+        (a ``(qubits: qview)`` kernel): a zero-argument kernel that
+        allocates the system register in ``|0...0>``, runs ``state_prep``
+        on it, then applies the encoding.
         """
         apply_u = self._apply
         n_anc = self.num_ancilla
