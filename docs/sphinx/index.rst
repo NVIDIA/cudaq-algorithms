@@ -23,6 +23,7 @@ kernels.
    guide/trotter
    guide/qubitization_qsvt
    guide/state_prep
+   guide/fermion_basis_change
 
 .. toctree::
    :caption: Examples
