@@ -128,6 +128,61 @@ inverts a linear system through a polynomial approximation of
 :math:`1/x` — the QSVT reading of HHL — changing nothing but the phase
 sequence.
 
+Quantum phase estimation
+------------------------
+
+`PhaseEstimation` estimates eigenvalues of ``H`` from any `BlockEncoding` by
+phase-estimating its qubitization walk: ``W`` has eigenvalues
+``e^{±iθ}`` with ``cos θ = -E/alpha`` on each eigenspace of ``H``, so an
+``m``-bit readout ``j`` decodes as ``E = -alpha cos(2π j / 2^m)``. No time
+evolution and no phase-angle synthesis are needed — the controlled walk,
+the inverse QFT and state preparation are already in the library.
+
+.. code-block:: python
+
+   from cudaq_algorithms import PauliLCU, PhaseEstimation, sim_utils
+
+   qpe = PhaseEstimation(PauliLCU(hamiltonian))
+   circuit = qpe.kernel(6, state_prep=prep)                # measurement-free
+   measured = qpe.kernel(6, state_prep=prep, measure=True) # measures the phase register
+   counts = cudaq.sample(measured, shots_count=2000)       # any target
+   ranked = qpe.energies_from_counts(counts, 6, top=3)     # [(energy, probability), ...]
+   exact = sim_utils.qpe.energies(qpe, 6, state_prep=prep, top=3)  # statevector, simulators
+
+The class builds circuits and decodes readouts; running a circuit is your
+executor on your target. ``measure=True`` measures the phase register
+alone, so the sampled bitstrings are that register (qubit 0 first);
+`PhaseEstimation.energies_from_counts` also accepts counts over every
+qubit, as sampling the measurement-free circuit produces, and plain
+mappings. The statevector shortcut, `sim_utils.qpe.phase_probabilities`
+and `sim_utils.qpe.energies`, gives the exact marginal on a simulator.
+
+The circuit is the textbook ladder — ``2^m - 1`` controlled walk steps and
+an inverse QFT — so ``num_bits`` is the cost knob; the register layout is
+system, then the ``m`` phase qubits (little-endian: phase qubit 0 is the
+least significant readout bit), then the encoding's ancillas. Each
+eigenvalue appears at the mirror readouts ``j`` and ``2^m - j``, and
+`energies` folds the pair into one entry, so a pure eigenstate reads as a
+single dominant energy. The energy resolution is about
+``alpha π / 2^m``; a general input spreads its mass over the spectrum in
+proportion to its overlaps.
+
+Two simulation notes for long ladders. The compiler re-materializes the
+walk step's captured tables on the host stack on every loop iteration
+(about 1 kB per step for a `PauliLCU`), so from ``num_bits = 13`` the
+circuit outgrows the default 8 MiB thread stack and the process dies with
+a segmentation fault; the `sim_utils.qpe` helpers run the simulation on a
+worker thread with a large stack, and a circuit you sample on a simulator
+needs the same
+(``sim_utils.run_on_large_stack(cudaq.sample, measured, shots_count=...)``).
+On the ``nvidia`` target, gate fusion's host-side cost grows with the
+circuit length; with fusion off (``CUDAQ_FUSION_MAX_QUBITS=0``) a 13-bit
+H2 ladder runs in about half a minute on one GPU. The worked example
+``08_quantum_phase_estimation.py`` (:doc:`../examples_rst/getting_started`)
+puts a hand-written QPE shell around three oracles — exact time evolution,
+a product formula and this walk — to compare their decoders; `PhaseEstimation`
+packages the walk case.
+
 State preparation injection
 ---------------------------
 

@@ -57,6 +57,9 @@ Qubitization and QSVT
 
 .. autofunction:: cudaq_algorithms.qsvt.recover_real_time_evolution
 
+.. autoclass:: cudaq_algorithms.phase_estimation.PhaseEstimation
+   :members:
+
 .. autodata:: cudaq_algorithms.qsvt.FORWARD
 
 .. autodata:: cudaq_algorithms.qsvt.ADJOINT
@@ -95,6 +98,9 @@ Simulation utilities
 ====================
 
 .. automodule:: cudaq_algorithms.sim_utils
+   :members:
+
+.. automodule:: cudaq_algorithms.sim_utils.qpe
    :members:
 
 .. autofunction:: cudaq_algorithms.common_kernels.state_from
