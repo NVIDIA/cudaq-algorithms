@@ -110,7 +110,7 @@ Verify (the standard encode-block test):
 Sparse-access encodings
 -----------------------
 
-``encode_sparse``, ``SparseLCUEncoding`` and ``qrom_oracles`` take a dense
+``encode_sparse`` and ``qrom_oracles`` take a dense
 array, a ``scipy.sparse`` matrix (anything with ``tocoo()``), or
 ``(rows, cols, vals)`` triples with integer-typed ``rows``/``cols`` and
 ``dim=``; duplicate triples sum, zero entries are dropped, and a
@@ -120,10 +120,9 @@ a missing mirror counts as an asymmetry. A Hermitian dilation
 ``[[0, A], [A^T, 0]]`` adds one system qubit as the most significant bit:
 ``A`` occupies the upper-right block, so basis states with the halves bit
 ``0`` index rows of ``A`` and states with the halves bit ``1`` index columns.
-``SparseLCUEncoding.terms`` lists ``(kind, i, j, weight, sign)`` in alias-bin
-order; ``report["max_row_nnz"]`` is the largest number of nonzeros in a row
-and ``report["slots"]`` the oracle path's structure slots (the matching
-assignment may need more slots than ``max_row_nnz``).
+``report["max_row_nnz"]`` is the largest number of nonzeros in a row and
+``report["slots"]`` the structure slots of the matching assignment (which
+may need more slots than ``max_row_nnz``).
 
 Qubitization walk
 -----------------

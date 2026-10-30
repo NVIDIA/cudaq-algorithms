@@ -4,8 +4,8 @@
 
 ``qrom_oracles`` compiles the entries of a real symmetric sparse matrix
 into an ``OracleKernels`` bundle for ``SparseOracleEncoding`` — the
-generic data-driven route onto the oracle construction, and the path
-``encode_sparse`` prices against ``SparseLCUEncoding``.
+generic data-driven route onto the oracle construction, which
+``encode_sparse`` wraps with validation, optional dilation and a report.
 
 Slot assignment: matchings, so every slot map is an involution
 ------------------------------------------------------------------
@@ -53,10 +53,9 @@ Work register layout (width ``num_work = 2 n + d``): ``[out(n) |
 ladder(n) | match(d)]`` — ``o_val`` uses the ladder and match regions
 only. Negative *diagonal* entries are rejected loudly: the symmetric
 two-sided assembler of ``_sparse_oracle`` provably cannot represent them
-(the diagonal phase contribution is always ``+1``); shift the diagonal,
-or use the LCU path (``SparseLCUEncoding`` / ``encode_sparse``), or
-encode the Hermitian dilation. Non-symmetric input is rejected pointing
-at the same escape hatches.
+(the diagonal phase contribution is always ``+1``); shift the diagonal
+or encode the Hermitian dilation (``encode_sparse(..., dilate=True)``).
+Non-symmetric input is rejected pointing at the same escape hatches.
 """
 
 from __future__ import annotations
@@ -64,7 +63,7 @@ from __future__ import annotations
 import cudaq
 
 from ._banded import quantized_angle
-from ._sparse_lcu import _coerce_entries, _first_asymmetry
+from ._entries import _coerce_entries, _first_asymmetry
 from ..primitives import unary_iteration_kernels
 from ._sparse_oracle import OracleKernels, _retain
 
@@ -105,10 +104,9 @@ def qrom_oracles(matrix,
     ----------
     matrix
         A dense 2-D array, a ``scipy.sparse`` matrix, or a
-        ``(rows, cols, vals)`` tuple of parallel sequences (the input
-        forms of ``SparseLCUEncoding``). Must be symmetric with a
-        non-negative diagonal (see the module docstring for the escape
-        hatches).
+        ``(rows, cols, vals)`` tuple of parallel sequences. Must be
+        symmetric with a non-negative diagonal (see the module docstring
+        for the escape hatches).
     value_bits
         Fixed-point bits for the angle register.
     h
@@ -130,16 +128,16 @@ def qrom_oracles(matrix,
         raise ValueError(
             f"matrix is not symmetric at ({i}, {j}): {value} vs {partner}; "
             "qrom_oracles builds direct symmetric oracles — encode a general "
-            "square matrix through encode_sparse (which dilates at the data "
-            "level) or SparseLCUEncoding.from_general")
+            "square matrix through encode_sparse(..., dilate=True), which "
+            "dilates at the data level")
     for (i, j), value in sorted(entries.items()):
         if i == j and value < 0.0:
             raise ValueError(
                 f"diagonal entry ({i}, {i}) = {value} is negative: the "
                 "symmetric two-sided oracle construction cannot represent "
                 "negative diagonal elements (their phase contribution is "
-                "always +1); shift the diagonal, or use the LCU path "
-                "(SparseLCUEncoding / encode_sparse)")
+                "always +1); shift the diagonal, or encode the Hermitian "
+                "dilation with encode_sparse(..., dilate=True)")
     max_value = max(abs(v) for v in entries.values())
     if h is None:
         h = max_value

@@ -32,9 +32,6 @@ Sparse-access block encodings
 .. autoclass:: cudaq_algorithms.sparse.SparseOracleEncoding
    :members:
 
-.. autoclass:: cudaq_algorithms.sparse.SparseLCUEncoding
-   :members:
-
 .. autoclass:: cudaq_algorithms.sparse.OracleKernels
    :members:
 

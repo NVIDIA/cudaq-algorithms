@@ -20,7 +20,7 @@ kernels and host-side helpers (the only runtime requirement is the
 - state-preparation kernels and operator pools (`stateprep`)
 - Pauli LCU block encoding (`PauliLCU`, plus prepare/select/apply kernels)
 - sparse-access block encodings from matrix data or structure oracles
-  (`encode_sparse`, `SparseOracleEncoding`, `SparseLCUEncoding`)
+  (`encode_sparse`, `SparseOracleEncoding`)
 - qubitization walks and Chebyshev moment measurement (`Walk`)
 - QSVT phase sequences (`QSVT`, `PhaseSequence`)
 - Suzuki-Trotter product formulas (`trotter.Trotter`, orders 1/2/4)

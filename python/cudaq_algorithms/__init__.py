@@ -41,8 +41,8 @@ from .pauli_lcu import PauliLCU, select_observable
 from .qsvt import (ADJOINT, FORWARD, PhaseSequence, QSVT,
                    recover_real_time_evolution)
 from .qubitization import Walk, reflection_observable
-from .sparse import (OracleKernels, SparseLCUEncoding, SparseOracleEncoding,
-                     banded_oracles, encode_sparse, qrom_oracles)
+from .sparse import (OracleKernels, SparseOracleEncoding, banded_oracles,
+                     encode_sparse, qrom_oracles)
 from .trotter import Trotter, TrotterOrdering, TrotterResourceEstimate
 
 # The composable device kernels keep their module namespaces

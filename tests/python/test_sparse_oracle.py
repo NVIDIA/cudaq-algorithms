@@ -375,8 +375,8 @@ def test_flat_oracles_make_the_involution_global():
 
 def test_apply_is_involution_on_a_dirty_ancilla():
     # The hand-written permutation oracles are flat and work-free, so the
-    # involution is global here too (SparseLCUEncoding's holds only on
-    # the |0>-ancilla domain, so the analogous LCU test would fail).
+    # involution is global here too (a PREPARE/SELECT LCU's would hold
+    # only on the |0>-ancilla domain).
     encoding = permutation_encoding()
     apply_u = encoding.apply_kernel()
     n_sys = encoding.num_system
