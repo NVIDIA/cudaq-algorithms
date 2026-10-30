@@ -132,6 +132,10 @@ three different constructions of the unitary whose phase reveals energy:
      - :math:`W` from the `PauliLCU` block encoding
      - :math:`E = -\alpha\cos\theta`
 
+The walk case is what `cudaq_algorithms.PhaseEstimation` packages (see
+:doc:`../guide/qubitization_qsvt`); the example keeps its own shell so the
+three oracles share one circuit and one readout.
+
 The product-formula oracle shows a subtlety of composing library evolution
 under control: `Trotter` evolves the nonidentity part of the Hamiltonian, so
 its omitted identity coefficient -- a global phase for free evolution -- must
