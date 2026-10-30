@@ -7,8 +7,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 
-import cudaq
-
 from ._encoding import AngleEncoding
 from ._kernels import classical_kernel, programmable_kernel
 from ._metrics import estimate_fermion_basis_change_error
@@ -48,9 +46,8 @@ def _register_layout(structure, encoding, parameter_registers):
                 "each parameter word must match the encoding width")
         word = tuple(
             _index(index, "parameter register index") for index in word)
-        if word != tuple(range(word[0], word[0] + width)):
-            raise ValueError(
-                "each parameter word must use contiguous increasing indices")
+        if len(set(word)) != width:
+            raise ValueError("each parameter word must use distinct indices")
         if any(index < system_width or index in occupied for index in word):
             raise ValueError(
                 "parameter words must not overlap each other or the system register"
@@ -72,9 +69,9 @@ class FermionBasisChange:
     follow ``parameter_registers``. The caller owns their preparation and
     uncomputation. No QROM or workspace is allocated here.
 
-    Both :meth:`controlled_kernel` and ``cudaq.control`` put the enable on
-    every emitted gate, including the Clifford and parity scaffold; see the
-    guide for the cost implications. The ``adjoint`` flag of
+    :meth:`controlled_kernel` puts the enable only on the Rz and R1
+    rotations; ``cudaq.control`` of :meth:`kernel` puts it on every emitted
+    gate, including the Clifford and parity scaffold. The ``adjoint`` flag of
     :meth:`controlled_kernel` must be a Python ``bool``.
     """
 
@@ -164,21 +161,32 @@ class FermionBasisChange:
             return None
         return self.quantization_error.basis_change_error_bound
 
-    @cached_property
-    def _forward(self):
-        if self.is_programmable:
-            return programmable_kernel(self.schedule, self.parameter_registers,
-                                       self.angle_encoding.weights)
-        return classical_kernel(self.schedule)
-
-    @cached_property
-    def _inverse(self):
+    def _build(self, adjoint, controlled):
         if self.is_programmable:
             return programmable_kernel(self.schedule,
                                        self.parameter_registers,
                                        self.angle_encoding.weights,
-                                       adjoint=True)
-        return classical_kernel(self.schedule, adjoint=True)
+                                       adjoint=adjoint,
+                                       controlled=controlled)
+        return classical_kernel(self.schedule,
+                                adjoint=adjoint,
+                                controlled=controlled)
+
+    @cached_property
+    def _forward(self):
+        return self._build(False, False)
+
+    @cached_property
+    def _inverse(self):
+        return self._build(True, False)
+
+    @cached_property
+    def _controlled_forward(self):
+        return self._build(False, True)
+
+    @cached_property
+    def _controlled_inverse(self):
+        return self._build(True, True)
 
     def kernel(self):
         """Return a kernel applying the transformation to a combined qview."""
@@ -193,19 +201,13 @@ class FermionBasisChange:
 
         Allocate ``num_qubits + 1`` qubits. Every base index shifts by one;
         the inactive enable branch is exact identity on all operands. The
-        enable controls every emitted gate. ``adjoint`` must be a Python
-        ``bool``.
+        enable controls only the Rz and R1 rotations, since each Clifford
+        and parity scaffold cancels around its rotation. ``adjoint`` must be
+        a Python ``bool``.
         """
         if not isinstance(adjoint, bool):
             raise ValueError("adjoint must be a boolean")
-        operation = self.adjoint_kernel() if adjoint else self.kernel()
-        size = self.num_qubits
-
-        @cudaq.kernel
-        def apply_controlled(register: cudaq.qview):
-            cudaq.control(operation, register[0], register[1:size + 1])
-
-        return apply_controlled
+        return self._controlled_inverse if adjoint else self._controlled_forward
 
     def __reduce__(self):
         # Reconstruct only immutable host data, never cached runtime kernels.
@@ -239,14 +241,15 @@ def fermion_basis_change(basis=None,
     Structure-only programmable plans have no host numerical reference.
 
     Words default to disjoint contiguous slices after the physical system
-    span, including spectators. Plan kernels need a view spanning at least
-    ``num_qubits`` qubits (``num_qubits + 1`` for ``controlled_kernel``);
-    CUDA-Q does not bounds-check views, so a narrower view silently
-    addresses the following qubits of the parent allocation.
-    ``controlled_kernel`` and ``cudaq.control`` put the enable on every
-    emitted gate; see the guide for the cost implications. The caller
-    composes QROM or arithmetic explicitly. All kernels use existing
-    CUDA-Q gates.
+    span, including spectators. Explicit words are any distinct qubit
+    indices outside the system span, listed least-significant bit first,
+    that do not overlap other words. Plan kernels need a view spanning at
+    least ``num_qubits`` qubits (``num_qubits + 1`` for
+    ``controlled_kernel``); CUDA-Q does not bounds-check views, so a
+    narrower view silently addresses the following qubits of the parent
+    allocation. ``controlled_kernel`` controls only the Rz and R1
+    rotations; ``cudaq.control`` of ``kernel()`` controls every emitted
+    gate. The caller composes QROM or arithmetic explicitly.
 
     ``tolerance`` (``0 < tolerance < 1``) validates input unitarity or
     normalization; it is not a quantization or synthesis budget. Inexact

@@ -22,7 +22,8 @@ from numbers import Integral, Real
 import numpy as np
 
 # Largest accepted qubit index. CUDA-Q 0.16 silently wraps indices near
-# 2**61 onto low qubits, so far larger values must be rejected on the host.
+# 2**61 onto low qubits (cuda-quantum#5795), so far larger values must be
+# rejected on the host.
 _MAX_QUBIT_INDEX = 2**31 - 1
 
 
@@ -130,6 +131,8 @@ class GivensStructure:
 
     def __post_init__(self):
         m = _integer(self.num_modes, "num_modes")
+        # A one-mode tape is phase-only, the shape that exposed
+        # cuda-quantum#5794 under cudaq.control.
         if m < 2:
             raise ValueError(
                 "num_modes must be at least 2; a single mode admits only a "

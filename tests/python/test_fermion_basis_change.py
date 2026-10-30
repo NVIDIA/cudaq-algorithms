@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Public planning and encoding contracts, independent of prototype core gates."""
+"""Public planning, encoding and kernel contracts of fermion_basis_change."""
 
 import copy
 import decimal
@@ -18,7 +18,7 @@ from cudaq_algorithms import state_from
 
 def _api():
     assert hasattr(algorithms, "fermion_basis_change"), (
-        "fermion_basis_change must be exported outside stateprep")
+        "fermion_basis_change must be exported from cudaq_algorithms")
     return algorithms.fermion_basis_change
 
 
@@ -220,17 +220,6 @@ def test_program_plan_reports_slot_order_codes_and_registers():
     assert plan.quantization_error_bound < 1e-14
 
 
-def test_program_plan_does_not_need_companion_core(monkeypatch):
-    factory = _api()
-    for name in ("AngleFormat", "programmable_rx", "programmable_ry",
-                 "programmable_rz", "programmable_phase"):
-        monkeypatch.delattr(cudaq, name, raising=False)
-    plan = factory(np.eye(2), programmable=True, angle_bits=1)
-    kernel = plan.kernel()
-    assert "programmable_r" not in str(kernel)
-    assert plan.encoded_words == (0, 0, 0, 0)
-
-
 def test_structure_only_plan_has_layout_without_numerical_reference():
     factory = _api()
     from cudaq_algorithms.basis_change import GivensStructure
@@ -276,10 +265,16 @@ def _load_words(operation, qubits):
     return load_and_apply
 
 
-def test_explicit_words_drive_plan_kernels_after_round_trips():
+@pytest.mark.parametrize(
+    "layout",
+    [
+        ((8, 9, 10), (2, 3, 4), (11, 12, 13), (5, 6, 7)),
+        # Big-endian, interleaved and scattered words are equally valid.
+        ((10, 9, 8), (2, 6, 4), (13, 3, 11), (5, 12, 7)),
+    ])
+def test_explicit_words_drive_plan_kernels_after_round_trips(layout):
     # Exact on the three-bit grid, so the loaded words represent U itself.
     unitary = np.array([[1., -1.], [1j, 1j]]) / np.sqrt(2)
-    layout = ((8, 9, 10), (2, 3, 4), (11, 12, 13), (5, 6, 7))
     plan = _api()(unitary,
                   programmable=True,
                   angle_bits=3,
@@ -305,13 +300,26 @@ def test_explicit_words_drive_plan_kernels_after_round_trips():
             expected[loaded:loaded + 4] = block @ system
             actual = _evolve(_load_words(operation, ones), initial)[0]
             np.testing.assert_allclose(actual, expected, atol=1e-12, rtol=0)
+    # Enable on qubit zero in superposition: off is identity, on the block.
+    shifted = [qubit + 1 for qubit in ones]
+    enabled = np.zeros(1 << 15, dtype=complex)
+    for enable in range(2):
+        enabled[[(i << 1) | enable for i in range(4)]] = system / np.sqrt(2)
+    for adjoint, block in ((False, forward), (True, forward.conj().T)):
+        operation = plan.controlled_kernel(adjoint=adjoint)
+        expected = np.zeros_like(enabled)
+        for enable, branch in ((0, system), (1, block @ system)):
+            indices = [(loaded << 1) | (i << 1) | enable for i in range(4)]
+            expected[indices] = branch / np.sqrt(2)
+        actual = _evolve(_load_words(operation, shifted), enabled)[0]
+        np.testing.assert_allclose(actual, expected, atol=1e-12, rtol=0)
 
 
 @pytest.mark.parametrize("layout", [
     ((2, ), ),
     ((2, 3), (3, 4), (5, 6), (7, 8)),
     ((1, 2), (3, 4), (5, 6), (7, 8)),
-    ((2, 4), (5, 6), (7, 8), (9, 10)),
+    ((2, 2), (5, 6), (7, 8), (9, 10)),
     ((True, 2), (3, 4), (5, 6), (7, 8)),
 ])
 def test_invalid_program_layout_is_rejected(layout):
@@ -562,6 +570,51 @@ def test_quantization_report_excludes_reconstruction_residual():
     assert plan.encoded_words == (0, 0, 0, 0)
     assert plan.quantization_error.synthesis_error_bound == 0
     assert plan.quantization_error_bound == 0
+
+
+def test_tampered_plan_state_is_rejected_on_load():
+    # Loading runs __post_init__, so tampered state is rejected, not restored.
+    cases = []
+    overlap = _api()(np.eye(2), programmable=True, angle_bits=1)
+    object.__setattr__(overlap, "parameter_registers",
+                       ((2, ), (2, ), (4, ), (5, )))
+    cases.append((overlap, "overlap"))
+    inside = _api()(np.eye(2), programmable=True, angle_bits=1)
+    object.__setattr__(inside, "parameter_registers",
+                       ((1, ), (3, ), (4, ), (5, )))
+    cases.append((inside, "overlap|system"))
+    short = _api()(np.eye(2), programmable=True, angle_bits=1)
+    object.__setattr__(short, "parameter_registers", ((2, ), (3, ), (4, )))
+    cases.append((short, "slot count"))
+    narrow = _api()(np.eye(2), programmable=True, angle_bits=2)
+    object.__setattr__(narrow.angle_encoding, "width", 0)
+    cases.append((narrow, "width"))
+    classical = _api()(np.eye(2))
+    object.__setattr__(classical, "parameter_registers", ((2, ), ))
+    cases.append((classical, "angle encoding"))
+    for plan, message in cases:
+        with pytest.raises(ValueError, match=message):
+            pickle.loads(pickle.dumps(plan))
+
+
+def test_four_mode_kernels_match_fock_operator_and_control():
+    unitary = _random_unitary(4, seed=404)
+    plan = _api()(unitary)
+    forward = _fock_matrix(unitary)
+    np.testing.assert_allclose(_matrix(plan.kernel(), 4),
+                               forward,
+                               atol=1e-12,
+                               rtol=0)
+    np.testing.assert_allclose(_matrix(plan.adjoint_kernel(), 4),
+                               forward.conj().T,
+                               atol=1e-12,
+                               rtol=0)
+    expected = np.eye(32, dtype=complex)
+    expected[1::2, 1::2] = forward
+    np.testing.assert_allclose(_matrix(plan.controlled_kernel(), 5),
+                               expected,
+                               atol=1e-12,
+                               rtol=0)
 
 
 def test_cached_kernels_do_not_prevent_plan_serialization():

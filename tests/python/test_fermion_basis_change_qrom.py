@@ -133,13 +133,18 @@ def _lookup_apply_unlookup(lookup, operation, initial, *, words, address,
 @pytest.mark.parametrize("action",
                          ["forward", "inverse", "reflection", "roundtrip"])
 @pytest.mark.parametrize("controlled", [False, True])
+@pytest.mark.parametrize("mode_map", [(0, 1), (0, 2)])
 def test_lookup_consume_unlookup_preserves_joint_state(kind, action,
-                                                       controlled):
+                                                       controlled, mode_map):
     # Exactly represented on the two-bit grid. The first plan has all zero
     # angles, so this also checks that runtime words override those slots.
+    # mode_map (0, 2) puts spectator qubit 1, held in superposition, inside
+    # the parity string, so its occupation must flip the mixing sign.
     unitaries = [np.eye(2), np.array([[0., -1.], [1j, 0.]])]
+    structure = getattr(GivensStructure, kind)(2, mode_map=mode_map)
     plans = [
         fermion_basis_change(u if kind == "full" else u[:, 0],
+                             structure=structure,
                              programmable=True,
                              angle_bits=2) for u in unitaries
     ]
@@ -156,11 +161,13 @@ def test_lookup_consume_unlookup_preserves_joint_state(kind, action,
                  variant="select")
     lookup = table.kernel
     forward, inverse = plan.kernel(), plan.adjoint_kernel()
+    reference = mode_map[0]
+    system = plan.structure.num_system_qubits
 
     @cudaq.kernel
     def reflection(register: cudaq.qview):
         inverse(register)
-        z(register[0])
+        z(register[reference])
         forward(register)
 
     @cudaq.kernel
@@ -195,29 +202,37 @@ def test_lookup_consume_unlookup_preserves_joint_state(kind, action,
     def run():
         q = cudaq.qvector(total)
         # Coherence across all occupations detects vacuum/determinant phases.
-        h(q[offset])
-        h(q[offset + 1])
+        for i in range(system):
+            h(q[offset + i])
         h(q[address])
         if controlled:
             h(q[0])
-        lookup(q[address:scratch], q[scratch:total], q[offset + 2:address])
+        lookup(q[address:scratch], q[scratch:total],
+               q[offset + system:address])
         operation(q[0:address])
-        lookup(q[address:scratch], q[scratch:total], q[offset + 2:address])
+        lookup(q[address:scratch], q[scratch:total],
+               q[offset + system:address])
 
     actual = np.asarray(cudaq.get_state(run))
     expected = np.zeros(1 << total, dtype=complex)
-    initial = np.ones(4) / 2
+    dimension = 1 << system
+    initial = np.ones(dimension) / np.sqrt(dimension)
+    flip = np.diag(
+        [-1. if i >> reference & 1 else 1. for i in range(dimension)])
     for row, unitary in enumerate(unitaries):
-        matrix = _fock_two_modes(unitary)
+        physical = np.eye(system, dtype=complex)
+        physical[np.ix_(mode_map, mode_map)] = unitary
+        matrix = _fock_matrix(physical)
         if action == "inverse":
             matrix = matrix.conj().T
         elif action == "reflection":
-            matrix = matrix @ np.diag([1., -1., 1., -1.]) @ matrix.conj().T
+            matrix = matrix @ flip @ matrix.conj().T
         elif action == "roundtrip":
-            matrix = np.eye(4)
+            matrix = np.eye(dimension)
         for enable in range(2 if controlled else 1):
             branch = initial if controlled and enable == 0 else matrix @ initial
-            indices = (np.arange(4) << offset) + (row << address) + enable
+            indices = ((np.arange(dimension) << offset) + (row << address) +
+                       enable)
             expected[indices] = branch / np.sqrt(2 * (2 if controlled else 1))
     # Full joint comparison also asserts all angle and scratch qubits clear.
     np.testing.assert_allclose(actual, expected, atol=2e-11, rtol=0)

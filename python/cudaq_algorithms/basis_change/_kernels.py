@@ -1,10 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Register-only fermionic basis changes using existing CUDA-Q gates.
+"""Fermionic basis changes on an existing register, built from H, S, CNOT,
+Rz and R1 (bit-controlled Rz and R1 for programmable plans).
 
 The paired Jordan-Wigner Pauli rotations implement each complete Givens
 mixing, including parity on intervening physical modes. Parameter words
 remain caller-owned; this backend neither allocates qubits nor performs lookup.
+
+Controlled variants take the enable at register index zero and shift every
+other index by one. Each Pauli rotation is ``V Rz V†`` with a Clifford
+scaffold ``V``, so the enable controls only the Rz and R1 rotations; with
+the enable off the scaffold cancels exactly.
 """
 
 import cudaq
@@ -41,13 +47,56 @@ def _gate_tape(schedule, adjoint=False):
     return tuple(tape)
 
 
-def classical_kernel(schedule, adjoint=False):
-    """Capture a numerical schedule in a kernel accepting an existing qview."""
-    tape = _gate_tape(schedule, adjoint)
-    codes = [row[0] for row in tape]
-    first = [row[1] for row in tape]
-    second = [row[2] for row in tape]
-    angles = [row[4] * schedule.parameters[row[3]] for row in tape]
+def _capture(rows, used_second, offset):
+    """Split ``(code, first, second, angle)`` rows into captured lists.
+
+    CUDA-Q 0.16 fuses value-identical captured lists, so a tape without
+    CNOT rows would turn the unused ``x.ctrl(register[first[k]],
+    register[second[k]])`` branch into a CNOT with control equal to target,
+    and lowering under ``cudaq.control`` never terminates
+    (cuda-quantum#5794). An unused second index is therefore ``first + 1``,
+    so ``second[k] != first[k]`` on every row and the two lists never
+    coincide.
+    """
+    codes = [row[0] for row in rows]
+    first = [row[1] + offset for row in rows]
+    second = [(row[2] if row[0] in used_second else row[1] + 1) + offset
+              for row in rows]
+    angles = [row[3] for row in rows]
+    return codes, first, second, angles
+
+
+def classical_kernel(schedule, adjoint=False, controlled=False):
+    """Capture a numerical schedule in a kernel accepting an existing qview.
+
+    With ``controlled=True`` the enable is register index 0, every other
+    index shifts by one, and only the rotations take the enable.
+    """
+    rows = [
+        (code, first, second, sign * schedule.parameters[slot])
+        for code, first, second, slot, sign in _gate_tape(schedule, adjoint)
+    ]
+    codes, first, second, angles = _capture(rows, (3, ), int(controlled))
+
+    if controlled:
+
+        @cudaq.kernel
+        def apply_controlled_basis(register: cudaq.qview):
+            for k in range(len(codes)):
+                if codes[k] == 0:
+                    h(register[first[k]])
+                elif codes[k] == 1:
+                    s(register[first[k]])
+                elif codes[k] == 2:
+                    s.adj(register[first[k]])
+                elif codes[k] == 3:
+                    x.ctrl(register[first[k]], register[second[k]])
+                elif codes[k] == 4:
+                    rz.ctrl(angles[k], register[0], register[first[k]])
+                else:
+                    r1.ctrl(angles[k], register[0], register[first[k]])
+
+        return apply_controlled_basis
 
     @cudaq.kernel
     def apply_basis(register: cudaq.qview):
@@ -68,16 +117,22 @@ def classical_kernel(schedule, adjoint=False):
     return apply_basis
 
 
-def programmable_kernel(schedule, parameter_registers, weights, adjoint=False):
+def programmable_kernel(schedule,
+                        parameter_registers,
+                        weights,
+                        adjoint=False,
+                        controlled=False):
     """Apply coherent parameter words through ordinary controlled rotations.
 
-    ``parameter_registers`` contains one validated contiguous word per slot;
-    ``weights`` gives radians per little-endian word bit. Each word bit
-    controls a rotation of ``sign * weights[bit]`` on the target qubit. The
-    host expands those rotations into rows of (opcode, control, target,
-    angle), so the kernel is one flat loop that CUDA-Q can reverse, with no
-    mutable weight accumulator or machine-width integer shifts. Every slot
-    is retained even when its numerical schedule value is zero.
+    ``parameter_registers`` contains one validated word per slot, in
+    little-endian bit order; ``weights`` gives radians per word bit. Each
+    word bit controls a rotation of ``sign * weights[bit]`` on the target
+    qubit. The host expands those rotations into rows of (opcode, control,
+    target, angle), so the kernel is one flat loop that CUDA-Q can reverse,
+    with no mutable weight accumulator or machine-width integer shifts.
+    Every slot is retained even when its numerical schedule value is zero.
+    With ``controlled=True`` the enable is register index 0, every other
+    index shifts by one, and only the rotations take the enable.
     """
     rows = []
     for code, first, second, slot, sign in _gate_tape(schedule, adjoint):
@@ -90,10 +145,29 @@ def programmable_kernel(schedule, parameter_registers, weights, adjoint=False):
         word = parameter_registers[slot]
         rows.extend((code, word[bit], second, float(sign * weight))
                     for bit, weight in enumerate(weights))
-    codes = [row[0] for row in rows]
-    first = [row[1] for row in rows]
-    second = [row[2] for row in rows]
-    angles = [row[3] for row in rows]
+    codes, first, second, angles = _capture(rows, (3, 4, 5), int(controlled))
+
+    if controlled:
+
+        @cudaq.kernel
+        def apply_controlled_word_basis(register: cudaq.qview):
+            for k in range(len(codes)):
+                if codes[k] == 0:
+                    h(register[first[k]])
+                elif codes[k] == 1:
+                    s(register[first[k]])
+                elif codes[k] == 2:
+                    s.adj(register[first[k]])
+                elif codes[k] == 3:
+                    x.ctrl(register[first[k]], register[second[k]])
+                elif codes[k] == 4:
+                    rz.ctrl(angles[k], register[0], register[first[k]],
+                            register[second[k]])
+                else:
+                    r1.ctrl(angles[k], register[0], register[first[k]],
+                            register[second[k]])
+
+        return apply_controlled_word_basis
 
     @cudaq.kernel
     def apply_word_basis(register: cudaq.qview):

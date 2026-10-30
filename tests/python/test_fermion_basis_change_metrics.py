@@ -120,7 +120,6 @@ def test_resources_count_static_slots_and_physical_parity(
     assert report.num_system_qubits == max(mapping) + 1
     assert report.num_program_qubits == 11
     assert report.num_workspace_qubits == 0
-    assert report.abstract_mixing_layers_upper_bound == expected[0]
     assert report.num_parameters == schedule.num_parameters
     with pytest.raises(FrozenInstanceError):
         report.num_workspace_qubits = 1
@@ -189,7 +188,59 @@ def test_external_control_adds_the_enable_to_every_counted_gate(bits):
         for name, count in emitted_gates(operation, size).items()
     }
     assert emitted_gates(controlled, size + 1) == expected
-    assert emitted_gates(plan.controlled_kernel(), size + 1) == expected
+
+
+@pytest.mark.parametrize("bits", [None, 2])
+def test_controlled_kernel_adds_the_enable_to_rotations_only(bits):
+    plan = fermion_basis_change(np.eye(3) if bits is None else np.eye(2),
+                                programmable=bits is not None,
+                                angle_bits=bits)
+    rotations = ("crz", "cr1") if bits else ("rz", "r1")
+    expected = {
+        ("c" + name if name in rotations else name): count
+        for name, count in emitted_gates(plan.kernel(),
+                                         plan.num_qubits).items()
+    }
+    assert emitted_gates(plan.controlled_kernel(),
+                         plan.num_qubits + 1) == expected
+    assert emitted_gates(plan.controlled_kernel(adjoint=True),
+                         plan.num_qubits + 1) == expected
+
+
+def test_plan_resources_include_explicit_register_gaps():
+    layout = ((10, 11), (3, 4), (8, 9), (5, 6))
+    plan = fermion_basis_change(np.eye(2),
+                                programmable=True,
+                                angle_bits=2,
+                                parameter_registers=layout)
+    report = estimate_fermion_basis_change_resources(plan)
+    assert plan.num_qubits == 12
+    assert report.num_system_qubits + report.num_program_qubits == 12
+    assert report == estimate_fermion_basis_change_resources(
+        plan.schedule, angle_bits=2, num_program_qubits=10)
+    classical = fermion_basis_change(np.eye(3))
+    assert estimate_fermion_basis_change_resources(
+        classical) == estimate_fermion_basis_change_resources(
+            classical.schedule)
+    with pytest.raises(ValueError, match="plan supplies"):
+        estimate_fermion_basis_change_resources(plan, angle_bits=2)
+    with pytest.raises(ValueError, match="plan supplies"):
+        estimate_fermion_basis_change_resources(plan, num_program_qubits=10)
+
+
+@pytest.mark.parametrize("kind", ["full", "partial"])
+def test_plan_quantization_bound_dominates_fock_operator_norm(kind):
+    rng = np.random.default_rng(57)
+    q, _ = np.linalg.qr(rng.normal(size=(3, 3)) + 1j * rng.normal(size=(3, 3)))
+    plan = fermion_basis_change(q if kind == "full" else q[:, 0],
+                                programmable=True,
+                                angle_bits=6)
+    exact = fock_lift(plan.schedule.orbital_matrix())
+    represented = fock_lift(
+        plan.schedule.orbital_matrix(plan.represented_parameters))
+    error = np.linalg.norm(exact - represented, 2)
+    assert 0 < error <= plan.quantization_error_bound + 1e-14
+    assert plan.quantization_error_bound < 2
 
 
 @pytest.mark.parametrize("value", [

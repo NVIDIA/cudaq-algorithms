@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Complete-state checks for the existing-gate fermionic kernel backend."""
+"""Complete-state checks for the fermionic basis-change kernel backend."""
 
 import os
 import subprocess
@@ -485,18 +485,6 @@ def test_programmed_forward_then_explicit_inverse_restores_entangled_state():
                                rtol=0)
 
 
-def test_compiled_programmed_kernel_uses_existing_controlled_rotations():
-    structure = GivensStructure.full(2)
-    schedule = compile_givens_basis_change(structure=structure)
-    operation = programmable_kernel(schedule, _layout(structure, 2),
-                                    (np.pi / 2, np.pi))
-    ir = str(operation)
-    assert "quake.rz" in ir
-    assert "quake.r1" in ir
-    assert "programmable" not in ir.lower()
-    assert "angleformat" not in ir.lower()
-
-
 @pytest.mark.parametrize(
     "structure, counts",
     [
@@ -607,3 +595,68 @@ def test_generic_adjoint_of_programmed_plan_compiles_without_diagnostics(
     for deviation, change in rows:
         assert deviation < 1e-12
         assert change > 0.1
+
+
+_PHASE_ONLY_CONTROL_SCRIPT = """
+from types import SimpleNamespace
+
+import cudaq
+import numpy as np
+
+from cudaq_algorithms.basis_change._kernels import classical_kernel
+
+# A phase-only tape on two modes: no CNOT rows, the cuda-quantum#5794 shape.
+schedule = SimpleNamespace(
+    operations=tuple(
+        SimpleNamespace(kind="phase", first=i, second=None,
+                        parameter_index=i, scale=1.) for i in range(2)),
+    structure=SimpleNamespace(mode_map=(0, 1)),
+    parameters=(.3, -.5))
+operation = classical_kernel(schedule)
+
+
+@cudaq.kernel
+def controlled():
+    q = cudaq.qvector(3)
+    h(q[0])
+    x(q[1])
+    x(q[2])
+    cudaq.control(operation, q[0], q[1:3])
+
+
+state = np.asarray(cudaq.get_state(controlled))
+print("phase", abs(state[6] * np.sqrt(2) - 1),
+      abs(state[7] * np.sqrt(2) - np.exp(-.2j)))
+"""
+
+
+def test_controlling_a_phase_only_tape_terminates(tmp_path):
+    script = tmp_path / "phase_only_control.py"
+    script.write_text(_PHASE_ONLY_CONTROL_SCRIPT)
+    env = dict(os.environ)
+    env.setdefault("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu")
+    result = subprocess.run([sys.executable, "-W", "ignore",
+                             str(script)],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env)
+    assert result.returncode == 0, result.stderr[-2000:]
+    line = next(line for line in result.stdout.splitlines()
+                if line.startswith("phase "))
+    assert all(float(value) < 1e-12 for value in line.split()[1:])
+
+
+@pytest.mark.parametrize("offset", [0, 1])
+def test_captured_second_index_never_equals_first(offset):
+    from cudaq_algorithms.basis_change._kernels import _capture, _gate_tape
+    schedule = compile_givens_basis_change(np.eye(3),
+                                           structure=GivensStructure.full(
+                                               3, mode_map=(4, 0, 2)))
+    tape = _gate_tape(schedule)
+    rows = [(code, first, second, 0.) for code, first, second, _, _ in tape]
+    codes, first, second, _ = _capture(rows, (3, ), offset)
+    assert all(a != b for a, b in zip(first, second))
+    assert first == [row[1] + offset for row in rows]
+    assert [b for code, b in zip(codes, second)
+            if code == 3] == [row[2] + offset for row in rows if row[0] == 3]

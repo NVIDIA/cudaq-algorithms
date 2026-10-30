@@ -49,19 +49,17 @@ class FermionBasisChangeResourceEstimate:
     changes (eight H and four S/S-dagger). Number phases are one elementary
     rotation each and require no parity ladder.
 
-    Counts describe the uncontrolled tape. ``cudaq.control`` and
-    ``FermionBasisChange.controlled_kernel`` put the enable on every emitted
-    gate: each H becomes a controlled H, each S or S-dagger a controlled S
-    or S-dagger, each parity CNOT a Toffoli, each Rz a controlled Rz and
-    each R1 a controlled R1 (bit-controlled rotations become doubly
-    controlled). Compare QROM selection against those controlled costs,
-    not these counts.
+    Counts describe the uncontrolled tape.
+    ``FermionBasisChange.controlled_kernel`` keeps every Clifford and parity
+    CNOT and adds the enable to each rotation only: each Rz becomes a
+    controlled Rz and each R1 a controlled R1 (bit-controlled rotations
+    become doubly controlled). ``cudaq.control`` of ``kernel()`` instead
+    puts the enable on every emitted gate: each H becomes a controlled H,
+    each S or S-dagger a controlled S or S-dagger and each parity CNOT a
+    Toffoli as well.
 
-    ``abstract_mixing_layers_upper_bound`` equals the sequential mixing
-    count, not a circuit depth; it does not include phase layers,
-    programmable-rotation internals, or hardware scheduling. An optional
-    angle width counts bit-controlled rotations and defaults to keeping
-    every parameter word resident. A caller-supplied program width
+    An optional angle width counts bit-controlled rotations and defaults to
+    keeping every parameter word resident. A caller-supplied program width
     overrides that reported qubit count only; the kernels keep every word
     resident. Address, QROM lookup/unlookup, and synthesis resources are
     excluded.
@@ -80,7 +78,6 @@ class FermionBasisChangeResourceEstimate:
     num_hadamards: int
     num_s_phase_gates: int
     num_clifford_basis_changes: int
-    abstract_mixing_layers_upper_bound: int
 
 
 def _schedule(schedule):
@@ -111,8 +108,11 @@ def estimate_fermion_basis_change_error(schedule,
     angle difference. Telescoping unitary products sums those differences.
     This remains valid on the full fermionic Fock space and under arbitrary
     physical mode embeddings. The optional synthesis bound is added once
-    for the complete basis-change implementation. Conjugating a reflection
-    incurs at most twice that total error.
+    for the complete basis-change implementation; when each Rz and R1 is
+    synthesized to spectral error ``eps`` including global phase, pass
+    ``num_elementary_rotations * eps`` from :func:`estimate_fermion_basis_change_resources`
+    (``num_bit_controlled_rotations * eps`` for a programmable plan).
+    Conjugating a reflection incurs at most twice that total error.
 
     Original numerical schedule values are required. Parameter differences
     are shortest signed circular deltas modulo 2*pi for the complete Givens
@@ -157,6 +157,12 @@ def estimate_fermion_basis_change_resources(schedule,
                                             num_program_qubits=None):
     """Count static algorithm operations and physical parity-ladder costs.
 
+    ``schedule`` is a :class:`GivensBasisChangeSchedule` or a
+    :class:`FermionBasisChange` plan. A plan supplies its own angle width
+    and program-qubit count, ``num_qubits - num_system_qubits``, which
+    includes gaps in explicit ``parameter_registers``; ``angle_bits`` and
+    ``num_program_qubits`` must then be omitted.
+
     For physical endpoint separation ``d``, each of the two mixing Pauli
     strings has weight ``d+1``. A compute/uncompute parity ladder therefore
     has ``2*d`` CNOTs per string, or ``4*d`` for the mixing operation. Every
@@ -172,10 +178,18 @@ def estimate_fermion_basis_change_resources(schedule,
     (one word). The override changes only this report; the kernels keep
     every word resident. QROM address, lookup and unlookup are excluded.
 
-    Counts describe the uncontrolled tape. Under ``cudaq.control`` or
-    ``FermionBasisChange.controlled_kernel`` every counted gate also takes
-    the enable as a control; see :class:`FermionBasisChangeResourceEstimate`.
+    Counts describe the uncontrolled tape; see
+    :class:`FermionBasisChangeResourceEstimate` for the controlled costs.
     """
+    from ._factory import FermionBasisChange
+    if isinstance(schedule, FermionBasisChange):
+        if angle_bits is not None or num_program_qubits is not None:
+            raise ValueError(
+                "a plan supplies its own angle_bits and num_program_qubits")
+        plan, schedule = schedule, schedule.schedule
+        angle_bits = plan.angle_bits
+        num_program_qubits = (plan.num_qubits -
+                              plan.structure.num_system_qubits)
     schedule = _schedule(schedule)
     if angle_bits is not None:
         angle_bits = _integer(angle_bits, "angle_bits")
@@ -209,5 +223,4 @@ def estimate_fermion_basis_change_resources(schedule,
         num_parity_cnots=parity_cnots,
         num_hadamards=8 * count,
         num_s_phase_gates=4 * count,
-        num_clifford_basis_changes=12 * count,
-        abstract_mixing_layers_upper_bound=count)
+        num_clifford_basis_changes=12 * count)
