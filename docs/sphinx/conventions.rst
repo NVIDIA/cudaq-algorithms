@@ -107,6 +107,23 @@ Verify (the standard encode-block test):
    np.testing.assert_allclose(out[:2**enc.num_system],
                               (H_dense @ ket) / enc.alpha, atol=1e-12)
 
+Sparse-access encodings
+-----------------------
+
+``encode_sparse`` and ``qrom_oracles`` take a dense
+array, a ``scipy.sparse`` matrix (anything with ``tocoo()``), or
+``(rows, cols, vals)`` triples with integer-typed ``rows``/``cols`` and
+``dim=``; duplicate triples sum, zero entries are dropped, and a
+non-power-of-two dimension is zero-padded to the ``2^num_system`` register.
+Symmetry is judged with a matrix-relative tolerance ``1e-12 * max|H|`` and
+a missing mirror counts as an asymmetry. A Hermitian dilation
+``[[0, A], [A^T, 0]]`` adds one system qubit as the most significant bit:
+``A`` occupies the upper-right block, so basis states with the halves bit
+``0`` index rows of ``A`` and states with the halves bit ``1`` index columns.
+``report["max_row_nnz"]`` is the largest number of nonzeros in a row and
+``report["slots"]`` the structure slots of the matching assignment (which
+may need more slots than ``max_row_nnz``).
+
 Qubitization walk
 -----------------
 

@@ -22,16 +22,32 @@ import cudaq
 from cudaq import spin
 
 
-def state_from(ket) -> cudaq.State:
+def state_from(ket, num_qubits: int | None = None) -> cudaq.State:
     """Build a cudaq.State from array data at the current target's precision.
 
     fp32 simulators (e.g. the default `nvidia` target) reject complex128
     input ("[sim-state] invalid data precision"); cudaq.complex() reports
     the dtype the active target expects.
+
+    ``num_qubits`` pins the register the state is meant for: a kernel that
+    allocates ``cudaq.qvector(state)`` takes whatever width the data
+    implies, so an oversized ket silently widens the system register and
+    an undersized one fails inside the simulator with an opaque error.
+    With ``num_qubits`` given, a ket of any other length raises
+    ``ValueError`` here instead. The kernel factories' state-taking
+    circuits (``encode_kernel``, ``walk_kernel``, ``Walk.kernel``, ...)
+    expect exactly ``2^num_system`` amplitudes.
     """
     import numpy as np
 
-    return cudaq.State.from_data(np.asarray(ket, dtype=cudaq.complex()))
+    array = np.asarray(ket, dtype=cudaq.complex())
+    if num_qubits is not None:
+        if array.ndim != 1 or array.size != (1 << int(num_qubits)):
+            raise ValueError(
+                f"ket must hold 2^{int(num_qubits)} = {1 << int(num_qubits)} "
+                f"amplitudes for a {int(num_qubits)}-qubit register, got "
+                f"shape {array.shape}")
+    return cudaq.State.from_data(array)
 
 
 def _maybe_call(value):
