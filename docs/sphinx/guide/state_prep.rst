@@ -233,6 +233,19 @@ mode (two qubits), so no empty list crosses the kernel boundary.
 `spatial_givens_segment` applies ``count`` rotations from ``start`` of a
 flat list shared by several frames.
 
+Here an ``n x n`` real orthogonal matrix is *spatial*: it acts on ``n``
+modes, each on two qubits, identically in both spin sectors. A matrix over
+*spin-orbital* modes, one per qubit and possibly complex, is the input of
+:doc:`fermion_basis_change`, which also places modes on arbitrary qubits
+and accepts quantum angle words; ``fermion_basis_change(np.kron(V,
+np.eye(2)))`` realizes ``V`` itself, without the residual ``D``, on both
+spins of the interleaved layout. The rotation conventions agree:
+`givens_rotation(qubits, theta, first, second)` is that page's mixing gate
+at ``theta`` on modes ``(first, second)``, and
+`spatial_givens_rotation(system, theta, mode)` is its mixing gate at
+``-theta`` on spatial modes ``(mode, mode + 1)``, rotating both spin
+sectors at once.
+
 State preparation injection
 ---------------------------
 
