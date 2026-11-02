@@ -223,12 +223,66 @@ Register conventions shared by all implementations:
 Implementing the protocol
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because conformance is structural, a sparse-oracle, block-diagonal, or any
-custom encoding plugs into `Walk` and `QSVT` simply by implementing the
-surface above — no base class, no registration. The worked example
+Because conformance is structural, a block-diagonal or any other custom
+encoding plugs into `Walk` and `QSVT` simply by implementing the surface
+above — no base class, no registration. The worked example
 ``06_bring_your_own_encoding.py`` (:doc:`../examples_rst/getting_started`)
 implements a minimal `BlockEncoding` from scratch and runs it through the
 shared consumers, validating it against a dense reference.
+
+Sparse-access encodings
+-----------------------
+
+:mod:`cudaq_algorithms.sparse` block-encodes a real sparse symmetric matrix
+given as data (a dense array, a ``scipy.sparse`` matrix, or integer-indexed
+``(rows, cols, vals)`` triples) or as structure oracles.
+`SparseOracleEncoding` is the sparse-access construction of Camps, Lin,
+Van Beeumen and Yang (`arXiv:2203.10236 <https://arxiv.org/abs/2203.10236>`_):
+``U_A = T† S T`` from a *location* oracle (the column structure) and a
+*value* oracle (fixed-point matrix-element angles), bundled as
+`OracleKernels`. ``alpha = d_padded * h`` pays the largest element ``h`` at
+the padded slot count, so it is at its best on uniform structured matrices
+with few nonzeros per row. `banded_oracles` builds the bundle for
+constant-valued bands, `qrom_oracles` for arbitrary entries; the value
+oracle writes `quantized_angle` fixed-point angles with ``value_bits`` of
+precision. Negative off-diagonal entries are fine; a negative diagonal is
+not representable directly (shift the diagonal, or encode the Hermitian
+dilation).
+
+.. code-block:: python
+
+   from cudaq_algorithms import encode_sparse, Walk
+
+   enc = encode_sparse(matrix, value_bits=6)   # qrom_oracles + SparseOracleEncoding
+   enc.report["alpha"], enc.report["slots"], enc.report["qubits"]
+   enc = encode_sparse(a, dilate=True)         # [[0, A], [A^T, 0]] of a general A
+   walk = Walk(enc)                            # same consumers as PauliLCU
+
+`encode_sparse` validates the data, prices the construction classically
+and attaches the figures as ``encoding.report`` (``alpha``, ``qubits``,
+``nnz``, ``max_row_nnz``, ``slots``, ``dim``, ``dilated``,
+``value_bits``). It encodes a *symmetric* matrix with a non-negative
+diagonal: anything else raises unless ``dilate=True`` asks for the
+Hermitian dilation ``[[0, A], [A^T, 0]]`` on one extra system qubit (the
+halves bit is the most significant), as
+`SparseOracleEncoding.from_general_oracles` does for oracles.
+
+**What the oracle contract requires.** An `OracleKernels` bundle supplies
+``o_loc`` / ``o_val`` and their explicit inverses, the slot count ``d``,
+the value bound ``h``, ``value_bits``, the work-qubit count and the
+reverse-slot involution; every inverse must hold on states whose work
+register enters ``|0>`` (flat, work-free oracles such as `banded_oracles`
+invert globally, table oracles built on unary-iteration walks only with
+clean scratch). The bundle records the system width it was built for and
+the encoding rejects a mismatch.
+
+**Register widths and moments.** ``num_ancilla`` counts every ancilla,
+scratch included; `SparseOracleEncoding` exposes ``num_block_ancilla`` and
+``num_scratch``. The encoding provides no `select_observable`, so
+`Walk.moment` serves even orders only, and at these widths the even-order
+reflection observable would expand to ``2^num_ancilla`` Pauli terms:
+`Walk` refuses above 20 ancillas. Take Chebyshev data from ``walk_kernel``
+powers on a statevector simulator.
 
 Bring your own encoding: the double-factorized example
 ------------------------------------------------------

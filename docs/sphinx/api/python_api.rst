@@ -24,6 +24,23 @@ Block encodings
 .. automodule:: cudaq_algorithms.combinators
    :members:
 
+Sparse-access block encodings
+=============================
+
+.. autofunction:: cudaq_algorithms.sparse.encode_sparse
+
+.. autoclass:: cudaq_algorithms.sparse.SparseOracleEncoding
+   :members:
+
+.. autoclass:: cudaq_algorithms.sparse.OracleKernels
+   :members:
+
+.. autofunction:: cudaq_algorithms.sparse.banded_oracles
+
+.. autofunction:: cudaq_algorithms.sparse.qrom_oracles
+
+.. autofunction:: cudaq_algorithms.sparse.quantized_angle
+
 Qubitization and QSVT
 =====================
 
