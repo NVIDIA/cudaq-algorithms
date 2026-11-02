@@ -20,13 +20,14 @@ np.eye(2))`` here. The network realizes ``V D`` with the schedule's sign
 diagonal ``D``; ``np.kron(V @ np.diag(schedule.signs), np.eye(2))``
 reproduces it exactly.
 
-Each mixing gate of a schedule is the one-particle rotation
-``[[cos θ, -sin θ], [sin θ, cos θ]]`` on logical modes ``(first,
-second)``, that is ``exp(θ (a†_second a_first - a†_first a_second))``. It
-is the same rotation as ``stateprep.givens_rotation(qubits, θ, first,
-second)``. On spatial modes ``(mode, mode + 1)`` of the interleaved layout
-it equals ``stateprep.spatial_givens_rotation(system, -θ, mode)``, which
-rotates both spin sectors at once.
+Each mixing gate rotates two modes ``(first, second)`` by
+``[[cos θ, -sin θ], [sin θ, cos θ]]``, that is
+``exp(θ (a†_second a_first - a†_first a_second))``. For adjacent modes
+(``second == first + 1``) this is the same gate as
+``stateprep.givens_rotation(qubits, θ, first, second)``. On spatial modes
+``(mode, mode + 1)`` of the interleaved layout it equals
+``stateprep.spatial_givens_rotation(system, -θ, mode)``, which rotates
+both spin sectors at once.
 
 For an ``m`` by ``m`` unitary ``U``, the circuit implements the
 vacuum-preserving second quantization
@@ -37,12 +38,13 @@ vacuum-preserving second quantization
       = \sum_p U_{pj}a_p^\dagger,
    \qquad \Gamma(U)|\mathrm{vac}\rangle=|\mathrm{vac}\rangle.
 
-``a_j`` acts on physical qubit ``mode_map[j]`` (qubit ``j`` by default),
-with its Jordan-Wigner parity string over every lower-numbered physical
-qubit, mapped or spectator. On equally sized occupied sets ``S`` and
-``T``, each listed in increasing physical-qubit order, the Fock-space
-matrix element is ``det(U[S, T])``; a spectator qubit acts as a mode that
-``U`` leaves unchanged.
+Mode ``j`` lives on qubit ``mode_map[j]`` (qubit ``j`` by default) with
+the usual Jordan-Wigner parity string over all lower-numbered qubits.
+Qubits that ``mode_map`` skips are spectators: modes that ``U`` leaves
+unchanged. To predict amplitudes, embed ``U`` in the identity on the whole
+register, ``U_phys[np.ix_(mode_map, mode_map)] = U``. For occupied sets
+``S`` and ``T`` of the same size, each sorted by qubit index, the
+amplitude from ``T`` to ``S`` is ``det(U_phys[np.ix_(S, T)])``.
 
 Fixed transformations
 ---------------------
@@ -118,7 +120,14 @@ loaded by QROM.
 
    program = fermion_basis_change(U, programmable=True, angle_bits=8)
    consume_words = program.kernel()
-   codes = program.encoded_words
+   codes = program.encoded_words   # (0, 64, 32, 64): the words for U
+
+A consumer can also be built from a structure alone, with no matrix. It
+has no host angles (``encoded_words`` is ``None``), so every angle comes
+from the loaded words, typically a QROM table filled with other plans'
+``encoded_words``:
+
+.. code-block:: python
 
    structure = GivensStructure.partial(3, mode_map=(0, 2, 4))
    consumer = fermion_basis_change(structure=structure,
@@ -146,19 +155,33 @@ and controls are additional.
 Accuracy
 --------
 
-Three errors are kept separate: the input residual
-(``schedule.reconstruction_error``), angle quantization
-(``quantization_error_bound``), and the synthesis budget you supply.
-``estimate_fermion_basis_change_error(schedule, represented_parameters,
-*, synthesis_error_bound=0.)`` adds the parameter deltas and the
-synthesis budget into a basis-change bound clipped at two, and gives a
-reflection bound of twice that, also clipped at two. When each Rz and R1
-is synthesized to spectral error ``eps``, including global phase, pass
-``num_elementary_rotations * eps`` from
-``estimate_fermion_basis_change_resources``
-(``num_bit_controlled_rotations * eps`` for a programmable plan).
+A programmable plan reports its angle-rounding error as
+``plan.quantization_error_bound`` (classical plans round nothing and
+report ``None``). Two other errors are kept separate:
+``schedule.reconstruction_error`` is how far the compiled angles are from
+an inexact input, and synthesis error is what your compiler adds when it
+turns each Rz and R1 into native gates. To include synthesis, give each
+rotation a spectral error ``eps`` (including global phase) and multiply
+by the rotation count:
 
-Nearest rounding gives the conservative a priori quantization bound
+.. code-block:: python
+
+   from cudaq_algorithms.basis_change import (
+       estimate_fermion_basis_change_error,
+       estimate_fermion_basis_change_resources)
+
+   eps = 1e-3
+   resources = estimate_fermion_basis_change_resources(program)
+   report = estimate_fermion_basis_change_error(
+       program.schedule, program.represented_parameters,
+       synthesis_error_bound=resources.num_bit_controlled_rotations * eps)
+
+For a classical plan use ``num_elementary_rotations`` and
+``plan.schedule.parameters``. ``report.basis_change_error_bound`` bounds
+the whole transformation, and ``report.reflection_error_bound`` bounds a
+reflection conjugated by it; both are clipped at two.
+
+Before building a plan, nearest rounding gives the a priori bound
 
 .. math::
 
@@ -168,12 +191,12 @@ Nearest rounding gives the conservative a priori quantization bound
      2m-1 & \text{partial}.
    \end{cases}
 
-Two is the largest distance between unitaries, so this bound says nothing
-once ``C*pi/2**b >= 2``: every full plan with ``m >= 3`` at
-``angle_bits=4``, for example. A plan's ``quantization_error_bound`` sums
-its actual rounding deltas instead, so it is never larger and usually
-smaller: for random 3-mode unitaries at four bits it is typically 0.8 to
-1.6, while the actual Fock-space error is typically 0.2 to 0.6.
+Two is the largest spectral-norm distance between two unitaries, so this
+bound says nothing once ``C*pi/2**b >= 2``: for example, every full plan
+with ``m >= 3`` at ``angle_bits=4``. A plan's ``quantization_error_bound``
+adds up its actual rounding errors instead, so it is never larger and
+usually smaller: for random 3-mode unitaries at four bits it is typically
+0.8 to 1.6, while the actual Fock-space error is typically 0.2 to 0.6.
 
 Selecting with QROM
 -------------------

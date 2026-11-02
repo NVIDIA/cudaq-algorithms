@@ -27,6 +27,7 @@ fixed = fermion_basis_change(U)
 apply_fixed = fixed.kernel()
 
 
+# H on both qubits gives amplitude 1/2 on every Fock state.
 @cudaq.kernel
 def fixed_demo():
     system = cudaq.qvector(2)
@@ -64,8 +65,9 @@ np.testing.assert_allclose(np.asarray(cudaq.get_state(controlled_demo)),
                            expected_controlled,
                            atol=1e-12)
 
-# Now choose I or U using a quantum address. A common QR schedule consumes
-# angle words. QROM is an explicit choice of data source for those words.
+# Now choose I or U using a quantum address. Both matrices share one Givens
+# structure, so one programmable circuit can consume either word string.
+# QROM is one way to load those words.
 bits = 3
 plans = [
     fermion_basis_change(matrix, programmable=True, angle_bits=bits)
@@ -90,7 +92,7 @@ table = QROM(rows,
              variant="select")
 lookup = table.kernel
 consume = program.kernel()
-span = program.num_qubits  # 2 system + 4*3 angle = 14
+span = program.num_qubits  # 2 system + 4 slots * 3 bits = 14
 address = span
 scratch = address + table.num_address
 total = scratch + table.num_ladder  # 16, including address and QROM scratch
