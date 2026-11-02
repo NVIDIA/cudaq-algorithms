@@ -61,8 +61,12 @@ __all__ = [
 def add_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
     """``b <- (a + b) mod 2^n`` (CDKM). ``a`` and ``carry`` are restored.
 
-    ``a`` and ``b`` have equal size ``n``; ``carry`` is a one-qubit view
-    that must be |0> on entry (it is returned to |0>).
+    ``a`` and ``b`` are disjoint little-endian registers of equal width
+    ``n >= 1``. ``carry`` is a disjoint one-qubit view, initialized and
+    returned to |0>.
+
+    For n = 1, the circuit is one CNOT. For n = 2, it uses two CNOTs
+    and one Toffoli; ``carry`` is untouched in both cases.
 
     Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
     """
@@ -106,8 +110,9 @@ def add_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
 def subtract_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
     """``b <- (b - a) mod 2^n``: the exact gate-reversal of ``add_register``.
 
-    Hand-written inverse (no ``cudaq.adjoint``); every gate of the adder is
-    self-inverse, so the reversed sequence is the inverse circuit.
+    The little-endian ordering, equal widths, disjoint views, clean carry,
+    and small-width cases follow ``add_register``. ``a`` and ``carry``
+    are restored. The inverse is hand-written (no ``cudaq.adjoint``).
 
     Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
     """
@@ -175,6 +180,9 @@ def add_constant(target: cudaq.qview, constant_bits: list[int],
 def subtract_constant(target: cudaq.qview, constant_bits: list[int],
                       work: cudaq.qview, carry: cudaq.qview):
     """``target <- (target - K) mod 2^n``: inverse of ``add_constant``.
+
+    The constant bits, disjoint views, and clean workspace follow
+    ``add_constant``. ``work`` and ``carry`` are restored to |0>.
 
     Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
     """

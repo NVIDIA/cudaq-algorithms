@@ -599,13 +599,9 @@ def test_add_register_basis_spot_checks():
 # depend on the folding rather than the construction.
 #
 # CDKM derivations (n-bit registers, one Toffoli per MAJ and per UMA):
-# - add_register / subtract_register: a full MAJ/UMA pair would be 2n, but the
-#   mod-2^n adder never forms the top carry-out, so the top MAJ/UMA Toffoli
-#   pair cancels; writing the last carry into the sum saves one more.
-#   Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
-# - add_constant / subtract_constant: the constant load/unload is X-only
-#   (free), so the price is the inner register adder's.
-#   Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
+# - add_register / subtract_register: costs follow their kernel docstrings.
+# - add_constant / subtract_constant: the constant load/unload is X-only,
+#   so the Toffoli count equals the register operation's.
 # - cmp_ge_constant (K >= 1): the comparator reads the top carry (it is the
 #   result), so only that carry's compute/copy/uncompute collapses: a MAJ
 #   sweep (n) plus its reversal (n) minus one = 2n - 1; K = 0 is a bare X.
@@ -693,9 +689,6 @@ def _toffolis(kernel, *args) -> int:
     return cudaq.estimate_resources(kernel, *args).count_controls("x", 2)
 
 
-# Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
-
-
 @_RESOURCES
 @pytest.mark.parametrize(
     "n, expected",
@@ -703,8 +696,8 @@ def _toffolis(kernel, *args) -> int:
 )
 @pytest.mark.parametrize("subtract", [0, 1])
 def test_register_add_subtract_toffoli_count(n, expected, subtract):
-    assert _toffolis(_res_add_register, n, subtract) == expected
     resources = cudaq.estimate_resources(_res_add_register, n, subtract)
+    assert resources.count_controls("x", 2) == expected
     assert resources.count_controls("x", 1) == (n if n <= 2 else 4 * n - 3)
     assert resources.num_qubits == 2 * n + 1
 
@@ -717,8 +710,8 @@ def test_register_add_subtract_toffoli_count(n, expected, subtract):
 @pytest.mark.parametrize("subtract", [0, 1])
 def test_constant_add_subtract_toffoli_count(n, expected, subtract):
     bits = _bits((1 << n) - 1, n)  # worst-case load: every bit set
-    assert _toffolis(_res_add_constant, n, bits, subtract) == expected
     resources = cudaq.estimate_resources(_res_add_constant, n, bits, subtract)
+    assert resources.count_controls("x", 2) == expected
     assert resources.count_controls("x", 1) == (n if n <= 2 else 4 * n - 3)
     assert resources.count_controls("x", 0) == 2 * n
     assert resources.num_qubits == 2 * n + 1
@@ -742,14 +735,6 @@ def test_cmp_register_cost_2n_minus_1_toffolis(n):
     # a function of the runtime width argument, never a folded constant.
     assert _toffolis(_res_cmp_register, n, 0) == 2 * n - 1
     assert _toffolis(_res_cmp_register, n, 1) == 2 * n - 1
-
-
-@_RESOURCES
-def test_cdkm_toffoli_cost_is_affine_with_slope_two():
-    # For n >= 2, doubling the width adds exactly 2n Toffolis.
-    compiled = {n: _toffolis(_res_add_register, n, 0) for n in (2, 4, 8, 16)}
-    for n in (2, 4, 8):
-        assert compiled[2 * n] - compiled[n] == 2 * n, compiled
 
 
 @_RESOURCES
