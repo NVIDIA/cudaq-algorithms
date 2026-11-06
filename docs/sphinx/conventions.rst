@@ -41,6 +41,8 @@ Spin orbitals: interleaved
 Spatial orbital `p` maps to spin orbitals `2p` (up) and `2p + 1` (down).
 All fermionic modules (the fermion transforms, the chemistry-facing
 helpers, the double-factorized encoding) use this convention.
+`fermion_basis_change` instead takes a spin-orbital matrix directly, one
+mode per qubit; lift a spatial matrix `V` with `np.kron(V, np.eye(2))`.
 
 Fermionic integral tensors
 --------------------------
