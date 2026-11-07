@@ -91,16 +91,18 @@ Documented per-operation costs on `n`-bit operands, pinned by the resource
 tests against `cudaq.estimate_resources`:
 
 ```text
-add_register, subtract_register, add_constant, subtract_constant : 2n - 2 Toffolis (0 at n = 1)
+add_register, subtract_register, add_constant, subtract_constant : 0 Toffolis for n = 1; 2n - 3 for n >= 2
 cmp_ge_constant (K >= 1), cmp_ge_register, cmp_gt_register        : 2n - 1 Toffolis; cmp_ge_constant at K = 0: 0
 add_constant_qft, subtract_constant_qft : 0 Toffolis; n(n-1) controlled r1, n single r1, 2n H
 cmp_ge_constant_qft_shift(_adj), K >= 1 : 0 Toffolis; n(n+1) controlled r1, n+1 single r1, 2(n+1) H; K = 0 emits no rotations
 ```
 
-The mod-`2^n` adder never forms the top carry-out, so its MAJ/UMA Toffoli
-pair cancels (`2n - 2` rather than `2n`); Cuccaro et al.'s `2n - 3` variant
-is not adopted. These are logical gate counts of the kernels as written, not
-T counts, transpiled depth, runtime, memory, or hardware cost. Not provided:
+The mod-`2^n` adder writes the final carry directly into the highest sum
+bit, saving one Toffoli. The subtractor reverses the gate sequence, and
+the constant wrappers inherit the saving. The one-bit case uses one CNOT;
+the two-bit case uses one Toffoli and two CNOTs. These are logical gate
+counts of the kernels as written. Synthesized T counts, transpiled depth,
+runtime, memory, and hardware costs require separate estimates. Not provided:
 multiplication, division, signed arithmetic, modular arithmetic beyond
 `mod 2^n`, an ancilla-light constant adder, or host-side validation of
 widths and preconditions (misuse is undefined behavior, not an exception).
@@ -123,7 +125,7 @@ repository root:
 
 ```bash
 PYTHONPATH=python pytest -q tests/python/test_primitives_arithmetic.py \
-  -k "spot_checks or cmp_register_twice or cdkm_register_ops_cost or qft_add_constant_costs"
+  -k "spot_checks or cmp_register_twice or register_add_subtract_toffoli_count or constant_add_subtract_toffoli_count or qft_add_constant_costs"
 ```
 
 `test_register_add_subtract_all_inputs`, `test_cmp_ge_constant_all_inputs`,

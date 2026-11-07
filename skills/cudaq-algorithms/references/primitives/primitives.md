@@ -27,7 +27,8 @@ Resource facts are **exact logical Toffoli counts** of the emitted circuit:
 `toffoli_count` on `UnaryIterationKernels`, `QROM`, and
 `AliasSamplingPrepare.qrom` counts the two-controlled `x` gates in the
 instruction tape, and the arithmetic kernels document closed forms
-(`2n - 2`, `2n - 1`, zero for the Draper family). The tests pin each number
+(add/subtract: zero for `n = 1`, `2n - 3` for `n >= 2`;
+comparators: `2n - 1`; Draper family: zero Toffolis). The tests pin each number
 against `cudaq.estimate_resources(...).count_controls("x", 2)`. None of these
 is a T count, a transpiled gate count, circuit depth, runtime, memory, or a
 measured hardware cost; see [resource levels](../conventions/resource-levels.md).
