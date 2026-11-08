@@ -183,6 +183,27 @@ puts a hand-written QPE shell around three oracles — exact time evolution,
 a product formula and this walk — to compare their decoders; `PhaseEstimation`
 packages the walk case.
 
+The worked example also executes the packaged API on the same H2 Hamiltonian
+and Hartree-Fock preparation, alongside its existing three-oracle comparison.
+This is another implementation of the walk approach, not a fourth physical
+oracle. Core/nuclear energy is already encoded once.
+
+It compares the exact centered and textbook folded phase marginals, then
+compares seeded 20,000-shot histograms to exact *unfolded* marginals using an
+a priori total-variation bound. With M=2^m bins and failure budget delta,
+the bound is
+
+.. math::
+
+   t=\min\left(1,\sqrt{\frac{M\log 2+\log(2/\delta)}{2S}}\right).
+
+At m=6, S=20,000 and delta=1e-6, this is about 0.0384. Folding mirror phases
+must not precede the sampling check. Energy acceptance uses the cosine of
+the neighboring half-bin edges, clipped to the folded endpoints, rather
+than a uniform energy tolerance or fitted offset. QPE retains the input's
+spectral overlap weights; a high-overlap Hartree-Fock state explains the
+dominant ground-energy cell.
+
 State preparation injection
 ---------------------------
 

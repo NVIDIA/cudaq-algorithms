@@ -133,8 +133,17 @@ three different constructions of the unitary whose phase reveals energy:
      - :math:`E = -\alpha\cos\theta`
 
 The walk case is what `cudaq_algorithms.PhaseEstimation` packages (see
-:doc:`../guide/qubitization_qsvt`); the example keeps its own shell so the
-three oracles share one circuit and one readout.
+:doc:`../guide/qubitization_qsvt`). After the three-oracle comparison, the
+example executes that packaged interface with the same Hamiltonian and
+Hartree-Fock preparation: build a measured kernel, call ``cudaq.sample``,
+and decode with ``energies_from_counts``. It is another implementation
+of the walk approach, rather than a fourth physical oracle.
+
+The new section checks the textbook and centered folded exact marginals,
+seeded sampled-versus-exact unfolded distributions with a declared
+statistical bound, and nonlinear cosine phase-cell edges. Only phase bits
+are measured; public decoders handle register interpretation and mirror
+folding. The encoded identity/core energy is included once.
 
 The product-formula oracle shows a subtlety of composing library evolution
 under control: `Trotter` evolves the nonidentity part of the Hamiltonian, so
@@ -155,7 +164,8 @@ cheaper classically. The walk is here because fault-tolerant algorithms
 commonly assume structured PREPARE/SELECT access, and this shell is exactly
 how such an oracle drops into QPE. Six counting qubits keep the script fast
 on the CPU simulator; every modal estimate is asserted to land within one
-phase cell (about 34 mHa here) of the exact ground energy. Resolution scales
+phase cell of the exact ground energy. The time-oracle half-cell is about
+34 mHa here; walk cells use their own asymmetric cosine edges. Resolution scales
 with the register: at 12 counting qubits the same circuits reach roughly
 0.1--0.5 mHa.
 

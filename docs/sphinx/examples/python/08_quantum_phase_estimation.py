@@ -29,6 +29,12 @@ eigenvalues with the input state's spectral weights. H2 works well because
 Hartree-Fock has dominant ground-state overlap. Each modal estimate is
 checked to land within one phase cell of the exact ground energy.
 
+The final section executes PhaseEstimation's packaged textbook walk ladder
+on the same input. Its public decoders, exact phase marginal, sampled
+statistical check, and cosine phase cells are compared with the existing
+centered walk. This is another implementation of method 3, not another
+physical oracle.
+
 The walk QPE core follows the centered exponent schedule of Berry et al.,
 "Rapid initial-state preparation for the quantum simulation of strongly
 correlated molecules", PRX Quantum 6, 020327 (2025).
@@ -40,12 +46,14 @@ from __future__ import annotations
 
 import math
 import os
+import time
 
 import cudaq
 import numpy as np
 import scipy
 
-from cudaq_algorithms import PauliLCU, chemistry, stateprep, trotter
+from cudaq_algorithms import PauliLCU, PhaseEstimation, chemistry, stateprep, trotter
+from cudaq_algorithms import sim_utils as sim
 
 # ----------------------------------------------------------------------
 # Classical decoding helpers: counts -> probabilities -> modal bin -> energy
@@ -105,7 +113,109 @@ def decode_walk_qpe(probabilities: np.ndarray,
     return mode, -alpha * math.cos(phase)
 
 
+def check(label, error, tolerance=1e-10):
+    passed = np.isfinite(error) and error <= tolerance
+    print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+          f"{'PASS' if passed else 'FAIL'}")
+    if not passed:
+        raise AssertionError(label)
+
+
+def folded(probabilities):
+    half = len(probabilities) // 2
+    result = probabilities[:half + 1].copy()
+    result[1:half] += probabilities[-1:half:-1]
+    return result
+
+
+def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
+                             centered_sampled, counting_qubits, shots,
+                             exact_ground_energy):
+    print("\nPackaged PhaseEstimation: the same walk, a textbook power ladder")
+    qpe = PhaseEstimation(encoding)
+    measured = qpe.kernel(counting_qubits,
+                          state_prep=prepare_hartree_fock,
+                          measure=True)
+    cudaq.set_random_seed(109)
+    counts = cudaq.sample(measured, shots_count=shots)
+    ranked = qpe.energies_from_counts(counts, counting_qubits, top=3)
+    sampled = qpe.phase_probabilities_from_counts(counts, counting_qubits)
+    # The public decoder also accepts full-register counts, whose layout is
+    # system | phase | ancilla. No manual string slicing is needed here.
+    check("only phase bits measured",
+          max(abs(len(str(bits)) - counting_qubits) for bits in counts), 0)
+    exact = sim.qpe.phase_probabilities(qpe,
+                                        counting_qubits,
+                                        state_prep=prepare_hartree_fock)
+    bins = 1 << counting_qubits
+    check("exact phase marginal normalized", abs(float(exact.sum()) - 1))
+    # A priori union/Hoeffding bound over phase-bin subsets, delta=1e-6.
+    # Compare unfolded distributions before identifying conjugate energies.
+    delta = 1e-6
+    tv_bound = min(
+        1., np.sqrt((bins * np.log(2) + np.log(2 / delta)) / (2 * shots)))
+    tv = lambda a, b: 0.5 * float(np.sum(np.abs(a - b)))
+    check("sampled versus exact unfolded phase TV", tv(sampled, exact),
+          tv_bound)
+
+    # Same physical oracle, different schedule and allocation order. Disable
+    # measurement in the centered shell to obtain its exact phase marginal.
+    centered_state = np.asarray(
+        cudaq.get_state(centered_kernel, counting_qubits, encoding.num_system,
+                        encoding.num_ancilla, False))
+    centered_exact = np.sum(np.abs(
+        centered_state.reshape(1 << encoding.num_system,
+                               1 << encoding.num_ancilla, bins))**2,
+                            axis=(0, 1))
+    check("centered versus textbook folded exact probabilities",
+          tv(folded(centered_exact), folded(exact)))
+    check("centered sampled versus its exact unfolded phase TV",
+          tv(centered_sampled, centered_exact), tv_bound)
+    check("two sampled folded distributions",
+          tv(folded(centered_sampled), folded(sampled)), 2 * tv_bound)
+    decoded = np.array(
+        [qpe.phase_to_energy(j, counting_qubits) for j in range(bins)])
+    expected = -encoding.alpha * np.cos(2 * np.pi * np.arange(bins) / bins)
+    check("public cosine decoder on every phase bin",
+          float(np.max(np.abs(decoded - expected))))
+
+    mode, _ = decode_walk_qpe(exact, encoding.alpha)
+    sampled_mode, sampled_energy = decode_walk_qpe(sampled, encoding.alpha)
+    centered_mode, _ = decode_walk_qpe(centered_sampled, encoding.alpha)
+    check("sampled dominant energy matches public ranking",
+          abs(sampled_energy - ranked[0][0]))
+    check("centered and textbook dominant energy cell",
+          abs(centered_mode - mode), 0)
+    check("sampled and exact dominant energy cell", abs(sampled_mode - mode),
+          0)
+    lower = -encoding.alpha * math.cos(
+        2 * math.pi * max(0., mode - 0.5) / bins)
+    upper = -encoding.alpha * math.cos(
+        2 * math.pi * min(bins / 2, mode + 0.5) / bins)
+    check("exact ground energy lies in cosine phase cell",
+          max(lower - exact_ground_energy, exact_ground_energy - upper, 0.),
+          1e-9)
+    print(
+        f"m={counting_qubits}, shots={shots}, alpha={encoding.alpha:.9f}, "
+        f"total qubits={encoding.num_system+counting_qubits+encoding.num_ancilla}, "
+        f"textbook controlled-walk steps={bins-1}")
+    print(f"sampling seed=109; unfolded TV={tv(sampled, exact):.6f}, "
+          f"a priori bound={tv_bound:.6f}, delta={delta}")
+    for value, probability in ranked:
+        print(f"  folded E={value:+.12f} Ha, probability={probability:.6f}")
+    print(f"ground-energy cell: [{lower:+.9f}, {upper:+.9f}] Ha")
+    print("The encoded Hamiltonian already includes core/nuclear energy once.")
+    print("PhaseEstimation builds circuits and decodes; the caller executes.")
+    print(
+        "QPE weights reflect input overlaps; it does not select the ground state."
+    )
+    print(
+        "Long simulated ladders (from m=13) need sim.run_on_large_stack, "
+        "including when cudaq.sample is the executor; they are not run here.")
+
+
 def main() -> int:
+    started = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
 
     try:
@@ -292,7 +402,8 @@ def main() -> int:
     controlled_walk_dagger = encoding.controlled_adjoint_walk_step_kernel()
 
     @cudaq.kernel
-    def qpe_walk(n_counting_q: int, n_system_q: int, n_signal_q: int):
+    def qpe_walk(n_counting_q: int, n_system_q: int, n_signal_q: int,
+                 measure_phase: bool):
         counting_and_signal = cudaq.qvector(n_counting_q + n_signal_q)
         counting = counting_and_signal.front(n_counting_q)
         signal = counting_and_signal.back(n_signal_q)
@@ -327,7 +438,8 @@ def main() -> int:
                 swap(counting[bit], counting[n_counting_q - 1])
 
         iqft(counting)
-        mz(counting)
+        if measure_phase:
+            mz(counting)
 
     # 6. Execute all three circuits: the same phase register, the same
     #    Hamiltonian, the same Hartree-Fock state, and 20,000 shots each.
@@ -360,6 +472,7 @@ def main() -> int:
                                counting_qubits,
                                system_qubit_count,
                                encoding.num_ancilla,
+                               True,
                                shots_count=shots)
     walk_sampled = sampled_probabilities(walk_counts, counting_qubits, shots)
 
@@ -401,6 +514,10 @@ def main() -> int:
     )
     assert walk_lower - 1e-9 <= exact_ground_energy <= walk_upper + 1e-9
 
+    packaged_walk_comparison(encoding, prepare_hartree_fock, qpe_walk,
+                             walk_sampled, counting_qubits, shots,
+                             exact_ground_energy)
+    print(f"Total example elapsed: {time.perf_counter()-started:.2f}s")
     print("\nOK — all three QPE oracles land within one phase cell of the "
           "exact ground energy.")
     return 0
