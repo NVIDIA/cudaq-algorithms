@@ -284,6 +284,74 @@ reflection observable would expand to ``2^num_ancilla`` Pauli terms:
 `Walk` refuses above 20 ancillas. Take Chebyshev data from ``walk_kernel``
 powers on a statevector simulator.
 
+Sparse inverse application: heat diffusion
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example 10 on :doc:`../examples_rst/getting_started` advances a localized
+temperature profile by one implicit step in a rod with zero-temperature
+endpoints. Backward Euler and centered differences give
+:math:`A T^{n+1}=T^n`, with
+:math:`A=\operatorname{tridiag}(-r,1+2r,-r)` and
+:math:`r=D\Delta t/\Delta x^2`. The fixed endpoints are eliminated, leaving
+a symmetric positive-definite interior problem with clipped boundaries.
+See the
+`finite-difference derivation <https://hplgit.github.io/INF5620/doc/pub/H14/diffu/html/._main_diffu001.html>`_.
+
+The default uses four interior points, r=0.25, and initial temperatures
+[0,1,0,0]. `banded_oracles` supplies location shifts and boundary-masked
+value loads; three bands pad to four slots. With h=1.5, alpha=6 and six
+angle bits, the circuit has two system qubits, six block ancillas and ten
+deterministic scratch qubits: 18 in total. Both projection and reflection
+include the complete ancilla register.
+
+An independent arcsine/nearest-even/clamp/sine-squared calculation builds
+the represented matrix before any circuit runs. The finite angle code
+rounds even the maximal diagonal, and structural corner zeros remain zero.
+NumPy solves the ideal and represented systems separately. Column-by-column
+circuit checks verify the represented block, not a fitted reference.
+
+The scaled odd CKS polynomial
+
+.. math::
+
+   p(x)=c\frac{1-(1-x^2)^B}{x},\qquad
+   B=\left\lceil\frac{\log(1/\epsilon)}{x_{\min}^2}\right\rceil,
+   \qquad c=0.9/\sqrt B
+
+uses :math:`x_{\min}=\lambda_{\min}(\widetilde A)/\alpha`.
+Global boundedness follows from
+:math:`|f_B(x)|\le\min(B|x|,1/|x|)\le\sqrt B`.
+The default relative target 1e-3 needs B=206 and a full CKS degree of 411,
+despite the small physical condition number. Stable binomial tails form
+coefficients. For practical CPU execution the default discards a Chebyshev
+tail whose sum of absolute coefficients is below 1e-10, reducing the
+executed degree to 125. Since every Chebyshev basis function has magnitude
+at most one on [-1,1], this is a uniform error bound. The example checks
+that the combined inverse bound still meets the requested target and
+propagates the discarded tail into the physical error budget. Matrix
+precision and the inverse target are unchanged. ``--full-cks`` executes
+all 411 degrees. Degree and qubit guards reject excessive requests before
+large allocation or phase generation.
+
+QSPPACK synthesizes phases. An independent 2x2 signal model checks the
+raw complex QSVT response and the analytical odd-parity/global-phase
+correction. For beta=norm(T_initial), the physical recovery factor is
+beta/(c*alpha). A scaled second RHS checks this normalization without
+rerunning an identical normalized state or fitting a scalar.
+
+The error budget separates matrix coefficient discretization, CKS approximation,
+the bounded Chebyshev tail, phase synthesis on the actual spectrum, and
+fp64 circuit roundoff. The
+per-node table and full-vector residual compare with the same discrete
+NumPy problem. They do not establish continuum PDE accuracy, which also
+depends on spatial and temporal discretization.
+
+Full-state access and real-response extraction are simulator postprocessing.
+The raw good-block norm includes a complementary imaginary response and is
+not an isolated inverse-filter success probability. The example supports
+`--points`, `--r`, `--value-bits`, `--inverse-epsilon`, and lazy headless
+`--plot`; its default requires QSPPACK, and only plotting requires Matplotlib.
+
 Bring your own encoding: the double-factorized example
 ------------------------------------------------------
 

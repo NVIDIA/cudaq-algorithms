@@ -95,7 +95,9 @@ positive-definite system is padded to three qubits, block-encoded, and
 inverted with a Childs-Kothari-Somma polynomial (degree set by the condition
 number); the good-subspace state is proportional to ``A^-1 b``, with the
 scale recovered classically. Verified against ``numpy.linalg.solve``.
-Requires ``qsppack`` for the phase factors, like example 2.
+Requires ``qsppack`` for the phase factors, like example 2. The application
+in :ref:`sparse-heat-step` below derives a banded sparse inverse from a
+physical model and compares every temperature coordinate with NumPy.
 
 .. literalinclude:: ../examples/python/07_matrix_inversion_qsvt.py
    :language: python
@@ -183,5 +185,41 @@ moments, a negative-coefficient shift ``H - E_ref I``, and a QSVT sequence
 are verified against an independent sparse Jordan-Wigner reference.
 
 .. literalinclude:: ../examples/python/09_hubbard_combined_encoding.py
+   :language: python
+   :start-after: [Begin Documentation]
+
+.. _sparse-heat-step:
+
+Sparse matrix inversion for heat diffusion
+-------------------------------------------
+
+One backward-Euler step in a rod produces a tridiagonal SPD matrix after
+fixed zero boundary values are eliminated. Arithmetic banded oracles feed
+the existing QSVT machinery; NumPy independently solves both the ideal
+matrix and the finite-angle matrix actually represented by the circuit.
+The example checks their encoded block, the long complex QSVT response,
+physical scale restoration, full-vector errors, and the residual separately.
+
+Four interior points and six angle bits require 18 total qubits. The full
+CKS inverse has degree 411 at the default 1e-3 target; a rigorously bounded
+Chebyshev tail below 1e-10 reduces the default executed degree to 125.
+``--full-cks`` retains the complete polynomial. Degree depends on sparse
+normalization as well as physical conditioning. The per-node
+table compares initial, ideal NumPy, quantized NumPy, and QSVT temperatures.
+Full-state real-response extraction is simulator postprocessing; its raw
+good-block norm is not an isolated inverse-filter success probability.
+
+The discretization follows the
+`backward-Euler derivation <https://hplgit.github.io/INF5620/doc/pub/H14/diffu/html/._main_diffu001.html>`_.
+See :doc:`../guide/block_encodings` for sparse access and error budgets.
+The NumPy comparison validates the discrete system; a PDE convergence
+study would additionally test space/time accuracy.
+
+For an optional saved figure, install Matplotlib and run
+``python3 10_sparse_heat_equation.py --value-bits 7 --plot heat_step.png``.
+Plotting is headless and includes both fixed endpoints. The default run
+requires QSPPACK but does not import Matplotlib.
+
+.. literalinclude:: ../examples/python/10_sparse_heat_equation.py
    :language: python
    :start-after: [Begin Documentation]
