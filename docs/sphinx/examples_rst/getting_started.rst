@@ -92,9 +92,19 @@ The payoff of QSVT's "pick a polynomial" design: example 2 approximated
 approximating ``1/x`` and the *same* `PauliLCU` + `QSVT` machinery becomes a
 quantum linear solver -- the QSVT reading of HHL. A 5x5 symmetric
 positive-definite system is padded to three qubits, block-encoded, and
-inverted with a Childs-Kothari-Somma polynomial (degree set by the condition
-number); the good-subspace state is proportional to ``A^-1 b``, with the
-scale recovered classically. Verified against ``numpy.linalg.solve``.
+inverted with a Childs-Kothari-Somma polynomial. Degree depends on the
+normalized minimum eigenvalue, including the encoding's alpha. The known
+input, polynomial, and encoding scales restore physical units without
+fitting to the NumPy solution.
+
+A second 2x2 SPD case uses the matrix-data sparse constructor at three
+value-angle bits, generates fresh phases for its represented spectrum,
+and executes a full-vector inverse and residual check. Quantization,
+polynomial, phase-synthesis, and circuit errors have separate budgets.
+Both cases use simulator full-state real-response extraction; the raw
+complex good-block norm is not an isolated inverse-filter success probability.
+See :doc:`block_encodings` for the sparse-access introduction. Verified
+against independent ``numpy.linalg.solve`` references.
 Requires ``qsppack`` for the phase factors, like example 2.
 
 .. literalinclude:: ../examples/python/07_matrix_inversion_qsvt.py

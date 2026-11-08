@@ -21,6 +21,22 @@ kernels (`pauli_lcu.prepare`, the select, and the walk) it exposes.
    :language: python
    :start-after: [Begin Documentation]
 
+Sparse matrix data and arithmetic oracles
+------------------------------------------
+
+Construct the same small SPD matrix from SciPy data and clipped banded
+oracles, inspect slots/normalization/workspace, and compare each encoded
+block to an independently quantized NumPy reference. Both routes execute
+Walk and QSVT consumers. A four-point arithmetic case verifies boundary
+clipping; alternative input forms and dilation are shown through metadata.
+
+The sparse case in example 07 on :doc:`getting_started` continues with an
+executed inverse and separate coefficient/polynomial/circuit error budgets.
+
+.. literalinclude:: ../examples/python/sparse_block_encoding.py
+   :language: python
+   :start-after: [Begin Documentation]
+
 The double-factorized block encoding vs a flat PauliLCU
 -------------------------------------------------------
 

@@ -27,11 +27,18 @@ Three ideas carry the example:
     Childs-Kothari-Somma closed form: (1 - (1-x^2)^b)/x is an odd
     polynomial (degree 2b-1) with an exact Chebyshev expansion, and it
     tracks 1/x wherever |x| is bounded away from 0. Degree grows like
-    kappa^2 log(1/eps), so a well-conditioned A keeps it small.
+    (alpha/lambda_min)^2 log(1/eps): encoding normalization matters as well
+    as the physical condition number.
   * Normalization. A QSVT polynomial must satisfy |p| <= 1 on [-1, 1],
     but 1/x is unbounded. So we implement a *scaled* inverse p(x) ~ c/x;
     the circuit returns c*alpha*A^-1 b, and the classical constant is
-    recovered from A and b afterward (standard HHL post-processing).
+    recovered from the known input, polynomial, and encoding scales.
+
+A second, 2x2 sparse case uses table-backed encode_sparse at three angle
+bits, independently reconstructs the quantized operator, and generates its
+own inverse phases. It separates circuit, quantization, and polynomial
+errors. Real-response extraction uses full-state simulator postprocessing;
+it is not a coherent procedure for reading out every solution coordinate.
 
 Verified against numpy.linalg.solve: direction fidelity ~1 and a small
 residual ||A x_hat - b||. Run: python3 07_matrix_inversion_qsvt.py
@@ -41,14 +48,16 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import time
 
 import cudaq
 import numpy as np
 from numpy.polynomial import chebyshev
-from scipy.special import comb
+from scipy.stats import binom
 
 from cudaq_algorithms import PauliLCU, PhaseSequence, QSVT
 from cudaq_algorithms import sim_utils as sim
+from cudaq_algorithms.sparse import encode_sparse
 
 _PAULIS = {
     "I": np.eye(2, dtype=complex),
@@ -89,21 +98,16 @@ def inverse_chebyshev_coeffs(b: int) -> np.ndarray:
 
     (1-(1-x^2)^b)/x = 4 sum_j (-1)^j [2^-2b sum_{i=j+1}^b C(2b, b+i)] T_{2j+1}.
     """
-    coeffs = np.zeros(b)
-    for j in range(b):
-        tail = sum(comb(2 * b, b + i, exact=True) for i in range(j + 1, b + 1))
-        coeffs[j] = 4 * ((-1)**j) * tail / (2.0**(2 * b))
-    return coeffs
+    # Stable binomial survival probabilities avoid overflowing 2.0**(2*b).
+    j = np.arange(b)
+    return 4 * (-1.)**j * binom.sf(b + j, 2 * b, .5)
 
 
 def evaluate_odd(coeffs: np.ndarray, x: np.ndarray) -> np.ndarray:
     """Evaluate sum_j coeffs[j] T_{2j+1}(x)."""
-    value = np.zeros_like(x, dtype=float)
-    for j, coefficient in enumerate(coeffs):
-        basis = np.zeros(2 * j + 2)
-        basis[2 * j + 1] = 1.0
-        value += coefficient * chebyshev.chebval(x, basis)
-    return value
+    full = np.zeros(2 * len(coeffs))
+    full[1::2] = coeffs
+    return chebyshev.chebval(x, full)
 
 
 def inverse_phase_sequence(x_min: float, epsilon: float):
@@ -116,15 +120,17 @@ def inverse_phase_sequence(x_min: float, epsilon: float):
     import qsppack
 
     b = max(int(np.ceil(np.log(1 / epsilon) / x_min**2)), 3)
+    print(f"Planning CKS degree {2*b-1} from x_min={x_min:.6f}", flush=True)
+    if 2 * b - 1 > 511:
+        raise ValueError(
+            "requested inverse exceeds this example's degree-511 guard")
     coeffs = inverse_chebyshev_coeffs(b)
-    # 1/x-proxy peaks at ~sqrt(b); rescale so |p| tops out near 0.9. Leaving
-    # headroom below 1 is what keeps the phase-factor solve well-conditioned.
-    grid = np.linspace(-1, 1, 4000)
-    scale = 0.9 / np.max(np.abs(evaluate_odd(coeffs, grid)))
+    # |f_B(x)| <= min(B|x|, 1/|x|) <= sqrt(B) gives global headroom.
+    scale = 0.9 / np.sqrt(b)
     coeffs = coeffs * scale
 
     options = {
-        "criteria": 1e-8,
+        "criteria": 1e-10,
         "method": "Newton",
         "typePhi": "full",
         "useReal": True,
@@ -135,7 +141,128 @@ def inverse_phase_sequence(x_min: float, epsilon: float):
     return [float(p) for p in phases], scale, b
 
 
+def check(label, error, tolerance=1e-10):
+    passed = np.isfinite(error) and error <= tolerance
+    print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+          f"{'PASS' if passed else 'FAIL'}")
+    if not passed:
+        raise AssertionError(label)
+
+
+def qsp_response(phases, values):
+    """Independent raw device response; the walk signal is minus H/alpha."""
+    responses = []
+    for value in values:
+        root = np.sqrt(max(0., 1 - value * value))
+        step = np.array([[-value, -root], [root, -value]], dtype=complex)
+        result = np.diag([np.exp(1j * phases[0]), np.exp(-1j * phases[0])])
+        for phase in phases[1:]:
+            result = np.diag([np.exp(1j * phase),
+                              np.exp(-1j * phase)]) @ step @ result
+        responses.append(np.exp(1j * np.sum(phases)) * result[0, 0])
+    return np.array(responses)
+
+
+def sparse_inverse():
+    """Fresh phases for a power-of-two sparse SPD system, with no fitted scale."""
+    started = time.perf_counter()
+    ideal = np.array([[1.5, -.25], [-.25, 1.5]])
+    rhs = np.array([1., 0.])  # Not an eigenvector.
+    beta = float(np.linalg.norm(rhs))
+    encoding = encode_sparse(ideal, value_bits=3)
+    print("\nSparse inverse: QROM-backed 2x2 SPD matrix; report:",
+          encoding.report)
+    print(
+        f"system={encoding.num_system}, block ancillas={encoding.num_block_ancilla}, "
+        f"scratch={encoding.num_scratch}, all ancillas={encoding.num_ancilla}, "
+        f"total={encoding.num_system+encoding.num_ancilla}")
+    # The same independent angle rule as the public storage contract. Do not
+    # obtain the reference by multiplying a measured block by alpha.
+    realized = np.zeros_like(ideal)
+    for row, column in zip(*np.nonzero(ideal)):
+        value = ideal[row, column]
+        theta = np.arcsin(np.sqrt(abs(value) / encoding.h))
+        code = min((1 << encoding.value_bits) - 1,
+                   round((1 << encoding.value_bits) * theta / (np.pi / 2)))
+        realized[row, column] = np.sign(value) * encoding.h * np.sin(
+            np.pi * code / (2 * (1 << encoding.value_bits)))**2
+    columns = []
+    for index in range(2):
+        basis = np.zeros(2, dtype=complex)
+        basis[index] = 1.
+        columns.append(sim.action(encoding, basis))
+    check("sparse encoding versus quantized matrix",
+          np.max(np.abs(encoding.alpha * np.column_stack(columns) - realized)))
+    exact = np.linalg.solve(ideal, rhs)
+    rounded = np.linalg.solve(realized, rhs)
+    values, vectors = np.linalg.eigh(realized)
+    normalized = values / encoding.alpha
+    epsilon = 1e-3
+    phases, scale, half_degree = inverse_phase_sequence(
+        float(normalized.min()), epsilon)
+    polynomial = scale * evaluate_odd(inverse_chebyshev_coeffs(half_degree),
+                                      normalized)
+    check("sparse relative inverse polynomial",
+          np.max(np.abs(1 - normalized * polynomial / scale)), epsilon + 1e-12)
+    response = qsp_response(phases, normalized)
+    # Odd parity under x -> -x supplies minus; doubled projector phases
+    # supply exp(i*sum(phi)). Verify these corrections before any solve.
+    corrected = -(response * np.exp(-1j * np.sum(phases))).real
+    phase_error = float(np.max(np.abs(corrected - polynomial)))
+    check("sparse phase synthesis versus inverse polynomial", phase_error,
+          2e-8)
+    ket = np.asarray(rhs / beta, dtype=complex)
+    raw = sim.run_on_large_stack(sim.transform, QSVT(encoding), ket,
+                                 PhaseSequence(phases, convention="qsp"))
+    expected = vectors @ (response * (vectors.conj().T @ ket))
+    circuit_atol = 1e-8
+    check("sparse raw complex QSVT versus scalar model",
+          np.max(np.abs(raw - expected)), circuit_atol)
+    solution = -(raw * np.exp(-1j * np.sum(phases))).real * beta / (
+        scale * encoding.alpha)
+    matrix_error = float(np.linalg.norm(realized - ideal, 2))
+    quantization_bound = matrix_error * np.linalg.norm(exact) / values.min()
+    polynomial_bound = epsilon * np.linalg.norm(rounded)
+    phase_bound = beta * phase_error / (scale * encoding.alpha)
+    roundoff_bound = beta * np.sqrt(2) * circuit_atol / (scale *
+                                                         encoding.alpha)
+    inverse_bound = polynomial_bound + phase_bound + roundoff_bound
+    overall_bound = quantization_bound + inverse_bound
+    check("sparse quantized versus ideal NumPy solve",
+          np.linalg.norm(rounded - exact), quantization_bound + 1e-12)
+    check("sparse reconstructed versus quantized solve",
+          np.linalg.norm(solution - rounded), inverse_bound)
+    check("sparse reconstructed versus ideal solve",
+          np.linalg.norm(solution - exact), overall_bound)
+    residual = np.linalg.norm(ideal @ solution - rhs) / beta
+    check("sparse physical residual", residual,
+          np.linalg.norm(ideal, 2) * overall_bound / beta)
+    print("  coordinate   ideal NumPy    quantized NumPy    QSVT")
+    for index in range(2):
+        print(f"  {index:10d} {exact[index]:13.9f} {rounded[index]:17.9f} "
+              f"{solution[index]:13.9f}")
+    print(
+        f"matrix quantization error={matrix_error:.3e}; "
+        f"relative solution error={np.linalg.norm(solution-exact)/np.linalg.norm(exact):.3e}"
+    )
+    print(f"degree={2*half_degree-1}; c={scale:.9f}; beta={beta}; "
+          f"known physical recovery={beta/(scale*encoding.alpha):.9f}")
+    print(f"error bounds: quantization={quantization_bound:.3e}, "
+          f"polynomial={polynomial_bound:.3e}, phase={phase_bound:.3e}, "
+          f"roundoff={roundoff_bound:.3e}")
+    print(
+        "Real-response extraction is simulator postprocessing; the raw good-block "
+        "norm is not isolated inverse-filter success probability.")
+    print(
+        "No zero padding is introduced; zero-padded reciprocal problems need "
+        "explicit treatment of zero eigenvalues and RHS support.")
+    print(
+        f"Sparse case elapsed: {time.perf_counter()-started:.2f}s; "
+        f"maximum executed qubits: {encoding.num_system+encoding.num_ancilla}")
+
+
 def main() -> int:
+    started = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
 
     # 1. A 5x5 symmetric positive-definite matrix with a controlled spectrum
@@ -182,19 +309,29 @@ def main() -> int:
     #    sequence, keep the all-zero-ancilla block. The qsp convention makes
     #    the good-subspace amplitude complex (p(x) + i * complementary(x));
     #    with a real b and real eigenvectors, the real part -- after removing
-    #    the qsp global phase exp(i * sum phi) -- is p(A/alpha) b.
+    #    the qsp global phase exp(i * sum phi) and odd-parity minus sign --
+    #    is p(A/alpha) b. Full-state real extraction is simulator postprocessing.
     b = np.zeros(8, dtype=complex)
     b[:5] = rng.normal(size=5)
     b /= np.linalg.norm(b)
 
     raw = sim.transform(transformer, b, PhaseSequence(phases,
                                                       convention="qsp"))
-    good = (raw * np.exp(-1j * np.sum(phases))).real
+    response = qsp_response(phases, x)
+    corrected_response = -(response * np.exp(-1j * np.sum(phases))).real
+    intended = scale * evaluate_odd(inverse_chebyshev_coeffs(degree_half), x)
+    check("dense phase convention versus polynomial",
+          np.max(np.abs(corrected_response - intended)), 2e-8)
+    values, vectors = np.linalg.eigh(a8)
+    response = qsp_response(phases, values / encoding.alpha)
+    expected_raw = vectors @ (response * (vectors.conj().T @ b))
+    check("dense raw QSVT versus scalar model",
+          np.max(np.abs(raw - expected_raw)), 1e-8)
+    good = -(raw * np.exp(-1j * np.sum(phases))).real
 
-    # 5. The state is proportional to A^-1 b. Recover the real constant from
-    #    A and b (both known), then check the residual -- HHL post-processing.
-    #    c = <b, A good> / <b, b> = scale * alpha up to the convention sign.
-    constant = float(np.real(np.vdot(b, a8 @ good)) / np.real(np.vdot(b, b)))
+    # 5. b has unit norm. The known polynomial and encoding scales recover
+    #    A^-1 b directly; no scalar is fitted to NumPy or to the residual.
+    constant = scale * encoding.alpha
     x_hat = good / constant
 
     exact = np.linalg.solve(a8, b).real
@@ -205,8 +342,7 @@ def main() -> int:
     solution_error = float(
         np.linalg.norm(x_hat - exact) / np.linalg.norm(exact))
 
-    print(f"\nrecovered constant c  : {constant:+.5f}  "
-          f"(|c| vs scale*alpha = {scale * encoding.alpha:.5f})")
+    print(f"\nknown response scale  : c*alpha = {constant:+.5f}")
     print(f"direction fidelity    : {fidelity:.6f}")
     print(f"residual ||A x - b||  : {residual:.3e}")
     print(f"solution rel. error   : {solution_error:.3e}")
@@ -215,6 +351,8 @@ def main() -> int:
     assert residual < 1e-2
     print("\nOK — QSVT applied 1/x to the block-encoded matrix; the "
           "good-subspace state solves A x = b.")
+    sparse_inverse()
+    print(f"Total example elapsed: {time.perf_counter()-started:.2f}s")
     return 0
 
 

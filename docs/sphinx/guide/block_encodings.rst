@@ -271,9 +271,9 @@ halves bit is the most significant), as
 ``o_loc`` / ``o_val`` and their explicit inverses, the slot count ``d``,
 the value bound ``h``, ``value_bits``, the work-qubit count and the
 reverse-slot involution; every inverse must hold on states whose work
-register enters ``|0>`` (flat, work-free oracles such as `banded_oracles`
-invert globally, table oracles built on unary-iteration walks only with
-clean scratch). The bundle records the system width it was built for and
+register enters ``|0>`` and restore that workspace. In particular, do not
+assume that table oracles built on unary-iteration walks invert on dirty
+scratch. The bundle records the system width it was built for and
 the encoding rejects a mismatch.
 
 **Register widths and moments.** ``num_ancilla`` counts every ancilla,
@@ -283,6 +283,65 @@ scratch included; `SparseOracleEncoding` exposes ``num_block_ancilla`` and
 reflection observable would expand to ``2^num_ancilla`` Pauli terms:
 `Walk` refuses above 20 ancillas. Take Chebyshev data from ``walk_kernel``
 powers on a statevector simulator.
+
+Matrix data versus arithmetic access
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :doc:`../examples_rst/block_encodings` sparse tutorial executes a 2x2
+SPD matrix through both `encode_sparse` and arithmetic `banded_oracles`.
+For the same matrix, table matching needs two slots (alpha=3), while three
+bands pad to four (alpha=6). Slots encode reversible structure and need
+not equal the maximum row nnz. Compare each block with its own normalization,
+rather than expecting equal raw blocks.
+
+The report's qubit total includes the system, block ancillas, and
+deterministic value/sign/work scratch. A separate four-point arithmetic
+case checks that boundaries are clipped, including both zero corner entries.
+The NumPy and integer-triple constructor forms are also shown through
+metadata; the nonsymmetric dilation demonstration is metadata only.
+
+Finite angle tables encode a represented matrix, not the exact input.
+For value bound h and b bits, independently compute
+
+.. math::
+
+   q=\min(2^b-1,\operatorname{round}(2^b\arcsin\sqrt{|a|/h}/(\pi/2))),
+   \qquad \widetilde a=\operatorname{sign}(a)h
+           \sin^2\!\left(\frac{\pi q}{2\,2^b}\right).
+
+Rounding is nearest-even and the top code is clamped. Preserve structural
+zeros and coefficient signs; the largest entry also has finite precision
+error. An entry error is at most :math:`h\pi/(2\,2^b)`; summing row errors
+gives a conservative spectral bound for these symmetric fixtures.
+The tutorial checks the block against the represented matrix at fp64
+precision, then reports its discrepancy from the requested matrix separately.
+
+The same objects drive `Walk` and `QSVT`. Short walk blocks use
+:math:`T_k(-\widetilde A/\alpha)`; an independent two-dimensional signal
+model checks a complex QSVT response. These are statevector checks, not
+measured moments.
+
+A sparse inverse
+~~~~~~~~~~~~~~~~~
+
+Example 07 on :doc:`../examples_rst/getting_started` retains the dense
+five-dimensional solve and adds a power-of-two sparse SPD solve with its
+own three-bit quantization and freshly generated phases. Its CKS degree
+depends on the represented minimum eigenvalue divided by alpha; phases
+from another encoding cannot simply be reused.
+
+For normalized input b/beta and target polynomial c/x, physical recovery is
+beta/(c*alpha). Odd parity of the negative-H walk and the QSP global phase
+are verified independently, without fitting a scalar to the NumPy solution.
+The example distinguishes coefficient, polynomial, phase-synthesis, and
+circuit error budgets, and checks a full vector and residual.
+
+Full-state access and real-response extraction are simulator postprocessing.
+The raw good-block norm includes a complementary complex response and is
+not the success probability of an isolated inverse filter. The factory's
+zero padding creates zero eigenvalues for non-power-of-two data; these
+reciprocal fixtures avoid that issue. The original dense example instead
+uses identity padding.
 
 Bring your own encoding: the double-factorized example
 ------------------------------------------------------
