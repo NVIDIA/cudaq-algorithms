@@ -1,9 +1,9 @@
 Block-encoding examples
 ===========================
 
-Two ways to hide a Hamiltonian inside a larger unitary. These examples walk the
-flat `PauliLCU` API and put the structured double-factorized encoding head to
-head with it.
+Hide a Hamiltonian inside a larger unitary using a Pauli sum, sparse matrix
+access, or a structured double-factorized representation. These examples
+exercise the shared consumers and compare the resulting encodings.
 
 .. seealso::
 
