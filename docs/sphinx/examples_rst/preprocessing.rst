@@ -10,6 +10,26 @@ two-electron integrals and trace the result through to block-encoding cost.
    :doc:`../guide/preprocessing` — the chemistry bridges and double
    factorization these examples build on.
 
+Fermion mappings on an interacting lattice
+-------------------------------------------
+
+Compare JW, BK, original superfast, and binary-tree generalized superfast
+mappings on one four-site spinless ring. An independent occupation-basis
+NumPy Hamiltonian checks coefficients and signs. Each superfast parity
+sector is restricted to the loop stabilizers' joint +1 eigenspace before
+all eight physical eigenvalues are compared, including multiplicities.
+The host-side tutorial reports Pauli weights, qubits, and code dimensions;
+it requires no chemistry or phase-generation package.
+
+.. seealso::
+
+   :doc:`../guide/preprocessing` for tensor and parity contracts;
+   example 09 on :doc:`getting_started` for a related lattice application.
+
+.. literalinclude:: ../examples/python/fermion_mappings_lattice.py
+   :language: python
+   :start-after: [Begin Documentation]
+
 Double factorization of the two-electron integrals
 --------------------------------------------------
 
