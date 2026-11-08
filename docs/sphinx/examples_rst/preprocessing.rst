@@ -1,9 +1,10 @@
 Preprocessing examples
 ==========================
 
-Classical preprocessing that shapes an electronic-structure Hamiltonian before
-it ever reaches a quantum circuit. These examples double-factorize the
-two-electron integrals and trace the result through to block-encoding cost.
+Classical preprocessing turns model coefficients or electronic-structure
+integrals into quantum-ready operators. These examples compare fermion
+mappings, double-factorize two-electron integrals, and trace the results
+through to block-encoding cost.
 
 .. seealso::
 
