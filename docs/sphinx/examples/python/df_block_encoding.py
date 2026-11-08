@@ -13,6 +13,7 @@ Integrals come from PySCF (``pip install pyscf``) via
 ``chemistry.from_pyscf``, for a menu of molecular configurations::
 
     python3 df_block_encoding.py [config] [--circuits]
+        [--rotation-backend {fixed,qrom,both}] [--angle-bits 4]
 
     h2         H2 / STO-3G           2 orbitals ->  4 system qubits  (default)
     h2o-cas44  H2O / STO-3G CAS(4,4) 4 orbitals ->  8 system qubits
@@ -38,11 +39,16 @@ skip circuit execution (statevector cost is printed)
 ``lih`` sits on the boundary: pass ``--circuits`` to run it anyway
 (hours on a typical CPU).
 
-Runs on the CPU statevector simulator; no compiled extension needed.
+The H2 default executes both fixed and QROM-programmed spatial frames,
+then reports a host-only precision sweep. Larger QROM programs are
+resource-only; the fixed-backend size policy above is preserved. Tight
+circuit checks target the represented operator, with angle rounding
+reported separately. No compiled extension is needed.
 """
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 
@@ -51,7 +57,8 @@ import scipy.sparse as sp
 
 import cudaq
 
-from cudaq_algorithms import PauliLCU, Walk, chemistry, state_from
+from cudaq_algorithms import (PauliLCU, PhaseSequence, QSVT, Walk, chemistry,
+                              state_from)
 from cudaq_algorithms import double_factorization as df
 
 # The encoding under demonstration is a sibling example file, not a package
@@ -59,7 +66,7 @@ from cudaq_algorithms import double_factorization as df
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from df_encoding import DoubleFactorizedEncoding
 
-cudaq.set_target("qpp-cpu")  # fp64: the checks below assert to ~1e-10
+cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
 
 try:
     from pyscf import ao2mo, gto, mcscf, scf
@@ -215,7 +222,163 @@ def check(label: str, condition: bool):
 # ----------------------------------------------------------------------
 
 
-def run(key: str, force_circuits: bool):
+def fock_matrix(orbital):
+    """Independent second quantization by determinant minors."""
+    occupied = [[p for p in range(len(orbital)) if bits >> p & 1]
+                for bits in range(1 << len(orbital))]
+    result = np.zeros((len(occupied), len(occupied)), dtype=complex)
+    for s, rows in enumerate(occupied):
+        for t, cols in enumerate(occupied):
+            if len(rows) == len(cols):
+                result[s, t] = np.linalg.det(orbital[np.ix_(rows, cols)])
+    return result
+
+
+def frame_hamiltonian(encoding, *, represented):
+    """Retained coefficients/Z words conjugated by independent Fock frames."""
+    frames = (encoding.represented_frame_matrices
+              if represented else encoding.ideal_frame_matrices)
+    lifts = [fock_matrix(np.kron(frame, np.eye(2))) for frame in frames]
+    dimension = 1 << encoding.num_system
+    result = np.zeros((dimension, dimension), dtype=complex)
+    for coefficient, qubits, frame in encoding.terms:
+        diagonal = np.array([(-1)**sum((bits >> q) & 1 for q in qubits)
+                             for bits in range(dimension)])
+        g = lifts[frame]
+        result += coefficient * (g * diagonal) @ g.conj().T
+    return result
+
+
+def angle_error_bound(encoding):
+    bounds = encoding.rotation_report["frame_error_bounds"]
+    return sum(
+        abs(c) * min(2., 2 * bounds[frame])
+        for c, qubits, frame in encoding.terms if qubits)
+
+
+def signal_response(x, phases):
+    """Scalar 2x2 projector-phase response; no quantum output calibration."""
+    s = np.sqrt(max(0., 1 - x * x))
+    w = np.array([[-x, -s], [s, -x]], dtype=complex)
+    result = np.diag([np.exp(1j * phases[0]), 1.])
+    for phi in phases[1:]:
+        result = np.diag([np.exp(1j * phi), 1.]) @ w @ result
+    return result[0, 0]
+
+
+def report_programmed_frames(one_body, eri, factorized, core_energy,
+                             angle_bits, circuits):
+    """Small H2 numerical capstone; larger programs are resource reports."""
+    encoding = DoubleFactorizedEncoding(one_body,
+                                        factorized.factorization,
+                                        rotation_backend="qrom",
+                                        angle_bits=angle_bits)
+    report = encoding.rotation_report
+    total = encoding.num_system + encoding.num_ancilla
+    print(f"\n  QROM frames: b={angle_bits}, alpha={encoding.alpha:.12g}, "
+          f"{report['mixing_slots']} real spatial mixing slots")
+    print(f"  Layout: {encoding.num_system} system + "
+          f"{report['term_index_width']} term index + "
+          f"{report['program_width']} angle + {report['ladder_width']} ladder "
+          f"= {total} qubits; controlled forms add one")
+    print(f"  SELECT QROM: variant={report['qrom_variant']}, "
+          f"table rows={report['table_size']}; "
+          f"{report['lookup_calls']} lookup/unlookup calls per SELECT")
+    print(f"  PREPARE: {report['prepare_rotations']} tree rotations; "
+          f"SELECT: {report['programmable_spatial_calls']} bit-controlled "
+          "spatial rotations (two spin sectors each); external control "
+          "acts only on Z words/signs, not on lookup or rotations.")
+    print("  Gate counts here are logical operations, without rotation "
+          "synthesis or paper-optimized normalization.")
+    check(
+        "fixed and QROM retain identical coefficients and alpha",
+        encoding.terms == factorized.terms
+        and encoding.alpha == factorized.alpha)
+    # Dense determinant-minor references grow exponentially. Only the default
+    # two-spatial-mode case runs them; larger molecules retain the original
+    # classical truncation/compression and fixed-backend demonstrations.
+    if len(one_body) > 2:
+        print("  QROM circuits and dense angle sweep: resource-only at this "
+              f"size ({total} qubits). Angle operator-error bound "
+              f"{angle_error_bound(encoding):.6g} Ha.")
+        return
+    for j, (_, qubits, frame) in enumerate(encoding.terms):
+        width = report["term_index_width"]
+        address = int(f"{j:0{width}b}"[::-1], 2)
+        print(
+            f"    term {j:2d} -> physical address {address:2d}, frame {frame}, "
+            f"Z{qubits}, packed angle row {report['angle_rows'][address]}")
+
+    input_h = reference_hamiltonian(one_body, eri).toarray()
+    df_h = reference_hamiltonian(one_body,
+                                 df.reconstruct_eri(
+                                     factorized.factorization)).toarray()
+    kept = frame_hamiltonian(factorized, represented=False)
+    represented = frame_hamiltonian(encoding, represented=True)
+    angle_error = np.linalg.norm(represented - kept, 2)
+    bound = angle_error_bound(encoding)
+    print(
+        f"  Operator errors (Ha): factorization={np.linalg.norm(df_h-input_h,2):.3e}, "
+        f"threshold={np.linalg.norm(kept-df_h,2):.3e}, "
+        f"angle={angle_error:.3e}, bound={bound:.3e} (+1e-10 floating slack)")
+    check("angle error satisfies its derived operator bound", angle_error
+          <= bound + 1e-10)
+    print(
+        f"  NumPy ground energies, including classical core offset: "
+        f"fixed={np.linalg.eigvalsh(kept)[0] + core_energy:.12f}, "
+        f"represented={np.linalg.eigvalsh(represented)[0] + core_energy:.12f} Ha"
+    )
+    print(
+        "  These are classical diagonalizations; action checks do not measure an energy."
+    )
+    print("  Host-only precision sweep (no circuit execution):")
+    ideal_energy = np.linalg.eigvalsh(kept)[0]
+    for bits in (4, 6, 8):
+        candidate = DoubleFactorizedEncoding(one_body,
+                                             factorized.factorization,
+                                             rotation_backend="qrom",
+                                             angle_bits=bits)
+        h_b = frame_hamiltonian(candidate, represented=True)
+        print(
+            f"    b={bits}: operator error={np.linalg.norm(h_b-kept,2):.3e}, "
+            f"ground-energy error={abs(np.linalg.eigvalsh(h_b)[0]-ideal_energy):.3e} Ha, "
+            f"{candidate.num_system + candidate.num_ancilla} qubits")
+    if not circuits or total > 20:
+        print(
+            f"  QROM circuit execution skipped; resource-only ({total} qubits)."
+        )
+        return
+    rng = np.random.default_rng(7)
+    ket = rng.normal(size=len(kept)) + 1j * rng.normal(size=len(kept))
+    ket = (ket / np.linalg.norm(ket)).astype(np.complex128)
+
+    def verify(label, kernel, expected):
+        actual = np.asarray(cudaq.get_state(kernel,
+                                            state_from(ket)))[:len(ket)]
+        error = float(np.max(np.abs(actual - expected)))
+        print(f"  {label}: max |diff|={error:.3e}, tolerance=1e-10")
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-10)
+        check(label, error <= 1e-10)
+
+    scaled = represented / encoding.alpha
+    verify("QROM <0|U|0> = H_b/alpha", encoding.encode_kernel(), scaled @ ket)
+    for order in (1, 2):
+        polynomial = -scaled if order == 1 else 2 * scaled @ scaled - np.eye(
+            len(kept))
+        verify(f"QROM Walk T_{order}(-H_b/alpha)", encoding.walk_kernel(order),
+               polynomial @ ket)
+    phases = [.3, -.4, .25]
+    values, vectors = np.linalg.eigh(scaled)
+    expected = (vectors * [signal_response(x, phases)
+                           for x in values]) @ (vectors.conj().T @ ket)
+    verify("QROM QSVT projector response",
+           QSVT(encoding).kernel(PhaseSequence(phases)), expected)
+    print(
+        "  QROM measured moments omitted: the expanded reflection observable "
+        "grows exponentially with workspace.")
+
+
+def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
     config = CONFIGS[key]
     one_body, eri, core_energy, scf_energy = config["build"]()
     n = one_body.shape[0]
@@ -330,6 +493,12 @@ def run(key: str, force_circuits: bool):
 
     # --- circuit story (size-gated) ---------------------------------------
     mode = config["mode"]
+    circuits = mode == "full" or (mode == "flagged" and force_circuits)
+    if rotation_backend in ("qrom", "both"):
+        report_programmed_frames(one_body, eri, factorized, core_energy,
+                                 angle_bits, circuits)
+    if rotation_backend == "qrom":
+        return
     total_qubits = num_system + factorized.num_ancilla
     if mode == "classical" or (mode == "flagged" and not force_circuits):
         amplitudes = f"2^{total_qubits}"
@@ -343,8 +512,10 @@ def run(key: str, force_circuits: bool):
               " the statevector simulator is the part that does not.")
         return
 
-    print(f"\n  Circuits: {num_system} system + {factorized.num_ancilla} "
-          f"ancilla = {total_qubits} qubits")
+    print(
+        f"\n  Fixed circuits: {num_system} system + {factorized.num_ancilla} "
+        f"index + 0 angle + 0 ladder = {total_qubits} qubits; "
+        "controlled forms add one")
     dim = 1 << num_system
     hamiltonian = reference_hamiltonian(one_body, eri)
     rng = np.random.default_rng(7)
@@ -394,8 +565,17 @@ def main():
                         action="store_true",
                         help="run circuits on boundary-size configurations "
                         "(lih; hours on a typical CPU)")
+    parser.add_argument("--rotation-backend",
+                        choices=("fixed", "qrom", "both"),
+                        default="both",
+                        help="DF rotation backend (default: both)")
+    parser.add_argument("--angle-bits",
+                        type=int,
+                        default=4,
+                        help="QROM full-turn angle bits (default: 4)")
     arguments = parser.parse_args()
-    run(arguments.config, arguments.circuits)
+    run(arguments.config, arguments.circuits, arguments.rotation_backend,
+        arguments.angle_bits)
 
 
 if __name__ == "__main__":

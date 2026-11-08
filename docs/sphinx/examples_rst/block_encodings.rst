@@ -34,7 +34,7 @@ How the example encoding works, in brief: the factorized Hamiltonian is
 regrouped so every term is diagonal in some rotated orbital basis -- the
 one-body part in the eigenbasis of the corrected one-body matrix, each
 factorization leaf in its own eigenbasis. SELECT walks through these
-frames with *uncontrolled* Givens-rotation networks (only the Z words and
+frames in its fixed backend with *uncontrolled* Givens networks (only Z words and
 sign phases carry ancilla controls, so unselected frames telescope to the
 identity), and the encoding's normalization reproduces the published LCU
 one-norm of ``double_factorization_one_norm(..., "lcu")`` exactly, up to
@@ -42,6 +42,15 @@ the identity term. Compressing the factorization (fewer leaves) shrinks
 the term count and, typically though not monotonically, the
 normalization -- the knob a flat Pauli expansion does not have. The full
 construction is documented in the example module's docstrings.
+
+The default H2 run also selects one real spatial frame coherently with
+QROM-loaded angle words. It compares fixed and represented operators,
+clears angle/ladder workspace, and executes Walk and QSVT against NumPy
+references. Use ``--rotation-backend {fixed,qrom,both}`` and
+``--angle-bits 4``. A host-only four/six/eight-bit sweep separates angle
+rounding from circuit error; larger QROM cases are resource-only.
+See the guide's real spatial frame section for register conventions and
+the distinction from the papers' complete DF algorithms.
 
 .. literalinclude:: ../examples/python/df_block_encoding.py
    :language: python

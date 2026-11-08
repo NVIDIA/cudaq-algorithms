@@ -288,8 +288,8 @@ Bring your own encoding: the double-factorized example
 ------------------------------------------------------
 
 The protocol's worked, full-scale demonstration is a *double-factorized*
-encoding of the electronic-structure Hamiltonian (von Burg et al., *PRX
-Quantum* **2**, 030305 (2021);
+encoding of the electronic-structure Hamiltonian (von Burg et al., *Phys.
+Rev. Research* **3**, 033055 (2021);
 `arXiv:2007.14460 <https://arxiv.org/abs/2007.14460>`_), implemented
 entirely against the public API as a runnable example — ``df_encoding.py``
 on the :doc:`block-encodings examples page <../examples_rst/block_encodings>`. Its dense-reference test
@@ -316,6 +316,84 @@ Use the example file as the template for writing your own encoding; the
 construction, its normalization, and a six-molecule benchmark against
 `PauliLCU` are documented with the example itself (see
 :doc:`../examples_rst/block_encodings`).
+
+
+QROM-programmed real spatial frames
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same example also accepts ``rotation_backend="qrom", angle_bits=4``;
+``"fixed"`` remains the class default. The molecular driver defaults to
+``--rotation-backend both --angle-bits 4``. The exact coefficient PREPARE
+and retained Z/ZZ terms are identical across backends, so alpha is unchanged.
+
+A frame on n spatial orbitals uses K=n(n-1)/2 real adjacent mixing slots.
+Every slot is retained, including zero angles. QR elimination leaves a
+sign diagonal D; the forward network realizes F=V D. These signs commute
+with every diagonal Z word and cancel in conjugation. This cancellation
+is specific to the present encoding; arbitrary basis changes and state
+preparation need their phases. Each public ``spatial_givens_rotation``
+acts on both interleaved spin sectors, including Jordan-Wigner parity
+through the intervening spectator qubit. Its real orbital block is
+``[[cos(theta), sin(theta)], [-sin(theta), cos(theta)]]``.
+
+Unsigned little-endian words encode full turns with nearest-even rounding:
+``code=round(theta*2**b/(2*pi)) mod 2**b``. Bit k controls a spatial
+rotation of angle ``2*pi*2**(k-b)``. A shared rounded frame F_b remains
+orthogonal. Independently rounding separate columns would not ensure
+this and could spoil Hermiticity of products of orbital reflections.
+
+The ancilla layout is ``[term index | K*b angle bits | QROM ladder]``.
+Existing term PREPARE/SELECT treat index qubit zero as the most significant
+logical bit, while QROM addresses are little-endian; table rows are
+therefore populated at bit-reversed term addresses. Identity and padded
+rows load zero programs. For n=1 there are no mixing slots and no QROM
+or program workspace is allocated.
+
+SELECT runs lookup, programmable adjoint, index-controlled signed Z word,
+programmable forward, and adjoint lookup. Words and ladder return to zero
+at its boundaries; index and system can stay entangled. External controls
+act only on the middle word/sign, allowing the sandwiches to cancel on
+the inactive branch, including relative phase. PREPARE touches the index
+slice only. Walk reflections and QSVT good-projector phases cover the
+complete ancilla, including words and ladder.
+
+``rotation_report`` returns detached metadata: backend, width, mixing
+slots, index/program/ladder widths, actual table size, packed rows, and
+separate PREPARE, lookup, and programmable-rotation counts.
+``ideal_frame_matrices`` and ``represented_frame_matrices`` return copies
+of F and F_b ordered by frame index. The fixed backend allocates no
+program/lookup workspace; ``num_ancilla`` includes all required workspace
+for either backend. These counts do not include an external enable or
+fault-tolerant rotation synthesis.
+
+The H2 driver builds independent NumPy Fock matrices using occupied-set
+determinant minors of ``kron(F, eye(2))``. It distinguishes the integral
+Hamiltonian H_input, reconstructed-tensor H_DF, retained fixed terms
+H_kept, and rounded-frame H_b. Tight circuit checks target H_b/alpha;
+angle error H_b-H_kept is reported separately from factorization and
+threshold error. For circular angle differences d, a two-spin frame has
+bound ``delta_f=min(2,2*sum(abs(d)))``; summing
+``abs(c_j)*min(2,2*delta_f)`` bounds the operator error of retained terms.
+The driver checks this bound and compares short Walk/QSVT actions with
+independent scalar/matrix responses. Ground energies are classical NumPy
+diagonalizations with the core offset added, not measured energies.
+
+The four/six/eight-bit precision sweep is host-only; only the requested
+width executes circuits. Larger QROM molecular programs print complete
+qubit estimates and are explicitly resource-only. Fixed-backend moments
+are retained; QROM measured moments are omitted because the reflection
+observable grows exponentially with workspace.
+
+This mechanism is motivated by von Burg et al., *Phys. Rev. Research*
+**3**, 033055 (2021), `arXiv:2007.14460
+<https://arxiv.org/abs/2007.14460>`_, supplementary VII B.1 and VII C,
+and Lee et al., *PRX Quantum* **2**, 030305 (2021),
+`arXiv:2011.03494 <https://arxiv.org/abs/2011.03494>`_, Appendix C.2,
+Figure 16. The example retains flat term preparation and diagonal Z/ZZ
+expansion. It does not reproduce the papers' nested DF preparation,
+degree-two Chebyshev construction, optimized normalization,
+phase-gradient synthesis, or optimized inverse-QROM costs. Its resource
+counts should not be substituted into those algorithms' cost formulas.
 
 Combining encodings
 -------------------
