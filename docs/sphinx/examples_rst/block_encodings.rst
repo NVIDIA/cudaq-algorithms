@@ -17,6 +17,12 @@ A guided tour of the `PauliLCU` block-encoding API: build the encoding from a
 spin operator, inspect its sizes and normalization, and exercise the device
 kernels (`pauli_lcu.prepare`, the select, and the walk) it exposes.
 
+The final sections compare exact and alias PREPARE/SELECT at ``mu=2`` and
+``mu=4`` using the same Hamiltonian and kernel-factory consumers. Independent
+NumPy references distinguish coefficient discretization from circuit error.
+A separate small fixture checks odd/even measured moments, and the resource
+table accounts for the extra alias workspace and different gate families.
+
 .. literalinclude:: ../examples/python/pauli_lcu_demo.py
    :language: python
    :start-after: [Begin Documentation]

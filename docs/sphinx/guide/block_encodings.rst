@@ -103,6 +103,25 @@ API is otherwise the same: every kernel factory, `Walk`, `QSVT` and
 `select_observable` work unchanged, and `kernel_args` (the exact backend's
 flattened arrays) is the one member that raises.
 
+The :doc:`../examples_rst/block_encodings` walkthrough executes the same
+mixed-sign, Y-containing Hamiltonian through exact and alias backends at
+``mu=2`` and ``mu=4``. Both encodings drive the same action, Walk, and QSVT
+code. Alias ancillas include preparation garbage and SELECT work; the good
+projector covers the entire register.
+
+Finite tables encode a represented Hamiltonian ``H_mu`` rather than the ideal
+``H``. The example independently enumerates the public alias tables to
+construct ``H_mu`` and separates two checks: circuit action against
+``H_mu/alpha`` at fp64 precision, and the operator error ``||H_mu-H||`` against
+the probability-rounding bound. Increasing precision tightens the bound,
+without guaranteeing a strictly smaller observed error at every value.
+
+Odd and even measured moments use a separate one-qubit fixture at ``mu=2``.
+The ``mu=4`` two-qubit comparison needs 19 total qubits and executes its
+short action, walk, and QSVT checks, but avoids the exponentially expanded
+moment reflection observable. Resource reports separate rotations, Toffolis,
+higher-controlled X, and Fredkins; they do not claim a synthesized T cost.
+
 ``LCUBlockEncoding``: alias-sampled PREPARE, unary-iteration SELECT
 --------------------------------------------------------------------
 
