@@ -19,8 +19,9 @@ unsigned comparator, and controlled swaps.
    prepare = sampler.kernel()
    unprepare = sampler.adjoint_kernel()
 
-Unlike `QROM.kernel`, these are zero-argument kernel factories. The callables
-both take `(index: qview, garbage: qview)`. Allocate widths from `num_index`
+`kernel()` and `adjoint_kernel()` are zero-argument methods (`QROM.kernel`
+is a property); the kernels they return both take
+`(index: qview, garbage: qview)`. Allocate widths from `num_index`
 and `num_garbage`; both registers must start at zero for preparation.
 
 What is prepared
@@ -110,8 +111,9 @@ An extended non-Pauli body does not provide `select_observable` for odd
 `Walk.moment` orders. Even moments can require an exponentially expanded
 reflection observable, so this example validates small statevector blocks.
 
-A standalone sampler can choose QROM variants. The current LCU implementation
-pins its internal sampler to SELECT to reuse the clean ladder. The example
+A standalone sampler can choose QROM variants. `LCUBlockEncoding` pins its
+internal sampler to the ``select`` QROM variant to reuse the clean ladder as
+the SELECT walk's ladder. The example
 reports each PREPARE direction as its QROM price plus `2*mu-1` Toffolis and
 `num_index` separate Fredkins. These are logical counts, without a rotation
 or controlled-swap synthesis assumption.
