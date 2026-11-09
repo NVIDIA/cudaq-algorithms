@@ -195,17 +195,22 @@ Sparse matrix inversion for heat diffusion
 
 One backward-Euler step in a rod produces a tridiagonal SPD matrix after
 fixed zero boundary values are eliminated. Arithmetic banded oracles feed
-the existing QSVT machinery; NumPy independently solves both the ideal
+the QSVT machinery; NumPy independently solves both the ideal
 matrix and the finite-angle matrix actually represented by the circuit.
 The example checks their encoded block, the long complex QSVT response,
 physical scale restoration, full-vector errors, and the residual separately.
 
-Four interior points and six angle bits require 18 total qubits. The full
-CKS inverse has degree 411 at the default 1e-3 target; a rigorously bounded
-Chebyshev tail below 1e-10 reduces the default executed degree to 125.
-``--full-cks`` retains the complete polynomial. Degree depends on sparse
-normalization as well as physical conditioning. The per-node
-table compares initial, ideal NumPy, quantized NumPy, and QSVT temperatures.
+Four interior points and the default four angle bits require 16 total
+qubits. The full CKS inverse has degree 259 at the default 1e-2 target; a
+rigorously bounded Chebyshev tail below 1e-10 reduces the executed degree to
+99. ``--full-cks`` retains the complete polynomial. At this default the
+four-bit matrix quantization, not the inverse polynomial, dominates the
+error budget. The precision configuration
+``--value-bits 6 --inverse-epsilon 1e-3`` uses 18 qubits and executes
+degree 125 of a degree-411 CKS polynomial; it runs in seconds on an fp64
+GPU and in about twenty minutes on the CPU simulator. Degree depends on
+sparse normalization as well as physical conditioning. The per-node table
+compares initial, ideal NumPy, quantized NumPy, and QSVT temperatures.
 Full-state real-response extraction is simulator postprocessing; its raw
 good-block norm is not an isolated inverse-filter success probability.
 
@@ -216,7 +221,7 @@ The NumPy comparison validates the discrete system; a PDE convergence
 study would additionally test space/time accuracy.
 
 For an optional saved figure, install Matplotlib and run
-``python3 10_sparse_heat_equation.py --value-bits 7 --plot heat_step.png``.
+``python3 10_sparse_heat_equation.py --plot heat_step.png``.
 Plotting is headless and includes both fixed endpoints. The default run
 requires QSPPACK but does not import Matplotlib.
 

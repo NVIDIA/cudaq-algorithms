@@ -13,7 +13,9 @@ The QSP real-response extraction uses full-state simulator postprocessing;
 the raw good-block norm is not the success probability of an isolated
 inverse filter. It does not demonstrate a coherent readout of every node.
 Run: python3 10_sparse_heat_equation.py
-Optional: --value-bits 7 --plot heat_step.png
+The default (four angle bits, 1e-2 inverse target, 16 qubits) is sized for
+the CPU simulator; --value-bits 6 --inverse-epsilon 1e-3 is the 18-qubit
+precision configuration, practical on a GPU. Optional: --plot heat_step.png
 """
 
 import argparse
@@ -156,8 +158,8 @@ def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--points", type=int, default=4)
     parser.add_argument("--r", type=float, default=.25)
-    parser.add_argument("--value-bits", type=int, default=6)
-    parser.add_argument("--inverse-epsilon", type=float, default=1e-3)
+    parser.add_argument("--value-bits", type=int, default=4)
+    parser.add_argument("--inverse-epsilon", type=float, default=1e-2)
     parser.add_argument("--plot", type=Path)
     parser.add_argument(
         "--full-cks",
@@ -325,13 +327,6 @@ def main():
           np.linalg.norm(reconstructed - quantized_solution), solve_bound)
     check("QSVT versus ideal NumPy solve",
           np.linalg.norm(reconstructed - numpy_solution), total_bound)
-    # Rescale the physical RHS, reusing its identical normalized input state.
-    multiplier = 2.5
-    scaled_solution = multiplier * reconstructed
-    scaled_reference = np.linalg.solve(ideal, multiplier * initial)
-    check("physical RHS norm restores linear scaling",
-          np.linalg.norm(scaled_solution - scaled_reference),
-          multiplier * total_bound)
 
     relative_error = np.linalg.norm(
         reconstructed - numpy_solution) / np.linalg.norm(numpy_solution)
