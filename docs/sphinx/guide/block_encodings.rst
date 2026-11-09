@@ -322,7 +322,7 @@ QROM-programmed real spatial frames
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The same example also accepts ``rotation_backend="qrom", angle_bits=4``;
-``"fixed"`` remains the class default. The molecular driver defaults to
+``"fixed"`` is the class default. The molecular driver defaults to
 ``--rotation-backend both --angle-bits 4``. The exact coefficient PREPARE
 and retained Z/ZZ terms are identical across backends, so alpha is unchanged.
 
@@ -343,7 +343,7 @@ orthogonal. Independently rounding separate columns would not ensure
 this and could spoil Hermiticity of products of orbital reflections.
 
 The ancilla layout is ``[term index | K*b angle bits | QROM ladder]``.
-Existing term PREPARE/SELECT treat index qubit zero as the most significant
+Term PREPARE/SELECT treat index qubit zero as the most significant
 logical bit, while QROM addresses are little-endian; table rows are
 therefore populated at bit-reversed term addresses. Identity and padded
 rows load zero programs. For n=1 there are no mixing slots and no QROM

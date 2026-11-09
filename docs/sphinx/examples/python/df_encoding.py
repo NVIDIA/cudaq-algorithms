@@ -39,11 +39,11 @@ the structure exploited by the fixed backend. The optional
 ``rotation_backend="qrom", angle_bits=4`` instead loads a shared real
 spatial frame from the term index, applies programmable inverse/forward
 networks around the signed Z word, and erases the angle words. PREPARE
-still uses the exact flat coefficient tree. This demonstrates coherent
-frame selection, not the papers' nested DF preparation, degree-two
-Chebyshev construction, optimized normalization, phase-gradient synthesis,
-or optimized inverse-QROM cost (see also Lee et al., PRX Quantum 2,
-030305 (2021), arXiv:2011.03494, Appendix C.2 and Figure 16).
+uses the exact flat coefficient tree in both backends. This demonstrates
+coherent frame selection, not the papers' nested DF preparation,
+degree-two Chebyshev construction, optimized normalization, phase-gradient
+synthesis, or optimized inverse-QROM cost (see also Lee et al., PRX
+Quantum 2, 030305 (2021), arXiv:2011.03494, Appendix C.2 and Figure 16).
 
 Spin orbitals are interleaved (``2p`` up, ``2p + 1`` down), matching the
 Jordan-Wigner convention of ``cudaq_algorithms.chemistry`` and the compiled
@@ -385,7 +385,7 @@ def _spatial_program(matrix):
                  1] = np.array([[c, s], [-s, c]]) @ work[row - 1:row + 1]
             eliminated.append((row - 1, theta))
     signs = np.where(np.diag(work) >= 0, 1., -1.)
-    # Match the existing spatial schedule's residual allowance. This host
+    # Same residual allowance as make_orbital_rotation_schedule. This host
     # decomposition check is separate from the 1e-10 circuit/reference tests.
     np.testing.assert_allclose(work, np.diag(signs), rtol=0, atol=1e-9)
     modes = [mode for mode, _ in reversed(eliminated)]
@@ -417,6 +417,24 @@ def programmable_spatial_givens(words: cudaq.qview, system: cudaq.qview,
         for bit in range(bits):
             cudaq.control(spatial_givens_rotation, words[slot * bits + bit],
                           system, weights[bit], modes[slot])
+
+
+@cudaq.kernel
+def programmable_spatial_givens_adjoint(words: cudaq.qview,
+                                        system: cudaq.qview, modes: list[int],
+                                        weights: list[float]):
+    """Hand-written inverse of ``programmable_spatial_givens``.
+
+    Slots are undone in reverse order with negated weights (the bit
+    rotations within one slot share a generator and commute), the same
+    hand-written-inverse convention as the arithmetic primitives.
+    """
+    bits = len(weights)
+    for k in range(len(modes)):
+        slot = len(modes) - 1 - k
+        for bit in range(bits):
+            cudaq.control(spatial_givens_rotation, words[slot * bits + bit],
+                          system, -weights[bit], modes[slot])
 
 
 class DoubleFactorizedEncoding:
@@ -710,7 +728,8 @@ class DoubleFactorizedEncoding:
 
         Layout is [index | angle words | QROM ladder], or
         [enable | index | angle words | ladder] for the controlled form.
-        The index and system may remain entangled after SELECT.
+        Words and ladder are |0> at both boundaries; the index and system
+        are in general entangled after SELECT.
         """
         controls, targets = self._term_controls, self._term_targets
         lengths, signs = self._term_lengths, self._term_signs
@@ -749,9 +768,8 @@ class DoubleFactorizedEncoding:
         def selected(register: cudaq.qview, system: cudaq.qview):
             lookup(register[shift:index_end], register[program_end:total],
                    register[index_end:program_end])
-            cudaq.adjoint(programmable_spatial_givens,
-                          register[index_end:program_end], system, modes,
-                          weights)
+            programmable_spatial_givens_adjoint(
+                register[index_end:program_end], system, modes, weights)
             ctrl_ptr = 0
             target_ptr = 0
             for term in range(len(lengths)):
@@ -774,9 +792,10 @@ class DoubleFactorizedEncoding:
                         x(register[shift + bit])
             programmable_spatial_givens(register[index_end:program_end],
                                         system, modes, weights)
-            cudaq.adjoint(lookup, register[shift:index_end],
-                          register[program_end:total],
-                          register[index_end:program_end])
+            # The QROM kernel is exactly self-inverse: a second lookup
+            # erases the words.
+            lookup(register[shift:index_end], register[program_end:total],
+                   register[index_end:program_end])
 
         return selected
 

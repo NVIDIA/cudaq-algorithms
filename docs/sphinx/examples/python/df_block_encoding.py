@@ -41,7 +41,7 @@ skip circuit execution (statevector cost is printed)
 
 The H2 default executes both fixed and QROM-programmed spatial frames,
 then reports a host-only precision sweep. Larger QROM programs are
-resource-only; the fixed-backend size policy above is preserved. Tight
+resource-only; the size policy above applies to the fixed backend. Tight
 circuit checks target the represented operator, with angle rounding
 reported separately. No compiled extension is needed.
 """
