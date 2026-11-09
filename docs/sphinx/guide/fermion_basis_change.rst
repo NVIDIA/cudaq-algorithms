@@ -255,8 +255,8 @@ Compare QROM selection against the controlled counts of the path you use.
 Selected orbital reflections and precision
 ------------------------------------------
 
-The runnable example retains the full two-mode fixture above and adds a
-partial program with reference mode zero and three words (``2*m-1``).
+The runnable example uses the full two-mode fixture above and a partial
+program with reference mode zero and three words (``2*m-1``).
 A quantum address in ``(|0> + i|1>)/sqrt(2)`` selects the columns
 ``[1, 0]`` and ``[1, i]/sqrt(2)``. Chronologically, it runs lookup,
 inverse basis change, ``Z`` on the reference occupation, forward basis
@@ -306,7 +306,3 @@ supplementary VII B.1 and VII C.1--C.3; Lee et al., *PRX Quantum* **2**,
 Appendix C.2, Figure 16. This isolates lookup, programmable basis change,
 occupation reflection, and erasure. It does not reproduce the complete
 chemistry algorithms, nested preparations, or their optimized costs.
-
-The fixed/control/full-QROM fixture and initial guide are adapted from
-`PR #78 <https://github.com/NVIDIA/cudaq-algorithms/pull/78>`_, revision
-``6f542f156e5d719212cc8fcb364899d3c25bcb8a``.

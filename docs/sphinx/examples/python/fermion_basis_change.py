@@ -5,7 +5,6 @@
 Run: python3 fermion_basis_change.py. Uses fp64 qpp-cpu by default.
 The full two-mode fixture uses sixteen qubits; partial programs use three
 angle words instead of four. All references include every particle sector.
-Reuses the example from PR #78, revision 6f542f156e5d719212cc8fcb364899d3c25bcb8a.
 """
 
 # [Begin Documentation]
@@ -128,8 +127,9 @@ def selected_reflections(columns, bits, label):
             else:
                 z(q[0])
             forward(q[0:span])
-            cudaq.adjoint(lookup, q[address:scratch], q[scratch:enable],
-                          q[2:span])
+            # The XOR lookup is its own inverse: the same call clears the
+            # words and the ladder.
+            lookup(q[address:scratch], q[scratch:enable], q[2:span])
 
         initial = np.zeros(1 << total, dtype=complex)
         expected = np.zeros_like(initial)
