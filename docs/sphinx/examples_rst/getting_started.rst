@@ -139,9 +139,10 @@ Hartree-Fock preparation: build a measured kernel, call ``cudaq.sample``,
 and decode with ``energies_from_counts``. It is another implementation
 of the walk approach, rather than a fourth physical oracle.
 
-The new section checks the textbook and centered folded exact marginals,
-seeded sampled-versus-exact unfolded distributions with a declared
-statistical bound, and nonlinear cosine phase-cell edges. Only phase bits
+The packaged section checks that the textbook and centered exact phase
+marginals agree bin by bin, compares seeded sampled distributions with
+their exact marginals under a declared statistical bound, and verifies
+the nonlinear cosine phase-cell edges. Only phase bits
 are measured; public decoders handle register interpretation and mirror
 folding. The encoded identity/core energy is included once.
 

@@ -31,8 +31,8 @@ checked to land within one phase cell of the exact ground energy.
 
 The final section executes PhaseEstimation's packaged textbook walk ladder
 on the same input. Its public decoders, exact phase marginal, sampled
-statistical check, and cosine phase cells are compared with the existing
-centered walk. This is another implementation of method 3, not another
+statistical check, and cosine phase cells are compared with the
+centered walk above. This is another implementation of method 3, not another
 physical oracle.
 
 The walk QPE core follows the centered exponent schedule of Berry et al.,
@@ -121,13 +121,6 @@ def check(label, error, tolerance=1e-10):
         raise AssertionError(label)
 
 
-def folded(probabilities):
-    half = len(probabilities) // 2
-    result = probabilities[:half + 1].copy()
-    result[1:half] += probabilities[-1:half:-1]
-    return result
-
-
 def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
                              centered_sampled, counting_qubits, shots,
                              exact_ground_energy):
@@ -158,8 +151,11 @@ def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
     check("sampled versus exact unfolded phase TV", tv(sampled, exact),
           tv_bound)
 
-    # Same physical oracle, different schedule and allocation order. Disable
-    # measurement in the centered shell to obtain its exact phase marginal.
+    # Same physical oracle, different schedule and allocation order. The
+    # centered schedule applies W^(n - M/2) instead of W^n; the extra
+    # W^(-M/2) is a phase on each walk eigencomponent, so the phase-register
+    # marginal agrees bin by bin before any folding. Disable measurement in
+    # the centered shell to obtain its exact phase marginal.
     centered_state = np.asarray(
         cudaq.get_state(centered_kernel, counting_qubits, encoding.num_system,
                         encoding.num_ancilla, False))
@@ -167,12 +163,12 @@ def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
         centered_state.reshape(1 << encoding.num_system,
                                1 << encoding.num_ancilla, bins))**2,
                             axis=(0, 1))
-    check("centered versus textbook folded exact probabilities",
-          tv(folded(centered_exact), folded(exact)))
+    check("centered versus textbook exact phase marginals",
+          tv(centered_exact, exact))
     check("centered sampled versus its exact unfolded phase TV",
           tv(centered_sampled, centered_exact), tv_bound)
-    check("two sampled folded distributions",
-          tv(folded(centered_sampled), folded(sampled)), 2 * tv_bound)
+    check("centered versus textbook sampled phase TV",
+          tv(centered_sampled, sampled), 2 * tv_bound)
     decoded = np.array(
         [qpe.phase_to_energy(j, counting_qubits) for j in range(bins)])
     expected = -encoding.alpha * np.cos(2 * np.pi * np.arange(bins) / bins)
