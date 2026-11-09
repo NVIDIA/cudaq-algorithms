@@ -30,8 +30,8 @@ block to an independently quantized NumPy reference. Both routes execute
 Walk and QSVT consumers. A four-point arithmetic case verifies boundary
 clipping; alternative input forms and dilation are shown through metadata.
 
-The sparse case in example 07 on :doc:`getting_started` continues with an
-executed inverse and separate coefficient/polynomial/circuit error budgets.
+Example 07 on :doc:`getting_started` inverts a sparse encoding of this kind
+with QSVT and separates coefficient, polynomial and circuit error budgets.
 
 .. literalinclude:: ../examples/python/sparse_block_encoding.py
    :language: python

@@ -271,9 +271,9 @@ halves bit is the most significant), as
 ``o_loc`` / ``o_val`` and their explicit inverses, the slot count ``d``,
 the value bound ``h``, ``value_bits``, the work-qubit count and the
 reverse-slot involution; every inverse must hold on states whose work
-register enters ``|0>`` and restore that workspace. In particular, do not
-assume that table oracles built on unary-iteration walks invert on dirty
-scratch. The bundle records the system width it was built for and
+register enters ``|0>`` (flat, work-free oracles such as `banded_oracles`
+invert globally, table oracles built on unary-iteration walks only with
+clean scratch). The bundle records the system width it was built for and
 the encoding rejects a mismatch.
 
 **Register widths and moments.** ``num_ancilla`` counts every ancilla,
@@ -324,11 +324,12 @@ measured moments.
 A sparse inverse
 ~~~~~~~~~~~~~~~~~
 
-Example 07 on :doc:`../examples_rst/getting_started` retains the dense
-five-dimensional solve and adds a power-of-two sparse SPD solve with its
-own three-bit quantization and freshly generated phases. Its CKS degree
-depends on the represented minimum eigenvalue divided by alpha; phases
-from another encoding cannot simply be reused.
+Example 07 on :doc:`../examples_rst/getting_started` solves a dense
+five-dimensional system through `PauliLCU` and a power-of-two sparse SPD
+system through `encode_sparse`, the latter with its own three-bit
+quantization and freshly generated phases. Its CKS degree depends on the
+represented minimum eigenvalue divided by alpha; phases from another
+encoding cannot simply be reused.
 
 For normalized input b/beta and target polynomial c/x, physical recovery is
 beta/(c*alpha). Odd parity of the negative-H walk and the QSP global phase
@@ -339,9 +340,9 @@ circuit error budgets, and checks a full vector and residual.
 Full-state access and real-response extraction are simulator postprocessing.
 The raw good-block norm includes a complementary complex response and is
 not the success probability of an isolated inverse filter. The factory's
-zero padding creates zero eigenvalues for non-power-of-two data; these
-reciprocal fixtures avoid that issue. The original dense example instead
-uses identity padding.
+zero padding creates zero eigenvalues for non-power-of-two data; the
+reciprocal fixtures are power-of-two sized, and the dense case pads with an
+identity block instead.
 
 Bring your own encoding: the double-factorized example
 ------------------------------------------------------
