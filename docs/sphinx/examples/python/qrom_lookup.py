@@ -46,6 +46,8 @@ def reference(initial, *, controlled=False, phase=False):
         word = DATA[address] if address < len(DATA) else 0
         enabled = not controlled or bool(index & 1)
         if phase:
+            # lookup, Z on output bit 0, lookup: the phase of a zero output
+            # word is (-1)**(word & 1); a nonzero y would add (-1)**(y & 1).
             result[index] = amplitude * (-1 if word & 1 else 1)
         else:
             target = index ^ (word <<

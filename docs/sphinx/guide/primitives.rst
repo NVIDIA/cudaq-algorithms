@@ -28,7 +28,10 @@ although their meanings in the application differ.
    lookup = table.kernel  # callable property, not table.kernel()
 
 Allocate the ladder using `table.num_ladder`. It must start clean and is
-restored by the lookup. The plain callable has this signature:
+restored by the lookup. The constructor's validation rules and the exact
+Toffoli model are in the API reference,
+:class:`~cudaq_algorithms.primitives.QROM`. The plain callable has this
+signature:
 
 .. code-block:: text
 
@@ -55,7 +58,8 @@ more qubits, and can lose on small tables or wide output words.
 `variant="auto"` minimizes the implemented coherent Toffoli model and chooses
 SELECT on ties. It does not enforce a caller's qubit budget. Inspect
 `variant`, `block_size`, `num_ladder`, and `toffoli_count` on the returned
-object; a forced SELECT-SWAP construction can also specify `block_size=2`.
+object. `variant="select_swap"` picks the cheapest power-of-two block size
+unless `block_size` is given; the example forces `block_size=2`.
 
 External control
 ~~~~~~~~~~~~~~~~
