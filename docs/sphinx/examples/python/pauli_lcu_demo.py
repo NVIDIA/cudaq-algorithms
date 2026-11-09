@@ -88,7 +88,8 @@ def scalar_response(phases, x):
     return matrix[0, 0]
 
 
-def resource_row(encoding, operator_error):
+def resource_row(encoding, operator_error, bound):
+    """Every gate family of one encoding (apply = PREPARE, SELECT, PREPARE†)."""
     apply = encoding.apply_kernel()
     n_system, n_ancilla = encoding.num_system, encoding.num_ancilla
 
@@ -100,20 +101,30 @@ def resource_row(encoding, operator_error):
 
     resources = cudaq.estimate_resources(harness)
     rotation_gates = ("rx", "ry", "rz", "r1")
+    paulis = ("x", "y", "z")
+    arities = range(n_ancilla + 2)
     rotations = sum(
         resources.count_controls(gate, 0) for gate in rotation_gates)
     controlled_rotations = sum(
         resources.count_controls(gate, controls) for gate in rotation_gates
-        for controls in range(1, n_ancilla + 1))
-    higher_x = sum(
-        resources.count_controls("x", controls)
-        for controls in range(3, n_ancilla + 2))
+        for controls in arities if controls >= 1)
+    single_qubit = sum(
+        resources.count_controls(gate, 0) for gate in paulis + ("h", "s", "t"))
+    one_control = sum(resources.count_controls(gate, 1) for gate in paulis)
+    two_control = sum(resources.count_controls(gate, 2) for gate in paulis)
+    higher = sum(
+        resources.count_controls(gate, controls) for gate in paulis
+        for controls in arities if controls >= 3)
+    fredkins = resources.count_controls("swap", 1)
+    counted = (rotations + controlled_rotations + single_qubit + one_control +
+               two_control + higher + fredkins)
+    check(f"{encoding.backend} mu={encoding.mu} gate inventory is complete",
+          counted, resources.count(), 0)
     return (f"{encoding.backend:6s} {str(encoding.mu):>4s} "
             f"{n_system:3d} {n_ancilla:3d} {n_system+n_ancilla:5d} "
-            f"{encoding.alpha:6.3f} {operator_error:9.3e} "
-            f"{rotations:4d} {controlled_rotations:5d} "
-            f"{resources.count_controls('x', 2):4d} {higher_x:4d} "
-            f"{resources.count_controls('swap', 1):7d}")
+            f"{encoding.alpha:6.3f} {operator_error:9.3e} {bound:9.3e} "
+            f"{rotations:4d} {controlled_rotations:5d} {single_qubit:4d} "
+            f"{one_control:4d} {two_control:4d} {higher:4d} {fredkins:7d}")
 
 
 def compare_backends(exact):
@@ -127,10 +138,14 @@ def compare_backends(exact):
         PauliLCU(dict((word, coefficient)
                       for coefficient, word in exact.terms),
                  backend="alias",
-                 mu=mu) for mu in (2, 4)
+                 mu=mu) for mu in (2, 3, 4)
     ]
-    print("Only mu=2 and mu=4 are executed; mu=3 is intentionally skipped.")
+    # Every encoding is priced and its represented operator compared; the
+    # walk and QSVT circuits run at mu=2 and mu=3, and the 19-qubit mu=4
+    # encoding runs once (its walks and QSVT cost minutes on a CPU).
+    circuit_budget = 3
     resource_rows = []
+    operator_errors = {}
     phases = [0.3, -0.4, 0.25]
     for encoding in encodings:
         if encoding.terms != exact.terms or encoding.num_system != exact.num_system:
@@ -140,18 +155,26 @@ def compare_backends(exact):
               exact.alpha)
         represented = represented_hamiltonian(encoding)
         discretization_error = float(np.linalg.norm(represented - ideal, 2))
+        operator_errors[encoding.mu] = discretization_error
+        bound = 0.0
         if encoding.backend == "alias":
-            # Each Pauli has norm one; sum the per-bin weight bounds.
+            # Each Pauli has norm one: sum the per-bin probability bounds
+            # over the 2^m bins, which gives alpha * 1.5 / 2^mu.
             bins = 1 << max(1, (encoding.num_terms - 1).bit_length())
             bound = encoding.alpha * bins * (1.5 / (bins * (1 << encoding.mu)))
             check("operator discretization bound",
                   discretization_error,
                   0.,
                   tolerance=bound + 1e-12)
-        resource_rows.append(resource_row(encoding, discretization_error))
+        resource_rows.append(
+            resource_row(encoding, discretization_error, bound))
         name = f"{encoding.backend}, mu={encoding.mu}"
         normalized = represented / encoding.alpha
         check(f"{name} action", sim.action(encoding, ket), normalized @ ket)
+        if encoding.backend == "alias" and encoding.mu > circuit_budget:
+            print(f"{name}: priced and encoded once at "
+                  f"{encoding.num_system + encoding.num_ancilla} qubits.")
+            continue
         for power, polynomial in ((1, -normalized),
                                   (2,
                                    2 * normalized @ normalized - np.eye(4))):
@@ -168,11 +191,14 @@ def compare_backends(exact):
               expected)
 
     print("\nResources count one encoding, without input-state preparation.")
-    print(
-        "backend   mu sys anc total  alpha  ||H_mu-H|| rot c-rot  CCX MCX Fredkin"
-    )
+    print("backend   mu sys anc total  alpha  ||H_mu-H||     bound "
+          "rot c-rot   1q  c-P cc-P mc-P Fredkin")
     for row in resource_rows:
         print(row)
+    print(f"||H_mu-H|| at mu=2: {operator_errors[2]:.3e}, at mu=3: "
+          f"{operator_errors[3]:.3e}, at mu=4: {operator_errors[4]:.3e}. The "
+          "bound halves per bit; the realized rounding need not shrink at "
+          "every mu.")
 
     banner("9. Odd/even moments on a separate small fixture")
     small_ket = np.array([np.sqrt(0.3), 1j * np.sqrt(0.7)])
@@ -200,8 +226,9 @@ def compare_backends(exact):
     print(
         "The full ancilla register includes PREPARE garbage and SELECT work.")
     print("Exact and alias share kernel factories; kernel_args is exact-only.")
-    print(
-        "Gate families are reported separately, without assigning a T count.")
+    print("Gate families (rotations, uncontrolled single-qubit gates, singly, "
+          "doubly and higher-controlled Paulis, Fredkins) are reported "
+          "separately, without assigning a T count.")
     print(f"Maximum executed qubits: "
           f"{max(e.num_system+e.num_ancilla for e in encodings)}; "
           f"comparison elapsed: {time.perf_counter()-started:.2f}s")
