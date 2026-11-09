@@ -44,9 +44,11 @@ The QFT family takes an integer constant and needs no additional workspace:
    add_constant_qft(target: qview, constant: int)
    subtract_constant_qft(target: qview, constant: int)
 
-Both families implement the same modular permutation. Their supplied inverse
-kernels should be used for round trips. The example also tests each forward
-action independently: two incorrect operations can cancel in a round trip.
+Both families implement the same modular permutation. Use the supplied
+inverse kernels for round trips: every inverse is hand-written, and
+`cudaq.adjoint` is not supported on the CDKM kernels. The example also tests
+each forward action independently: two incorrect operations can cancel in a
+round trip.
 
 Comparison flags are XOR outputs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,13 +56,14 @@ Comparison flags are XOR outputs
 .. code-block:: text
 
    cmp_ge_register(a: qview, b: qview, carry: qview, out: qview)
+   cmp_gt_register(a: qview, b: qview, carry: qview, out: qview)
    cmp_ge_constant(x_reg: qview, complement_bits: list[int],
                    k_is_zero: int, work: qview, carry: qview, out: qview)
 
 `out` is a one-qubit view and obeys `out ^= predicate`. It is not overwritten
 with a classical Boolean. Preloaded-one and coherent flags are valid. The
-register comparator preserves both n-bit operands and restores its clean
-carry.
+register comparators preserve both n-bit operands and restore their clean
+carry; `cmp_gt_register` flags the strict `a > b` at the same price.
 
 For the constant comparator, use the n low bits of `2**n-K`. The allowed
 threshold range is `0 <= K <= 2**n`. At K=0 pass all-zero bits and
@@ -96,7 +99,7 @@ half as an operand-preserving comparator would consume the wrong integer.
 Resources and correctness
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-At the current implementation, CDKM modular add/subtract uses `2*n-2`
+In the current implementation, CDKM modular add/subtract uses `2*n-2`
 Toffolis, while register comparison uses `2*n-1`. QFT constant addition
 uses controlled and single-qubit rotations instead. Zero Toffolis does not
 mean zero fault-tolerant synthesis cost.
