@@ -6,9 +6,6 @@ name: Request NVSkills CI
 # bot pushes its signature commit. There is deliberately no pull_request
 # trigger; official evaluation runs are expensive and rewrite the branch, so
 # they are started by hand when a skill revision is ready to be signed.
-#
-# Source: NVIDIA/nvskills-ci templates/team-request-workflow.yml, with the
-# pull_request trigger removed.
 
 on:
   issue_comment:
