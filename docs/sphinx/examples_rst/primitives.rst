@@ -14,6 +14,10 @@ It starts with an explicit threshold oracle: prepare ``(|2> + |5>)/sqrt(2)``,
 compute ``x >= 3``, mark its flag with Z, and uncompute. The printed states
 show the relative minus sign on x=5 and the restored flag and workspace.
 
+All checks run in the default mode, which prints the demonstrations and a
+short validation summary. Add ``--verbose`` to print each check's numerical
+error. A failed check always reports its details and exits with an error.
+
 .. seealso::
 
    :doc:`../guide/primitives` for register contracts and interpretation.

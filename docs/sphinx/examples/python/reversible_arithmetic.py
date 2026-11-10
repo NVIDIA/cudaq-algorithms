@@ -5,10 +5,12 @@
 """Reversible modular arithmetic, comparison flags, and clean workspace.
 
 Run with: python3 reversible_arithmetic.py
+Add --verbose to display the numerical error for every validation check.
 Register bit zero is least significant. All views passed to an operation
 are disjoint. Arithmetic wraps modulo 2**n; it does not report overflow.
 """
 
+import argparse
 import os
 import time
 
@@ -22,14 +24,6 @@ from cudaq_algorithms.primitives import (
     subtract_constant, subtract_constant_qft, subtract_register)
 
 ATOL = 1e-10
-
-
-def check(label, actual, expected):
-    error = float(np.max(np.abs(actual - expected)))
-    print(f"CHECK {label}: {error:.3e} <= {ATOL:.1e} -> "
-          f"{'PASS' if error <= ATOL else 'FAIL'}")
-    if not np.isfinite(error) or error > ATOL:
-        raise AssertionError(label)
 
 
 def complex_ket(size, rng):
@@ -156,7 +150,7 @@ def threshold_oracle_stages(initial: cudaq.State, complement_bits: list[int],
                         logical[n:n + 1])
 
 
-def show_threshold_oracle():
+def show_threshold_oracle(verbose=False):
     """Display actual simulated amplitudes for a two-value threshold oracle."""
     n = 3
     modulus = 1 << n
@@ -205,7 +199,10 @@ def show_threshold_oracle():
           "distinguish them.")
     print("The flag and all work/carry qubits return to zero; the oracle "
           "can be reused.")
-    print(f"All four full-state references verified at tolerance {ATOL:.1e}.")
+    if verbose:
+        print(
+            f"All four full-state references verified at tolerance {ATOL:.1e}."
+        )
 
 
 @cudaq.kernel
@@ -231,7 +228,17 @@ def resource_qft(n: int):
     add_constant_qft(target, 1)
 
 
-def main():
+def main(verbose=False):
+
+    def check(label, actual, expected):
+        error = float(np.max(np.abs(actual - expected)))
+        passed = np.isfinite(error) and error <= ATOL
+        if verbose or not passed:
+            print(f"CHECK {label}: {error:.3e} <= {ATOL:.1e} -> "
+                  f"{'PASS' if passed else 'FAIL'}")
+        if not passed:
+            raise AssertionError(label)
+
     start = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     rng = np.random.default_rng(7)
@@ -240,7 +247,7 @@ def main():
     mask = modulus - 1
     print("Three-bit unsigned operands; arithmetic is modulo 8.")
     print("All carry/work qubits start at zero and must return to zero.")
-    show_threshold_oracle()
+    show_threshold_oracle(verbose)
     print("\n a  b   (a+b) mod 8  (b-a) mod 8")
     for a, b in ((1, 2), (3, 7), (7, 7)):
         basis = np.zeros(modulus * modulus, dtype=complex)
@@ -363,9 +370,15 @@ def main():
                   f"{resources.count_controls('r1', 0):9d}")
     print(
         "Zero Toffolis in QFT arithmetic does not imply zero synthesis cost.")
+    print("All arithmetic, comparison, and workspace checks passed.")
     print(f"Maximum executed qubits: {2*n+2}; "
           f"elapsed: {time.perf_counter() - start:.2f}s")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show the numerical error for every validation check")
+    main(verbose=parser.parse_args().verbose)
