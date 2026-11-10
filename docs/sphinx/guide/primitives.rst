@@ -7,6 +7,40 @@ compare their complete outputs with independent classical references.
 Modular arithmetic and comparison flags
 ---------------------------------------
 
+These primitives support two approaches to reversible arithmetic: **CDKM
+ripple-carry arithmetic** and **QFT arithmetic**. Both operate coherently on
+superpositions, so each integer component undergoes the corresponding
+arithmetic operation without measurement.
+
+**CDKM**, named after Cuccaro, Draper, Kutin, and Moulton, follows the familiar
+idea of binary addition: carries propagate from lower bits to higher bits.
+The circuit then reverses its temporary carry computations while retaining
+the sum. It uses X, CNOT, and Toffoli gates, with a gate count that grows
+linearly with register width. CDKM is a useful choice for arithmetic on
+binary-encoded registers and for resource estimates organized around Clifford
+and Toffoli gates. See `Cuccaro et al.
+<https://arxiv.org/abs/quant-ph/0410184>`_.
+
+**QFT arithmetic** uses the quantum Fourier transform to represent an integer
+through quantum phases. Adding a constant becomes a sequence of phase
+rotations; an inverse QFT converts the result back to binary form. This
+avoids temporary carry registers. QFT arithmetic is particularly useful when
+spare qubits are limited, when a register is already in the Fourier basis,
+or when several additions can share one forward and inverse transform.
+See `Draper <https://arxiv.org/abs/quant-ph/0008033>`_.
+
+For the constant-addition implementations provided here, an :math:`n`-qubit
+target requires an additional :math:`n`-qubit work register and one carry
+qubit with CDKM, while the QFT implementation needs no additional qubits.
+The tradeoff is gate cost: QFT arithmetic introduces controlled phase
+rotations, including small-angle rotations whose accurate synthesis can be
+expensive on fault-tolerant hardware. **Choose CDKM when its workspace
+requirements are acceptable and avoiding rotation synthesis is valuable;
+consider QFT when reducing qubits or reusing the Fourier basis is more
+valuable.** Compare the complete circuit cost, including transforms and
+rotation synthesis, rather than Toffoli count alone. Both implement the same
+modular arithmetic in the ideal circuit model.
+
 All integer registers are unsigned and little-endian: bit zero has weight
 one. Addition wraps modulo :math:`2^n`. Register views passed to an operation
 must be pairwise disjoint and have the documented widths; the device kernels
