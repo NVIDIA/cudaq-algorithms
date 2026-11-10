@@ -61,6 +61,25 @@ SELECT on ties. It does not enforce a caller's qubit budget. Inspect
 object. `variant="select_swap"` picks the cheapest power-of-two block size
 unless `block_size` is given; the example forces `block_size=2`.
 
+In the SELECT construction, unary iteration reuses one clean ladder qubit
+per address bit. Successive lines track progressively longer prefix matches;
+the final line enables the output gates for that table entry.
+
+.. figure:: ../_static/figures/qrom-unary-iteration.svg
+   :alt: Logical address-prefix tree with address 010 highlighted. Three
+         reused ladder lines enable output flips for table entry 2;
+         dashed branches indicate omitted zero-padding addresses.
+   :width: 100%
+   :align: center
+
+   Unary iteration for the five-entry table above. The highlighted basis
+   component ``a=010`` selects ``DATA[2]=5`` (binary ``101``), flipping
+   output bits zero and two. Nodes depict logical checks at different times,
+   rather than separate physical ancillas: only three ladder qubits are reused and
+   restored to zero. The valid zero-valued entry at address one remains
+   distinct from padded addresses five through seven, which the emitted
+   walk omits. Superposed addresses follow the same lookup coherently.
+
 External control
 ~~~~~~~~~~~~~~~~
 
