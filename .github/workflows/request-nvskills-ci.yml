@@ -1,20 +1,31 @@
 name: Request NVSkills CI
 
-# Asks NVIDIA/nvskills-ci to evaluate and sign the skills under skills/ for a
-# pull request. Runs are requested explicitly: a maintainer comments
-# `/nvskills-ci` on the PR. The push trigger only re-verifies after the NVSkills
-# bot pushes its signature commit. There is deliberately no pull_request
-# trigger; official evaluation runs are expensive and rewrite the branch, so
-# they are started by hand when a skill revision is ready to be signed.
+# Connects this repository to NVIDIA/nvskills-ci, which evaluates and signs the
+# skills under skills/. Verbatim copy of nvskills-ci's
+# templates/team-request-workflow.yml apart from this comment.
+#
+# How the three triggers behave:
+# - pull_request: does NOT start an evaluation. It runs the required-status
+#   gate, which passes immediately for PRs that do not touch skills/ and
+#   otherwise waits for a successful "NVSkills CI" status on the PR head. Make
+#   that check required in the branch rules so skill changes merge only once
+#   evaluated and signed.
+# - issue_comment: a maintainer (maintain/admin) comments `/nvskills-ci` on
+#   the PR to request the evaluation and signing run.
+# - push: re-verifies after the NVSkills bot pushes its signature commit.
+#   Ordinary pushes trigger a run whose job is skipped by the condition below.
 
 on:
   issue_comment:
     types: [created]
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
   push:
 
 jobs:
   request:
     if: >
+      github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         startsWith(github.event.comment.body, '/nvskills-ci')) ||
