@@ -111,6 +111,27 @@ The operand acquires :math:`(-1)^{[x\ge K]}`, while the flag and workspace
 return to zero. This is a building block for threshold selection and
 boundary masking.
 
+For example, let the operand be ``(|2> + |5>)/sqrt(2)`` and use threshold
+K=3. Only the branch with x=5 satisfies the comparison. With kets ordered
+as operand then flag, the circuit evolves as
+
+.. math::
+
+   \begin{aligned}
+   \text{Input:}\quad & (|2\rangle|0\rangle + |5\rangle|0\rangle)/\sqrt{2},\\
+   \text{Compare }x\ge3:\quad & (|2\rangle|0\rangle + |5\rangle|1\rangle)/\sqrt{2},\\
+   Z\text{ on flag:}\quad & (|2\rangle|0\rangle - |5\rangle|1\rangle)/\sqrt{2},\\
+   \text{Uncompute:}\quad & (|2\rangle|0\rangle - |5\rangle|0\rangle)/\sqrt{2}.
+   \end{aligned}
+
+The values retain probability one half each, while their relative phase
+changes. Interference can reveal that change: the final operand state is
+orthogonal to its initial state. The flag and all work/carry qubits return
+to zero, so this threshold oracle can compose with subsequent operations.
+The runnable example prints these four states from separate simulator
+runs of circuit prefixes and verifies every full state against an
+independent reference; no measurement is inserted into the oracle.
+
 The QFT comparator temporarily shifts its operand
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

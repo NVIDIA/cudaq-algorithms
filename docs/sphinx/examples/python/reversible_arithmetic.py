@@ -139,6 +139,76 @@ def threshold_qft(initial: cudaq.State, constant: int, phase: bool,
 
 
 @cudaq.kernel
+def threshold_oracle_stages(initial: cudaq.State, complement_bits: list[int],
+                            stage: int):
+    """Run a prefix of compare, phase mark, uncompute; no measurements."""
+    logical = cudaq.qvector(initial)  # [x(n) | flag(1)]
+    n = logical.size() - 1
+    work = cudaq.qvector(n)
+    carry = cudaq.qvector(1)
+    if stage >= 1:
+        cmp_ge_constant(logical[0:n], complement_bits, 0, work, carry,
+                        logical[n:n + 1])
+    if stage >= 2:
+        z(logical[n])
+    if stage >= 3:
+        cmp_ge_constant(logical[0:n], complement_bits, 0, work, carry,
+                        logical[n:n + 1])
+
+
+def show_threshold_oracle():
+    """Display actual simulated amplitudes for a two-value threshold oracle."""
+    n = 3
+    modulus = 1 << n
+    initial = np.zeros(2 * modulus, dtype=complex)
+    initial[[2, 5]] = 1 / np.sqrt(2)
+    # cmp_ge_constant takes the n low bits of 2**n - K, here 8 - 3 = 5.
+    complement_bits = [1, 0, 1]
+    snapshots = (
+        ("Input", ((2, 0, 1), (5, 0, 1))),
+        ("Compare x >= 3", ((2, 0, 1), (5, 1, 1))),
+        ("Z on flag", ((2, 0, 1), (5, 1, -1))),
+        ("Uncompute", ((2, 0, 1), (5, 0, -1))),
+    )
+    print("\nA useful comparison: a threshold phase oracle")
+    print("Kets below are |x>|flag>; work/carry are shown separately.")
+    print("Each row inspects a fresh simulator run of the circuit prefix.")
+    for stage, (label, branches) in enumerate(snapshots):
+        actual = simulate(threshold_oracle_stages, initial, complement_bits,
+                          stage)
+        expected = np.zeros_like(actual)
+        for value, flag, sign in branches:
+            expected[value + (flag << n)] = sign / np.sqrt(2)
+        # Compare all eight qubits: every unlisted amplitude must be zero,
+        # including any population in the work or carry registers.
+        np.testing.assert_allclose(actual,
+                                   expected,
+                                   rtol=0,
+                                   atol=ATOL,
+                                   err_msg=f"threshold oracle: {label}")
+        terms = []
+        for index in np.flatnonzero(np.abs(actual) > ATOL):
+            value, flag = index & (modulus - 1), (index >> n) & 1
+            sign = "-" if actual[index].real < 0 else "+"
+            terms.append(f"{sign} |{value}>|{flag}>")
+        expression = " ".join(terms).removeprefix("+ ")
+        print(f"  {label:15s}: ({expression}) / sqrt(2)   work/carry=|0000>")
+    probabilities = np.abs(actual[:modulus])**2
+    np.testing.assert_allclose(probabilities[[2, 5]], [.5, .5],
+                               rtol=0,
+                               atol=ATOL)
+    overlap = abs(np.vdot(embed(initial, n + 1), actual))
+    np.testing.assert_allclose(overlap, 0., rtol=0, atol=ATOL)
+    print("The values still have probability 1/2 each; only their relative "
+          "phase changed.")
+    print("The final state is orthogonal to the input, so interference can "
+          "distinguish them.")
+    print("The flag and all work/carry qubits return to zero; the oracle "
+          "can be reused.")
+    print(f"All four full-state references verified at tolerance {ATOL:.1e}.")
+
+
+@cudaq.kernel
 def resource_add(n: int):
     a = cudaq.qvector(n)
     b = cudaq.qvector(n)
@@ -170,6 +240,7 @@ def main():
     mask = modulus - 1
     print("Three-bit unsigned operands; arithmetic is modulo 8.")
     print("All carry/work qubits start at zero and must return to zero.")
+    show_threshold_oracle()
     print("\n a  b   (a+b) mod 8  (b-a) mod 8")
     for a, b in ((1, 2), (3, 7), (7, 7)):
         basis = np.zeros(modulus * modulus, dtype=complex)
