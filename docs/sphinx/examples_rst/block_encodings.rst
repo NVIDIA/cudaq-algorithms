@@ -19,10 +19,14 @@ kernels (`pauli_lcu.prepare`, the select, and the walk) it exposes.
 
 The final sections compare exact and alias PREPARE/SELECT at ``mu=2``,
 ``3`` and ``4`` using the same Hamiltonian and kernel-factory consumers.
-Independent NumPy references distinguish coefficient discretization from
-circuit error. A separate small fixture checks odd/even measured moments, and
-the resource table accounts for the extra alias workspace and lists every
-gate family.
+The output summarizes Hamiltonian approximation error, executed algorithms,
+and resource cost. On this fixture ``mu=3`` has the same rounded weights as
+``mu=2``, while ``mu=4`` reduces the error by about 2.6 times. The resource
+table accounts for alias workspace and lists every gate family. A separate
+small fixture prints odd/even measured moments. Independent NumPy checks
+remain active and are quiet on success; pass ``--verbose`` for the detailed
+diagnostics. See :doc:`../guide/block_encodings` for the accuracy/resource
+tradeoff and the distinction between rounding and circuit error.
 
 .. literalinclude:: ../examples/python/pauli_lcu_demo.py
    :language: python
