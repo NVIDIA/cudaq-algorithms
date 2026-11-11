@@ -5,6 +5,9 @@ Two ways to hide a Hamiltonian inside a larger unitary. These examples walk the
 flat `PauliLCU` API and put the structured double-factorized encoding head to
 head with it.
 
+For a body-programmed construction, see :doc:`primitives`: its alias-sampling
+example composes an LCU with a non-Pauli CZ term and checks Walk/QSVT consumers.
+
 .. seealso::
 
    :doc:`../guide/block_encodings` — the ``PauliLCU`` API and the

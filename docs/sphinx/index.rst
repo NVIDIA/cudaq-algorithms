@@ -20,6 +20,7 @@ kernels.
 
    guide/preprocessing
    guide/block_encodings
+   guide/primitives
    guide/trotter
    guide/qubitization_qsvt
    guide/state_prep
@@ -31,6 +32,7 @@ kernels.
    examples_rst/getting_started
    examples_rst/preprocessing
    examples_rst/block_encodings
+   examples_rst/primitives
    examples_rst/state_prep
    examples_rst/hamiltonian_simulation
 
