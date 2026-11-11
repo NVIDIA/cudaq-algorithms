@@ -104,6 +104,21 @@ Requires ``qsppack`` for the phase factors, like example 2.
 Quantum phase estimation with three energy oracles
 --------------------------------------------------
 
+The physical question is how to estimate a molecule's energy using a quantum
+circuit. Phase estimation extracts an energy-dependent phase into a counting
+register whose measurement produces a distribution of estimates. This example
+uses the same small hydrogen molecule and initial state throughout, so readers
+can follow how exact time evolution, approximate time evolution, and a
+qubitization walk each connect their phases to the same energy problem.
+
+You should learn how the initial state's overlap with energy eigenstates
+determines which energies are observed, and how counting-register resolution
+limits their precision. The explicit circuits and the packaged PhaseEstimation
+API show the roles of controlled operations, measured bits, and energy
+decoding. Comparing their distributions with exact references also explains
+why walk phases require a cosine-based decoder and mirror folding, and how to
+judge sampling variation separately from a systematic error.
+
 Quantum phase estimation reads the eigenphases of a unitary into a counting
 register: for :math:`U|E_j\rangle = e^{2\pi i \phi_j}|E_j\rangle`, an
 :math:`m`-qubit register and the controlled powers :math:`U^{2^k}` build a

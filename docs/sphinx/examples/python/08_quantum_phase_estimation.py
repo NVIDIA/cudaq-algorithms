@@ -9,6 +9,21 @@
 # [Begin Documentation]
 """Example 8 — Quantum phase estimation with three energy oracles.
 
+The physical question is how to estimate a molecule's energy using a quantum
+circuit. Phase estimation extracts an energy-dependent phase into a counting
+register whose measurement produces a distribution of estimates. This example
+uses the same small hydrogen molecule and initial state throughout, so readers
+can follow how exact time evolution, approximate time evolution, and a
+qubitization walk each connect their phases to the same energy problem.
+
+You should learn how the initial state's overlap with energy eigenstates
+determines which energies are observed, and how counting-register resolution
+limits their precision. The explicit circuits and the packaged PhaseEstimation
+API show the roles of controlled operations, measured bits, and energy
+decoding. Comparing their distributions with exact references also explains
+why walk phases require a cosine-based decoder and mirror folding, and how to
+judge sampling variation separately from a systematic error.
+
 QPE turns the eigenphases of a unitary into measured bit strings. This
 example estimates ground-state energies of the H2/STO-3G Hamiltonian with
 one QPE shell around three different oracle constructions:
