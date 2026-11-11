@@ -55,10 +55,12 @@ The walk QPE core follows the centered exponent schedule of Berry et al.,
 correlated molecules", PRX Quantum 6, 020327 (2025).
 
 Prerequisite: PySCF (`pip install pyscf`). Run: python3 08_quantum_phase_estimation.py
+Add --verbose to show individual validation checks; failures are always reported.
 """
 
 from __future__ import annotations
 
+import argparse
 import math
 import os
 import time
@@ -128,17 +130,24 @@ def decode_walk_qpe(probabilities: np.ndarray,
     return mode, -alpha * math.cos(phase)
 
 
-def check(label, error, tolerance=1e-10):
+def check(label, error, tolerance=1e-10, *, verbose=False):
     passed = np.isfinite(error) and error <= tolerance
-    print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
-          f"{'PASS' if passed else 'FAIL'}")
+    if verbose or not passed:
+        print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+              f"{'PASS' if passed else 'FAIL'}")
     if not passed:
         raise AssertionError(label)
 
 
-def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
-                             centered_sampled, counting_qubits, shots,
-                             exact_ground_energy):
+def packaged_walk_comparison(encoding,
+                             prepare_hartree_fock,
+                             centered_kernel,
+                             centered_sampled,
+                             counting_qubits,
+                             shots,
+                             exact_ground_energy,
+                             *,
+                             verbose=False):
     print("\nPackaged PhaseEstimation: the same walk, a textbook power ladder")
     qpe = PhaseEstimation(encoding)
     measured = qpe.kernel(counting_qubits,
@@ -151,20 +160,26 @@ def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
     # The public decoder also accepts full-register counts, whose layout is
     # system | phase | ancilla. No manual string slicing is needed here.
     check("only phase bits measured",
-          max(abs(len(str(bits)) - counting_qubits) for bits in counts), 0)
+          max(abs(len(str(bits)) - counting_qubits) for bits in counts),
+          0,
+          verbose=verbose)
     exact = sim.qpe.phase_probabilities(qpe,
                                         counting_qubits,
                                         state_prep=prepare_hartree_fock)
     bins = 1 << counting_qubits
-    check("exact phase marginal normalized", abs(float(exact.sum()) - 1))
+    check("exact phase marginal normalized",
+          abs(float(exact.sum()) - 1),
+          verbose=verbose)
     # A priori union/Hoeffding bound over phase-bin subsets, delta=1e-6.
     # Compare unfolded distributions before identifying conjugate energies.
     delta = 1e-6
     tv_bound = min(
         1., np.sqrt((bins * np.log(2) + np.log(2 / delta)) / (2 * shots)))
     tv = lambda a, b: 0.5 * float(np.sum(np.abs(a - b)))
-    check("sampled versus exact unfolded phase TV", tv(sampled, exact),
-          tv_bound)
+    check("sampled versus exact unfolded phase TV",
+          tv(sampled, exact),
+          tv_bound,
+          verbose=verbose)
 
     # Same physical oracle, different schedule and allocation order. The
     # centered schedule applies W^(n - M/2) instead of W^n; the extra
@@ -179,33 +194,45 @@ def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
                                1 << encoding.num_ancilla, bins))**2,
                             axis=(0, 1))
     check("centered versus textbook exact phase marginals",
-          tv(centered_exact, exact))
+          tv(centered_exact, exact),
+          verbose=verbose)
     check("centered sampled versus its exact unfolded phase TV",
-          tv(centered_sampled, centered_exact), tv_bound)
+          tv(centered_sampled, centered_exact),
+          tv_bound,
+          verbose=verbose)
     check("centered versus textbook sampled phase TV",
-          tv(centered_sampled, sampled), 2 * tv_bound)
+          tv(centered_sampled, sampled),
+          2 * tv_bound,
+          verbose=verbose)
     decoded = np.array(
         [qpe.phase_to_energy(j, counting_qubits) for j in range(bins)])
     expected = -encoding.alpha * np.cos(2 * np.pi * np.arange(bins) / bins)
     check("public cosine decoder on every phase bin",
-          float(np.max(np.abs(decoded - expected))))
+          float(np.max(np.abs(decoded - expected))),
+          verbose=verbose)
 
     mode, _ = decode_walk_qpe(exact, encoding.alpha)
     sampled_mode, sampled_energy = decode_walk_qpe(sampled, encoding.alpha)
     centered_mode, _ = decode_walk_qpe(centered_sampled, encoding.alpha)
     check("sampled dominant energy matches public ranking",
-          abs(sampled_energy - ranked[0][0]))
+          abs(sampled_energy - ranked[0][0]),
+          verbose=verbose)
     check("centered and textbook dominant energy cell",
-          abs(centered_mode - mode), 0)
-    check("sampled and exact dominant energy cell", abs(sampled_mode - mode),
-          0)
+          abs(centered_mode - mode),
+          0,
+          verbose=verbose)
+    check("sampled and exact dominant energy cell",
+          abs(sampled_mode - mode),
+          0,
+          verbose=verbose)
     lower = -encoding.alpha * math.cos(
         2 * math.pi * max(0., mode - 0.5) / bins)
     upper = -encoding.alpha * math.cos(
         2 * math.pi * min(bins / 2, mode + 0.5) / bins)
     check("exact ground energy lies in cosine phase cell",
           max(lower - exact_ground_energy, exact_ground_energy - upper, 0.),
-          1e-9)
+          1e-9,
+          verbose=verbose)
     print(
         f"m={counting_qubits}, shots={shots}, alpha={encoding.alpha:.9f}, "
         f"total qubits={encoding.num_system+counting_qubits+encoding.num_ancilla}, "
@@ -226,6 +253,12 @@ def packaged_walk_comparison(encoding, prepare_hartree_fock, centered_kernel,
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
+    verbose = parser.parse_args().verbose
     started = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
 
@@ -525,9 +558,14 @@ def main() -> int:
     )
     assert walk_lower - 1e-9 <= exact_ground_energy <= walk_upper + 1e-9
 
-    packaged_walk_comparison(encoding, prepare_hartree_fock, qpe_walk,
-                             walk_sampled, counting_qubits, shots,
-                             exact_ground_energy)
+    packaged_walk_comparison(encoding,
+                             prepare_hartree_fock,
+                             qpe_walk,
+                             walk_sampled,
+                             counting_qubits,
+                             shots,
+                             exact_ground_energy,
+                             verbose=verbose)
     print(f"Total example elapsed: {time.perf_counter()-started:.2f}s")
     print("\nOK — all three QPE oracles land within one phase cell of the "
           "exact ground energy.")

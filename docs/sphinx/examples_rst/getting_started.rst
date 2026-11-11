@@ -119,6 +119,9 @@ decoding. Comparing their distributions with exact references also explains
 why walk phases require a cosine-based decoder and mirror folding, and how to
 judge sampling variation separately from a systematic error.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Quantum phase estimation reads the eigenphases of a unitary into a counting
 register: for :math:`U|E_j\rangle = e^{2\pi i \phi_j}|E_j\rangle`, an
 :math:`m`-qubit register and the controlled powers :math:`U^{2^k}` build a
