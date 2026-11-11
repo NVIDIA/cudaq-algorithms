@@ -87,14 +87,43 @@ measure correct Chebyshev moments on it.
 Solve a linear system with QSVT
 -------------------------------
 
+The task is to solve a linear system: given a matrix A and an input vector b,
+find the vector x satisfying A x = b. QSVT approaches this by applying a
+polynomial that approximates the reciprocal of each eigenvalue of the encoded
+matrix. This example carries that idea through a small dense solve and a
+sparse solve, with independent NumPy solutions providing concrete targets for
+the circuit output.
+
+You should learn why eigenvalues near zero make inversion harder, why the
+quantum circuit implements a scaled approximation to the inverse, and how
+known input and encoding scales recover the solution's magnitude. The
+comparisons separate matrix rounding, polynomial approximation, and circuit
+error, and check both the output vector and its residual in A x = b. Reading
+all coordinates from a simulator is part of this demonstration; the example
+explains what would still be needed to extract useful information from a
+quantum state on hardware.
+
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 The payoff of QSVT's "pick a polynomial" design: example 2 approximated
 ``exp(-ixt)`` for time evolution; swap the phase sequence for one
 approximating ``1/x`` and the *same* `PauliLCU` + `QSVT` machinery becomes a
 quantum linear solver -- the QSVT reading of HHL. A 5x5 symmetric
 positive-definite system is padded to three qubits, block-encoded, and
-inverted with a Childs-Kothari-Somma polynomial (degree set by the condition
-number); the good-subspace state is proportional to ``A^-1 b``, with the
-scale recovered classically. Verified against ``numpy.linalg.solve``.
+inverted with a Childs-Kothari-Somma polynomial. Degree depends on the
+normalized minimum eigenvalue, including the encoding's alpha. The known
+input, polynomial, and encoding scales restore physical units without
+fitting to the NumPy solution.
+
+A second 2x2 SPD case uses the matrix-data sparse constructor at three
+value-angle bits, generates fresh phases for its represented spectrum,
+and executes a full-vector inverse and residual check. Quantization,
+polynomial, phase-synthesis, and circuit errors have separate budgets.
+Both cases use simulator full-state real-response extraction; the raw
+complex good-block norm is not an isolated inverse-filter success probability.
+See :doc:`block_encodings` for the sparse-access introduction. Verified
+against independent ``numpy.linalg.solve`` references.
 Requires ``qsppack`` for the phase factors, like example 2.
 
 .. literalinclude:: ../examples/python/07_matrix_inversion_qsvt.py
