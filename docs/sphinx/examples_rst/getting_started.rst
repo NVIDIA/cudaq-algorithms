@@ -209,6 +209,9 @@ precision and inverse approximation contribute separately to error; they
 validate the chosen discrete problem, while accuracy relative to the
 continuous heat equation requires further space and time refinement.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 One backward-Euler step in a rod produces a tridiagonal SPD matrix after
 fixed zero boundary values are eliminated. Arithmetic banded oracles feed
 the QSVT machinery; NumPy independently solves both the ideal

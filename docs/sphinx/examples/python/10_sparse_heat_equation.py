@@ -32,6 +32,7 @@ Run: python3 10_sparse_heat_equation.py
 The default (four angle bits, 1e-2 inverse target, 16 qubits) is sized for
 the CPU simulator; --value-bits 6 --inverse-epsilon 1e-3 is the 18-qubit
 precision configuration, practical on a GPU. Optional: --plot heat_step.png
+Add --verbose to show individual validation checks; failures are always reported.
 """
 
 import argparse
@@ -57,12 +58,13 @@ MAX_QUBITS = 20
 MAX_DEGREE = 511
 
 
-def check(label, error, tolerance):
+def check(label, error, tolerance, *, verbose=False):
     passed = np.isfinite(error) and error <= tolerance
-    print(
-        f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
-        f"{'PASS' if passed else 'FAIL'}",
-        flush=True)
+    if verbose or not passed:
+        print(
+            f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+            f"{'PASS' if passed else 'FAIL'}",
+            flush=True)
     if not passed:
         raise AssertionError(label)
 
@@ -79,7 +81,7 @@ def quantized_matrix(matrix, h, bits):
     return result
 
 
-def inverse_polynomial(x_min, epsilon, full_cks=False):
+def inverse_polynomial(x_min, epsilon, full_cks=False, *, verbose=False):
     """CKS coefficients, adapted from example 07, with stable binomial tails.
 
     P[Binomial(2B,1/2)>B+j] replaces integer sums divided by 2**(2B),
@@ -123,7 +125,9 @@ def inverse_polynomial(x_min, epsilon, full_cks=False):
         f"{tail_bound:.3e} on all [-1,1]",
         flush=True)
     check("combined CKS and tail relative bound",
-          np.exp(-half_degree * x_min * x_min) + tail_bound / scale, epsilon)
+          np.exp(-half_degree * x_min * x_min) + tail_bound / scale,
+          epsilon,
+          verbose=verbose)
     coefficients = np.zeros(degree + 1)
     coefficients[1::2] = odd
     if not np.all(np.isfinite(coefficients)):
@@ -181,6 +185,10 @@ def arguments():
         "--full-cks",
         action="store_true",
         help="execute the uncompressed CKS polynomial (much slower on CPU)")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
     args = parser.parse_args()
     if args.points < 2 or args.points & (args.points - 1):
         parser.error("--points must be a power of two, at least 2")
@@ -202,6 +210,7 @@ def arguments():
 
 def main():
     args = arguments()
+    verbose = args.verbose
     started = time.perf_counter()
     target = os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu")
     if target == "nvidia":
@@ -223,13 +232,19 @@ def main():
     spectrum = 1 + 2 * r - 2 * r * np.cos(
         np.arange(1, n + 1) * np.pi / (n + 1))
     check("analytic SPD spectrum",
-          np.max(np.abs(np.linalg.eigvalsh(ideal) - spectrum)), BLOCK_ATOL)
+          np.max(np.abs(np.linalg.eigvalsh(ideal) - spectrum)),
+          BLOCK_ATOL,
+          verbose=verbose)
     check("ideal NumPy residual",
-          np.linalg.norm(ideal @ numpy_solution - initial), BLOCK_ATOL)
+          np.linalg.norm(ideal @ numpy_solution - initial),
+          BLOCK_ATOL,
+          verbose=verbose)
     if n == 4 and r == .25:
         analytic = np.array([140., 840., 144., 24.]) / 1189.
         check("default rational NumPy solution",
-              np.max(np.abs(numpy_solution - analytic)), BLOCK_ATOL)
+              np.max(np.abs(numpy_solution - analytic)),
+              BLOCK_ATOL,
+              verbose=verbose)
     print(
         f"N={n}, L=1, dx={dx:.6f}, r=D*dt/dx**2={r}; "
         "fixed zero endpoints are eliminated",
@@ -240,9 +255,14 @@ def main():
                              num_system=system_bits,
                              value_bits=args.value_bits)
     encoding = SparseOracleEncoding(oracles, num_system=system_bits)
-    check("three bands pad to four slots", abs(encoding.d_padded - 4), 0.)
-    check("sparse normalization", abs(encoding.alpha - 4 * (1 + 2 * r)),
-          BLOCK_ATOL)
+    check("three bands pad to four slots",
+          abs(encoding.d_padded - 4),
+          0.,
+          verbose=verbose)
+    check("sparse normalization",
+          abs(encoding.alpha - 4 * (1 + 2 * r)),
+          BLOCK_ATOL,
+          verbose=verbose)
     print(
         f"system={encoding.num_system}, block ancillas={encoding.num_block_ancilla}, "
         f"scratch={encoding.num_scratch}, all ancillas={encoding.num_ancilla}, "
@@ -258,15 +278,21 @@ def main():
             "the quantized matrix must have spectrum in (0,alpha]")
     quantized_solution = np.linalg.solve(realized, initial)
     half_degree, scale, odd, coefficients, tail_bound = inverse_polynomial(
-        float(normalized.min()), args.inverse_epsilon, args.full_cks)
+        float(normalized.min()),
+        args.inverse_epsilon,
+        args.full_cks,
+        verbose=verbose)
     domain = np.linspace(normalized.min(), normalized.max(), 257)
     polynomial = chebyshev.chebval(domain, coefficients)
     check("CKS relative inverse approximation on interval",
           np.max(np.abs(1 - domain * polynomial / scale)),
-          args.inverse_epsilon + 1e-12)
+          args.inverse_epsilon + 1e-12,
+          verbose=verbose)
     grid = np.linspace(-1., 1., 4097)
     check("global polynomial headroom",
-          np.max(np.abs(chebyshev.chebval(grid, coefficients))), .9 + 1e-12)
+          np.max(np.abs(chebyshev.chebval(grid, coefficients))),
+          .9 + 1e-12,
+          verbose=verbose)
 
     try:
         import qsppack
@@ -292,13 +318,17 @@ def main():
     corrected = -(response * np.exp(-1j * np.sum(phases))).real
     intended = chebyshev.chebval(normalized, coefficients)
     phase_error = float(np.max(np.abs(corrected - intended)))
-    check("phase synthesis on actual spectrum", phase_error, PHASE_ATOL)
+    check("phase synthesis on actual spectrum",
+          phase_error,
+          PHASE_ATOL,
+          verbose=verbose)
     probes = qsp_response(phases, domain)
-    check(
-        "phase synthesis on interval probes",
-        np.max(
-            np.abs(-(probes * np.exp(-1j * np.sum(phases))).real -
-                   polynomial)), PHASE_ATOL)
+    check("phase synthesis on interval probes",
+          np.max(
+              np.abs(-(probes * np.exp(-1j * np.sum(phases))).real -
+                     polynomial)),
+          PHASE_ATOL,
+          verbose=verbose)
     print(
         f"phases={len(phases)}, analytical c={scale:.9f}, beta={beta}; "
         f"physical recovery beta/(c*alpha)={beta/(scale*encoding.alpha):.9f}",
@@ -311,17 +341,23 @@ def main():
         columns.append(sim.action(encoding, basis))
     block = np.column_stack(columns)
     check("circuit block versus independently quantized matrix",
-          np.max(np.abs(encoding.alpha * block - realized)), BLOCK_ATOL)
+          np.max(np.abs(encoding.alpha * block - realized)),
+          BLOCK_ATOL,
+          verbose=verbose)
     if n > 2:
         check("no end-to-end corner coupling",
-              np.max(np.abs(block[[0, n - 1], [n - 1, 0]])), BLOCK_ATOL)
+              np.max(np.abs(block[[0, n - 1], [n - 1, 0]])),
+              BLOCK_ATOL,
+              verbose=verbose)
     print("Executing the sparse QSVT circuit...", flush=True)
     ket = np.asarray(initial / beta, dtype=complex)
     raw = sim.run_on_large_stack(sim.transform, QSVT(encoding), ket,
                                  PhaseSequence(phases, convention="qsp"))
     expected_raw = vectors @ (response * (vectors.conj().T @ ket))
     check("raw complex QSVT block versus scalar model",
-          np.max(np.abs(raw - expected_raw)), CIRCUIT_ATOL)
+          np.max(np.abs(raw - expected_raw)),
+          CIRCUIT_ATOL,
+          verbose=verbose)
     reconstructed = -(raw * np.exp(-1j * np.sum(phases))).real * beta / (
         scale * encoding.alpha)
     quantization_error = float(np.linalg.norm(realized - ideal, 2))
@@ -338,11 +374,16 @@ def main():
     total_bound = coefficient_bound + solve_bound
     check("quantized versus ideal solve",
           np.linalg.norm(quantized_solution - numpy_solution),
-          coefficient_bound + 1e-12)
+          coefficient_bound + 1e-12,
+          verbose=verbose)
     check("QSVT versus quantized NumPy solve",
-          np.linalg.norm(reconstructed - quantized_solution), solve_bound)
+          np.linalg.norm(reconstructed - quantized_solution),
+          solve_bound,
+          verbose=verbose)
     check("QSVT versus ideal NumPy solve",
-          np.linalg.norm(reconstructed - numpy_solution), total_bound)
+          np.linalg.norm(reconstructed - numpy_solution),
+          total_bound,
+          verbose=verbose)
 
     relative_error = np.linalg.norm(
         reconstructed - numpy_solution) / np.linalg.norm(numpy_solution)
@@ -350,7 +391,10 @@ def main():
         np.linalg.norm(reconstructed)**2 * np.linalg.norm(numpy_solution)**2)
     residual = np.linalg.norm(ideal @ reconstructed - initial) / beta
     residual_bound = np.linalg.norm(ideal, 2) * total_bound / beta
-    check("relative physical residual", residual, residual_bound)
+    check("relative physical residual",
+          residual,
+          residual_bound,
+          verbose=verbose)
     print(
         f"matrix quantization norm={quantization_error:.6e}; "
         f"quantized-solve relative error="
