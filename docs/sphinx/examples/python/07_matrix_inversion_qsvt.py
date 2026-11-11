@@ -58,9 +58,11 @@ it is not a coherent procedure for reading out every solution coordinate.
 
 Verified against numpy.linalg.solve: direction fidelity ~1 and a small
 residual ||A x_hat - b||. Run: python3 07_matrix_inversion_qsvt.py
+Add --verbose to show individual validation checks; failures are always reported.
 """
 from __future__ import annotations
 
+import argparse
 import contextlib
 import io
 import os
@@ -157,10 +159,11 @@ def inverse_phase_sequence(x_min: float, epsilon: float):
     return [float(p) for p in phases], scale, b
 
 
-def check(label, error, tolerance=1e-10):
+def check(label, error, tolerance=1e-10, *, verbose=False):
     passed = np.isfinite(error) and error <= tolerance
-    print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
-          f"{'PASS' if passed else 'FAIL'}")
+    if verbose or not passed:
+        print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+              f"{'PASS' if passed else 'FAIL'}")
     if not passed:
         raise AssertionError(label)
 
@@ -179,7 +182,7 @@ def qsp_response(phases, values):
     return np.array(responses)
 
 
-def sparse_inverse():
+def sparse_inverse(*, verbose=False):
     """Fresh phases for a power-of-two sparse SPD system, with no fitted scale."""
     started = time.perf_counter()
     ideal = np.array([[1.5, -.25], [-.25, 1.5]])
@@ -208,7 +211,8 @@ def sparse_inverse():
         basis[index] = 1.
         columns.append(sim.action(encoding, basis))
     check("sparse encoding versus quantized matrix",
-          np.max(np.abs(encoding.alpha * np.column_stack(columns) - realized)))
+          np.max(np.abs(encoding.alpha * np.column_stack(columns) - realized)),
+          verbose=verbose)
     exact = np.linalg.solve(ideal, rhs)
     rounded = np.linalg.solve(realized, rhs)
     values, vectors = np.linalg.eigh(realized)
@@ -219,21 +223,27 @@ def sparse_inverse():
     polynomial = scale * evaluate_odd(inverse_chebyshev_coeffs(half_degree),
                                       normalized)
     check("sparse relative inverse polynomial",
-          np.max(np.abs(1 - normalized * polynomial / scale)), epsilon + 1e-12)
+          np.max(np.abs(1 - normalized * polynomial / scale)),
+          epsilon + 1e-12,
+          verbose=verbose)
     response = qsp_response(phases, normalized)
     # Odd parity under x -> -x supplies minus; doubled projector phases
     # supply exp(i*sum(phi)). Verify these corrections before any solve.
     corrected = -(response * np.exp(-1j * np.sum(phases))).real
     phase_error = float(np.max(np.abs(corrected - polynomial)))
-    check("sparse phase synthesis versus inverse polynomial", phase_error,
-          2e-8)
+    check("sparse phase synthesis versus inverse polynomial",
+          phase_error,
+          2e-8,
+          verbose=verbose)
     ket = np.asarray(rhs / beta, dtype=complex)
     raw = sim.run_on_large_stack(sim.transform, QSVT(encoding), ket,
                                  PhaseSequence(phases, convention="qsp"))
     expected = vectors @ (response * (vectors.conj().T @ ket))
     circuit_atol = 1e-8
     check("sparse raw complex QSVT versus scalar model",
-          np.max(np.abs(raw - expected)), circuit_atol)
+          np.max(np.abs(raw - expected)),
+          circuit_atol,
+          verbose=verbose)
     solution = -(raw * np.exp(-1j * np.sum(phases))).real * beta / (
         scale * encoding.alpha)
     matrix_error = float(np.linalg.norm(realized - ideal, 2))
@@ -245,14 +255,22 @@ def sparse_inverse():
     inverse_bound = polynomial_bound + phase_bound + roundoff_bound
     overall_bound = quantization_bound + inverse_bound
     check("sparse quantized versus ideal NumPy solve",
-          np.linalg.norm(rounded - exact), quantization_bound + 1e-12)
+          np.linalg.norm(rounded - exact),
+          quantization_bound + 1e-12,
+          verbose=verbose)
     check("sparse reconstructed versus quantized solve",
-          np.linalg.norm(solution - rounded), inverse_bound)
+          np.linalg.norm(solution - rounded),
+          inverse_bound,
+          verbose=verbose)
     check("sparse reconstructed versus ideal solve",
-          np.linalg.norm(solution - exact), overall_bound)
+          np.linalg.norm(solution - exact),
+          overall_bound,
+          verbose=verbose)
     residual = np.linalg.norm(ideal @ solution - rhs) / beta
-    check("sparse physical residual", residual,
-          np.linalg.norm(ideal, 2) * overall_bound / beta)
+    check("sparse physical residual",
+          residual,
+          np.linalg.norm(ideal, 2) * overall_bound / beta,
+          verbose=verbose)
     print("  coordinate   ideal NumPy    quantized NumPy    QSVT")
     for index in range(2):
         print(f"  {index:10d} {exact[index]:13.9f} {rounded[index]:17.9f} "
@@ -278,6 +296,12 @@ def sparse_inverse():
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
+    verbose = parser.parse_args().verbose
     started = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
 
@@ -337,12 +361,16 @@ def main() -> int:
     corrected_response = -(response * np.exp(-1j * np.sum(phases))).real
     intended = scale * evaluate_odd(inverse_chebyshev_coeffs(degree_half), x)
     check("dense phase convention versus polynomial",
-          np.max(np.abs(corrected_response - intended)), 2e-8)
+          np.max(np.abs(corrected_response - intended)),
+          2e-8,
+          verbose=verbose)
     values, vectors = np.linalg.eigh(a8)
     response = qsp_response(phases, values / encoding.alpha)
     expected_raw = vectors @ (response * (vectors.conj().T @ b))
     check("dense raw QSVT versus scalar model",
-          np.max(np.abs(raw - expected_raw)), 1e-8)
+          np.max(np.abs(raw - expected_raw)),
+          1e-8,
+          verbose=verbose)
     good = -(raw * np.exp(-1j * np.sum(phases))).real
 
     # 5. b has unit norm. The known polynomial and encoding scales recover
@@ -367,7 +395,7 @@ def main() -> int:
     assert residual < 1e-2
     print("\nOK — QSVT applied 1/x to the block-encoded matrix; the "
           "good-subspace state solves A x = b.")
-    sparse_inverse()
+    sparse_inverse(verbose=verbose)
     print(f"Total example elapsed: {time.perf_counter()-started:.2f}s")
     return 0
 

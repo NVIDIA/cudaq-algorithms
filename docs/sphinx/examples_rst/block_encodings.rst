@@ -38,6 +38,9 @@ interfaces. The checks reconstruct the matrix represented by finite-precision
 value angles and compare the circuit with that matrix, so differences in data
 access and numerical precision remain visible when assessing the results.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Construct the same small SPD matrix from SciPy data and clipped banded
 oracles, inspect slots/normalization/workspace, and compare each encoded
 block to an independently quantized NumPy reference. Both routes execute

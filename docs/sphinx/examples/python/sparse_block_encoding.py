@@ -23,8 +23,10 @@ also define clipped, nonperiodic banded oracles, with a different slot layout
 and alpha. A four-point arithmetic case checks that boundaries do not wrap.
 Every circuit is compared with independently quantized NumPy matrices.
 Run: python3 sparse_block_encoding.py
+Add --verbose to show individual validation checks; failures are always reported.
 """
 
+import argparse
 import os
 import time
 
@@ -40,11 +42,12 @@ from cudaq_algorithms.sparse import (SparseOracleEncoding, banded_oracles,
 ATOL = 1e-10
 
 
-def check(label, actual, expected, tolerance=ATOL):
+def check(label, actual, expected, tolerance=ATOL, *, verbose=False):
     error = float(np.max(np.abs(np.asarray(actual) - expected)))
     passed = np.isfinite(error) and error <= tolerance
-    print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
-          f"{'PASS' if passed else 'FAIL'}")
+    if verbose or not passed:
+        print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+              f"{'PASS' if passed else 'FAIL'}")
     if not passed:
         raise AssertionError(label)
 
@@ -72,7 +75,7 @@ def scalar_response(phases, x):
     return result[0, 0]
 
 
-def check_encoding(name, encoding, ideal, rng):
+def check_encoding(name, encoding, ideal, rng, *, verbose=False):
     print(f"\n{name}: {encoding}")
     print(
         f"system={encoding.num_system}, block ancillas={encoding.num_block_ancilla}, "
@@ -88,12 +91,20 @@ def check_encoding(name, encoding, ideal, rng):
         basis[index] = 1
         columns.append(sim.action(encoding, basis))
     block = np.column_stack(columns)
-    check(f"{name} alpha*good-block", encoding.alpha * block, realized)
+    check(f"{name} alpha*good-block",
+          encoding.alpha * block,
+          realized,
+          verbose=verbose)
     entry_bound = encoding.h * np.pi / (2 * (1 << encoding.value_bits))
     row_nnz = int(np.count_nonzero(ideal, axis=1).max())
     check(f"{name} ideal-versus-quantized operator",
-          np.linalg.norm(realized - ideal, 2), 0.,
-          row_nnz * entry_bound + ATOL)
+          np.linalg.norm(realized - ideal, 2),
+          0.,
+          row_nnz * entry_bound + ATOL,
+          verbose=verbose)
+    print(
+        f"Quantization operator error={np.linalg.norm(realized - ideal, 2):.3e}; "
+        f"bound={row_nnz * entry_bound:.3e}")
     print("The largest angle code is clamped; even the maximal diagonal "
           "is rounded at finite precision.")
 
@@ -101,31 +112,45 @@ def check_encoding(name, encoding, ideal, rng):
     ket /= np.linalg.norm(ket)
     state = np.asarray(
         cudaq.get_state(encoding.encode_kernel(), state_from(ket)))
-    check(f"{name} complex action", sim.good_subspace(encoding, state),
-          realized @ ket / encoding.alpha)
+    check(f"{name} complex action",
+          sim.good_subspace(encoding, state),
+          realized @ ket / encoding.alpha,
+          verbose=verbose)
     # Scratch is the high register and is zero outside oracle load windows.
     reshaped = state.reshape(
         1 << encoding.num_scratch, 1 <<
         (encoding.num_system + encoding.num_block_ancilla))
-    check(f"{name} complete deterministic scratch restoration", reshaped[1:],
-          np.zeros_like(reshaped[1:]))
+    check(f"{name} complete deterministic scratch restoration",
+          reshaped[1:],
+          np.zeros_like(reshaped[1:]),
+          verbose=verbose)
     scaled = realized / encoding.alpha
     for power, polynomial in ((1, -scaled),
                               (2, 2 * scaled @ scaled - np.eye(dimension))):
         output = cudaq.get_state(
             Walk(encoding).kernel(power=power), state_from(ket))
         check(f"{name} Walk power {power}",
-              sim.good_subspace(encoding, output), polynomial @ ket)
+              sim.good_subspace(encoding, output),
+              polynomial @ ket,
+              verbose=verbose)
     phases = [0.3, -0.4, 0.25]
     values, vectors = np.linalg.eigh(scaled)
     response = np.array([scalar_response(phases, value) for value in values])
     expected = vectors @ (response * (vectors.conj().T @ ket))
     check(f"{name} QSVT",
-          sim.transform(QSVT(encoding), ket, PhaseSequence(phases)), expected)
+          sim.transform(QSVT(encoding), ket, PhaseSequence(phases)),
+          expected,
+          verbose=verbose)
     return block
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
+    verbose = parser.parse_args().verbose
     started = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     rng = np.random.default_rng(7)
@@ -136,8 +161,11 @@ def main():
                 "dilated", "qubits")
     for field in required:
         print(f"  {field}: {data.report[field]}")
-    check("report total qubits", data.report["qubits"],
-          data.num_system + data.num_ancilla, 0)
+    check("report total qubits",
+          data.report["qubits"],
+          data.num_system + data.num_ancilla,
+          0,
+          verbose=verbose)
     rows, columns = np.nonzero(ideal)
     triples = (rows.tolist(), columns.tolist(), ideal[rows, columns].tolist())
     # Equivalent constructors are shown through metadata; circuit execution
@@ -151,14 +179,14 @@ def main():
             raise AssertionError(f"{label} constructor metadata differs")
         print(f"{label} constructor: identical report (metadata only).")
     print("Assigned matching slots need not equal the maximum row nnz.")
-    check_encoding("QROM-backed 2x2", data, ideal, rng)
+    check_encoding("QROM-backed 2x2", data, ideal, rng, verbose=verbose)
 
     arithmetic = SparseOracleEncoding(banded_oracles([-1, 0, 1],
                                                      [-.25, 1.5, -.25],
                                                      num_system=1,
                                                      value_bits=4),
                                       num_system=1)
-    check_encoding("arithmetic 2x2", arithmetic, ideal, rng)
+    check_encoding("arithmetic 2x2", arithmetic, ideal, rng, verbose=verbose)
     print(f"Same ideal matrix: data alpha={data.alpha}, "
           f"arithmetic alpha={arithmetic.alpha}; raw blocks differ.")
 
@@ -168,9 +196,15 @@ def main():
                                                  num_system=2,
                                                  value_bits=4),
                                   num_system=2)
-    block = check_encoding("arithmetic 4x4", banded, four, rng)
-    check("clipped corners do not form a ring", block[[0, 3], [3, 0]],
-          np.zeros(2))
+    block = check_encoding("arithmetic 4x4",
+                           banded,
+                           four,
+                           rng,
+                           verbose=verbose)
+    check("clipped corners do not form a ring",
+          block[[0, 3], [3, 0]],
+          np.zeros(2),
+          verbose=verbose)
 
     # This larger geometry is priced classically, without simulating it.
     dilated = encode_sparse(np.array([[0., -.5], [.25, 0.]]),

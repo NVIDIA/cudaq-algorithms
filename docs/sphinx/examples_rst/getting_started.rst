@@ -103,6 +103,9 @@ all coordinates from a simulator is part of this demonstration; the example
 explains what would still be needed to extract useful information from a
 quantum state on hardware.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 The payoff of QSVT's "pick a polynomial" design: example 2 approximated
 ``exp(-ixt)`` for time evolution; swap the phase sequence for one
 approximating ``1/x`` and the *same* `PauliLCU` + `QSVT` machinery becomes a
