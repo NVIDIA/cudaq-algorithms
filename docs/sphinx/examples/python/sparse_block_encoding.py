@@ -18,12 +18,14 @@ interfaces. The checks reconstruct the matrix represented by finite-precision
 value angles and compare the circuit with that matrix, so differences in data
 access and numerical precision remain visible when assessing the results.
 
-Two-by-two SPD data keeps table-backed workspace small. The same coefficients
-also define clipped, nonperiodic banded oracles, with a different slot layout
-and alpha. A four-point arithmetic case checks that boundaries do not wrap.
-Every circuit is compared with independently quantized NumPy matrices.
+The default output shows the requested matrix, its four-bit representation,
+and matrices reconstructed from both circuits. The same complex input drives
+both matrix-vector comparisons. A four-point arithmetic case makes sparsity
+and clipped boundaries visible. Every circuit is compared with independently
+quantized NumPy matrices; simulator state access supplies the displayed data.
 Run: python3 sparse_block_encoding.py
-Add --verbose to show individual validation checks; failures are always reported.
+Add --verbose for individual checks and constructor/register diagnostics.
+All checks run in either mode; failures are always reported.
 """
 
 import argparse
@@ -75,14 +77,40 @@ def scalar_response(phases, x):
     return result[0, 0]
 
 
-def check_encoding(name, encoding, ideal, rng, *, verbose=False):
-    print(f"\n{name}: {encoding}")
+def show_matrix(label, matrix):
+    print(label)
+    displayed = np.round(np.real_if_close(matrix), 6)
+    # Show structural zeros without a minus sign.
+    displayed[displayed == 0] = 0.
     print(
-        f"system={encoding.num_system}, block ancillas={encoding.num_block_ancilla}, "
-        f"scratch={encoding.num_scratch}, all ancillas={encoding.num_ancilla}, "
-        f"total qubits={encoding.num_system+encoding.num_ancilla}, "
-        f"slots={encoding.d}/{encoding.d_padded}, h={encoding.h}, "
-        f"alpha={encoding.alpha}, angle bits={encoding.value_bits}")
+        np.array2string(displayed,
+                        precision=6,
+                        suppress_small=True,
+                        floatmode="fixed"))
+
+
+def show_vectors(columns):
+    """Side-by-side amplitudes, with roundoff hidden only for display."""
+    print(" index" + "".join(f"{label:>24}" for label in columns))
+    for index, values in enumerate(zip(*columns.values())):
+        cells = []
+        for value in values:
+            real = round(float(np.real(value)), 6) + 0.
+            imag = round(float(np.imag(value)), 6) + 0.
+            text = (f"{real:.6f}" if imag == 0 else f"{real:.6f}{imag:+.6f}j")
+            cells.append(f"{text:>24}")
+        print(f"{index:6d}" + "".join(cells))
+
+
+def check_encoding(name, encoding, ideal, ket, *, verbose=False):
+    print(f"Running {name} circuits...", flush=True)
+    if verbose:
+        print(encoding)
+        print(
+            f"system={encoding.num_system}, block ancillas={encoding.num_block_ancilla}, "
+            f"scratch={encoding.num_scratch}, all ancillas={encoding.num_ancilla}, "
+            f"slots={encoding.d}/{encoding.d_padded}, h={encoding.h}, "
+            f"alpha={encoding.alpha}, angle bits={encoding.value_bits}")
     realized = quantized_matrix(ideal, encoding.h, encoding.value_bits)
     dimension = len(ideal)
     columns = []
@@ -102,19 +130,16 @@ def check_encoding(name, encoding, ideal, rng, *, verbose=False):
           0.,
           row_nnz * entry_bound + ATOL,
           verbose=verbose)
-    print(
-        f"Quantization operator error={np.linalg.norm(realized - ideal, 2):.3e}; "
-        f"bound={row_nnz * entry_bound:.3e}")
-    print("The largest angle code is clamped; even the maximal diagonal "
-          "is rounded at finite precision.")
-
-    ket = rng.normal(size=dimension) + 1j * rng.normal(size=dimension)
-    ket /= np.linalg.norm(ket)
+    if verbose:
+        print(f"Matrix-rounding error bound={row_nnz * entry_bound:.3e}")
+        print("The largest angle code is clamped; even the maximal diagonal "
+              "is rounded at finite precision.")
     state = np.asarray(
         cudaq.get_state(encoding.encode_kernel(), state_from(ket)))
-    check(f"{name} complex action",
-          sim.good_subspace(encoding, state),
-          realized @ ket / encoding.alpha,
+    action = encoding.alpha * sim.good_subspace(encoding, state)
+    check(f"{name} recovered matrix-vector action",
+          action,
+          realized @ ket,
           verbose=verbose)
     # Scratch is the high register and is zero outside oracle load windows.
     reshaped = state.reshape(
@@ -125,23 +150,33 @@ def check_encoding(name, encoding, ideal, rng, *, verbose=False):
           np.zeros_like(reshaped[1:]),
           verbose=verbose)
     scaled = realized / encoding.alpha
+    walk_errors = []
     for power, polynomial in ((1, -scaled),
                               (2, 2 * scaled @ scaled - np.eye(dimension))):
         output = cudaq.get_state(
             Walk(encoding).kernel(power=power), state_from(ket))
+        walked = sim.good_subspace(encoding, output)
+        walk_errors.append(float(np.max(np.abs(walked - polynomial @ ket))))
         check(f"{name} Walk power {power}",
-              sim.good_subspace(encoding, output),
+              walked,
               polynomial @ ket,
               verbose=verbose)
     phases = [0.3, -0.4, 0.25]
     values, vectors = np.linalg.eigh(scaled)
     response = np.array([scalar_response(phases, value) for value in values])
     expected = vectors @ (response * (vectors.conj().T @ ket))
-    check(f"{name} QSVT",
-          sim.transform(QSVT(encoding), ket, PhaseSequence(phases)),
-          expected,
-          verbose=verbose)
-    return block
+    transformed = sim.transform(QSVT(encoding), ket, PhaseSequence(phases))
+    check(f"{name} QSVT", transformed, expected, verbose=verbose)
+    return dict(block=block,
+                matrix=encoding.alpha * block,
+                action=action,
+                represented=realized,
+                rounding_error=float(np.linalg.norm(realized - ideal, 2)),
+                matrix_error=float(
+                    np.max(np.abs(encoding.alpha * block - realized))),
+                action_error=float(np.max(np.abs(action - realized @ ket))),
+                walk_error=max(walk_errors),
+                qsvt_error=float(np.max(np.abs(transformed - expected))))
 
 
 def main():
@@ -149,18 +184,38 @@ def main():
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="show each validation check (failures are always reported)")
+        help="show individual checks and constructor/register diagnostics")
     verbose = parser.parse_args().verbose
     started = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
-    rng = np.random.default_rng(7)
+    print(
+        "Sparse access: turn a banded matrix into quantum matrix-vector multiplication."
+    )
+    four = (np.diag(np.full(4, 1.5)) + np.diag(np.full(3, -.25), 1) +
+            np.diag(np.full(3, -.25), -1))
+    show_matrix("A sparse 4x4 example (10 nonzeros; at most three per row):",
+                four)
+    print("Each row couples a site to itself and its immediate neighbours. "
+          "The endpoints stop at the boundary.")
+    print(
+        "\n1. Compare stored entries with arithmetic rules on a small 2x2 instance."
+    )
     ideal = np.array([[1.5, -0.25], [-0.25, 1.5]])
+    show_matrix("Requested matrix A:", ideal)
+    print(
+        "QROM loads stored locations/values; arithmetic computes the three bands."
+    )
+    print(
+        "The selected circuit block contains A~/alpha, where A~ uses four-bit angles. "
+        "Multiply that block by alpha to recover the represented matrix.")
     data = encode_sparse(sparse.csr_matrix(ideal), value_bits=4)
-    print("SciPy data constructor report:", data.report)
     required = ("dim", "nnz", "max_row_nnz", "slots", "alpha", "value_bits",
                 "dilated", "qubits")
-    for field in required:
-        print(f"  {field}: {data.report[field]}")
+    report = {field: data.report[field] for field in required}
+    if verbose:
+        print("SciPy data constructor report:")
+        for field, value in report.items():
+            print(f"  {field}: {value}")
     check("report total qubits",
           data.report["qubits"],
           data.num_system + data.num_ancilla,
@@ -177,52 +232,135 @@ def main():
         equivalent = encode_sparse(source, value_bits=4, **keywords)
         if equivalent.report != data.report:
             raise AssertionError(f"{label} constructor metadata differs")
-        print(f"{label} constructor: identical report (metadata only).")
-    print("Assigned matching slots need not equal the maximum row nnz.")
-    check_encoding("QROM-backed 2x2", data, ideal, rng, verbose=verbose)
+        if verbose:
+            print(f"{label} constructor: identical report (metadata only).")
+    if verbose:
+        print("Assigned matching slots need not equal the maximum row nnz.")
+    ket = np.array([1., 1j]) / np.sqrt(2)
+    stored = check_encoding("QROM 2x2", data, ideal, ket, verbose=verbose)
 
     arithmetic = SparseOracleEncoding(banded_oracles([-1, 0, 1],
                                                      [-.25, 1.5, -.25],
                                                      num_system=1,
                                                      value_bits=4),
                                       num_system=1)
-    check_encoding("arithmetic 2x2", arithmetic, ideal, rng, verbose=verbose)
-    print(f"Same ideal matrix: data alpha={data.alpha}, "
-          f"arithmetic alpha={arithmetic.alpha}; raw blocks differ.")
+    computed = check_encoding("arithmetic 2x2",
+                              arithmetic,
+                              ideal,
+                              ket,
+                              verbose=verbose)
+    check("both access methods recover the same matrix",
+          stored["matrix"],
+          computed["matrix"],
+          2 * ATOL,
+          verbose=verbose)
+    check("both access methods agree on the shared input",
+          stored["action"],
+          computed["action"],
+          2 * ATOL,
+          verbose=verbose)
+    show_matrix("Expected four-bit matrix A~ (NumPy):", stored["represented"])
+    show_matrix(
+        f"Recovered from QROM: alpha * circuit block (alpha={data.alpha:g}):",
+        stored["matrix"])
+    show_matrix(
+        f"Recovered from arithmetic: alpha * circuit block (alpha={arithmetic.alpha:g}):",
+        computed["matrix"])
+    print(
+        f"Matrix-rounding error ||A~-A||_2 = {stored['rounding_error']:.6f}. "
+        "Circuit agreement with A~ is checked separately below.")
+    print(
+        "\nBoth circuits use b = [1, i]/sqrt(2). Compare their matrix-vector outputs:"
+    )
+    show_vectors({
+        "NumPy A@b": ideal @ ket,
+        "NumPy A~@b": stored["represented"] @ ket,
+        "QROM alpha*y": stored["action"],
+        "Arithmetic alpha*y": computed["action"]
+    })
+    print(
+        "Here y is the unnormalized component in the selected ancilla sector. "
+        "Its scale differs between encodings; alpha*y recovers A~@b.")
 
-    four = (np.diag(np.full(4, 1.5)) + np.diag(np.full(3, -.25), 1) +
-            np.diag(np.full(3, -.25), -1))
+    print("\n2. Apply the 4x4 banded matrix to an endpoint input.")
     banded = SparseOracleEncoding(banded_oracles([-1, 0, 1], [-.25, 1.5, -.25],
                                                  num_system=2,
                                                  value_bits=4),
                                   num_system=2)
-    block = check_encoding("arithmetic 4x4",
-                           banded,
-                           four,
-                           rng,
-                           verbose=verbose)
+    endpoint = np.array([1., 0., 0., 0.], dtype=complex)
+    larger = check_encoding("arithmetic 4x4",
+                            banded,
+                            four,
+                            endpoint,
+                            verbose=verbose)
     check("clipped corners do not form a ring",
-          block[[0, 3], [3, 0]],
+          larger["block"][[0, 3], [3, 0]],
           np.zeros(2),
           verbose=verbose)
+    show_matrix("Matrix recovered from the arithmetic circuit:",
+                larger["matrix"])
+    print(
+        "For b = [1, 0, 0, 0], only the first two output entries are nonzero:")
+    show_vectors({
+        "NumPy A@b": four @ endpoint,
+        "NumPy A~@b": larger["represented"] @ endpoint,
+        "Circuit alpha*y": larger["action"]
+    })
+    print("The far endpoint stays zero: the bands do not wrap into a ring.")
+    print(
+        f"Four-bit matrix-rounding error ||A~-A||_2 = {larger['rounding_error']:.6f}."
+    )
 
     # This larger geometry is priced classically, without simulating it.
     dilated = encode_sparse(np.array([[0., -.5], [.25, 0.]]),
                             value_bits=4,
                             dilate=True)
-    print("\nGeneral real matrix: Hermitian dilation metadata only:",
-          dilated.report)
+    if verbose:
+        print("\nGeneral real matrix: Hermitian dilation metadata only:",
+              dilated.report)
+        print(
+            "Direct encoding supports real symmetric matrices, nonnegative "
+            "diagonals and signed off-diagonals. Dilation handles general real data."
+        )
+        print(
+            "Factory non-power-of-two padding is zero, unlike example 07's "
+            "dense identity padding. Reciprocal examples need a nonzero spectrum."
+        )
+        print(
+            "Sparse encodings lack odd-moment SELECT observables; expanded even "
+            "reflection observables are costly. Validate statevector walk blocks here."
+        )
+    cases = (("QROM 2x2", data, stored), ("Arithmetic 2x2", arithmetic,
+                                          computed), ("Arithmetic 4x4", banded,
+                                                      larger))
+    print("\n3. Compare circuit accuracy and cost.")
     print(
-        "Direct encoding supports real symmetric matrices, nonnegative "
-        "diagonals and signed off-diagonals. Dilation handles general real data."
+        "Maximum errors against the independent NumPy references (tolerance 1e-10):"
     )
     print(
-        "Factory non-power-of-two padding is zero, unlike example 07's "
-        "dense identity padding. Reciprocal examples need a nonzero spectrum.")
-    print(
-        "Sparse encodings lack odd-moment SELECT observables; expanded even "
-        "reflection observables are costly. Validate statevector walk blocks here."
+        f"{'Method':<18} {'Matrix':>11} {'Matvec':>11} {'Walk (1,2)':>12} {'QSVT':>11}"
     )
+    for name, _, result in cases:
+        print(f"{name:<18} {result['matrix_error']:11.2e} "
+              f"{result['action_error']:11.2e} {result['walk_error']:12.2e} "
+              f"{result['qsvt_error']:11.2e}")
+    print("\nThe same Walk and QSVT APIs consumed each encoding.")
+    print(
+        f"{'Method':<18} {'System':>7} {'Ancillas':>9} {'Total':>7} {'Padded slots':>13} {'alpha':>7}"
+    )
+    for name, encoding, _ in cases:
+        print(f"{name:<18} {encoding.num_system:7d} {encoding.num_ancilla:9d} "
+              f"{encoding.num_system+encoding.num_ancilla:7d} "
+              f"{encoding.d_padded:13d} {encoding.alpha:7g}")
+    print(
+        "Arithmetic uses fewer qubits for this 2x2 fixture but doubles alpha. "
+        "A larger alpha moves normalized eigenvalues closer to zero, "
+        "which makes inverse polynomials more expensive.")
+    print(
+        "All checks passed, including workspace restoration and clipped boundaries."
+    )
+    print(
+        "Displayed matrices/vectors are read from the simulator statevector.")
     maximum = max(e.num_system + e.num_ancilla
                   for e in (data, arithmetic, banded))
     print(f"Maximum executed qubits: {maximum}; elapsed: "
