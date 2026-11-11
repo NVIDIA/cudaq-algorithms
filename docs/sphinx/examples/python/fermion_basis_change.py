@@ -2,6 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 """Fixed, QROM-programmed and selected-reflection fermionic basis changes.
 
+Fermionic simulation often becomes simpler after mixing the orbital modes into
+a different basis. A Givens rotation performs one such mixing between a pair
+of modes while preserving particle number. This example first applies a fixed
+basis change, then shows how a quantum address can load angle words from QROM
+so one programmable circuit performs the transformation selected by that
+address.
+
+You should learn the difference between enabling a fixed operation and
+supplying its parameters as quantum data. A selected-orbital reflection then
+transforms into the chosen orbital basis, marks occupation with a sign, and
+transforms back, providing a useful building block for chemistry encodings.
+Complete-state NumPy checks follow the address phases, particle sectors, and
+cleared angle/scratch registers. Comparing two angle precisions shows how a
+represented transformation can match its circuit closely while still
+approximating the desired transformation.
+
 Run: python3 fermion_basis_change.py. Uses fp64 qpp-cpu by default.
 The full two-mode fixture uses sixteen qubits; partial programs use three
 angle words instead of four. All references include every particle sector.
