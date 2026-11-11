@@ -87,6 +87,22 @@ measure correct Chebyshev moments on it.
 Solve a linear system with QSVT
 -------------------------------
 
+The task is to solve a linear system: given a matrix A and an input vector b,
+find the vector x satisfying A x = b. QSVT approaches this by applying a
+polynomial that approximates the reciprocal of each eigenvalue of the encoded
+matrix. This example carries that idea through a small dense solve and a
+sparse solve, with independent NumPy solutions providing concrete targets for
+the circuit output.
+
+You should learn why eigenvalues near zero make inversion harder, why the
+quantum circuit implements a scaled approximation to the inverse, and how
+known input and encoding scales recover the solution's magnitude. The
+comparisons separate matrix rounding, polynomial approximation, and circuit
+error, and check both the output vector and its residual in A x = b. Reading
+all coordinates from a simulator is part of this demonstration; the example
+explains what would still be needed to extract useful information from a
+quantum state on hardware.
+
 The payoff of QSVT's "pick a polynomial" design: example 2 approximated
 ``exp(-ixt)`` for time evolution; swap the phase sequence for one
 approximating ``1/x`` and the *same* `PauliLCU` + `QSVT` machinery becomes a

@@ -9,6 +9,22 @@
 # [Begin Documentation]
 """Example 7 — Invert a 5x5 matrix with QSVT (the quantum linear solver).
 
+The task is to solve a linear system: given a matrix A and an input vector b,
+find the vector x satisfying A x = b. QSVT approaches this by applying a
+polynomial that approximates the reciprocal of each eigenvalue of the encoded
+matrix. This example carries that idea through a small dense solve and a
+sparse solve, with independent NumPy solutions providing concrete targets for
+the circuit output.
+
+You should learn why eigenvalues near zero make inversion harder, why the
+quantum circuit implements a scaled approximation to the inverse, and how
+known input and encoding scales recover the solution's magnitude. The
+comparisons separate matrix rounding, polynomial approximation, and circuit
+error, and check both the output vector and its residual in A x = b. Reading
+all coordinates from a simulator is part of this demonstration; the example
+explains what would still be needed to extract useful information from a
+quantum state on hardware.
+
 Time evolution (example 2) applied a QSVT polynomial approximating
 exp(-ixt). Swap the polynomial and the same machinery solves A x = b:
 apply a polynomial approximating 1/x to the block-encoded matrix and the

@@ -4,6 +4,20 @@
 # [Begin Documentation]
 """Matrix data or arithmetic oracles: the same sparse BlockEncoding protocol.
 
+A sparse matrix has only a few nonzero entries in each row. This example asks
+how to give a quantum algorithm access to those entries without first
+expressing the entire matrix as a sum of Pauli operations. It constructs the
+same small matrix from stored matrix data and from arithmetic rules describing
+its bands, showing two ways to supply the locations and values needed for a
+sparse block encoding.
+
+You should learn what the matrix-access oracles must return, how a banded
+pattern handles boundaries, and why the two access methods can have different
+normalization and workspace costs. Both encodings feed the same Walk and QSVT
+interfaces. The checks reconstruct the matrix represented by finite-precision
+value angles and compare the circuit with that matrix, so differences in data
+access and numerical precision remain visible when assessing the results.
+
 Two-by-two SPD data keeps table-backed workspace small. The same coefficients
 also define clipped, nonperiodic banded oracles, with a different slot layout
 and alpha. A four-point arithmetic case checks that boundaries do not wrap.
