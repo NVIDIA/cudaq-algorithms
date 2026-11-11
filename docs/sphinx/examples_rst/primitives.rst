@@ -21,6 +21,9 @@ enable, making their qubit and gate tradeoffs visible. Full-state comparisons
 with an independently constructed reference check that the chosen entry, the
 phase change, and workspace restoration all agree.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Read a table coherently, use a loaded bit, and unlookup. The example checks
 SELECT and SELECT-SWAP, native and wrapped control, and clean workspace.
 

@@ -21,8 +21,10 @@ phase change, and workspace restoration all agree.
 Run with: python3 qrom_lookup.py
 QROM XORs classical words into a quantum output without measuring the address.
 All checks compare complex amplitudes, including restored ladder workspace.
+Add --verbose to show individual validation checks; failures are always reported.
 """
 
+import argparse
 import os
 import time
 
@@ -38,10 +40,12 @@ OUTPUT_BITS = 3
 ATOL = 1e-10
 
 
-def check(label, actual, expected):
+def check(label, actual, expected, *, verbose=False):
     error = float(np.max(np.abs(actual - expected)))
-    print(f"CHECK {label}: {error:.3e} <= {ATOL:.1e} -> "
-          f"{'PASS' if error <= ATOL else 'FAIL'}")
+    passed = np.isfinite(error) and error <= ATOL
+    if verbose or not passed:
+        print(f"CHECK {label}: {error:.3e} <= {ATOL:.1e} -> "
+              f"{'PASS' if passed else 'FAIL'}")
     if not np.isfinite(error) or error > ATOL:
         raise AssertionError(label)
 
@@ -110,14 +114,20 @@ def lookup_circuit(table, *, wrapped=False, phase=False):
     return plain
 
 
-def run_check(label, table, initial, *, wrapped=False, phase=False):
+def run_check(label,
+              table,
+              initial,
+              *,
+              wrapped=False,
+              phase=False,
+              verbose=False):
     controlled = table.controlled or wrapped
     expected_logical = reference(initial, controlled=controlled, phase=phase)
     expected = np.zeros(len(initial) << table.num_ladder, dtype=complex)
     expected[:len(initial)] = expected_logical
     circuit = lookup_circuit(table, wrapped=wrapped, phase=phase)
     actual = np.asarray(cudaq.get_state(circuit, state_from(initial)))
-    check(label, actual, expected)
+    check(label, actual, expected, verbose=verbose)
     return actual[:len(initial)]
 
 
@@ -179,6 +189,12 @@ def report_resources(label, table, *, wrapped=False):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
+    verbose = parser.parse_args().verbose
     start = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     rng = np.random.default_rng(7)
@@ -201,11 +217,13 @@ def main():
                      block_size=block_size)
         print(f"\nRequested {variant}, selected {table.variant}, "
               f"block_size={table.block_size}")
-        plain_results.append(run_check(f"{variant} XOR", table, initial))
+        plain_results.append(
+            run_check(f"{variant} XOR", table, initial, verbose=verbose))
         run_check(f"{variant} lookup/use/unlookup",
                   table,
                   marked_input,
-                  phase=True)
+                  phase=True,
+                  verbose=verbose)
         maximum_qubits = max(maximum_qubits,
                              report_resources(f"{variant} plain", table))
 
@@ -219,17 +237,23 @@ def main():
         for control_value in (0, 1):
             controlled_input = np.zeros(2 * len(initial), dtype=complex)
             controlled_input[control_value::2] = initial
-            run_check(f"{variant} enable={control_value}", native,
-                      controlled_input)
+            run_check(f"{variant} enable={control_value}",
+                      native,
+                      controlled_input,
+                      verbose=verbose)
 
         coherent_input = np.zeros(2 * len(initial), dtype=complex)
         coherent_input[0::2] = initial / np.sqrt(2)
         coherent_input[1::2] = 1j * initial / np.sqrt(2)
-        run_check(f"{variant} coherent native control", native, coherent_input)
+        run_check(f"{variant} coherent native control",
+                  native,
+                  coherent_input,
+                  verbose=verbose)
         run_check(f"{variant} coherent wrapped control",
                   table,
                   coherent_input,
-                  wrapped=True)
+                  wrapped=True,
+                  verbose=verbose)
         maximum_qubits = max(
             maximum_qubits,
             report_resources(f"{variant} native control", native),
@@ -238,7 +262,10 @@ def main():
 
     for result in plain_results[1:]:
         # Complete states above check each geometry; these are logical slices.
-        check("strategies agree on logical XOR", result, plain_results[0])
+        check("strategies agree on logical XOR",
+              result,
+              plain_results[0],
+              verbose=verbose)
 
     print("\nResource-only pricing (no large statevector is allocated):")
     print(
