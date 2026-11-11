@@ -53,81 +53,92 @@ __all__ = [
 # MAJ(x, y, z) = cx(z, y); cx(z, x); ccx(x, y, z)
 # UMA(x, y, z) = ccx(x, y, z); cx(z, x); cx(x, y)
 #
-# The adder chains MAJ(carry, b0, a0), MAJ(a0, b1, a1), ...; for a mod-2^n
-# adder the sweep stops one bit early -- the ripple carry into bit n-1 sits on
-# a[n-2], and the top carry-out c_n (which would land on a[n-1]) is never
-# formed, since it is discarded mod 2^n. The UMA sweep (in reverse) restores
-# ``a`` and the carry ancilla and completes ``b <- a + b mod 2^n``.
+# The adder chains MAJ(carry, b0, a0), MAJ(a0, b1, a1), ... .
+# The UMA sweep restores ``a`` and the carry ancilla and completes the sum.
 
 
 @cudaq.kernel
 def add_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
     """``b <- (a + b) mod 2^n`` (CDKM). ``a`` and ``carry`` are restored.
 
-    ``a`` and ``b`` have equal size ``n``; ``carry`` is a one-qubit view
-    that must be |0> on entry (it is returned to |0>).
+    ``a`` and ``b`` are disjoint little-endian registers of equal width
+    ``n >= 1``. ``carry`` is a disjoint one-qubit view, initialized and
+    returned to |0>.
 
-    Cost: ``2n - 2`` Toffolis. The mod-2^n adder never reads the top carry-out,
-    so its MAJ/UMA Toffoli pair (and the surrounding CX pair) cancels;
-    ``n = 1`` needs none. Cuccaro et al. (arXiv:quant-ph/0410184) Section 4.1
-    reaches ``2n - 3`` via an ``(n-1)``-bit adder plus a final CNOT -- one
-    further Toffoli, not taken here to keep the plain MAJ/UMA structure.
+    For n = 1, the circuit is one CNOT. For n = 2, it uses two CNOTs
+    and one Toffoli; ``carry`` is untouched in both cases.
+
+    Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
     """
     n = a.size()
     if n == 1:
-        # b <- a XOR b; the carry-out is discarded (mod 2), so no Toffoli.
         cx(a[0], b[0])
-    elif n > 1:
+    elif n == 2:
+        cx(a[1], b[1])
+        x.ctrl(a[0], b[0], b[1])
+        cx(a[0], b[0])
+    elif n > 2:
         # MAJ sweep over the lower bits.
         cx(a[0], b[0])
         cx(a[0], carry[0])
         x.ctrl(carry[0], b[0], a[0])
-        for i in range(1, n - 1):
+        for i in range(1, n - 2):
             cx(a[i], b[i])
             cx(a[i], a[i - 1])
             x.ctrl(a[i - 1], b[i], a[i])
-        # Top bit: the carry-out is never read for a mod-2^n adder, so the
-        # MAJ Toffoli at i = n-1 and its UMA reverse cancel, and the CX pair
-        # around them with it -- what survives is two CX into b[n-1].
+        cx(a[n - 2], b[n - 2])
+        cx(a[n - 2], a[n - 3])
         cx(a[n - 1], b[n - 1])
+        # Write the last carry directly into the sum bit to avoid computing
+        # and uncomputing it on a[n-2], saving one Toffoli.
         cx(a[n - 2], b[n - 1])
-        # UMA sweep (reverse) over the lower bits.
-        for k in range(2, n):
+        x.ctrl(a[n - 3], b[n - 2], b[n - 1])
+        cx(a[n - 2], a[n - 3])
+        cx(a[n - 3], b[n - 2])
+        # UMA sweep (reverse) over the remaining lower bits.
+        for k in range(3, n):
             i = n - k
             x.ctrl(a[i - 1], b[i], a[i])
             cx(a[i], a[i - 1])
             cx(a[i - 1], b[i])
         x.ctrl(carry[0], b[0], a[0])
         cx(a[0], carry[0])
-        # The UMA carry-in CNOT ``cx(carry[0], b[0])`` is omitted: the carry
-        # ancilla is |0> on entry (precondition) and restored by the line
-        # above, so it is the identity here -- adding it back would be dead.
+        # Omit cx(carry[0], b[0]): carry is restored to |0> here.
 
 
 @cudaq.kernel
 def subtract_register(a: cudaq.qview, b: cudaq.qview, carry: cudaq.qview):
     """``b <- (b - a) mod 2^n``: the exact gate-reversal of ``add_register``.
 
-    Hand-written inverse (no ``cudaq.adjoint``); every gate of the adder is
-    self-inverse, so the reversed sequence is the inverse circuit.
+    The little-endian ordering, equal widths, disjoint views, clean carry,
+    and small-width cases follow ``add_register``. ``a`` and ``carry``
+    are restored. The inverse is hand-written (no ``cudaq.adjoint``).
 
-    Cost: ``2n - 2`` Toffolis.
+    Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
     """
     n = a.size()
     if n == 1:
         cx(a[0], b[0])
-    elif n > 1:
-        # Mirror of ``add_register``: the UMA carry-in CNOT is omitted (it is
-        # the identity under the carry = |0> precondition).
+    elif n == 2:
+        cx(a[0], b[0])
+        x.ctrl(a[0], b[0], b[1])
+        cx(a[1], b[1])
+    elif n > 2:
+        # Reverse every gate of add_register under the same carry precondition.
         cx(a[0], carry[0])
         x.ctrl(carry[0], b[0], a[0])
-        for i in range(1, n - 1):
+        for i in range(1, n - 2):
             cx(a[i - 1], b[i])
             cx(a[i], a[i - 1])
             x.ctrl(a[i - 1], b[i], a[i])
+        cx(a[n - 3], b[n - 2])
+        cx(a[n - 2], a[n - 3])
+        x.ctrl(a[n - 3], b[n - 2], b[n - 1])
         cx(a[n - 2], b[n - 1])
         cx(a[n - 1], b[n - 1])
-        for i in range(n - 2, 0, -1):
+        cx(a[n - 2], a[n - 3])
+        cx(a[n - 2], b[n - 2])
+        for i in range(n - 3, 0, -1):
             x.ctrl(a[i - 1], b[i], a[i])
             cx(a[i], a[i - 1])
             cx(a[i], b[i])
@@ -150,9 +161,10 @@ def add_constant(target: cudaq.qview, constant_bits: list[int],
     and are returned to |0>: the constant is X-loaded into ``work``,
     ripple-added, and X-unloaded.
 
-    Cost: ``2n - 2`` Toffolis (the constant load/unload is X-only). An
-    ancilla-light constant adder (Haener et al., arXiv:1611.07995) that avoids
-    the ``n``-qubit ``work`` register is a possible follow-up.
+    Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
+    The constant load/unload is X-only. An ancilla-light constant adder
+    (Haener et al., arXiv:1611.07995) that avoids the ``n``-qubit ``work``
+    register is a possible follow-up.
     """
     n = target.size()
     for k in range(n):
@@ -169,7 +181,10 @@ def subtract_constant(target: cudaq.qview, constant_bits: list[int],
                       work: cudaq.qview, carry: cudaq.qview):
     """``target <- (target - K) mod 2^n``: inverse of ``add_constant``.
 
-    Cost: ``2n - 2`` Toffolis.
+    The constant bits, disjoint views, and clean workspace follow
+    ``add_constant``. ``work`` and ``carry`` are restored to |0>.
+
+    Cost: 0 Toffolis for n = 1; 2n - 3 for n >= 2.
     """
     n = target.size()
     for k in range(n):
