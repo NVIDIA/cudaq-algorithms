@@ -4,6 +4,21 @@
 # [Begin Documentation]
 """Walkthrough of the PauliLCU block-encoding API.
 
+A Hamiltonian is a weighted sum of simple operations. To use it in quantum
+algorithms, we need a larger circuit that contains a scaled copy of that sum
+in the part where its extra qubits are zero. This is a block encoding. This
+example follows one small Hamiltonian from its coefficients to an executable
+block encoding, then uses that encoding in a quantum walk and a polynomial
+transformation.
+
+The comparison asks what changes when the same Hamiltonian uses exact state
+preparation or finite-precision alias sampling. You should learn how
+preparation weights, the selected operations, and the normalization determine
+the encoded matrix; how extra qubits contribute to cost; and how to compare
+accuracy across implementations. The NumPy checks separate errors caused by
+rounded coefficients from errors in executing the circuit, so the printed
+resource savings or costs can be interpreted alongside the approximation.
+
 Run with:  python3 pauli_lcu_demo.py
 Add --verbose to show individual numerical checks.
 """
