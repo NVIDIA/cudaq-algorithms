@@ -29,6 +29,9 @@ identify the subspace to compare. An independent occupation-basis Hamiltonian
 supplies the reference, making the signs and physical-subspace checks explicit
 before any resource comparison is interpreted.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Compare JW, BK, original superfast, and binary-tree generalized superfast
 mappings on one four-site spinless ring. An independent occupation-basis
 NumPy Hamiltonian checks coefficients and signs. Each superfast parity
