@@ -534,3 +534,350 @@ def test_walk_kernel_rejects_negative_power():
         encoding.walk_kernel(power=-1)
     with pytest.raises(ValueError, match="non-negative integer"):
         encoding.walk_kernel(power=1.5)
+
+
+# ----------------------------------------------------------------------
+# QROM frames: independent determinant-minor reference, no PySCF dependency.
+# ----------------------------------------------------------------------
+
+
+def qrom_fixture(**kwargs):
+    theta = .37
+    v = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+    a = (v * [.6, -.2]) @ v.T
+    one_body = np.array([[-.9, .17], [.17, -.4]])
+    eri = np.einsum("pq,rs->pqrs", a, a)
+    return DoubleFactorizedEncoding(one_body,
+                                    eri,
+                                    rotation_backend="qrom",
+                                    **kwargs), one_body, eri
+
+
+def fock_minors(orbital):
+    occupied = [[p for p in range(len(orbital)) if j >> p & 1]
+                for j in range(1 << len(orbital))]
+    result = np.zeros((len(occupied), len(occupied)), dtype=complex)
+    for s, rows in enumerate(occupied):
+        for t, cols in enumerate(occupied):
+            if len(rows) == len(cols):
+                result[s, t] = np.linalg.det(orbital[np.ix_(rows, cols)])
+    return result
+
+
+def dense_terms(encoding, represented=True):
+    frames = (encoding.represented_frame_matrices
+              if represented else encoding.ideal_frame_matrices)
+    lifts = [fock_minors(np.kron(f, np.eye(2))) for f in frames]
+    operators = []
+    for coefficient, qubits, frame in encoding.terms:
+        diagonal = np.array([(-1)**sum((j >> q) & 1 for q in qubits)
+                             for j in range(1 << encoding.num_system)])
+        g = lifts[frame]
+        operators.append(np.sign(coefficient) * (g * diagonal) @ g.conj().T)
+    h = sum(abs(term[0]) * op for term, op in zip(encoding.terms, operators))
+    return h, operators
+
+
+def select_state(encoding, branches, *, controls=None):
+    """Reusable full-state SELECT oracle; branches indexed by logical term."""
+    width = encoding.rotation_report["term_index_width"]
+    system_width = encoding.num_system
+    enable_width = 0 if controls is None else 1
+    total = system_width + encoding.num_ancilla + enable_width
+    selector = encoding.select_kernel(controlled=controls is not None)
+    initial = np.zeros(1 << total, dtype=complex)
+    expected = np.zeros_like(initial)
+    _, operators = dense_terms(encoding)
+    control_amplitudes = [1.] if controls is None else controls
+    for control, amplitude in enumerate(control_amplitudes):
+        for j, ket in enumerate(branches):
+            # Physical index qubit zero carries the logical MSB.
+            address = int(f"{j:0{width}b}"[::-1], 2)
+            indices = np.arange(1 << system_width) + (
+                (control + (address << enable_width)) << system_width)
+            initial[indices] = amplitude * ket
+            op = operators[j] if j < len(operators) else np.eye(len(ket))
+            if controls is not None and control == 0:
+                op = np.eye(len(ket))
+            expected[indices] = amplitude * (op @ ket)
+
+    @cudaq.kernel
+    def run(state: cudaq.State):
+        q = cudaq.qvector(state)
+        selector(q[system_width:total], q[0:system_width])
+
+    actual = np.asarray(cudaq.get_state(run, state_from(initial)))
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-10)
+
+
+def test_qrom_metadata_and_validation():
+    encoding, one_body, eri = qrom_fixture()
+    fixed = DoubleFactorizedEncoding(one_body, eri)
+    assert encoding.terms == fixed.terms
+    assert encoding.alpha == fixed.alpha
+    report = encoding.rotation_report
+    assert report["mixing_slots"] == 1
+    assert report["program_width"] == 4
+    assert report["total_ancillas"] == sum(report[k]
+                                           for k in ("term_index_width",
+                                                     "program_width",
+                                                     "ladder_width"))
+    assert report["table_size"] == 1 << report["term_index_width"]
+    assert fixed.rotation_report["program_width"] == 0
+    assert fixed.rotation_report["ladder_width"] == 0
+    # Public arrays and metadata cannot mutate an encoding.
+    copy = encoding.ideal_frame_matrices[0]
+    copy[:] = 0
+    assert np.linalg.norm(encoding.ideal_frame_matrices[0]) > 1
+    report["program_width"] = -1
+    assert encoding.rotation_report["program_width"] == 4
+    with pytest.raises(ValueError, match="rotation_backend"):
+        DoubleFactorizedEncoding(one_body, eri, rotation_backend="other")
+    for bits in (0, 53, True, 2.5):
+        with pytest.raises(ValueError, match="angle_bits"):
+            qrom_fixture(angle_bits=bits)
+
+
+def test_qrom_qr_reconstruction_spin_lift_and_bound():
+    from df_encoding import _spatial_matrix, _spatial_program
+    # Three spatial modes check chronology, and interleaved spectator parity.
+    rotation, _ = np.linalg.qr(np.random.default_rng(7).normal(size=(3, 3)))
+    modes, angles, f = _spatial_program(rotation)
+    assert len(modes) == 3
+    np.testing.assert_allclose(_spatial_matrix(3, modes, angles),
+                               f,
+                               rtol=0,
+                               atol=1e-10)
+    from cudaq_algorithms.stateprep import spatial_givens_network
+    lift = fock_minors(np.kron(f, np.eye(2)))
+    ket = random_ket(64, seed=7)
+
+    @cudaq.kernel
+    def circuit(state: cudaq.State):
+        q = cudaq.qvector(state)
+        spatial_givens_network(q, modes, angles)
+
+    np.testing.assert_allclose(np.asarray(
+        cudaq.get_state(circuit, state_from(ket))),
+                               lift @ ket,
+                               rtol=0,
+                               atol=1e-10)
+    encoding, one_body, eri = qrom_fixture()
+    kept, _ = dense_terms(encoding, represented=False)
+    represented, _ = dense_terms(encoding)
+    np.testing.assert_allclose(kept,
+                               dense_hamiltonian(one_body, eri),
+                               rtol=0,
+                               atol=1e-10)
+    bound = sum(
+        abs(c) *
+        min(2., 2 * encoding.rotation_report["frame_error_bounds"][frame])
+        for c, qubits, frame in encoding.terms if qubits)
+    error = np.linalg.norm(represented - kept, 2)
+    assert 1e-3 < error <= bound + 1e-10
+
+
+def test_qrom_each_term_bit_reversal_padding_and_coherent_control():
+    encoding, _, _ = qrom_fixture()
+    width = encoding.rotation_report["term_index_width"]
+    branches = np.eye(1 << width, 16, dtype=complex)  # distinct system inputs
+    # Check every physical address, including padded identities.
+    for j in range(1 << width):
+        isolated = np.zeros_like(branches)
+        isolated[j] = random_ket(16, seed=7 + j)
+        select_state(encoding, isolated)
+    rng = np.random.default_rng(7)
+    branches = rng.normal(size=(1 << width,
+                                16)) + 1j * rng.normal(size=(1 << width, 16))
+    branches /= np.linalg.norm(branches)
+    select_state(encoding, branches)
+    for controls in ([1., 0.], [0., 1.], [1 / np.sqrt(2), 1j / np.sqrt(2)]):
+        select_state(encoding, branches, controls=controls)
+    assert any(c < 0 for c, _, _ in encoding.terms)
+    rows = encoding.rotation_report["angle_rows"]
+    words = encoding.rotation_report["frame_words"]
+    for j in range(1 << width):
+        address = int(f"{j:0{width}b}"[::-1], 2)
+        expected = 0
+        if j < encoding.num_terms and encoding.terms[j][1]:
+            expected = words[encoding.terms[j][2]][0]
+        assert rows[address] == expected
+
+
+def test_qrom_complete_block_and_consumers():
+    from test_qsvt import reference_response
+    encoding, _, _ = qrom_fixture()
+    represented, _ = dense_terms(encoding)
+    # All columns, rather than a single favorable initial state.
+    block = np.column_stack([
+        encoded_block(encoding, encoding.encode_kernel(),
+                      np.eye(16, dtype=complex)[j]) for j in range(16)
+    ])
+    np.testing.assert_allclose(block,
+                               represented / encoding.alpha,
+                               rtol=0,
+                               atol=1e-10)
+    np.testing.assert_allclose(block, block.conj().T, rtol=0, atol=1e-10)
+    ket = random_ket(16, seed=7)
+    for order in (1, 2):
+        actual = encoded_block(encoding, encoding.walk_kernel(order), ket)
+        np.testing.assert_allclose(
+            actual,
+            _chebyshev(-represented / encoding.alpha, order) @ ket,
+            rtol=0,
+            atol=1e-10)
+    sequence = PhaseSequence([.3, -.4, .25])
+    eigenvalues, vectors = np.linalg.eigh(represented / encoding.alpha)
+    expected = (vectors *
+                [reference_response(sequence, float(x))
+                 for x in eigenvalues]) @ (vectors.conj().T @ ket)
+    np.testing.assert_allclose(encoded_block(encoding,
+                                             QSVT(encoding).kernel(sequence),
+                                             ket),
+                               expected,
+                               rtol=0,
+                               atol=1e-10)
+
+
+@pytest.mark.parametrize(
+    "controls", [[1., 0.], [0., 1.], [1 / np.sqrt(2), 1j / np.sqrt(2)]])
+def test_qrom_controlled_apply_full_phase(controls):
+    encoding, _, _ = qrom_fixture()
+    operation = encoding.controlled_apply_kernel()
+    n_anc = encoding.num_ancilla
+    ket = random_ket(16, seed=7)
+    uncontrolled = np.asarray(
+        cudaq.get_state(encoding.encode_kernel(), state_from(ket)))
+    # System first, followed by enable, index, words, ladder.
+    initial = np.zeros(1 << (5 + n_anc), dtype=complex)
+    initial[:16] = controls[0] * ket
+    initial[16:32] = controls[1] * ket
+    expected = np.zeros_like(initial)
+    expected[:16] = controls[0] * ket
+    for j in range(len(uncontrolled) // 16):
+        expected[32 * j + 16:32 * j +
+                 32] = controls[1] * uncontrolled[16 * j:16 * j + 16]
+
+    @cudaq.kernel
+    def circuit(state: cudaq.State):
+        q = cudaq.qvector(state)
+        operation(q[4:5 + n_anc], q[0:4])
+
+    np.testing.assert_allclose(np.asarray(
+        cudaq.get_state(circuit, state_from(initial))),
+                               expected,
+                               rtol=0,
+                               atol=1e-10)
+
+
+def test_qrom_prepare_injection_and_walk_adjoint():
+    encoding, _, _ = qrom_fixture()
+    prepare_index, unprepare_index = encoding.prepare_kernel(
+    ), encoding.unprepare_kernel()
+    n_anc = encoding.num_ancilla
+
+    @cudaq.kernel
+    def prepare_roundtrip(state: cudaq.State):
+        q = cudaq.qvector(state)
+        prepare_index(q)
+        unprepare_index(q)
+
+    ket = random_ket(1 << n_anc, seed=7)
+    np.testing.assert_allclose(np.asarray(
+        cudaq.get_state(prepare_roundtrip, state_from(ket))),
+                               ket,
+                               rtol=0,
+                               atol=1e-10)
+    for factory in (encoding.encode_kernel, encoding.walk_kernel):
+        via_prep = np.asarray(
+            cudaq.get_state(factory(state_prep=_product_prep)))
+        via_state = np.asarray(
+            cudaq.get_state(factory(), state_from(_injected_ket())))
+        np.testing.assert_allclose(via_prep, via_state, rtol=0, atol=1e-10)
+    ket = random_ket(16, seed=7)
+    for controlled in (False, True):
+        step = (encoding.controlled_walk_step_kernel()
+                if controlled else encoding.walk_step_kernel())
+        inverse = (encoding.controlled_adjoint_walk_step_kernel()
+                   if controlled else encoding.adjoint_walk_step_kernel())
+        total = n_anc + int(controlled)
+
+        @cudaq.kernel
+        def roundtrip(state: cudaq.State):
+            system = cudaq.qvector(state)
+            ancilla = cudaq.qvector(total)
+            if controlled:
+                h(ancilla[0])
+                r1(.61, ancilla[0])
+            step(ancilla, system)
+            inverse(ancilla, system)
+            if controlled:
+                r1(-.61, ancilla[0])
+                h(ancilla[0])
+
+        actual = np.asarray(cudaq.get_state(roundtrip, state_from(ket)))
+        expected = np.zeros_like(actual)
+        expected[:16] = ket
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-10)
+
+
+@pytest.mark.parametrize("n", [1, 2])
+def test_qrom_identity_and_diagonal_edges(n):
+    eri = np.zeros((n, ) * 4)
+    for one_body, offset in ((np.zeros(
+        (n, n)), -1.5), (np.diag(np.arange(n) + .2), .31)):
+        encoding = DoubleFactorizedEncoding(one_body,
+                                            eri,
+                                            scalar_offset=offset,
+                                            rotation_backend="qrom")
+        if n == 1:
+            assert encoding.rotation_report["program_width"] == 0
+            assert encoding.rotation_report["ladder_width"] == 0
+            assert encoding.rotation_report["table_size"] == 0
+        ket = random_ket(1 << (2 * n), seed=7)
+        expected = (dense_hamiltonian(one_body, eri) +
+                    offset * np.eye(len(ket))) @ ket / encoding.alpha
+        np.testing.assert_allclose(encoded_block(encoding,
+                                                 encoding.encode_kernel(),
+                                                 ket),
+                                   expected,
+                                   rtol=0,
+                                   atol=1e-10)
+
+
+def test_qrom_compressed_core_and_thresholded_empty_frame():
+    rotation = np.array([[np.cos(.37), -np.sin(.37)],
+                         [np.sin(.37), np.cos(.37)]])
+    core = np.array([[.6, -.12], [-.12, .31]])
+    factorization = df.DoubleFactorization(num_orbitals=2,
+                                           leaf_rotations=[rotation],
+                                           leaf_cores=[core],
+                                           method="C-DF")
+    absorbed = core.sum(axis=1) - .5 * np.diag(core)
+    one_body = -(rotation *
+                 absorbed) @ rotation.T  # kappa=0; frame 0 has no Z words
+    fixed = DoubleFactorizedEncoding(one_body,
+                                     factorization,
+                                     coefficient_threshold=.01)
+    qrom = DoubleFactorizedEncoding(one_body,
+                                    factorization,
+                                    coefficient_threshold=.01,
+                                    rotation_backend="qrom")
+    assert qrom.num_frames == 2
+    assert qrom.terms == fixed.terms
+    assert qrom.alpha == fixed.alpha
+    assert not any(qubits and frame == 0 for _, qubits, frame in qrom.terms)
+    kept, _ = dense_terms(qrom, represented=False)
+    np.testing.assert_allclose(kept,
+                               dense_hamiltonian(
+                                   one_body,
+                                   df.reconstruct_eri(factorization)),
+                               rtol=0,
+                               atol=1e-10)
+    h, _ = dense_terms(qrom)
+    ket = random_ket(16, seed=7)
+    np.testing.assert_allclose(encoded_block(qrom, qrom.encode_kernel(), ket),
+                               h @ ket / qrom.alpha,
+                               rtol=0,
+                               atol=1e-10)
