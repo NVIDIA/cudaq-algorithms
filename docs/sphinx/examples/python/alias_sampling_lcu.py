@@ -4,6 +4,24 @@
 # [Begin Documentation]
 """Coherent alias sampling: weighted indices, garbage, and a generic LCU.
 
+Quantum models are often written as weighted sums of simple operations, and
+later algorithms need a circuit representation of that sum. This example
+builds one from an X gate that flips a data qubit and a signed controlled-Z
+operation that changes selected amplitudes' signs. An extra index register
+acts as a coherent selector, with alias sampling supplying the relative
+weights. Preparing the selector, applying its chosen operations, and reversing
+the preparation places the weighted sum in the part of the larger circuit
+where all its extra qubits are zero.
+
+You should learn why the sampling weights stay positive while a negative
+coefficient is supplied by a phase in the selected operation, and why the
+sampler's temporary information can remain entangled with the index until
+preparation is reversed. The example also distinguishes scratch that must
+return to zero from amplitude that legitimately remains outside the encoded
+block after selection. Independent NumPy checks compare the requested weights,
+their finite-precision replacements, and the resulting matrix before the same
+encoding is used by Walk and QSVT.
+
 Run with: python3 alias_sampling_lcu.py
 The index has a weighted marginal, while the other registers remain entangled.
 Use PREPARE/SELECT/UNPREPARE to obtain the operator's all-zero-ancilla block.
