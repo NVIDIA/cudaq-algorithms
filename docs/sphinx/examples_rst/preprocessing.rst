@@ -14,6 +14,21 @@ through to block-encoding cost.
 Fermion mappings on an interacting lattice
 -------------------------------------------
 
+Before simulating electrons or other fermions, we must translate their
+creation, annihilation, and interaction terms into operations on qubits. This
+example applies several translations to the same small lattice model, where
+particles can hop between sites and interact when neighboring sites are
+occupied. The aim is to keep the physical model fixed while examining how its
+qubit representation changes.
+
+You should learn how to check that different mappings preserve the model's
+energies and how to interpret differences in Pauli terms, operator weights,
+and qubit counts. Some representations include states that do not belong to
+the intended physical problem; their parity and stabilizer constraints
+identify the subspace to compare. An independent occupation-basis Hamiltonian
+supplies the reference, making the signs and physical-subspace checks explicit
+before any resource comparison is interpreted.
+
 Compare JW, BK, original superfast, and binary-tree generalized superfast
 mappings on one four-site spinless ring. An independent occupation-basis
 NumPy Hamiltonian checks coefficients and signs. Each superfast parity

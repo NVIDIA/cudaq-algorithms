@@ -4,6 +4,21 @@
 # [Begin Documentation]
 """Compare fermion mappings on one interacting four-site spinless ring.
 
+Before simulating electrons or other fermions, we must translate their
+creation, annihilation, and interaction terms into operations on qubits. This
+example applies several translations to the same small lattice model, where
+particles can hop between sites and interact when neighboring sites are
+occupied. The aim is to keep the physical model fixed while examining how its
+qubit representation changes.
+
+You should learn how to check that different mappings preserve the model's
+energies and how to interpret differences in Pauli terms, operator weights,
+and qubit counts. Some representations include states that do not belong to
+the intended physical problem; their parity and stabilizer constraints
+identify the subspace to compare. An independent occupation-basis Hamiltonian
+supplies the reference, making the signs and physical-subspace checks explicit
+before any resource comparison is interpreted.
+
 H = -t sum_<i,j> (adag_i a_j + adag_j a_i) + V sum_<i,j> n_i n_j,
 with t=1, V=2 and each undirected bond listed once. Sparse tensor entries
 multiply adag_i a_j and adag_i adag_j a_k a_l directly, without a chemistry
