@@ -41,6 +41,9 @@ and coefficient errors from angle rounding and circuit error, so readers can
 evaluate accuracy together with normalization, qubit counts, and the cost of
 loading, using, and clearing the rotation data.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Runs the worked double-factorized encoding (the bring-your-own-encoding
 example ``df_encoding.py``, next to this script) head to head with a flat
 `PauliLCU` on real molecules from PySCF -- comparing alpha and term counts,

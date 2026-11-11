@@ -61,6 +61,7 @@ then reports a host-only precision sweep. Larger QROM programs are
 resource-only; the size policy above applies to the fixed backend. Tight
 circuit checks target the represented operator, with angle rounding
 reported separately. No compiled extension is needed.
+Add --verbose to show individual validation checks; failures are always reported.
 """
 from __future__ import annotations
 
@@ -228,8 +229,9 @@ def chebyshev_moment(h_scaled: sp.csr_matrix, ket: np.ndarray,
     return float(np.real(ket.conj() @ t_cur))
 
 
-def check(label: str, condition: bool):
-    print(f"  [check] {label} ... {'OK' if condition else 'FAILED'}")
+def check(label: str, condition: bool, *, verbose=False):
+    if verbose or not condition:
+        print(f"  [check] {label} ... {'OK' if condition else 'FAILED'}")
     if not condition:
         sys.exit(1)
 
@@ -283,8 +285,14 @@ def signal_response(x, phases):
     return result[0, 0]
 
 
-def report_programmed_frames(one_body, eri, factorized, core_energy,
-                             angle_bits, circuits):
+def report_programmed_frames(one_body,
+                             eri,
+                             factorized,
+                             core_energy,
+                             angle_bits,
+                             circuits,
+                             *,
+                             verbose=False):
     """Small H2 numerical capstone; larger programs are resource reports."""
     encoding = DoubleFactorizedEncoding(one_body,
                                         factorized.factorization,
@@ -307,10 +315,10 @@ def report_programmed_frames(one_body, eri, factorized, core_energy,
           "acts only on Z words/signs, not on lookup or rotations.")
     print("  Gate counts here are logical operations, without rotation "
           "synthesis or paper-optimized normalization.")
-    check(
-        "fixed and QROM retain identical coefficients and alpha",
-        encoding.terms == factorized.terms
-        and encoding.alpha == factorized.alpha)
+    check("fixed and QROM retain identical coefficients and alpha",
+          encoding.terms == factorized.terms
+          and encoding.alpha == factorized.alpha,
+          verbose=verbose)
     # Dense determinant-minor references grow exponentially. Only the default
     # two-spatial-mode case runs them; larger molecules retain the original
     # classical truncation/compression and fixed-backend demonstrations.
@@ -338,8 +346,9 @@ def report_programmed_frames(one_body, eri, factorized, core_energy,
         f"  Operator errors (Ha): factorization={np.linalg.norm(df_h-input_h,2):.3e}, "
         f"threshold={np.linalg.norm(kept-df_h,2):.3e}, "
         f"angle={angle_error:.3e}, bound={bound:.3e} (+1e-10 floating slack)")
-    check("angle error satisfies its derived operator bound", angle_error
-          <= bound + 1e-10)
+    check("angle error satisfies its derived operator bound",
+          angle_error <= bound + 1e-10,
+          verbose=verbose)
     print(
         f"  NumPy ground energies, including classical core offset: "
         f"fixed={np.linalg.eigvalsh(kept)[0] + core_energy:.12f}, "
@@ -373,9 +382,10 @@ def report_programmed_frames(one_body, eri, factorized, core_energy,
         actual = np.asarray(cudaq.get_state(kernel,
                                             state_from(ket)))[:len(ket)]
         error = float(np.max(np.abs(actual - expected)))
-        print(f"  {label}: max |diff|={error:.3e}, tolerance=1e-10")
+        if verbose or not np.isfinite(error) or error > 1e-10:
+            print(f"  {label}: max |diff|={error:.3e}, tolerance=1e-10")
         np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-10)
-        check(label, error <= 1e-10)
+        check(label, error <= 1e-10, verbose=verbose)
 
     scaled = represented / encoding.alpha
     verify("QROM <0|U|0> = H_b/alpha", encoding.encode_kernel(), scaled @ ket)
@@ -395,7 +405,12 @@ def report_programmed_frames(one_body, eri, factorized, core_energy,
         "grows exponentially with workspace.")
 
 
-def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
+def run(key: str,
+        force_circuits: bool,
+        rotation_backend="both",
+        angle_bits=4,
+        *,
+        verbose=False):
     config = CONFIGS[key]
     one_body, eri, core_energy, scf_energy = config["build"]()
     n = one_body.shape[0]
@@ -441,8 +456,11 @@ def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
     # can overshoot at intermediate truncations. The tensor error IS
     # monotone (nested pivoted-Cholesky truncation).
     check("truncation error is non-increasing in leaves",
-          all(a >= b - 1e-9 for a, b in zip(errors, errors[1:])))
-    check("full-rank X-DF reconstructs the ERI exactly", errors[-1] < 1e-8)
+          all(a >= b - 1e-9 for a, b in zip(errors, errors[1:])),
+          verbose=verbose)
+    check("full-rank X-DF reconstructs the ERI exactly",
+          errors[-1] < 1e-8,
+          verbose=verbose)
 
     # RC-DF: the other dial. X-DF truncation keeps the FIRST leaves of an
     # exact factorization; C-DF re-optimizes the leaves you keep (L-BFGS
@@ -494,8 +512,9 @@ def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
         # empirical (robust in practice at significant truncation error,
         # but a hard exit here could misfire on someone else's molecule).
         if wins and all(wins):
-            print("  [check] RC-DF fits at least as well wherever "
-                  "truncation error is still significant ... OK")
+            if verbose:
+                print("  [check] RC-DF fits at least as well wherever "
+                      "truncation error is still significant ... OK")
         elif wins:
             print("  [note] RC-DF trailed truncated X-DF at a "
                   "significant-error budget -- the ridge trades fit for "
@@ -512,8 +531,13 @@ def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
     mode = config["mode"]
     circuits = mode == "full" or (mode == "flagged" and force_circuits)
     if rotation_backend in ("qrom", "both"):
-        report_programmed_frames(one_body, eri, factorized, core_energy,
-                                 angle_bits, circuits)
+        report_programmed_frames(one_body,
+                                 eri,
+                                 factorized,
+                                 core_energy,
+                                 angle_bits,
+                                 circuits,
+                                 verbose=verbose)
     if rotation_backend == "qrom":
         return
     total_qubits = num_system + factorized.num_ancilla
@@ -546,9 +570,10 @@ def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
     block = state[:dim]
     expected = (hamiltonian @ ket) / factorized.alpha
     block_error = float(np.max(np.abs(block - expected)))
-    print(f"  encoded block vs sparse JW reference: max |diff| = "
-          f"{block_error:.2e}")
-    check("<0|U|0> == H/alpha", block_error < 1e-10)
+    if verbose or not np.isfinite(block_error) or block_error >= 1e-10:
+        print(f"  encoded block vs sparse JW reference: max |diff| = "
+              f"{block_error:.2e}")
+    check("<0|U|0> == H/alpha", block_error < 1e-10, verbose=verbose)
 
     print("\n  Even Chebyshev moments <T_k(H/alpha)> through Walk (same"
           "\n  consumer, either encoding; alphas differ, H is the same):")
@@ -560,10 +585,10 @@ def run(key: str, force_circuits: bool, rotation_backend="both", angle_bits=4):
         print(f"    T_{order}:  PauliLCU {measured_flat:+.8f} "
               f"(exact {exact_flat:+.8f})   DF {measured_df:+.8f} "
               f"(exact {exact_df:+.8f})")
-        check(
-            f"T_{order} moments match the reference",
-            abs(measured_flat - exact_flat) < 1e-8
-            and abs(measured_df - exact_df) < 1e-8)
+        check(f"T_{order} moments match the reference",
+              abs(measured_flat - exact_flat) < 1e-8
+              and abs(measured_df - exact_df) < 1e-8,
+              verbose=verbose)
 
 
 def main():
@@ -590,9 +615,16 @@ def main():
                         type=int,
                         default=4,
                         help="QROM full-turn angle bits (default: 4)")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
     arguments = parser.parse_args()
-    run(arguments.config, arguments.circuits, arguments.rotation_backend,
-        arguments.angle_bits)
+    run(arguments.config,
+        arguments.circuits,
+        arguments.rotation_backend,
+        arguments.angle_bits,
+        verbose=arguments.verbose)
 
 
 if __name__ == "__main__":
