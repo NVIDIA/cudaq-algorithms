@@ -3,6 +3,23 @@
 # [Begin Documentation]
 """A user-written block encoding on real molecules, vs the built-in PauliLCU.
 
+A molecular Hamiltonian contains many interaction coefficients, and the way
+those coefficients are organized affects the quantum circuit built from them.
+This example uses double factorization to express the interactions through
+simpler contributions in rotated orbital bases. Starting from real molecular
+integrals, it compares that construction with a Pauli expansion and asks how
+keeping fewer factors or refining them changes the encoded Hamiltonian and its
+resource requirements.
+
+You should learn how the choice of orbital basis turns the selected
+interactions into simple phase operations, and how QROM-loaded angle words let
+a quantum index choose that basis coherently. The fixed-angle and programmable
+constructions share the same block-encoding interface, allowing the same Walk
+and QSVT consumers to use them. Independent references separate factorization
+and coefficient errors from angle rounding and circuit error, so readers can
+evaluate accuracy together with normalization, qubit counts, and the cost of
+loading, using, and clearing the rotation data.
+
 The encoding here is user-level code: ``df_encoding.py`` next door
 implements ``DoubleFactorizedEncoding`` against the public
 ``BlockEncoding`` protocol. Because the protocol is structural, the same
