@@ -193,6 +193,22 @@ are verified against an independent sparse Jordan-Wigner reference.
 Sparse matrix inversion for heat diffusion
 -------------------------------------------
 
+Start with a temperature pattern along a rod and ask what it becomes after one
+step of heat diffusion with fixed endpoint temperatures. A finite-difference
+model turns this physical question into a banded linear system. This example
+builds that system, solves it with NumPy, and uses a sparse quantum block
+encoding and an inverse polynomial to compute the same discrete update,
+connecting the earlier matrix tools to a recognizable application.
+
+You should learn how the physical assumptions determine the matrix and its
+boundary entries, how a sparse inverse produces the updated temperature
+vector, and how to restore the output's physical scale. The per-position table
+compares the ideal NumPy solution, a NumPy solution with the circuit's rounded
+matrix coefficients, and the quantum result. Those comparisons show how matrix
+precision and inverse approximation contribute separately to error; they
+validate the chosen discrete problem, while accuracy relative to the
+continuous heat equation requires further space and time refinement.
+
 One backward-Euler step in a rod produces a tridiagonal SPD matrix after
 fixed zero boundary values are eliminated. Arithmetic banded oracles feed
 the QSVT machinery; NumPy independently solves both the ideal

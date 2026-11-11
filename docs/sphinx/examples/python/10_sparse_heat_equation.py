@@ -4,6 +4,22 @@
 # [Begin Documentation]
 """One backward-Euler heat step in a rod, using a sparse QSVT inverse.
 
+Start with a temperature pattern along a rod and ask what it becomes after one
+step of heat diffusion with fixed endpoint temperatures. A finite-difference
+model turns this physical question into a banded linear system. This example
+builds that system, solves it with NumPy, and uses a sparse quantum block
+encoding and an inverse polynomial to compute the same discrete update,
+connecting the earlier matrix tools to a recognizable application.
+
+You should learn how the physical assumptions determine the matrix and its
+boundary entries, how a sparse inverse produces the updated temperature
+vector, and how to restore the output's physical scale. The per-position table
+compares the ideal NumPy solution, a NumPy solution with the circuit's rounded
+matrix coefficients, and the quantum result. Those comparisons show how matrix
+precision and inverse approximation contribute separately to error; they
+validate the chosen discrete problem, while accuracy relative to the
+continuous heat equation requires further space and time refinement.
+
 Eliminating fixed zero endpoints gives A=tridiag(-r,1+2r,-r), where
 r=D*dt/dx**2. N interior positions have dx=1/(N+1). Temperatures are above
 ambient; D and dt are not assigned physical units here. NumPy solves the
