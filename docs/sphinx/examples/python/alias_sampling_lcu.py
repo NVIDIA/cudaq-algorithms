@@ -25,9 +25,11 @@ encoding is used by Walk and QSVT.
 Run with: python3 alias_sampling_lcu.py
 The index has a weighted marginal, while the other registers remain entangled.
 Use PREPARE/SELECT/UNPREPARE to obtain the operator's all-zero-ancilla block.
+Add --verbose to show individual validation checks; failures are always reported.
 """
 
 from fractions import Fraction
+import argparse
 import os
 import time
 
@@ -41,16 +43,20 @@ from cudaq_algorithms.primitives import AliasSamplingPrepare
 ATOL = 1e-10
 
 
-def bound_check(label, error, tolerance):
+def bound_check(label, error, tolerance, *, verbose=False):
     passed = np.isfinite(error) and error <= tolerance
-    print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
-          f"{'PASS' if passed else 'FAIL'}")
+    if verbose or not passed:
+        print(f"CHECK {label}: {error:.3e} <= {tolerance:.3e} -> "
+              f"{'PASS' if passed else 'FAIL'}")
     if not passed:
         raise AssertionError(label)
 
 
-def check(label, actual, expected):
-    bound_check(label, float(np.max(np.abs(actual - expected))), ATOL)
+def check(label, actual, expected, *, verbose=False):
+    bound_check(label,
+                float(np.max(np.abs(actual - expected))),
+                ATOL,
+                verbose=verbose)
 
 
 def enumerate_tables(sampler):
@@ -100,6 +106,12 @@ def scalar_response(phases, x):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
+    verbose = parser.parse_args().verbose
     start = time.perf_counter()
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
     sampler = AliasSamplingPrepare([1.0, 0.0, np.sqrt(2)], mu=2)
@@ -107,23 +119,35 @@ def main():
     print("Garbage: [alias | keep | reference | flag | QROM ladder | carry].")
     state = np.asarray(cudaq.get_state(preparation_circuit(sampler)))
     table_probabilities, fractions, expected_state = enumerate_tables(sampler)
-    check("complete coherent preparation, including clean ladder/carry", state,
-          expected_state)
+    check("complete coherent preparation, including clean ladder/carry",
+          state,
+          expected_state,
+          verbose=verbose)
     # The index is the low register; sum over the high garbage register.
     matrix = state.reshape(1 << sampler.num_garbage, sampler.num_bins)
     marginal = np.sum(np.abs(matrix)**2, axis=0)
-    check("index marginal versus integer branch counts", marginal,
-          table_probabilities)
-    check("public table probabilities", sampler.table_probabilities,
-          table_probabilities)
-    check("zero-weight and padded bins", marginal[[1, 3]], np.zeros(2))
+    check("index marginal versus integer branch counts",
+          marginal,
+          table_probabilities,
+          verbose=verbose)
+    check("public table probabilities",
+          sampler.table_probabilities,
+          table_probabilities,
+          verbose=verbose)
+    check("zero-weight and padded bins",
+          marginal[[1, 3]],
+          np.zeros(2),
+          verbose=verbose)
     expected_bound = 1.5 / (sampler.num_bins * (1 << sampler.mu))
-    check("public per-bin rounding bound", sampler.discretization_bound,
-          expected_bound)
+    check("public per-bin rounding bound",
+          sampler.discretization_bound,
+          expected_bound,
+          verbose=verbose)
     bound_check(
         "ideal-versus-table probability error",
         float(np.max(np.abs(table_probabilities - sampler.probabilities))),
-        expected_bound + ATOL)
+        expected_bound + ATOL,
+        verbose=verbose)
     print("\nbin  keep  alias  exact table fraction  marginal   ideal")
     for k, fraction in enumerate(fractions):
         print(f"{k:3d} {sampler.keep[k]:5d} {sampler.alias[k]:6d} "
@@ -139,7 +163,10 @@ def main():
         cudaq.get_state(preparation_circuit(sampler, roundtrip=True)))
     zero = np.zeros_like(roundtrip)
     zero[0] = 1
-    check("PREPARE/adjoint restores every qubit", roundtrip, zero)
+    check("PREPARE/adjoint restores every qubit",
+          roundtrip,
+          zero,
+          verbose=verbose)
     for adjoint in (False, True):
         resources = cudaq.estimate_resources(
             preparation_circuit(sampler, adjoint=adjoint))
@@ -160,9 +187,13 @@ def main():
             np.max(
                 np.abs(candidate.table_probabilities -
                        candidate.probabilities)))
-        bound_check(f"mu={mu} probability bound", error,
-                    candidate.discretization_bound + ATOL)
-        print(f"  index={candidate.num_index} garbage={candidate.num_garbage} "
+        bound_check(f"mu={mu} probability bound",
+                    error,
+                    candidate.discretization_bound + ATOL,
+                    verbose=verbose)
+        print(f"  mu={mu}: probability error={error:.3e}, "
+              f"bound={candidate.discretization_bound:.3e}; "
+              f"index={candidate.num_index} garbage={candidate.num_garbage} "
               f"QROM={candidate.qrom.variant}; no monotonic-error assumption")
 
     print("\nLCU: H = 0.6 X_0 - 0.4 CZ_01, a non-Pauli SELECT body.")
@@ -178,8 +209,11 @@ def main():
     negative_cz = -np.diag([1., 1., 1., -1.])
     terms = (x0, negative_cz)
     for term in terms:
-        check("SELECT term is Hermitian", term, term.conj().T)
-        check("SELECT term is an involution", term @ term, np.eye(4))
+        check("SELECT term is Hermitian", term, term.conj().T, verbose=verbose)
+        check("SELECT term is an involution",
+              term @ term,
+              np.eye(4),
+              verbose=verbose)
     ideal = 0.6 * x0 + 0.4 * negative_cz
     realized = sum(
         weight * term
@@ -189,16 +223,26 @@ def main():
         for column in np.eye(4, dtype=complex).T
     ]
     check("complete LCU block versus represented operator",
-          np.column_stack(columns), realized / encoding.alpha)
-    check("exact one-norm is preserved", encoding.alpha, 1.0)
+          np.column_stack(columns),
+          realized / encoding.alpha,
+          verbose=verbose)
+    check("exact one-norm is preserved", encoding.alpha, 1.0, verbose=verbose)
     weight_bound = float(
         np.sum(np.abs(encoding.discretized_weights - np.array([0.6, 0.4]))))
     bound_check("operator discretization versus weight error",
                 float(np.linalg.norm(realized - ideal, 2)),
-                weight_bound + ATOL)
-    bound_check(
-        "weight error versus per-bin bound", weight_bound, encoding.alpha *
-        encoding.preparation.num_bins * encoding.discretization_bound + ATOL)
+                weight_bound + ATOL,
+                verbose=verbose)
+    bound_check("weight error versus per-bin bound",
+                weight_bound,
+                encoding.alpha * encoding.preparation.num_bins *
+                encoding.discretization_bound + ATOL,
+                verbose=verbose)
+
+    print(
+        f"Represented LCU weights: {encoding.discretized_weights}; "
+        f"operator rounding error={np.linalg.norm(realized - ideal, 2):.3e}, "
+        f"weight-error bound={weight_bound:.3e}")
 
     rng = np.random.default_rng(7)
     ket = rng.normal(size=4) + 1j * rng.normal(size=4)
@@ -207,8 +251,10 @@ def main():
         cudaq.get_state(encoding.encode_kernel(), state_from(ket)))
     # SELECT work occupies the highest bits and is always restored.
     work_start = encoding.num_system + encoding.num_index + encoding.num_garbage
-    check("SELECT work is clean", state[1 << work_start:],
-          np.zeros_like(state[1 << work_start:]))
+    check("SELECT work is clean",
+          state[1 << work_start:],
+          np.zeros_like(state[1 << work_start:]),
+          verbose=verbose)
     print(f"Probability outside the good ancilla block: "
           f"{1 - np.sum(np.abs(state[:4])**2):.6f}")
     print(
@@ -222,14 +268,18 @@ def main():
             encoding,
             cudaq.get_state(
                 Walk(encoding).kernel(power=power), state_from(ket)))
-        check(f"Walk power={power}, T_k(-H_mu/alpha)", actual,
-              polynomial @ ket)
+        check(f"Walk power={power}, T_k(-H_mu/alpha)",
+              actual,
+              polynomial @ ket,
+              verbose=verbose)
     phases = [0.3, -0.4, 0.25]
     values, vectors = np.linalg.eigh(scaled)
     response = np.array([scalar_response(phases, value) for value in values])
     expected = vectors @ (response * (vectors.conj().T @ ket))
     check("QSVT versus independent scalar model",
-          sim.transform(QSVT(encoding), ket, PhaseSequence(phases)), expected)
+          sim.transform(QSVT(encoding), ket, PhaseSequence(phases)),
+          expected,
+          verbose=verbose)
     print("This non-Pauli body has no select_observable for odd Walk.moment.")
     print(
         "Use statevector walk blocks here; even reflection observables can grow."

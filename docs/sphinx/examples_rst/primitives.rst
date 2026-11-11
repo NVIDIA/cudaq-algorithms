@@ -25,6 +25,9 @@ block after selection. Independent NumPy checks compare the requested weights,
 their finite-precision replacements, and the resulting matrix before the same
 encoding is used by Walk and QSVT.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Prepare a weighted index marginal, inspect garbage and discretization, then
 compose a mixed-sign non-Pauli LCU and validate its Walk/QSVT consumers.
 
