@@ -6,10 +6,12 @@ name: Request NVSkills CI
 #
 # How the three triggers behave:
 # - pull_request: does NOT start an evaluation. It runs the required-status
-#   gate, which passes immediately for PRs that do not touch skills/ and
-#   otherwise waits for a successful "NVSkills CI" status on the PR head. Make
-#   that check required in the branch rules so skill changes merge only once
-#   evaluated and signed.
+#   gate, which passes immediately for PRs that do not touch skills/. For PRs
+#   that do, it looks for an "NVSkills CI" commit status on the PR head: it
+#   passes on success, waits (up to 4 h) while one is pending, and fails after
+#   about two minutes if there is none. So a skill PR shows this check red
+#   until a maintainer comments `/nvskills-ci` and the run succeeds; the next
+#   push or the signature commit re-runs the gate.
 # - issue_comment: a maintainer (maintain/admin) comments `/nvskills-ci` on
 #   the PR to request the evaluation and signing run.
 # - push: re-verifies after the NVSkills bot pushes its signature commit.
