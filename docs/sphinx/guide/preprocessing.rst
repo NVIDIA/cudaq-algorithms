@@ -160,6 +160,62 @@ infer from the largest index: it sets the qubit width, and for Bravyi–Kitaev
 the shape of the Fenwick tree. Declared modes that carry no term are allowed.
 `bravyi_kitaev_superfast` accepts the same inputs.
 
+Superfast mappings and the physical parity sector
+--------------------------------------------------
+
+The original superfast mapping and its generalized local-Majorana form use
+the interaction graph. On a connected graph their physical subspace is the
+joint +1 eigenspace of the public loop stabilizers, and the `parity` argument
+chooses even (0) or odd (1) fermion parity. Diagonalizing the entire qubit
+Hamiltonian includes unphysical states and is not a valid spectral comparison.
+
+.. code-block:: python
+
+   from cudaq_algorithms.fermion import (
+       bravyi_kitaev_superfast, bravyi_kitaev_superfast_stabilizers)
+
+   options = dict(num_modes=4, interaction_graph=bonds,
+                  local_modes="binary_tree", parity=0, tolerance=1e-12)
+   mapped = bravyi_kitaev_superfast(one_body, two_body, **options)
+   stabilizers = bravyi_kitaev_superfast_stabilizers(
+       one_body, two_body, **options)
+
+Pass identical tensor, graph, local-mode, and parity arguments to both
+functions. Stabilizers are already sign-fixed; do not search other loop
+signs to obtain a matching spectrum. Their matrices must use the declared
+full register width. The lattice example iterates public Pauli words with
+`get_pauli_word(width)` because `to_matrix()` can compact unused positions.
+
+The :doc:`../examples_rst/preprocessing` tutorial compares JW, BK, standard
+superfast, and binary-tree generalized superfast mappings on the same
+four-mode spinless ring,
+
+.. math::
+
+   H=-t\sum_{\langle i,j\rangle}(a_i^\dagger a_j+a_j^\dagger a_i)
+       +V\sum_{\langle i,j\rangle}n_i n_j,\qquad t=1,\quad V=2.
+
+Every bond is listed once. Sparse entries `two_body[(i,j,j,i)] = V` multiply
+`adag_i adag_j a_j a_i = n_i n_j` directly, without an additional chemistry
+prefactor. Independent occupation-bit matrices verify this identity and the
+fermionic signs. JW matches the full operator; BK matches its full spectrum
+in a different basis. Each superfast parity matches all eight eigenvalues,
+including multiplicities, after stabilizer projection.
+
+All vertices have degree two, so both superfast forms need four qubits
+without degree padding. Standard modes use dressed edge operators;
+binary-tree modes use local Fenwick Majoranas. The error-correcting variant
+requires a 3-connected graph with even degree at least six and is not
+demonstrated on this ring. This example does not establish error correction
+or asymptotic advantage. Its term/weight table includes identity terms and
+states the coefficient pruning threshold.
+
+A JW occupation preparation cannot be reused unchanged on a superfast
+register. This is a host-side mapping and code-spectrum tutorial; code-state
+preparation circuits are separate work. Example 09 on
+:doc:`../examples_rst/getting_started` presents a related lattice application
+at the block-encoding level.
+
 The chemistry bridge (spatial integrals to a qubit Hamiltonian)
 ---------------------------------------------------------------
 

@@ -1,14 +1,53 @@
 Preprocessing examples
 ==========================
 
-Classical preprocessing that shapes an electronic-structure Hamiltonian before
-it ever reaches a quantum circuit. These examples double-factorize the
-two-electron integrals and trace the result through to block-encoding cost.
+Classical preprocessing turns model coefficients or electronic-structure
+integrals into quantum-ready operators. These examples compare fermion
+mappings, double-factorize two-electron integrals, and trace the results
+through to block-encoding cost.
 
 .. seealso::
 
    :doc:`../guide/preprocessing` — the chemistry bridges and double
    factorization these examples build on.
+
+Fermion mappings on an interacting lattice
+-------------------------------------------
+
+Before simulating electrons or other fermions, we must translate their
+creation, annihilation, and interaction terms into operations on qubits. This
+example applies several translations to the same small lattice model, where
+particles can hop between sites and interact when neighboring sites are
+occupied. The aim is to keep the physical model fixed while examining how its
+qubit representation changes.
+
+You should learn how to check that different mappings preserve the model's
+energies and how to interpret differences in Pauli terms, operator weights,
+and qubit counts. Some representations include states that do not belong to
+the intended physical problem; their parity and stabilizer constraints
+identify the subspace to compare. An independent occupation-basis Hamiltonian
+supplies the reference, making the signs and physical-subspace checks explicit
+before any resource comparison is interpreted.
+
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
+Compare JW, BK, original superfast, and binary-tree generalized superfast
+mappings on one four-site spinless ring. An independent occupation-basis
+NumPy Hamiltonian checks coefficients and signs. Each superfast parity
+sector is restricted to the loop stabilizers' joint +1 eigenspace before
+all eight physical eigenvalues are compared, including multiplicities.
+The host-side tutorial reports Pauli weights, qubits, and code dimensions;
+it requires no chemistry or phase-generation package.
+
+.. seealso::
+
+   :doc:`../guide/preprocessing` for tensor and parity contracts;
+   example 09 on :doc:`getting_started` for a related lattice application.
+
+.. literalinclude:: ../examples/python/fermion_mappings_lattice.py
+   :language: python
+   :start-after: [Begin Documentation]
 
 Double factorization of the two-electron integrals
 --------------------------------------------------
