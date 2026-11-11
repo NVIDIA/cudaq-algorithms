@@ -21,9 +21,11 @@ approximating the desired transformation.
 Run: python3 fermion_basis_change.py. Uses fp64 qpp-cpu by default.
 The full two-mode fixture uses sixteen qubits; partial programs use three
 angle words instead of four. All references include every particle sector.
+Add --verbose to show individual validation checks; failures are always reported.
 """
 
 # [Begin Documentation]
+import argparse
 import os
 
 import cudaq
@@ -37,10 +39,12 @@ from cudaq_algorithms.primitives import QROM
 ATOL = 1e-10
 
 
-def check(label, actual, expected, tolerance=ATOL):
+def check(label, actual, expected, tolerance=ATOL, *, verbose=False):
     error = float(np.max(np.abs(actual - expected)))
-    print(f"{label}: max error={error:.3e}, tolerance={tolerance:.1e} "
-          f"{'PASS' if error <= tolerance else 'FAIL'}")
+    passed = np.isfinite(error) and error <= tolerance
+    if verbose or not passed:
+        print(f"{label}: max error={error:.3e}, tolerance={tolerance:.1e} "
+              f"{'PASS' if passed else 'FAIL'}")
     np.testing.assert_allclose(actual, expected, rtol=0, atol=tolerance)
 
 
@@ -53,7 +57,7 @@ def fock_two_modes(orbital):
     return result
 
 
-def reconstruct(plan):
+def reconstruct(plan, *, verbose=False):
     """Independent NumPy product of the public chronological metadata."""
     angles = [plan.angle_encoding.decode(code) for code in plan.encoded_words]
     result = np.eye(plan.structure.num_modes, dtype=complex)
@@ -67,12 +71,14 @@ def reconstruct(plan):
             gate[np.ix_([op.first, op.second],
                         [op.first, op.second])] = [[c, -s], [s, c]]
         result = gate @ result
-    check("decoded metadata vs schedule", result,
-          plan.schedule.orbital_matrix(plan.represented_parameters))
+    check("decoded metadata vs schedule",
+          result,
+          plan.schedule.orbital_matrix(plan.represented_parameters),
+          verbose=verbose)
     return result
 
 
-def ideal_reflection(column):
+def ideal_reflection(column, *, verbose=False):
     """Compare second quantization with independent JW creation matrices."""
     # a0^dagger and a1^dagger, qubit zero least significant.
     raise_ = np.array([[0., 0.], [1., 0.]])
@@ -83,11 +89,11 @@ def ideal_reflection(column):
     b_dagger = sum(v * a for v, a in zip(column, creators))
     jw = np.eye(4) - 2 * b_dagger @ b_dagger.conj().T
     lifted = fock_two_modes(np.eye(2) - 2 * np.outer(column, column.conj()))
-    check("orbital reflection vs JW I-2b†b", lifted, jw)
+    check("orbital reflection vs JW I-2b†b", lifted, jw, verbose=verbose)
     return lifted
 
 
-def selected_reflections(columns, bits, label):
+def selected_reflections(columns, bits, label, *, verbose=False):
     """Lookup, W†, Z_reference, W, unlookup, preserving address phase."""
     structure = GivensStructure.partial(2, reference_mode=0)
     plans = [
@@ -116,9 +122,9 @@ def selected_reflections(columns, bits, label):
     represented, ideals = [], []
     z_reference = np.diag([1., -1., 1., -1.])
     for p, v in zip(plans, columns):
-        w = fock_two_modes(reconstruct(p))
+        w = fock_two_modes(reconstruct(p, verbose=verbose))
         represented.append(w @ z_reference @ w.conj().T)
-        ideals.append(ideal_reflection(v))
+        ideals.append(ideal_reflection(v, verbose=verbose))
 
     rng = np.random.default_rng(7)
     ket = rng.normal(size=4) + 1j * rng.normal(size=4)
@@ -159,7 +165,9 @@ def selected_reflections(columns, bits, label):
                 expected[indices] = weight * (operator @ ket)
         actual = np.asarray(cudaq.get_state(reflect, state_from(initial)))
         check(f"{label}, b={bits}, {description}, full state/workspace",
-              actual, expected)
+              actual,
+              expected,
+              verbose=verbose)
 
     resources = estimate_fermion_basis_change_resources(program)
     print(
@@ -183,7 +191,7 @@ def selected_reflections(columns, bits, label):
         assert action_error <= error + ATOL
 
 
-def full_transformations():
+def full_transformations(*, verbose=False):
     print("Fixed/externally controlled transformations use classical angles; "
           "QROM-selected transformations consume caller-owned quantum words.")
     # A 2x2 mode matrix acts on TWO occupation qubits. Its full Fock action
@@ -207,7 +215,8 @@ def full_transformations():
     check("fixed full Fock action",
           np.asarray(cudaq.get_state(fixed_demo)),
           fock @ (np.ones(4) / 2),
-          tolerance=1e-12)
+          tolerance=1e-12,
+          verbose=verbose)
 
     # An external enable can coherently control the same fixed transformation.
     # The returned wrapper expects [enable, system...]. Its angles stay classical.
@@ -227,7 +236,8 @@ def full_transformations():
     check("controlled fixed Fock action",
           np.asarray(cudaq.get_state(controlled_demo)),
           expected_controlled,
-          tolerance=1e-12)
+          tolerance=1e-12,
+          verbose=verbose)
 
     # Now choose I or U using a quantum address. Both matrices share one Givens
     # structure, so one programmable circuit can consume either word string.
@@ -277,7 +287,11 @@ def full_transformations():
     expected[(1 << address) + 1] = 0.5
     expected[(1 << address) + 2] = 0.5j
     state = np.asarray(cudaq.get_state(selected_preparation))
-    check("full QROM preparation/workspace", state, expected, tolerance=1e-11)
+    check("full QROM preparation/workspace",
+          state,
+          expected,
+          tolerance=1e-11,
+          verbose=verbose)
     print("Selected preparation:",
           [(i, complex(a)) for i, a in enumerate(state) if abs(a) > 1e-10])
     print("Register widths:", program.structure.num_system_qubits, "system +",
@@ -288,13 +302,25 @@ def full_transformations():
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show each validation check (failures are always reported)")
+    verbose = parser.parse_args().verbose
     cudaq.set_target(os.environ.get("CUDAQ_DEFAULT_SIMULATOR", "qpp-cpu"))
-    full_transformations()
+    full_transformations(verbose=verbose)
     selected_reflections([np.array([1., 0.]),
-                          np.array([1., 1j]) / np.sqrt(2)], 3, "on-grid")
+                          np.array([1., 1j]) / np.sqrt(2)],
+                         3,
+                         "on-grid",
+                         verbose=verbose)
     off_grid = np.array([np.cos(.47), np.exp(.61j) * np.sin(.47)])
     for bits in (3, 4):
-        selected_reflections([np.array([1., 0.]), off_grid], bits, "off-grid")
+        selected_reflections([np.array([1., 0.]), off_grid],
+                             bits,
+                             "off-grid",
+                             verbose=verbose)
     print("All fixed, programmed and selected-reflection checks PASS.")
 
 

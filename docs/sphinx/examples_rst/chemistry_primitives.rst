@@ -28,6 +28,9 @@ cleared angle/scratch registers. Comparing two angle precisions shows how a
 represented transformation can match its circuit closely while still
 approximating the desired transformation.
 
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
 Applies a fixed two-mode basis change, enables it with an external
 control, and then selects between two transformations with a quantum
 address: a `QROM` lookup loads the angle words, the programmable plan
