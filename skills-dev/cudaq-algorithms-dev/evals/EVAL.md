@@ -29,10 +29,13 @@ unchanged. Existing frozen campaigns retain their own suite and grades; this
 review does not retroactively regrade them.
 
 The runtime skill also ships a standalone [catalog evaluation package](../../../skills/cudaq-algorithms/evals/EVAL.md)
-for NVIDIA SkillEvaluator. Its 62 cases and three negative controls decode to
-exactly this suite, with byte-identical local fixtures; `test_catalog_evals.py`
-guards against drift. The catalog config contains only supported SkillEvaluator
-keys. Keep this directory's campaign, grading, and reporting infrastructure here.
+for NVIDIA SkillEvaluator. It carries a reviewed 24-case subset of this suite,
+including the three negative controls, with every record and fixture
+byte-identical to its canonical counterpart; `test_catalog_evals.py` pins the
+subset and guards against drift. nvskills-ci executes only that subset; the
+full 62 cases run through the paired campaign below. The catalog config contains
+only supported SkillEvaluator keys. Keep this directory's campaign, grading, and
+reporting infrastructure here.
 
 ## Paired campaign protocol
 

@@ -15,8 +15,11 @@ SPEC = importlib.util.spec_from_file_location("route_contract_delivery",
                                               SCRIPT)
 router = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(router)
+# Prompts come from the full development suite; the runtime dataset under
+# skills/ is a reviewed subset and omits some of the cases exercised here.
 EVALS = json.loads(
-    (ROOT / "skills/cudaq-algorithms/evals/evals.json").read_text())["evals"]
+    (ROOT /
+     "skills-dev/cudaq-algorithms-dev/evals/evals.json").read_text())["evals"]
 
 
 def request_context(prompt, **kwargs):

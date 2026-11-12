@@ -39,7 +39,12 @@ class RebaselineProvenanceTests(unittest.TestCase):
         review = self.provenance()
         changes = {change["id"]: change for change in review["changes"]}
         self.assertEqual(list(changes), review["changed_case_ids"])
-        for name, root in (("development", EVALS), ("runtime", CATALOG)):
+        # The runtime dataset became a reviewed subset of the development
+        # suite after this rebaseline, so its whole-file hash no longer
+        # matches the record. test_catalog_evals.py pins the subset and
+        # requires every shipped record to equal its development record, so
+        # the per-case recovery below is checked on the development suite.
+        for name, root in (("development", EVALS),):
             with self.subTest(dataset=name):
                 payload = (root / "evals.json").read_bytes()
                 suite = json.loads(payload)
@@ -97,10 +102,15 @@ class RebaselineProvenanceTests(unittest.TestCase):
 
     def test_fixtures_and_protocol_retain_the_pre_review_bytes(self):
         review = self.provenance()
+        # The runtime dataset ships only the fixtures its subset references;
+        # test_catalog_evals.py checks those are byte-identical copies.
         for name, expected in review["fixtures_sha256"].items():
-            for root in (EVALS, CATALOG):
-                with self.subTest(fixture=name, root=root):
-                    self.assertEqual(digest((root / name).read_bytes()),
+            with self.subTest(fixture=name, root=EVALS):
+                self.assertEqual(digest((EVALS / name).read_bytes()),
+                                 expected)
+            if (CATALOG / name).exists():
+                with self.subTest(fixture=name, root=CATALOG):
+                    self.assertEqual(digest((CATALOG / name).read_bytes()),
                                      expected)
         for name, root in (("development", EVALS), ("runtime", CATALOG)):
             with self.subTest(protocol=name):
