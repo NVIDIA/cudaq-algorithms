@@ -30,7 +30,7 @@ quantum-computing questions are outside the skill's scope.
 
 ### Deployment Geography for Use:
 
-Global. Any selected execution service remains subject to its own terms.
+Global. Any selected execution service remains subject to its own terms of use.
 
 ## Requirements / Dependencies:
 
