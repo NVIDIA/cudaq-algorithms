@@ -95,7 +95,9 @@ positive-definite system is padded to three qubits, block-encoded, and
 inverted with a Childs-Kothari-Somma polynomial (degree set by the condition
 number); the good-subspace state is proportional to ``A^-1 b``, with the
 scale recovered classically. Verified against ``numpy.linalg.solve``.
-Requires ``qsppack`` for the phase factors, like example 2.
+Requires ``qsppack`` for the phase factors, like example 2. The application
+in :ref:`sparse-heat-step` below derives a banded sparse inverse from a
+physical model and compares every temperature coordinate with NumPy.
 
 .. literalinclude:: ../examples/python/07_matrix_inversion_qsvt.py
    :language: python
@@ -183,5 +185,67 @@ moments, a negative-coefficient shift ``H - E_ref I``, and a QSVT sequence
 are verified against an independent sparse Jordan-Wigner reference.
 
 .. literalinclude:: ../examples/python/09_hubbard_combined_encoding.py
+   :language: python
+   :start-after: [Begin Documentation]
+
+.. _sparse-heat-step:
+
+Sparse matrix inversion for heat diffusion
+-------------------------------------------
+
+Start with a temperature pattern along a rod and ask what it becomes after one
+step of heat diffusion with fixed endpoint temperatures. A finite-difference
+model turns this physical question into a banded linear system. This example
+builds that system, solves it with NumPy, and uses a sparse quantum block
+encoding and an inverse polynomial to compute the same discrete update,
+connecting the earlier matrix tools to a recognizable application.
+
+You should learn how the physical assumptions determine the matrix and its
+boundary entries, how a sparse inverse produces the updated temperature
+vector, and how to restore the output's physical scale. The per-position table
+compares the ideal NumPy solution, a NumPy solution with the circuit's rounded
+matrix coefficients, and the quantum result. Those comparisons show how matrix
+precision and inverse approximation contribute separately to error; they
+validate the chosen discrete problem, while accuracy relative to the
+continuous heat equation requires further space and time refinement.
+
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
+One backward-Euler step in a rod produces a tridiagonal SPD matrix after
+fixed zero boundary values are eliminated. Arithmetic banded oracles feed
+the QSVT machinery; NumPy independently solves both the ideal
+matrix and the finite-angle matrix actually represented by the circuit.
+The example checks their encoded block, the long complex QSVT response,
+physical scale restoration, full-vector errors, and the residual separately.
+
+The default two interior points and four angle bits require 14 total
+qubits. The full CKS inverse has degree 207 at the default 1e-2 target; a
+rigorously bounded Chebyshev tail below 1e-10 reduces the executed degree to
+89. ``--full-cks`` retains the complete polynomial. At this default the
+four-bit matrix quantization, not the inverse polynomial, dominates the
+error budget. ``--points 4`` is the four-position rod: 16 qubits, executing
+degree 99 of a degree-259 CKS polynomial, in seconds on an fp64 GPU and in
+minutes on the CPU simulator. The precision configuration
+``--points 4 --value-bits 6 --inverse-epsilon 1e-3`` uses 18 qubits and
+executes degree 125 of a degree-411 CKS polynomial; it runs in seconds on
+an fp64 GPU and in about twenty minutes on the CPU simulator. Degree depends
+on sparse normalization as well as physical conditioning. The per-node table
+compares initial, ideal NumPy, quantized NumPy, and QSVT temperatures.
+Full-state real-response extraction is simulator postprocessing; its raw
+good-block norm is not an isolated inverse-filter success probability.
+
+The discretization follows the
+`backward-Euler derivation <https://hplgit.github.io/INF5620/doc/pub/H14/diffu/html/._main_diffu001.html>`_.
+See :doc:`../guide/block_encodings` for sparse access and error budgets.
+The NumPy comparison validates the discrete system; a PDE convergence
+study would additionally test space/time accuracy.
+
+For an optional saved figure, install Matplotlib and run
+``python3 10_sparse_heat_equation.py --plot heat_step.png``.
+Plotting is headless and includes both fixed endpoints. The default run
+requires QSPPACK but does not import Matplotlib.
+
+.. literalinclude:: ../examples/python/10_sparse_heat_equation.py
    :language: python
    :start-after: [Begin Documentation]
