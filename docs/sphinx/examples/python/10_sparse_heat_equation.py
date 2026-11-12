@@ -29,9 +29,11 @@ The QSP real-response extraction uses full-state simulator postprocessing;
 the raw good-block norm is not the success probability of an isolated
 inverse filter. It does not demonstrate a coherent readout of every node.
 Run: python3 10_sparse_heat_equation.py
-The default (four angle bits, 1e-2 inverse target, 16 qubits) is sized for
-the CPU simulator; --value-bits 6 --inverse-epsilon 1e-3 is the 18-qubit
-precision configuration, practical on a GPU. Optional: --plot heat_step.png
+The default (two interior positions, four angle bits, 1e-2 inverse target,
+14 qubits) is sized for the CPU simulator. --points 4 is the four-position
+rod on 16 qubits, and --points 4 --value-bits 6 --inverse-epsilon 1e-3 is
+the 18-qubit precision configuration; both are practical on a GPU.
+Optional: --plot heat_step.png
 Add --verbose to show individual validation checks; failures are always reported.
 """
 
@@ -176,7 +178,11 @@ def save_plot(path, positions, initial, numpy_solution, qsvt_solution):
 
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--points", type=int, default=4)
+    parser.add_argument(
+        "--points",
+        type=int,
+        default=2,
+        help="interior positions, a power of two (4 is the 16-qubit rod)")
     parser.add_argument("--r", type=float, default=.25)
     parser.add_argument("--value-bits", type=int, default=4)
     parser.add_argument("--inverse-epsilon", type=float, default=1e-2)
@@ -239,10 +245,13 @@ def main():
           np.linalg.norm(ideal @ numpy_solution - initial),
           BLOCK_ATOL,
           verbose=verbose)
-    if n == 4 and r == .25:
-        analytic = np.array([140., 840., 144., 24.]) / 1189.
-        check("default rational NumPy solution",
-              np.max(np.abs(numpy_solution - analytic)),
+    rational = {
+        2: np.array([4., 24.]) / 35.,
+        4: np.array([140., 840., 144., 24.]) / 1189.
+    }
+    if r == .25 and n in rational:
+        check("closed-form rational NumPy solution",
+              np.max(np.abs(numpy_solution - rational[n])),
               BLOCK_ATOL,
               verbose=verbose)
     print(

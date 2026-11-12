@@ -297,17 +297,21 @@ a symmetric positive-definite interior problem with clipped boundaries.
 See the
 `finite-difference derivation <https://hplgit.github.io/INF5620/doc/pub/H14/diffu/html/._main_diffu001.html>`_.
 
-The default uses four interior points, r=0.25, and initial temperatures
+The default uses two interior points, r=0.25, and initial temperatures
+[0,1]; ``--points 4`` is the four-point rod with initial temperatures
 [0,1,0,0]. `banded_oracles` supplies location shifts and boundary-masked
 value loads; three bands pad to four slots. With h=1.5, alpha=6 and the
-default four angle bits, the circuit has two system qubits, six block
-ancillas and eight deterministic scratch qubits: 16 in total (each extra
-angle bit adds one scratch qubit). Both projection and reflection include
-the complete ancilla register.
+default four angle bits, the circuit has one system qubit, five block
+ancillas and eight deterministic scratch qubits: 14 in total. Each doubling
+of the points adds one system qubit and one block ancilla, and each extra
+angle bit adds one scratch qubit, so four points use 16. Both projection and
+reflection include the complete ancilla register.
 
 An independent arcsine/nearest-even/clamp/sine-squared calculation builds
 the represented matrix before any circuit runs. The finite angle code
-rounds even the maximal diagonal, and structural corner zeros remain zero.
+rounds even the maximal diagonal. From four points on, the wrap-around
+corner entries are structural zeros, and the example checks that they
+remain zero.
 NumPy solves the ideal and represented systems separately. Column-by-column
 circuit checks verify the represented block, not a fitted reference.
 
@@ -322,20 +326,21 @@ The scaled odd CKS polynomial
 uses :math:`x_{\min}=\lambda_{\min}(\widetilde A)/\alpha`.
 Global boundedness follows from
 :math:`|f_B(x)|\le\min(B|x|,1/|x|)\le\sqrt B`.
-The default relative target 1e-2 needs B=130 and a full CKS degree of 259,
+The default relative target 1e-2 needs B=104 and a full CKS degree of 207,
 despite the small physical condition number: ``x_min`` carries the factor
 ``1/alpha = 1/(4h)`` of the padded sparse normalization. Stable binomial
 tails form coefficients. For practical CPU execution the example discards a
 Chebyshev tail whose sum of absolute coefficients is below 1e-10, reducing
-the executed degree to 99. Since every Chebyshev basis function has
+the executed degree to 89. Since every Chebyshev basis function has
 magnitude at most one on [-1,1], this is a uniform error bound. The example
 checks that the combined inverse bound still meets the requested target and
 propagates the discarded tail into the physical error budget. Matrix
 precision and the inverse target are unchanged. ``--full-cks`` executes all
-259 degrees. The precision configuration ``--value-bits 6
---inverse-epsilon 1e-3`` needs B=206 (degree 411, executed 125) on 18
-qubits. Degree and qubit guards reject excessive requests before large
-allocation or phase generation.
+207 degrees. Four points (``--points 4``) need B=130 (degree 259, executed
+99) on 16 qubits, and the precision configuration ``--points 4
+--value-bits 6 --inverse-epsilon 1e-3`` needs B=206 (degree 411, executed
+125) on 18 qubits. Degree and qubit guards reject excessive requests before
+large allocation or phase generation.
 
 QSPPACK synthesizes phases. An independent 2x2 signal model checks the
 raw complex QSVT response and the analytical odd-parity/global-phase
