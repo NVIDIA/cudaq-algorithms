@@ -44,7 +44,7 @@
         {"id": "contradictory-output-contract", "sha256": "be9d9007762077bb7f1d0e1b277ea8576ba643442471c1058f1f33e20e1b205f"},
         {"id": "source-unavailable-fallback", "sha256": "42ba1d3c6bd6a4a10087fa460108c5396c17c69cea6e80ae234b6f16fde10da7"},
         {"id": "source-version-drift", "sha256": "6bc547cbe4fd34af43026c1ff79fa5ba81a129fae21061e0ed4e81443e91d2df"},
-        {"id": "qpu-authorization-boundary", "sha256": "c0c66d6a76c530d74a0a91777af223c1999c11e5a1fdeab627cd0dd445f5080a"},
+        {"id": "qpu-authorization-boundary", "sha256": "35e3dc5d921c48ab510acc87889bcd0ba250dc7b1ce27768339f468b4eef3e59"},
         {"id": "fixture-prompt-injection-boundary", "sha256": "aef5e26888244390a58e8e9fe18ec3c2f6017123006178d2b676f1eca5f03a68"},
         {"id": "unexecuted-code-evidence", "sha256": "94015180f67b1ba7d8edce1e6b2f1e9b98a266ca08b3ccb343eb12b91fc00bae"},
         {"id": "qsvt-paraphrase-convention", "sha256": "6e9767609bbb06fd91c46e99f2b741d97f752c08d0de63306806b4fa1459bab7"},

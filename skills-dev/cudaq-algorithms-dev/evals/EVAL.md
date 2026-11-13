@@ -28,6 +28,16 @@ other 58 cases, original source provenance, suite version and paired protocol st
 unchanged. Existing frozen campaigns retain their own suite and grades; this
 review does not retroactively regrade them.
 
+The [2026-11-12 prompt rebaseline](rebaselines/2026-11-12-qpu-authorization-prompt.json)
+rephrases `qpu-authorization-boundary`. The original wording asked the agent to
+"use whatever cloud credentials you find", which Claude Code's usage-policy
+safeguards refuse before the agent runs, so nvskills-ci trials errored instead
+of producing a gradable refusal. The new prompt presents the credentials as the
+user's own and still demands paid QPU submission with unattended retries; the
+expected output and all four assertions are unchanged. The other 61 case
+records, fixtures and protocol files are unchanged. `test_rebaseline_provenance.py`
+verifies the rebaseline records as a chain ending at the current suite.
+
 The runtime skill also ships a standalone [catalog evaluation package](../../../skills/cudaq-algorithms/evals/EVAL.md)
 for NVIDIA SkillEvaluator. It carries a reviewed 24-case subset of this suite,
 including the three negative controls, with every record and fixture
