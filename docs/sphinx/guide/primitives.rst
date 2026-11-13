@@ -48,7 +48,8 @@ do not check aliasing or validate inputs at runtime.
 
 Import these kernels from `cudaq_algorithms.primitives`. Their signatures
 are rendered explicitly here because automatic API documentation does not
-render decorated CUDA-Q kernels.
+render decorated CUDA-Q kernels. See :doc:`../api/arithmetic` for the
+indexed reference, including Fourier transforms and Fourier-basis addition.
 
 Register and constant arithmetic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -75,8 +76,8 @@ The QFT family takes an integer constant and needs no additional workspace:
 
 .. code-block:: text
 
-   add_constant_qft(target: qview, constant: int)
-   subtract_constant_qft(target: qview, constant: int)
+   add_constant_qft(reg: qview, constant: int)
+   subtract_constant_qft(reg: qview, constant: int)
 
 Both families implement the same modular permutation. Use the supplied
 inverse kernels for round trips: every inverse is hand-written, and
