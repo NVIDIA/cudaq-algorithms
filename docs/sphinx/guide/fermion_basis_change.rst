@@ -133,6 +133,10 @@ from the loaded words, typically a QROM table filled with other plans'
    consumer = fermion_basis_change(structure=structure,
                                   programmable=True, angle_bits=8)
 
+These two snippets are sized for illustration: at eight bits
+``program.num_qubits`` is 34 and ``consumer.num_qubits`` is 45, more than
+a state-vector simulator can hold. The runnable example uses three bits.
+
 Each word is an unsigned little-endian full-turn fixed-point angle of
 ``b = angle_bits`` bits, from 1 through 52:
 
@@ -179,7 +183,8 @@ by the rotation count:
 For a classical plan use ``num_elementary_rotations`` and
 ``plan.schedule.parameters``. ``report.basis_change_error_bound`` bounds
 the whole transformation, and ``report.reflection_error_bound`` bounds a
-reflection conjugated by it; both are clipped at two.
+reflection conjugated by it, which is twice the basis-change bound; both
+are clipped at two.
 
 Before building a plan, nearest rounding gives the a priori bound
 

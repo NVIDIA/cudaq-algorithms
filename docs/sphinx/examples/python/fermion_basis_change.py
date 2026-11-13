@@ -1,5 +1,7 @@
+#!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# [Begin Documentation]
 """Fixed, controlled and QROM-selected fermionic transformations.
 
 Run with:  python3 fermion_basis_change.py  (with the package on PYTHONPATH)
@@ -8,7 +10,6 @@ CUDAQ_DEFAULT_SIMULATOR names another simulator.
 The selected example allocates sixteen qubits, including twelve angle qubits.
 """
 
-# [Begin Documentation]
 import os
 
 import cudaq
@@ -53,14 +54,17 @@ controlled_fixed = fixed.controlled_kernel()
 def controlled_demo():
     q = cudaq.qvector(3)
     h(q[0])
-    x(q[1])
+    h(q[1])
+    h(q[2])
     controlled_fixed(q)
 
 
+# The enable is qubit 0: even indices (enable=0) keep the uniform two-mode
+# state, odd indices (enable=1) carry the full Fock action.
+uniform = np.ones(4) / (2 * np.sqrt(2))
 expected_controlled = np.zeros(8, dtype=complex)
-expected_controlled[2] = 1 / np.sqrt(2)  # enable=0, mode 0 unchanged
-expected_controlled[3] = U[0, 0] / np.sqrt(2)
-expected_controlled[5] = U[1, 0] / np.sqrt(2)
+expected_controlled[0::2] = uniform
+expected_controlled[1::2] = fock @ uniform
 np.testing.assert_allclose(np.asarray(cudaq.get_state(controlled_demo)),
                            expected_controlled,
                            atol=1e-12)
@@ -101,23 +105,25 @@ total = scratch + table.num_ladder  # 16, including address and QROM scratch
 @cudaq.kernel
 def selected_preparation():
     q = cudaq.qvector(total)
-    x(q[0])
+    h(q[0])
+    h(q[1])
     h(q[address])
     lookup(q[address:scratch], q[scratch:total], q[2:span])
     consume(q[0:span])
     lookup(q[address:scratch], q[scratch:total], q[2:span])
 
 
-# |0>_addr |mode 0>/sqrt(2) + |1>_addr (|mode 0>+i|mode 1>)/2.
+# Address 0 keeps the uniform two-mode state; address 1 applies the full Fock
+# action of U, so all four loaded words and det(U) are observed.
 # Compare the complete state, so nonzero angle/scratch outputs also fail.
 expected = np.zeros(1 << total, dtype=complex)
-expected[1] = 1 / np.sqrt(2)
-expected[(1 << address) + 1] = 0.5
-expected[(1 << address) + 2] = 0.5j
+expected[0:4] = uniform
+expected[(1 << address):(1 << address) + 4] = fock @ uniform
 state = np.asarray(cudaq.get_state(selected_preparation))
 np.testing.assert_allclose(state, expected, atol=1e-11)
 print("Selected preparation:",
-      [(i, complex(a)) for i, a in enumerate(state) if abs(a) > 1e-10])
+      [(i, complex(np.round(a, 3)))
+       for i, a in enumerate(state) if abs(a) > 1e-10])
 print("Register widths:", program.structure.num_system_qubits, "system +",
       table.num_output, "angles +", table.num_address, "address +",
       table.num_ladder, "scratch =", total)
