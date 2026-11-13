@@ -81,8 +81,8 @@ class CatalogEvalTests(unittest.TestCase):
                         "runtime evals must include negative cases")
         cases = json.loads(path.read_text())["evals"]
         self.assertEqual(len(cases), CATALOG_CASE_COUNT)
-        self.assertEqual(len({case["id"] for case in cases}),
-                         CATALOG_CASE_COUNT)
+        self.assertEqual(len({case["id"]
+                              for case in cases}), CATALOG_CASE_COUNT)
         self.assertEqual({case["id"] for case in cases}, CATALOG_IDS)
         self.assertTrue(all("expected_skill" in case for case in cases))
         self.assertEqual(
