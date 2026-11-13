@@ -30,8 +30,9 @@ QFT family (``qft`` / ``iqft``, the Fourier-basis adder ``phase_add_constant``,
 ``add_constant_qft`` / ``subtract_constant_qft``, and the
 ``cmp_ge_constant_qft_shift`` / ``cmp_ge_constant_qft_shift_adj`` pair). Every
 inverse is hand-written and the gate prices are compiler-pinned by the resource
-tests. (Autodoc does not render ``@cudaq.kernel`` objects, so this paragraph is
-the API's rendered reference; each kernel's own docstring carries its contract.)
+tests. Autodoc does not render ``@cudaq.kernel`` objects; the indexed
+:doc:`arithmetic API reference </api/arithmetic>` provides explicit signatures
+and register contracts. Each kernel's own docstring also carries its contract.
 
 ``AliasSamplingPrepare`` composes both: the coherent alias-sampling
 PREPARE-with-garbage of Babbush et al. (`arXiv:1805.03662`, Sec. III.D)

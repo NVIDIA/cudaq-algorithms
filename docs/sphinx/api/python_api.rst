@@ -76,6 +76,14 @@ Circuit primitives
 .. automodule:: cudaq_algorithms.primitives
    :members:
 
+The arithmetic kernels have explicit, indexed signatures and register
+contracts on the following reference page:
+
+.. toctree::
+   :maxdepth: 1
+
+   arithmetic
+
 Preprocessing
 =============
 
