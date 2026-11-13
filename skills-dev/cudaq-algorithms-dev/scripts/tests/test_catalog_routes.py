@@ -150,7 +150,14 @@ EXCEPTIONS = {
 
 
 def test_catalog_mirror_and_explicit_case_coverage():
-    assert CATALOG == json.loads((RUNTIME / 'evals/evals.json').read_text())
+    # The runtime dataset is a reviewed subset of the development suite;
+    # test_catalog_evals.py pins the exact id set. Here, only require that
+    # every shipped record is identical to its development record.
+    by_id = {case['id']: case for case in CATALOG['evals']}
+    runtime = json.loads((RUNTIME / 'evals/evals.json').read_text())
+    assert runtime['skill_name'] == CATALOG['skill_name']
+    assert runtime['evals']
+    assert all(case == by_id[case['id']] for case in runtime['evals'])
     assert len(CASES) == len({case['id'] for case in CASES}) == 62
     assert {case['id']
             for case in CASES} == set(REQUIRED) | set(EXCEPTIONS) | NEGATIVES
