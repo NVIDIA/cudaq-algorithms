@@ -95,12 +95,13 @@ classical pre-optimization — no optimizer in the loop):
        pool, num_qubits)                  # works for ANY operator pool
    stateprep.validate_fixed_parameter_ucc(num_qubits, thetas, words, coeffs)
 
-`make_hartree_fock_occupation` builds the occupied spin-orbital list:
-contiguous `{0, ..., num_electrons - 1}` for closed shell, and for
-`spin > 0` the interleaved alpha (even) / beta (odd) layout of
-`get_uccsd_excitations` — e.g. 4 electrons at spin 2 occupy
-`{0, 1, 2, 4}`, not `{0, 1, 2, 3}` — so the reference lines up with a
-UCCSD pool built at the same spin.
+`make_hartree_fock_occupation` accepts a signed `spin` equal to the
+alpha electron count minus the beta electron count. For nonzero spin,
+it fills even indices for alpha electrons and odd indices for beta
+electrons. For example, `make_hartree_fock_occupation(2, 1, spin=-1)`
+returns `[1]`, and four electrons at spin 2 occupy `[0, 1, 2, 4]`.
+Spin zero uses the contiguous indices from 0 through
+`num_electrons - 1`.
 
 `get_fixed_parameter_ucc_pauli_lists` converts any operator pool to the
 grouped form the kernel takes, dropping terms with
@@ -123,7 +124,7 @@ directly injectable as a `state_prep` kernel.
        num_qubits, parameters, words, coeffs,
        occupied_orbitals=[0, 1, 2, 4])           # explicit reference
 
-Provide exactly one of `num_electrons` (with optional `spin`) or
+Provide exactly one of `num_electrons` (with optional signed `spin`) or
 `occupied_orbitals`. The returned kernel expects a `num_qubits`-wide
 register in ``|0...0>``. Validation runs at factory time; the grouped data
 is flattened into per-rotation angles before capture (nested lists
@@ -286,17 +287,15 @@ Package conventions
   even qubits, beta on odd (spatial orbital `i` maps to qubits `2i` /
   `2i + 1`). All pools, excitation enumerations, and Hartree-Fock
   occupations share it.
-- **`spin` semantics**: `spin` is the difference between alpha and beta
+- **`spin` semantics**. `spin` is the difference between alpha and beta
   electron counts (twice the total S_z), so
   `n_beta = (num_electrons - spin) // 2` and
-  `n_alpha = num_electrons - n_beta`. `spin == 0` selects the
-  closed-shell forms; `spin > 0` requires an even `num_qubits` and
-  produces the interleaved open-shell occupations and excitations.
-- **Error types**: every input guard raises `ValueError`.
-  `get_uccsd_excitations` and `make_hartree_fock_occupation` apply the
-  same `(num_qubits, num_electrons, spin)` checks with the same messages;
-  in particular both reject an odd `num_electrons - spin` when `spin > 0`,
-  since the beta floor would otherwise silently realize `spin + 1`.
+  `n_alpha = num_electrons - n_beta`. For nonzero spin, Hartree-Fock
+  occupations require an even qubit count, an even
+  `num_electrons - spin`, and both spin populations between zero and
+  `num_qubits // 2`. Incompatible combinations raise `ValueError`.
+  `get_uccsd_excitations` and `make_uccsd_operator_pool` accept
+  non-negative spin and use the same interleaved layout.
 - **CEO orbital counts**: the CEO helpers (`make_ceo_operator_pool`,
   `get_ceo_pauli_lists`) take `num_orbitals` in *spatial* orbitals — the
   pool acts on `2 * num_orbitals` qubits.

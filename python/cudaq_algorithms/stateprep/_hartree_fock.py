@@ -6,10 +6,8 @@ Host helpers for the ``hartree_fock`` / ``hartree_fock_occupation`` /
 ``fixed_parameter_ucc`` device kernels in ``_kernels``:
 
 * ``make_hartree_fock_occupation`` builds the occupied spin-orbital list
-  of the Hartree-Fock determinant — contiguous for closed shell, and for
-  spin > 0 the interleaved alpha (even) / beta (odd) layout of
-  ``get_uccsd_excitations``, so the reference lines up with a UCCSD pool
-  built at the same spin.
+  of the Hartree-Fock determinant with alpha on even orbitals and beta
+  on odd orbitals for nonzero spin. Spin zero uses contiguous indices.
 * ``get_fixed_parameter_ucc_pauli_lists`` converts any operator pool to
   the grouped (Pauli words, coefficients) form the kernel takes, dropping
   near-zero terms and rejecting complex coefficients.
@@ -81,16 +79,25 @@ class FixedParameterUccResourceEstimate:
 def make_hartree_fock_occupation(num_qubits, num_electrons, spin=0):
     """Occupied spin-orbital indices of the Hartree-Fock reference.
 
-    ``spin == 0`` (closed shell): the contiguous set
-    ``{0, ..., num_electrons - 1}``. ``spin > 0`` (open shell): alpha
-    electrons on even spin orbitals and beta on odd, matching
-    ``get_uccsd_excitations`` so the determinant lines up with a
-    fixed-parameter UCCSD pool built at the same spin (e.g. 4 electrons at
-    spin 2 occupy ``{0, 1, 2, 4}``, not ``{0, 1, 2, 3}``).
+    ``spin`` is the signed integer difference between the alpha and beta
+    electron counts (twice the spin projection). Spin zero returns contiguous
+    indices starting at zero. For nonzero spin, alpha electrons occupy
+    even indices and beta electrons occupy odd indices. For example,
+    ``make_hartree_fock_occupation(2, 1, spin=-1)`` returns ``[1]``.
+    Nonzero spin requires an even qubit count, and the electron count
+    and spin must have the same parity. Each spin population must fit
+    in its half of the register.
     """
     num_qubits = _as_count(num_qubits, "num_qubits")
     num_electrons = _as_count(num_electrons, "num_electrons")
-    spin_number = _as_count(spin, "spin")
+    if isinstance(spin, bool):
+        raise ValueError("spin must be an integer")
+    try:
+        spin_number = int(spin)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("spin must be an integer") from exc
+    if spin_number != spin:
+        raise ValueError("spin must be an integer")
     if num_electrons > num_qubits:
         raise ValueError("num_electrons cannot exceed num_qubits")
 
@@ -98,22 +105,17 @@ def make_hartree_fock_occupation(num_qubits, num_electrons, spin=0):
         return list(range(num_electrons))
 
     if num_qubits % 2 != 0:
-        raise ValueError("num_qubits must be even when spin > 0")
-    if spin_number > num_electrons:
-        raise ValueError("spin cannot exceed num_electrons")
-    # spin is 2*S_z, so (num_electrons - spin) must be even. Otherwise the
-    # n_occ_beta floor below silently realizes spin+1 rather than spin
-    # (e.g. (8, 4, 1) would return the same occupation as (8, 4, 2)),
-    # contradicting the documented open-shell spin. Matches
-    # get_uccsd_excitations.
+        raise ValueError("num_qubits must be even when spin is nonzero")
+    if abs(spin_number) > num_electrons:
+        raise ValueError("abs(spin) cannot exceed num_electrons")
     if (num_electrons - spin_number) % 2 != 0:
-        raise ValueError("(num_electrons - spin) must be even when spin > 0 "
-                         "(spin is 2*S_z)")
+        raise ValueError("(num_electrons - spin) must be even when spin "
+                         "is nonzero (spin is 2*S_z)")
 
     num_spatial = num_qubits // 2
     n_occ_beta = (num_electrons - spin_number) // 2
     n_occ_alpha = num_electrons - n_occ_beta
-    if n_occ_alpha > num_spatial:
+    if max(n_occ_alpha, n_occ_beta) > num_spatial:
         raise ValueError("the requested (num_electrons, spin) does not fit in "
                          "num_qubits spin orbitals")
 
@@ -247,8 +249,8 @@ def hartree_fock_ucc_kernel(num_qubits,
                             occupied_orbitals=None):
     """A ``(qubits: qview)`` kernel: Hartree-Fock reference + UCC product.
 
-    Provide exactly one of ``num_electrons`` (with optional ``spin`` for
-    an open-shell reference) or explicit ``occupied_orbitals``. The
+    Provide exactly one of ``num_electrons`` (with optional signed ``spin``
+    for an open-shell reference) or explicit ``occupied_orbitals``. The
     returned kernel expects a ``num_qubits``-wide register in ``|0...0>`` and
     is directly injectable as a ``state_prep`` kernel (e.g. into
     ``PauliLCU.encode_kernel``). The grouped data is flattened into

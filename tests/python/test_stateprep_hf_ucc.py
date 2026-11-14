@@ -116,6 +116,22 @@ def test_hartree_fock_explicit_occupation_statevector():
     _assert_basis_state(state, 0b0101)
 
 
+@pytest.mark.parametrize(
+    "num_qubits,num_electrons,spin,expected",
+    [
+        (2, 1, -1, [1]),
+        (2, 1, 1.0, [0]),  # Integral numeric inputs retain their behavior.
+        (2, 1, -1.0, [1]),
+        (8, 4, np.int64(-2), [0, 1, 3, 5]),
+        (4, 2, -2, [1, 3]),  # The beta orbitals are filled to capacity.
+        (3, 1, 0, [0]),  # Legacy contiguous filling with spin zero.
+    ])
+def test_hartree_fock_occupation_spin(num_qubits, num_electrons, spin,
+                                      expected):
+    assert stateprep.make_hartree_fock_occupation(num_qubits, num_electrons,
+                                                  spin) == expected
+
+
 def test_hartree_fock_open_shell_occupation():
     # Closed shell stays contiguous.
     assert stateprep.make_hartree_fock_occupation(8, 4, 0) == [0, 1, 2, 3]
@@ -137,24 +153,54 @@ def test_hartree_fock_open_shell_occupation():
     state = _state(_occupation_entry, 8, occupation)
     _assert_basis_state(state, 0b00010111)  # qubits {0, 1, 2, 4} set
 
-    with pytest.raises(ValueError, match="must be even"):
-        stateprep.make_hartree_fock_occupation(7, 3, 1)
-    with pytest.raises(ValueError, match="spin cannot exceed"):
-        stateprep.make_hartree_fock_occupation(8, 2, 3)
+
+@pytest.mark.parametrize("sign", [-1, 1])
+def test_hartree_fock_occupation_rejects_impossible_spin(sign):
+    with pytest.raises(ValueError, match="num_qubits must be even"):
+        stateprep.make_hartree_fock_occupation(7, 3, sign)
+    with pytest.raises(ValueError, match=r"abs\(spin\) cannot exceed"):
+        stateprep.make_hartree_fock_occupation(8, 2, 4 * sign)
     with pytest.raises(ValueError, match="does not fit"):
-        stateprep.make_hartree_fock_occupation(4, 4, 2)
-    # Open-shell spin must share parity with num_electrons (spin is 2*S_z),
-    # else the beta floor would silently realize spin+1: (8, 4, 1) must not
-    # be accepted as an alias of (8, 4, 2).
+        stateprep.make_hartree_fock_occupation(4, 4, 2 * sign)
+    with pytest.raises(ValueError, match="must be even when spin is nonzero"):
+        stateprep.make_hartree_fock_occupation(8, 4, sign)
+
+
+@pytest.mark.parametrize("spin", [
+    True, -0.5, "-1", None,
+    float("nan"),
+    float("inf"),
+    float("-inf"),
+    object()
+])
+def test_hartree_fock_occupation_rejects_invalid_spin(spin):
+    with pytest.raises(ValueError, match="^spin must be an integer$"):
+        stateprep.make_hartree_fock_occupation(2, 1, spin)
+
+
+@pytest.mark.parametrize("num_qubits,num_electrons,name", [
+    (-2, 1, "num_qubits"),
+    (2, -1, "num_electrons"),
+])
+def test_hartree_fock_occupation_rejects_negative_counts(
+        num_qubits, num_electrons, name):
+    with pytest.raises(ValueError,
+                       match=f"{name} must be a non-negative integer"):
+        stateprep.make_hartree_fock_occupation(num_qubits,
+                                               num_electrons,
+                                               spin=-1)
+
+
+@pytest.mark.parametrize("build", [
+    stateprep.get_uccsd_excitations,
+    stateprep.make_uccsd_operator_pool,
+])
+def test_uccsd_spin_validation(build):
     with pytest.raises(ValueError, match="must be even when spin > 0"):
-        stateprep.make_hartree_fock_occupation(8, 4, 1)
-    # The excitation enumeration shares the layout, so it must share the
-    # guard: the pool for (8, 4, 1) must not silently be the (8, 4, 2) pool
-    # while the matching reference refuses to build.
-    with pytest.raises(ValueError, match="must be even when spin > 0"):
-        stateprep.get_uccsd_excitations(8, 4, 1)
-    with pytest.raises(ValueError, match="must be even when spin > 0"):
-        stateprep.make_uccsd_operator_pool(8, 4, 1)
+        build(8, 4, 1)
+    with pytest.raises(ValueError,
+                       match="spin must be a non-negative integer"):
+        build(2, 1, -1)
 
 
 # ----------------------------------------------------------------------------
@@ -322,6 +368,13 @@ def test_factory_open_shell_reference():
     np.testing.assert_allclose(_prepared_state(8, by_occupation),
                                state,
                                atol=1e-12)
+
+
+def test_factory_negative_spin_reference():
+    prep = stateprep.hartree_fock_ucc_kernel(2, [], [], [],
+                                             num_electrons=1,
+                                             spin=-1)
+    _assert_basis_state(_prepared_state(2, prep), 0b10)
 
 
 def test_factory_string_words_and_hf_only_shapes():
