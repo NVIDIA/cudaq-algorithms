@@ -16,7 +16,7 @@ Fermion mappings on an interacting lattice
 
 Before simulating electrons or other fermions, we must translate their
 creation, annihilation, and interaction terms into operations on qubits. This
-example applies several translations to the same small lattice model, where
+example applies several translations to the same lattice model, where
 particles can hop between sites and interact when neighboring sites are
 occupied. The aim is to keep the physical model fixed while examining how its
 qubit representation changes.
@@ -33,12 +33,21 @@ Individual validation checks are shown with ``--verbose``. All checks still
 run by default, and failures are always reported.
 
 Compare JW, BK, original superfast, and binary-tree generalized superfast
-mappings on one four-site spinless ring. An independent occupation-basis
-NumPy Hamiltonian checks coefficients and signs. Each superfast parity
-sector is restricted to the loop stabilizers' joint +1 eigenspace before
-all eight physical eigenvalues are compared, including multiplicities.
-The host-side tutorial reports Pauli weights, qubits, and code dimensions;
-it requires no chemistry or phase-generation package.
+mappings of one spinless lattice model. On a four-site ring an independent
+occupation-basis NumPy Hamiltonian checks coefficients and signs. Each
+superfast parity sector is restricted to the loop stabilizers' joint +1
+eigenspace before all eight physical eigenvalues are compared, including
+multiplicities.
+
+A second table repeats the comparison on open 4x4, 7x7, and 10x10 lattices,
+up to 100 modes, where the mappings separate. The JW maximum weight grows
+with the lattice side and the BK weight with the logarithm of the mode
+count, while both superfast forms keep a fixed weight at the cost of more
+qubits and one stabilizer per independent cycle. Nothing is simulated at
+those sizes: Pauli weights, qubit counts, and stabilizer counts are read
+from the mapped operators, and the checks are exact statements about their
+Pauli words. The host-side tutorial requires no chemistry or
+phase-generation package.
 
 .. seealso::
 

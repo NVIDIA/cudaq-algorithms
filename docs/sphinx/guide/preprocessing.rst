@@ -206,9 +206,56 @@ All vertices have degree two, so both superfast forms need four qubits
 without degree padding. Standard modes use dressed edge operators;
 binary-tree modes use local Fenwick Majoranas. The error-correcting variant
 requires a 3-connected graph with even degree at least six and is not
-demonstrated on this ring. This example does not establish error correction
-or asymptotic advantage. Its term/weight table includes identity terms and
-states the coefficient pruning threshold.
+demonstrated on this ring. The ring does not establish error correction,
+and its four qubits cannot separate the mappings. Its term/weight table
+includes identity terms and states the coefficient pruning threshold.
+
+The tutorial then repeats the comparison on open :math:`L\times L` lattices
+with :math:`L=4,7,10`, the same model, and modes numbered row by row. No
+spectrum is computed at these sizes; the mapped operators are compared:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Mapping
+     - Qubits at :math:`10\times 10`
+     - Maximum weight at :math:`L=4,7,10`
+     - Stabilizers at :math:`10\times 10`
+   * - JW
+     - 100
+     - 5, 8, 11
+     - none
+   * - BK
+     - 100
+     - 7, 11, 13
+     - none
+   * - Standard superfast
+     - 180
+     - 7, 7, 7
+     - 81
+   * - Binary-tree superfast
+     - 196
+     - 4, 4, 4
+     - 97
+
+A JW hop between rows carries a string across one full row, so its weight
+is :math:`L+1`; BK weights grow with the logarithm of the mode count. Both
+superfast forms keep a maximum weight set by the vertex degree, not by the
+lattice size. They pay for it in qubits, one per graph edge after
+``binary_tree`` pads odd-degree vertices with zero-coefficient edges, and in
+one stabilizer per independent cycle (edges minus modes plus one). The
+returned stabilizers follow a cycle basis that is not plaquette-local, so
+their weights grow with the lattice (38 and 41 at :math:`10\times 10`)
+although the Hamiltonian terms stay local.
+
+At these sizes the example checks exact properties of the Pauli words: real
+coefficients, the same number of terms in every mapping, the JW string
+length, one signed Pauli word per independent cycle, and stabilizers that
+commute with every Hamiltonian term and with each other. Signs and parity
+sectors are established by the ring spectra, not by these checks. The table
+compares operators; it does not compare state preparation, circuits, or
+gate counts. JW locality also depends on mode ordering and geometry: on a
+two-leg ladder numbered rung by rung, every hop has weight at most three.
 
 A JW occupation preparation cannot be reused unchanged on a superfast
 register. This is a host-side mapping and code-spectrum tutorial; code-state
