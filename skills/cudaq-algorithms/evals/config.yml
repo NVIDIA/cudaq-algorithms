@@ -5,7 +5,6 @@ harbor:
   n_attempts: 1
   pass_threshold: 0.50
   stop_on_pass: false
-  timeout_multiplier: 3.0
 
 grading:
   mode: default
