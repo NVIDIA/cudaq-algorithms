@@ -5,6 +5,9 @@ Hide a Hamiltonian inside a larger unitary using a Pauli sum, sparse matrix
 access, or a structured double-factorized representation. These examples
 exercise the shared consumers and compare the resulting encodings.
 
+For a body-programmed construction, see :doc:`primitives`: its alias-sampling
+example composes an LCU with a non-Pauli CZ term and checks Walk/QSVT consumers.
+
 .. seealso::
 
    :doc:`../guide/block_encodings` — the ``PauliLCU`` API and the

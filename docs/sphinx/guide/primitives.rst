@@ -271,3 +271,175 @@ complex superpositions, explicit overflow inputs, logical permutation
 references, and complete-state cleanup checks. Its resource-only width sweep
 excludes input-state preparation and reports rotations separately from
 Toffolis.
+
+Alias preparation and generic LCU composition
+---------------------------------------------
+
+`AliasSamplingPrepare` produces a weighted index marginal with quantum
+garbage. It implements coherent alias sampling (Babbush et al.,
+*Phys. Rev. X* **8**, 041015 (2018),
+`arXiv:1805.03662 <https://arxiv.org/abs/1805.03662>`_, Sec. III.D): it
+combines classical integer alias tables, a
+:ref:`QROM lookup <guide/primitives:Coherent table lookup with QROM>`, an
+:ref:`unsigned comparator <guide/primitives:Comparison flags are XOR outputs>`,
+and controlled swaps.
+
+.. code-block:: python
+
+   from cudaq_algorithms.primitives import AliasSamplingPrepare
+
+   sampler = AliasSamplingPrepare([1.0, 0.0, 2.0**0.5], mu=2)
+   prepare = sampler.kernel()
+   unprepare = sampler.adjoint_kernel()
+
+`kernel()` and `adjoint_kernel()` are zero-argument methods (`QROM.kernel`
+is a property); the kernels they return both take
+`(index: qview, garbage: qview)`. Allocate widths from `num_index`
+and `num_garbage`; both registers must start at zero for preparation.
+
+What is prepared
+~~~~~~~~~~~~~~~~
+
+Weights are nonnegative with a positive sum. They are padded to
+`num_bins = 2**num_index` bins, with zero probability for zero-weight and
+padded bins. The index-register measurement probabilities approximate the
+normalized weights. This is not a clean state `sum(sqrt(p_k) |k>)` with zero
+garbage.
+
+The garbage layout is
+
+.. code-block:: text
+
+   [alias(num_index) | keep(mu) | reference(mu) | flag
+    | QROM ladder(qrom.num_ladder) | carry]
+
+The table and reference data remain entangled with the index. Conditional
+garbage states need not be orthogonal. Only the QROM ladder and comparator
+carry are clean between preparation and its inverse. The example reconstructs
+the complete state from classical branches and reports the index purity.
+
+Integer tables and discretization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For each original bin k and uniformly distributed reference word r in
+`0 <= r < 2**mu`, the selected bin is k if `r < keep[k]`, otherwise
+`alias[k]`. Enumerate these `num_bins*2**mu` branches to obtain exact
+rational probabilities. Self-aliased full bins remain exact even though their
+keep threshold is clamped to mu bits.
+
+`keep`, `alias`, `probabilities`, `table_probabilities`, and
+`discretization_bound` are public inspection properties. Per-bin probability
+error is bounded by `1.5/(num_bins*2**mu)`. Increasing precision tightens
+this bound, but individual rounding errors need not decrease strictly at
+every step.
+
+Preparation followed by its supplied adjoint restores every register.
+Discarding garbage, or reflecting only on the index, does not provide that
+contract.
+
+Compose a non-Pauli LCU
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The example next encodes :math:`H=0.9X_0-0.5CZ_{0,1}` as a linear
+combination of unitaries (LCU). Both terms are Hermitian involutions, but CZ
+is not a single Pauli word.
+
+.. code-block:: python
+
+   from cudaq_algorithms import LCUBlockEncoding
+
+   encoding = LCUBlockEncoding(
+       num_system=2, weights=[0.9, 0.5], mu=2,
+       bodies=[
+           [("x", 0)],
+           [("and_tt", 0, 1, 0), ("z_w", 0),
+            ("and_tt", 0, 1, 0), ("sign",)],
+       ])
+
+Body programs are host-side data compiled at factory time. Each entry is a
+tuple: an operation name followed by its operands, which are qubit positions
+in the system register or in the clean SELECT work register.
+
+- `("x", t)` applies X to `system[t]` only when the index register selects
+  this term.
+- `("and_tt", a, b, w)` is a Toffoli gate with controls `system[a]` and
+  `system[b]` and target `work[w]`: it XORs the AND of the two system bits
+  into `work[w]`. It is not controlled on the index. It runs whichever term
+  the index selects, so the body that uses it must undo it.
+- `("z_w", w)` applies Z to `work[w]` only when the index register selects
+  this term.
+- `("sign",)` multiplies this term's branch by -1.
+
+Here the first `and_tt` writes the AND of system bits 0 and 1 into clean
+`work[0]`, `z_w` turns that bit into the CZ phase on the selected branch, the
+second `and_tt` restores `work[0]`, and `sign` supplies the negative
+coefficient. When the index selects the other term, `z_w` and `sign` do
+nothing and the two `and_tt` gates cancel. The caller is responsible for
+making extended bodies Hermitian involutions with complete workspace
+restoration.
+
+Weights remain positive; their signs belong in SELECT. The exact one-norm
+`alpha` is preserved (here 1.4), while `discretized_weights` specifies the
+weights actually encoded by the finite tables. At mu=2 the two bins receive
+the table probabilities 5/8 and 3/8, so this fixture realizes
+`0.875 X_0 - 0.525 CZ_01`. The runnable example checks `discretized_weights`
+against these numbers and builds that operator directly from NumPy matrices
+rather than calibrating it from circuit output.
+
+To see why the weights can stay positive and the garbage can stay entangled
+with the index, write the prepared state as
+
+.. math::
+
+   \mathrm{PREPARE}\,|0\rangle
+   = \sum_l |l\rangle_{\mathrm{index}}\,|g_l\rangle_{\mathrm{garbage}},
+   \qquad \langle g_l|g_l\rangle = p_l,
+
+where :math:`|g_l\rangle` is the unnormalized garbage state attached to index
+l and :math:`p_l` is the table probability of bin l. SELECT is
+:math:`\sum_l |l\rangle\langle l| \otimes U_l` on the index and the system.
+It leaves the garbage data unchanged; it only borrows the clean QROM ladder
+and its own work qubit and returns both to zero. Distinct index states are
+orthogonal, so only terms with the same l on both sides survive:
+
+.. math::
+
+   \langle 0|\,\mathrm{PREPARE}^\dagger\,\mathrm{SELECT}\,
+   \mathrm{PREPARE}\,|0\rangle
+   = \sum_l \langle g_l|g_l\rangle\,U_l
+   = \sum_l p_l\,U_l .
+
+Only the norms of the garbage states enter. The garbage may therefore stay
+entangled with the index, and the :math:`|g_l\rangle` need not be orthogonal:
+in this fixture :math:`\langle g_0|g_1\rangle = 3/8`. The :math:`p_l` are
+probabilities and cannot be negative, so a minus sign has to come from
+:math:`U_l`; here `sign` supplies it.
+
+The good block of PREPARE/SELECT/UNPREPARE is therefore the represented
+Hamiltonian divided by alpha, here `0.625 X_0 - 0.375 CZ_01`. After
+nontrivial SELECT, UNPREPARE generally leaves some amplitude outside that
+block. SELECT work is nevertheless restored. Project and reflect using the
+complete `num_ancilla` register, including index, preparation garbage, and
+SELECT work.
+
+Consumers and costs
+~~~~~~~~~~~~~~~~~~~~
+
+The same `Walk` and `QSVT` interfaces consume this encoding. Compare their
+circuits to the represented operator, and report its discrepancy from the
+ideal operator separately. Walk good blocks use `T_k(-H_mu/alpha)`; measured
+moments use the positive-H convention.
+
+An extended non-Pauli body does not provide `select_observable` for odd
+`Walk.moment` orders. Even moments can require an exponentially expanded
+reflection observable, so this example validates small statevector blocks.
+
+A standalone sampler can choose QROM variants. `LCUBlockEncoding` pins its
+internal sampler to the ``select`` QROM variant to reuse the clean ladder as
+the SELECT walk's ladder. The example
+reports each PREPARE direction as its QROM price plus `2*mu-1` Toffolis and
+`num_index` separate Fredkins. These are logical counts, without a rotation
+or controlled-swap synthesis assumption.
+
+See :ref:`examples_rst/primitives:Alias sampling and an LCU` for the full
+script and :doc:`block_encodings` for the generic encoding protocol.

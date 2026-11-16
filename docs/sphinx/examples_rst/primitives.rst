@@ -56,3 +56,20 @@ error. A failed check always reports its details and exits with an error.
 .. literalinclude:: ../examples/python/reversible_arithmetic.py
    :language: python
    :start-after: [Begin Documentation]
+
+Alias sampling and an LCU
+-------------------------
+
+Individual validation checks are shown with ``--verbose``. All checks still
+run by default, and failures are always reported.
+
+Prepare a weighted index marginal, inspect garbage and discretization, then
+compose a mixed-sign non-Pauli LCU and validate its Walk/QSVT consumers.
+
+.. seealso::
+
+   :doc:`../guide/primitives` for register contracts and interpretation.
+
+.. literalinclude:: ../examples/python/alias_sampling_lcu.py
+   :language: python
+   :start-after: [Begin Documentation]
