@@ -103,6 +103,62 @@ API is otherwise the same: every kernel factory, `Walk`, `QSVT` and
 `select_observable` work unchanged, and `kernel_args` (the exact backend's
 flattened arrays) is the one member that raises.
 
+The :doc:`../examples_rst/block_encodings` walkthrough compares exact and
+alias PREPARE/SELECT for the same two-qubit Hamiltonian:
+
+.. math::
+
+   H = 0.70 Z_0 - 0.43 Z_1 + 0.19 X_0 X_1 + 0.11 Y_0 Z_1,
+   \qquad \alpha = 1.43.
+
+The comparison shows the accuracy and resource cost of choosing a
+coefficient-loading strategy while retaining the same action, Walk, and
+QSVT interfaces. Exact preparation encodes the intended weights; alias
+sampling rounds them to a finite table. Its represented Hamiltonian
+``H_mu`` therefore depends on the precision ``mu``.
+
+The default output leads with the absolute operator error
+``||H_mu-H||_2`` and the demonstrations actually executed:
+
+.. code-block:: text
+
+   backend mu  Hamiltonian error    Executed demonstrations
+   exact    -            0.00000    Action, Walk, QSVT
+   alias    2            0.04516    Action, Walk, QSVT
+   alias    3            0.04516    Action, Walk, QSVT
+   alias    4            0.01734    Action only
+
+On this Hamiltonian, ``mu=3`` gives the same rounded weights as ``mu=2``;
+``mu=4`` reduces the error by about 2.6 times, using more ancillas.
+The general operator-error bound ``1.5 alpha / 2^mu`` halves per extra bit,
+while the realized error can plateau. These errors are absolute operator
+norms, not percentages.
+
+The following resource table shows the other side of this tradeoff:
+system and ancilla counts plus rotations, uncontrolled single-qubit
+gates, singly/doubly/higher-controlled Paulis, and Fredkins. Alias ancillas
+include preparation garbage and SELECT work; the good projector covers
+the entire register. Counts describe one encoding without input-state
+preparation and do not claim a synthesized T cost.
+
+The example independently enumerates the alias tables to build ``H_mu``.
+It checks the executed action, Walk, and QSVT circuits against classical
+references for that represented operator with tolerance ``1e-10``.
+This circuit-agreement check is separate from the coefficient-rounding
+error above: implementing ``H_mu`` accurately does not remove its distance
+from ``H``. Successful checks are summarized in one sentence; add
+``--verbose`` to print each numerical discrepancy, rounding bound, and
+gate-accounting check. All checks remain active in either mode and print
+diagnostics before raising on failure.
+
+The Walk and QSVT circuits execute for exact preparation and alias
+``mu=2`` and ``mu=3``. At ``mu=4`` the 19-qubit encoding executes its action
+once and reports resources; its Walk/QSVT runs are skipped to keep CPU
+runtime manageable. A separate one-qubit fixture, ``H = 0.6 Z - 0.4 X``,
+prints exact and alias-``mu=2`` measured moments ``T_0`` through ``T_3``, checking each
+column against its represented Hamiltonian. Measured moments use
+``+H_mu/alpha``; walk good blocks use ``T_k(-H_mu/alpha)``.
+
 ``LCUBlockEncoding``: alias-sampled PREPARE, unary-iteration SELECT
 --------------------------------------------------------------------
 
