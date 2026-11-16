@@ -39,11 +39,12 @@ superfast parity sector is restricted to the loop stabilizers' joint +1
 eigenspace before all eight physical eigenvalues are compared, including
 multiplicities.
 
-A second table repeats the comparison on open 4x4, 7x7, and 10x10 lattices,
-up to 100 modes, where the mappings separate. The JW maximum weight grows
-with the lattice side and the BK weight with the logarithm of the mode
-count, while both superfast forms keep a fixed weight at the cost of more
-qubits and one stabilizer per independent cycle. Nothing is simulated at
+A second table repeats the comparison on open square lattices from 4x4 to
+20x20, up to 400 modes, where the mappings separate. The JW maximum weight
+grows with the lattice side and the BK weight with the logarithm of the mode
+count: BK is the heavier of the two up to 10x10, they are equal at 14x14,
+and BK is lighter at 20x20. Both superfast forms keep a fixed weight at the
+cost of more qubits and one stabilizer per independent cycle. Nothing is simulated at
 those sizes: Pauli weights, qubit counts, and stabilizer counts are read
 from the mapped operators, and the checks are exact statements about their
 Pauli words. The host-side tutorial requires no chemistry or

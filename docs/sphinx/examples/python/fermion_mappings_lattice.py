@@ -21,7 +21,7 @@ before any resource comparison is interpreted.
 
 The example has two parts. A four-site ring is small enough to diagonalize,
 so every mapping is checked against the reference spectrum there. Open square
-lattices of 16, 49, and 100 modes then show how the mappings separate with
+lattices from 16 to 400 modes then show how the mappings separate with
 size: Pauli weights, qubit counts, and stabilizer counts are read from the
 mapped operators, and nothing is simulated at those sizes.
 
@@ -51,7 +51,7 @@ ATOL = 1e-10
 PRUNE = 1e-12
 MODES = 4
 BONDS = [(0, 1), (1, 2), (2, 3), (0, 3)]
-LATTICE_SIDES = (4, 7, 10)
+LATTICE_SIDES = (4, 7, 10, 14, 20)
 PAULIS = {
     "I": np.eye(2),
     "X": np.array([[0, 1], [1, 0]]),
@@ -223,11 +223,13 @@ def lattice_rows(hopping, interaction, *, verbose=False):
 
     The spectra of these registers are out of reach, so the checks are
     exact statements about the Pauli words: real coefficients, equal term
-    counts, the Jordan-Wigner string length, one stabilizer per independent
-    cycle, and stabilizers that commute with every Hamiltonian term.
+    counts, the Jordan-Wigner string length, the Bravyi-Kitaev crossover,
+    one stabilizer per independent cycle, and stabilizers that commute with
+    every Hamiltonian term.
     """
     rows, largest = [], 0
     superfast_max = {"standard": [], "binary_tree": []}
+    linear_max = {"JW": [], "BK": []}
     for side in LATTICE_SIDES:
         modes, bonds = square_lattice(side)
         size = f"{side}x{side}"
@@ -277,6 +279,8 @@ def lattice_rows(hopping, interaction, *, verbose=False):
             weights = (x_bits | z_bits).sum(axis=1)
             term_counts.append(len(weights))
             stabilizer_cells = f"{'-':>4s} {'-':>11s}"
+            if name in linear_max:
+                linear_max[name].append(int(weights.max()))
             if name == "JW":
                 # A hop between rows spans one full row of the row-by-row
                 # mode order: X or Y on both ends and Z on the modes between.
@@ -326,6 +330,14 @@ def lattice_rows(hopping, interaction, *, verbose=False):
               np.full(len(max_weights), max_weights[0]),
               0,
               verbose=verbose)
+    # BK strings grow with log(modes) and JW strings with the lattice side,
+    # so BK is the heavier mapping on the smallest lattice and the lighter
+    # one on the largest.
+    excess = np.subtract(linear_max["BK"], linear_max["JW"])
+    check("BK max weight crosses below JW as the lattice grows",
+          np.sign(excess[[0, -1]]), [1, -1],
+          0,
+          verbose=verbose)
     return rows, largest
 
 
@@ -459,7 +471,9 @@ def main():
     for result in lattice:
         print(result)
     print("JW max weight is L+1 in this row-by-row mode order; BK grows with "
-          "log(modes).")
+          "log(modes)")
+    print("and is the heavier of the two up to 10x10, equal at 14x14, and "
+          "lighter at 20x20.")
     print("Both superfast forms keep a fixed max weight, paid for in qubits "
           "(one per")
     print("graph edge, after binary_tree pads odd-degree vertices) and one "

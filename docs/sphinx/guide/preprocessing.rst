@@ -211,46 +211,48 @@ and its four qubits cannot separate the mappings. Its term/weight table
 includes identity terms and states the coefficient pruning threshold.
 
 The tutorial then repeats the comparison on open :math:`L\times L` lattices
-with :math:`L=4,7,10`, the same model, and modes numbered row by row. No
+with :math:`L=4,7,10,14,20`, the same model, and modes numbered row by row. No
 spectrum is computed at these sizes; the mapped operators are compared:
 
 .. list-table::
    :header-rows: 1
 
    * - Mapping
-     - Qubits at :math:`10\times 10`
-     - Maximum weight at :math:`L=4,7,10`
-     - Stabilizers at :math:`10\times 10`
+     - Qubits at :math:`20\times 20`
+     - Maximum weight at :math:`L=4,7,10,14,20`
+     - Stabilizers at :math:`20\times 20`
    * - JW
-     - 100
-     - 5, 8, 11
+     - 400
+     - 5, 8, 11, 15, 21
      - none
    * - BK
-     - 100
-     - 7, 11, 13
+     - 400
+     - 7, 11, 13, 15, 17
      - none
    * - Standard superfast
-     - 180
-     - 7, 7, 7
-     - 81
+     - 760
+     - 7, 7, 7, 7, 7
+     - 361
    * - Binary-tree superfast
-     - 196
-     - 4, 4, 4
-     - 97
+     - 797
+     - 4, 4, 4, 4, 4
+     - 398
 
 A JW hop between rows carries a string across one full row, so its weight
-is :math:`L+1`; BK weights grow with the logarithm of the mode count. Both
-superfast forms keep a maximum weight set by the vertex degree, not by the
+is :math:`L+1`; BK weights grow with the logarithm of the mode count. The
+two cross within this range: BK is the heavier mapping up to
+:math:`10\times 10`, they are equal at :math:`14\times 14`, and BK is the
+lighter one at :math:`20\times 20`. Both superfast forms keep a maximum weight set by the vertex degree, not by the
 lattice size. They pay for it in qubits, one per graph edge after
 ``binary_tree`` pads odd-degree vertices with zero-coefficient edges, and in
 one stabilizer per independent cycle (edges minus modes plus one). The
 returned stabilizers follow a cycle basis that is not plaquette-local, so
-their weights grow with the lattice (38 and 41 at :math:`10\times 10`)
+their weights grow with the lattice (78 and 86 at :math:`20\times 20`)
 although the Hamiltonian terms stay local.
 
 At these sizes the example checks exact properties of the Pauli words: real
 coefficients, the same number of terms in every mapping, the JW string
-length, one signed Pauli word per independent cycle, and stabilizers that
+length, the BK crossover, one signed Pauli word per independent cycle, and stabilizers that
 commute with every Hamiltonian term and with each other. Signs and parity
 sectors are established by the ring spectra, not by these checks. The table
 compares operators; it does not compare state preparation, circuits, or
