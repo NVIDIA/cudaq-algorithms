@@ -1,9 +1,9 @@
 Block-encoding examples
 ===========================
 
-Two ways to hide a Hamiltonian inside a larger unitary. These examples walk the
-flat `PauliLCU` API and put the structured double-factorized encoding head to
-head with it.
+Hide a Hamiltonian inside a larger unitary using a Pauli sum, sparse matrix
+access, or a structured double-factorized representation. These examples
+exercise the shared consumers and compare the resulting encodings.
 
 .. seealso::
 
@@ -18,6 +18,43 @@ spin operator, inspect its sizes and normalization, and exercise the device
 kernels (`pauli_lcu.prepare`, the select, and the walk) it exposes.
 
 .. literalinclude:: ../examples/python/pauli_lcu_demo.py
+   :language: python
+   :start-after: [Begin Documentation]
+
+Sparse matrix data and arithmetic oracles
+------------------------------------------
+
+A sparse matrix has only a few nonzero entries in each row. This example asks
+how to give a quantum algorithm access to those entries without first
+expressing the entire matrix as a sum of Pauli operations. It constructs the
+same small matrix from stored matrix data and from arithmetic rules describing
+its bands, showing two ways to supply the locations and values needed for a
+sparse block encoding.
+
+You should learn what the matrix-access oracles must return, how a banded
+pattern handles boundaries, and why the two access methods can have different
+normalization and workspace costs. Both encodings feed the same Walk and QSVT
+interfaces. The checks reconstruct the matrix represented by finite-precision
+value angles and compare the circuit with that matrix, so differences in data
+access and numerical precision remain visible when assessing the results.
+
+The default output displays the requested and rounded matrices, matrices
+reconstructed from both circuits, and their results on the same complex
+input vector. A four-point endpoint input makes clipped band boundaries
+visible. Circuit errors and a compact resource comparison finish the run.
+Use ``--verbose`` for individual validation checks and constructor/register
+diagnostics. All checks run in either mode, and failures are always reported.
+
+Construct the same small SPD matrix from SciPy data and clipped banded
+oracles, inspect slots/normalization/workspace, and compare each encoded
+block to an independently quantized NumPy reference. Both routes execute
+Walk and QSVT consumers. A four-point arithmetic case verifies boundary
+clipping; alternative input forms and dilation are shown through metadata.
+
+Example 07 on :doc:`getting_started` inverts a sparse encoding of this kind
+with QSVT and separates coefficient, polynomial and circuit error budgets.
+
+.. literalinclude:: ../examples/python/sparse_block_encoding.py
    :language: python
    :start-after: [Begin Documentation]
 
