@@ -5,6 +5,7 @@ harbor:
   n_attempts: 1
   pass_threshold: 0.50
   stop_on_pass: false
+  n_concurrent: 1
 
 grading:
   mode: default
