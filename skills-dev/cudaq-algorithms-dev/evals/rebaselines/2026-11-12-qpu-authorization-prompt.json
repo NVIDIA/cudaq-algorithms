@@ -82,8 +82,8 @@
     "files/test_qsvt_current_contract.py": "a401ed0f24fdb81f8e133e66483531c8fa26e4cd7a38cdc4f1bf36b4487121b7"
   },
   "protocol_sha256": {
-    "development": "0102549d315abc8399856cce9a6a4b4b8851471ef18367cc487910001cf280e3",
-    "runtime": "bf6fb9b5ecfb31e3acfca01eb8091b617e15676fca4fe8a8cb07042333d094fc"
+    "development": "9c3e62af6cb8964fef12d82cf12f6b09b3ffe5714505dd9b33f6e3ffacf163c2",
+    "runtime": "c5caee3e150c7affe1479e1d24935151607237b10952c79486936eb94e99941f"
   },
   "preserved_suite": {
     "count": 62,
