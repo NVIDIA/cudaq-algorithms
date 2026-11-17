@@ -25,10 +25,16 @@ class SkillPackageTests(unittest.TestCase):
             all(isinstance(tag, str) and tag.strip() for tag in tags))
         self.assertEqual(header["metadata"]["tags"], tags)
 
+    # Written by the NVSkills CI signing run, not by this repository; they
+    # carry the evaluator's own typography and are covered by the signature.
+    SIGNER_OWNED = {"BENCHMARK.md", "skill-card.md", "skill.oms.sig"}
+
     def test_runtime_package_text_is_ascii(self):
         violations = []
         for path in SKILL.rglob("*"):
             if path.suffix not in {".md", ".py", ".json", ".yml", ".yaml"}:
+                continue
+            if path.relative_to(SKILL).as_posix() in self.SIGNER_OWNED:
                 continue
             if not path.read_text(encoding="utf-8").isascii():
                 violations.append(str(path.relative_to(SKILL)))
