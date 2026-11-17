@@ -256,3 +256,63 @@ R1 becomes controlled, and a programmable plan's bit-controlled rotations
 become doubly controlled. ``cudaq.control`` of ``kernel()`` also controls
 every Hadamard and S gate and turns each parity CNOT into a Toffoli.
 Compare QROM selection against the controlled counts of the path you use.
+
+Selected orbital reflections and precision
+------------------------------------------
+
+The runnable example uses the full two-mode fixture above and a partial
+program with reference mode zero and three words (``2*m-1``).
+A quantum address in ``(|0> + i|1>)/sqrt(2)`` selects the columns
+``[1, 0]`` and ``[1, i]/sqrt(2)``. Chronologically, it runs lookup,
+inverse basis change, ``Z`` on the reference occupation, forward basis
+change, and inverse lookup. Its operator is
+
+.. math::
+
+   Q_v = \Gamma(W_v) Z_0 \Gamma(W_v)^\dagger
+       = I - 2 b_v^\dagger b_v,
+   \qquad b_v^\dagger = \sum_p v_p a_p^\dagger.
+
+For two modes the full Fock matrix is ``diag(1, U, det(U))`` in
+vacuum/mode-0/mode-1/both order. The example checks the reflection against
+both this construction and independent Jordan-Wigner ladder matrices.
+Its complex input has support in every particle sector; complete-state
+comparisons preserve the address phase and detect residual words/ladder.
+
+To control the reflection, control only the middle ``Z``. The lookup and
+basis-change pairs cancel on the inactive branch, including its phase.
+This controls the whole reflection; ``controlled_kernel()`` controls a
+basis change. The example executes enable zero, one, and a coherent enable.
+
+The off-grid column ``[cos(0.47), exp(0.61j)*sin(0.47)]`` is executed at
+three and four bits. NumPy reconstructs the represented matrix from
+decoded words and public chronological operation metadata. The circuit
+is compared tightly to that represented reflection. Ideal/represented
+spectral and state errors are reported separately and checked against the
+public reflection-error bound, which is twice the basis-change bound. For
+this column the spectral error is 0.640 at three bits (bound 0.982) and
+0.203 at four bits (bound 0.505); the three-bit error already exceeds the
+plan's basis-change bound of 0.491, so the factor of two is needed.
+Higher precision improves the worst-case bound; individual rounding
+errors need not decrease at every width. ``tolerance`` validates host
+input, not gate-synthesis accuracy.
+
+The full fixture has four words and twelve angle qubits at three bits,
+using sixteen qubits including address and scratch. The partial fixture
+has nine angle qubits at three bits, thirteen total, or fourteen with an
+enable; at four bits these totals are sixteen and seventeen. Widths come
+from the objects. Consumer resource estimates exclude the lookup, the
+inverse lookup, external enables, and native rotation synthesis.
+
+Literature and scope
+--------------------
+
+Programmable rotations and basis-transformed fermion operators motivate
+this composition: von Burg et al., *Phys. Rev. Research* **3**, 033055
+(2021), `arXiv:2007.14460 <https://arxiv.org/abs/2007.14460>`_,
+supplementary VII B.1 and VII C.1--C.3; Lee et al., *PRX Quantum* **2**,
+030305 (2021), `arXiv:2011.03494 <https://arxiv.org/abs/2011.03494>`_,
+Appendix C.2, Figure 16. This isolates lookup, programmable basis change,
+occupation reflection, and inverse lookup. It does not reproduce the
+complete chemistry algorithms, nested preparations, or their optimized
+costs.
