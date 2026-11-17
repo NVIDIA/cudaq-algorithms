@@ -292,22 +292,6 @@
       ]
     },
     {
-      "id": "science-qsvt-low-energy-filter-choice",
-      "prompt": "Using CUDA-Q Algorithms, I\u2019m comparing short spectral filters for low-energy preparation in a four-spin open Ising chain,\n   \\(H=-\\sum_{j=0}^{2}Z_jZ_{j+1}-0.6\\sum_jX_j-0.15\\sum_jZ_j\\),\n   starting from \\(|+\\rangle^{\\otimes4}\\).\n   My candidate raw QSP phase lists are `[0.15,-0.30,0.45]` and `[0.20,-0.50,0.10,0.40]`, in radians, with all signal directions forward and normalization \\(\\alpha=6\\). Which gives greater conditional weight below energy \\(-2\\), while retaining success probability at least 0.1? Determine whether either improves sufficiently on the unfiltered state.",
-      "expected_output": "Predictions for each supplied filter's success probability and conditional weight below -2, compared with the unfiltered weight, with a justified ranking under the probability constraint and an explicit treatment of the unspecified usefulness threshold. Relevant CUDA-Q Algorithms operations contribute to the requested artifacts or calculations, with classical preprocessing, post-processing and independent validation allowed.",
-      "expected_skill": "cudaq-algorithms",
-      "files": [],
-      "assertions": [
-        "Uses the specified four-spin Hamiltonian, normalized plus-state input, alpha=6 and both unchanged raw QSP phase lists with forward signal directions.",
-        "Uses CUDA-Q Algorithms QSP/QSVT operations to construct and evaluate the actual successful-branch response of each supplied sequence under a consistent QSP phase convention rather than substituting an intended low-energy polynomial.",
-        "Reports each success probability from the unnormalized branch or an equivalent spectral calculation.",
-        "Computes the unfiltered and conditional probabilities of the strict spectral event E < -2; full conditional-state output is not required.",
-        "Identifies which candidates satisfy p >= 0.1 and which eligible candidate has the greater conditional low-energy weight, allowing ties or a demonstrated empty eligible set.",
-        "Quantifies each candidate's improvement or deterioration relative to the unfiltered input. Any claim that improvement is sufficient states its additional usefulness criterion or remains explicitly conditional; no hidden minimum gain is imposed.",
-        "Supports the numerical probabilities and weights with execution or a faithful mathematical evaluation of the library-constructed sequences. Independent spectral calculations remain valid checks but do not replace the relevant library construction. Relevant library outputs or constructions must contribute to the requested results; imports, API mentions and unused objects do not suffice."
-      ]
-    },
-    {
       "id": "science-trotter-conservation-versus-accuracy",
       "prompt": "Using CUDA-Q Algorithms, In a five-spin excitation-transport calculation, I often use particle-number conservation as a correctness check. My Hamiltonian is\n    \\(H=0.6\\sum_{j=0}^{3}(X_jX_{j+1}+Y_jY_{j+1})+\\sum_jh_jZ_j\\),\n    with \\(h=(0.2,-0.1,0.3,-0.2,0.1)\\), \\(\\hbar=1\\), and initial state \\((|00011\\rangle+i|01100\\rangle)/\\sqrt2\\).\n    At time 1.2, compare second-order Trotter evolution with 2, 4, 8, and 16 steps, grouping XX/YY by bond or grouping all XX before all YY. Does small excitation-number leakage imply central-site occupation is accurate to \\(10^{-3}\\)?",
       "expected_output": "A comparison of both requested second-order orderings at the four step counts, giving excitation-sector leakage and central occupation errors and explaining whether conservation is a reliable accuracy certificate for this experiment. Relevant CUDA-Q Algorithms operations contribute to the requested artifacts or calculations, with classical preprocessing, post-processing and independent validation allowed.",
@@ -321,22 +305,6 @@
         "Determines absolute central-occupation errors against a trustworthy reference and identifies agreement within the stated 1e-3 accuracy target.",
         "Answers the leakage-versus-accuracy question from the numerical comparison, distinguishing symmetry preservation from accurate dynamics within that sector and avoiding an unstated threshold for small leakage.",
         "Provides supporting calculation evidence for the actual library-based product-formula predictions, through circuit execution or faithful numerical evaluation of the constructed circuit action, without requiring a particular backend, preferred ordering winner or convergence ratio. Relevant library outputs or constructions must contribute to the requested results; imports, API mentions and unused objects do not suffice."
-      ]
-    },
-    {
-      "id": "science-chemistry-reference-quality",
-      "prompt": "Using CUDA-Q Algorithms, I need to assess the reference state for a correlated LiH calculation. Use neutral singlet LiH, with Li at the origin and H at \\((0,0,1.6)\\) \u00c5, in STO-3G. Order canonical RHF spatial orbitals by energy, freeze zero-based orbital 0 doubly occupied, retain orbitals 1\u20134 with two active electrons, and discard the remaining virtual orbital. Construct the qubit Hamiltonian and a compatible HF preparation. What are the total active-space ground energy, reference energy, and squared reference\u2013ground-state overlap? I need energies accurate to \\(10^{-6}\\) Ha.",
-      "expected_output": "The specified LiH active-space qubit Hamiltonian and compatible HF preparation, total active-space ground/reference energies accurate to 1e-6 Ha, and their squared overlap with reproducible supporting evidence. Relevant CUDA-Q Algorithms operations contribute to the requested artifacts or calculations, with classical preprocessing, post-processing and independent validation allowed.",
-      "expected_skill": "cudaq-algorithms",
-      "files": [],
-      "assertions": [
-        "Uses the specified neutral singlet LiH geometry in angstroms, STO-3G and energy-ordered canonical RHF orbitals.",
-        "Freezes orbital zero doubly occupied, retains orbitals one through four with two active electrons, and discards the stated virtual orbital.",
-        "Uses CUDA-Q Algorithms chemistry or fermion-transform operations to construct the qubit Hamiltonian used in the energy and overlap calculation, with the effective active one-body term and complete nuclear/frozen-core scalar contribution.",
-        "Provides an HF preparation consistent with the retained orbital occupations and chosen qubit encoding.",
-        "Reports total reference and active-space ground energies in the intended particle/spin sector with supported accuracy of 1e-6 Ha.",
-        "Reports the squared overlap of compatible normalized HF and ground states. If degeneracy affects the result, defines the chosen ground state or reports the appropriate ground-space weight rather than relying on an arbitrary eigenvector.",
-        "Substantiates the energy and overlap results for this active-space model without presenting them as full-space molecular FCI. Relevant library outputs or constructions must contribute to the requested results; imports, API mentions and unused objects do not suffice."
       ]
     },
     {

@@ -44,15 +44,14 @@ CATALOG_IDS = {
     "source-unavailable-fallback",
     "implementation-scope-overreach",
     "chemistry-end-to-end-composition",
-    # one scientific case per area
+    # scientific cases that fit the catalog trial budget; the chemistry and
+    # QSVT numerical cases stay in the development campaign
     "science-block-encoding-truncation-tradeoff",
-    "science-qsvt-low-energy-filter-choice",
     "science-trotter-conservation-versus-accuracy",
-    "science-chemistry-reference-quality",
     "science-double-factorization-leaf-budget",
 } | NEGATIVE_IDS
-CATALOG_CASE_COUNT = 24
-CATALOG_POSITIVE_COUNT = 21
+CATALOG_CASE_COUNT = 22
+CATALOG_POSITIVE_COUNT = 19
 CATALOG_FIXTURE_COUNT = 5
 
 

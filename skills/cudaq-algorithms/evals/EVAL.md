@@ -2,10 +2,12 @@
 
 This directory is a standalone SkillEvaluator dataset for `cudaq-algorithms`.
 It contains a reviewed subset of the repository's canonical development suite:
-24 of its 62 cases, in development order, covering routing, the state
+22 of its 62 cases, in development order, covering routing, the state
 preparation contracts, one boundary case per area, behaviour and safety, and
-one scientific case per area. There are 21 positive cases and three negative
-routing cases:
+three scientific cases (block encoding, Trotter evolution and double
+factorization). The chemistry and QSVT numerical cases remain in the
+development suite, whose paired campaign has the trial budget they need.
+There are 19 positive cases and three negative routing cases:
 
 - `negative-cudaq-install`
 - `negative-generic-quantum-concept`

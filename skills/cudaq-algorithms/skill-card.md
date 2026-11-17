@@ -83,10 +83,10 @@ revision.
 
 ## Evaluation Tasks:
 
-The [authored dataset](evals/EVAL.md) contains 24 cases selected from the
+The [authored dataset](evals/EVAL.md) contains 22 cases selected from the
 repository's 62-case development suite: routing, state preparation contracts,
-one boundary case per area, behaviour and safety, and one scientific case per
-area, including three negative triggering controls. The full suite is
+one boundary case per area, behaviour and safety, and three scientific cases,
+including three negative triggering controls. The full suite is
 maintained in the repository for the maintainer's paired campaign.
 Execution through nvskills-ci is pending; actual attempt counts will be recorded
 with that evaluation evidence.
