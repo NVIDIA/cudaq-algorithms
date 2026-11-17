@@ -12,9 +12,12 @@ Registers passed to one op must be pairwise disjoint: the kernels never
 alias-check, and overlapping views (e.g. ``add_register(a, a, carry)``, or a
 ``work`` view sharing qubits with ``target``) are undefined -- an aliased
 Toffoli raises within seconds on CUDA-Q 0.15.1 but hangs the simulation with
-no diagnostic on 0.16.0. The register width is read from the *first* operand
-(``n = a.size()`` / ``x_reg.size()``); a longer second operand is silently
-reduced to its low ``n`` bits.
+no diagnostic on 0.16.0. Widths are not checked either: pass matching operand
+widths, an ``n``-qubit ``work`` view and exactly ``n`` constant bits. A
+mismatch is undefined -- depending on the kernel and the constant, a call
+raises an index error, ignores the extra qubits, or acts on fewer bits than
+the target has -- and a constant-bit list shorter than ``n`` is read past its
+end without an error.
 
 Hand-written inverses are used throughout. They are *required* for the CDKM
 family -- ``cudaq.adjoint`` fails on those kernels (silently wrong on

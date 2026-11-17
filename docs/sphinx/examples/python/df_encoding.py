@@ -17,7 +17,7 @@ your own encoding; ``df_block_encoding.py`` in this directory drives it
 head to head with the built-in ``PauliLCU`` through the same ``Walk``.
 
 Encodes the electronic-structure Hamiltonian directly from its
-double-factorized form (von Burg et al., PRX Quantum 2, 030305 (2021);
+double-factorized form (von Burg et al., Phys. Rev. Research 3, 033055 (2021);
 arXiv:2007.14460) instead of a flat Pauli expansion:
 
     H = const + sum_k F_k N_k                       (kappa eigenbasis)
@@ -35,8 +35,15 @@ Every term is *diagonal in some rotated orbital basis*: the one-body part in
 the eigenbasis of ``kappa``, each leaf in its own eigenbasis ``U^t``. The
 SELECT oracle therefore applies only ancilla-controlled Z words, conjugated
 by *uncontrolled* Givens-rotation networks that change the orbital frame —
-the structural cost advantage of the double-factorized encoding over a
-Pauli-word SELECT.
+the structure exploited by the fixed backend. The optional
+``rotation_backend="qrom", angle_bits=4`` instead loads a shared real
+spatial frame from the term index, applies programmable inverse/forward
+networks around the signed Z word, and erases the angle words. PREPARE
+uses the exact flat coefficient tree in both backends. This demonstrates
+coherent frame selection, not the papers' nested DF preparation,
+degree-two Chebyshev construction, optimized normalization, phase-gradient
+synthesis, or optimized inverse-QROM cost (see also Lee et al., PRX
+Quantum 2, 030305 (2021), arXiv:2011.03494, Appendix C.2 and Figure 16).
 
 Spin orbitals are interleaved (``2p`` up, ``2p + 1`` down), matching the
 Jordan-Wigner convention of ``cudaq_algorithms.chemistry`` and the compiled
@@ -68,7 +75,10 @@ from numpy.typing import ArrayLike
 import cudaq
 
 from cudaq_algorithms.block_encoding import Kernel
-from cudaq_algorithms.common_kernels import reflect_about_zero
+from cudaq_algorithms.common_kernels import (controlled_reflect_about_zero,
+                                             reflect_about_zero)
+from cudaq_algorithms.basis_change import AngleEncoding
+from cudaq_algorithms.primitives import QROM
 from cudaq_algorithms.double_factorization import (
     DoubleFactorization, explicit_double_factorization)
 from cudaq_algorithms.pauli_lcu import (controlled_reflect_about_prepare,
@@ -76,6 +86,7 @@ from cudaq_algorithms.pauli_lcu import (controlled_reflect_about_prepare,
                                         unprepare)
 from cudaq_algorithms.stateprep import (make_orbital_rotation_schedule,
                                         orbital_rotation_program,
+                                        spatial_givens_rotation,
                                         spatial_givens_segment)
 
 __all__ = [
@@ -355,6 +366,77 @@ def _leaf_pauli_expansion(
     return constant, words
 
 
+def _spatial_program(matrix):
+    """Fixed QR topology, retaining zero slots; forward gives F = V D.
+
+    spatial_givens_rotation has orbital block [[cos,sin],[-sin,cos]],
+    opposite to basis_change's real mixing gate. Diagonal signs D commute
+    with all our Z words and cancel in their conjugation.
+    """
+    n = len(matrix)
+    work = np.array(matrix, dtype=float, copy=True)
+    eliminated = []
+    for col in range(n - 1):
+        for row in range(n - 1, col, -1):
+            upper, lower = work[row - 1, col], work[row, col]
+            theta = 0. if lower == 0. else math.atan2(lower, upper)
+            c, s = math.cos(theta), math.sin(theta)
+            work[row - 1:row +
+                 1] = np.array([[c, s], [-s, c]]) @ work[row - 1:row + 1]
+            eliminated.append((row - 1, theta))
+    signs = np.where(np.diag(work) >= 0, 1., -1.)
+    # Same residual allowance as make_orbital_rotation_schedule. This host
+    # decomposition check is separate from the 1e-10 circuit/reference tests.
+    np.testing.assert_allclose(work, np.diag(signs), rtol=0, atol=1e-9)
+    modes = [mode for mode, _ in reversed(eliminated)]
+    angles = [-theta for _, theta in reversed(eliminated)]
+    return modes, angles, np.asarray(matrix) * signs
+
+
+def _spatial_matrix(n, modes, angles):
+    """NumPy one-particle product, independent of device amplitudes."""
+    matrix = np.eye(n)
+    for mode, theta in zip(modes, angles):
+        c, s = math.cos(theta), math.sin(theta)
+        gate = np.eye(n)
+        gate[mode:mode + 2, mode:mode + 2] = [[c, s], [-s, c]]
+        matrix = gate @ matrix
+    return matrix
+
+
+@cudaq.kernel
+def programmable_spatial_givens(words: cudaq.qview, system: cudaq.qview,
+                                modes: list[int], weights: list[float]):
+    """One real spatial frame, shared by both interleaved spin sectors.
+
+    Word bit k has weight 2*pi*2**(k-b). The public spatial primitive
+    includes the intervening Jordan-Wigner parity qubits.
+    """
+    bits = len(weights)
+    for slot in range(len(modes)):
+        for bit in range(bits):
+            cudaq.control(spatial_givens_rotation, words[slot * bits + bit],
+                          system, weights[bit], modes[slot])
+
+
+@cudaq.kernel
+def programmable_spatial_givens_adjoint(words: cudaq.qview,
+                                        system: cudaq.qview, modes: list[int],
+                                        weights: list[float]):
+    """Hand-written inverse of ``programmable_spatial_givens``.
+
+    Slots are undone in reverse order with negated weights (the bit
+    rotations within one slot share a generator and commute), the same
+    hand-written-inverse convention as the arithmetic primitives.
+    """
+    bits = len(weights)
+    for k in range(len(modes)):
+        slot = len(modes) - 1 - k
+        for bit in range(bits):
+            cudaq.control(spatial_givens_rotation, words[slot * bits + bit],
+                          system, -weights[bit], modes[slot])
+
+
 class DoubleFactorizedEncoding:
     """Block encoding of the double-factorized electronic Hamiltonian.
 
@@ -370,11 +452,17 @@ class DoubleFactorizedEncoding:
         repulsion).
     :param coefficient_threshold: Encoded terms with ``|coefficient|`` below
         this are dropped.
+    :param rotation_backend: ``"fixed"`` (default) sweeps classical frames;
+        ``"qrom"`` coherently loads angle words for one shared spatial network.
+    :param angle_bits: Unsigned full-turn width for the QROM backend (1..52).
+        The default is four; fixed circuits allocate no words or QROM ladder.
 
     The encoded operator is ``H / alpha`` on the all-zero ancilla block,
     where ``H`` is the Hamiltonian *of the factorized (possibly
-    truncated) tensor* — compressing the factorization directly lowers
-    ``alpha`` and the SELECT term count.
+    truncated) tensor* after coefficient thresholding for the fixed backend.
+    QROM additionally rounds its retained orbital frames. Both backends
+    use the same coefficients and alpha; angle error is separate from
+    factorization and threshold error.
 
     Satisfies the ``BlockEncoding`` protocol except ``select_observable``
     (LCU-specific odd-moment hook), which raises ``NotImplementedError``:
@@ -387,7 +475,14 @@ class DoubleFactorizedEncoding:
                  two_body: Union[DoubleFactorization, ArrayLike],
                  *,
                  scalar_offset: float = 0.0,
-                 coefficient_threshold: float = 1e-12) -> None:
+                 coefficient_threshold: float = 1e-12,
+                 rotation_backend: str = "fixed",
+                 angle_bits: int = 4) -> None:
+        if rotation_backend not in ("fixed", "qrom"):
+            raise ValueError("rotation_backend must be 'fixed' or 'qrom'")
+        self._rotation_backend = rotation_backend
+        self._angle_encoding = (AngleEncoding(angle_bits)
+                                if rotation_backend == "qrom" else None)
         kappa_base = np.asarray(one_body, dtype=float)
         if kappa_base.ndim != 2 or kappa_base.shape[0] != kappa_base.shape[1]:
             raise ValueError("one_body must be a square (n, n) matrix")
@@ -443,6 +538,7 @@ class DoubleFactorizedEncoding:
                         0.5 * np.diag(core))
             kappa += (rotation * absorbed) @ rotation.T
         eigenvalues, eigenvectors = np.linalg.eigh(kappa)
+        frame_matrices = [eigenvectors] + list(factorization.leaf_rotations)
 
         # Frame data: (sweep rotations, {qubit-tuple: coefficient}).
         constant = float(scalar_offset)
@@ -543,6 +639,234 @@ class DoubleFactorizedEncoding:
         if not self._term_targets:
             # Identity-only padding, same rationale as the rotation pad.
             self._term_targets = [0]
+        self._configure_rotations(frame_matrices)
+
+    def _configure_rotations(self, frames):
+        self._num_index = self._num_ancilla
+        programs = [_spatial_program(v) for v in frames]
+        self._mixing_modes = programs[0][0]
+        self._ideal_frames = [f for _, _, f in programs]
+        self._frame_angles = [a for _, a, _ in programs]
+        self._represented_frames = [f.copy() for f in self._ideal_frames]
+        self._lookup = None
+        self._program_width = self._ladder_width = 0
+        self._frame_words = [() for _ in frames]
+        self._frame_bounds = [0.] * len(frames)
+        self._angle_rows = ()
+        if self._angle_encoding is not None and self._mixing_modes:
+            codec = self._angle_encoding
+            self._frame_words = [
+                tuple(codec.encode(t) for t in angles)
+                for angles in self._frame_angles
+            ]
+            decoded = [[codec.decode(code) for code in row]
+                       for row in self._frame_words]
+            self._represented_frames = [
+                _spatial_matrix(self._num_spatial, self._mixing_modes, angles)
+                for angles in decoded
+            ]
+            # Two spin sectors double the per-angle Fock bound.
+            self._frame_bounds = [
+                min(
+                    2., 2 * sum(
+                        abs(math.atan2(math.sin(a - b), math.cos(a - b)))
+                        for a, b in zip(new, old)))
+                for new, old in zip(decoded, self._frame_angles)
+            ]
+            self._program_width = len(self._mixing_modes) * codec.width
+            rows = [0] * (1 << self._num_index)
+            for j, (_, qubits, frame) in enumerate(self._terms):
+                # PREPARE/SELECT index qubit 0 is MSB; QROM qubit 0 is LSB.
+                address = int(f"{j:0{self._num_index}b}"[::-1], 2)
+                if qubits:  # identity and padded addresses use a zero program
+                    rows[address] = sum(
+                        code << (codec.width * slot)
+                        for slot, code in enumerate(self._frame_words[frame]))
+            self._angle_rows = tuple(rows)
+            self._lookup = QROM(rows,
+                                address_bits=self._num_index,
+                                output_bits=self._program_width,
+                                variant="select")
+            self._ladder_width = self._lookup.num_ladder
+        self._num_ancilla += self._program_width + self._ladder_width
+
+    @property
+    def ideal_frame_matrices(self):
+        """Copies of sign-gauged real spatial frames F=V D, in frame order."""
+        return tuple(f.copy() for f in self._ideal_frames)
+
+    @property
+    def represented_frame_matrices(self):
+        """Copies of F_b from decoded words (F itself for the fixed backend)."""
+        return tuple(f.copy() for f in self._represented_frames)
+
+    @property
+    def rotation_report(self):
+        """Detached metadata; no angles or extra workspace for fixed circuits."""
+        bits = None if self._angle_encoding is None else self._angle_encoding.width
+        slots = len(self._mixing_modes)
+        return dict(
+            backend=self._rotation_backend,
+            angle_bits=bits,
+            mixing_slots=slots,
+            term_index_width=self._num_index,
+            program_width=self._program_width,
+            ladder_width=self._ladder_width,
+            qrom_variant=None if self._lookup is None else "select",
+            total_ancillas=self.num_ancilla,
+            table_size=len(self._angle_rows),
+            angle_rows=self._angle_rows,
+            frame_words=tuple(self._frame_words),
+            frame_error_bounds=tuple(self._frame_bounds),
+            prepare_rotations=len(self._angles),
+            lookup_calls=0 if self._lookup is None else 2,
+            programmable_spatial_calls=(2 * slots * bits
+                                        if self._lookup is not None else 0))
+
+    def select_kernel(self, *, controlled=False):
+        """Clean-workspace SELECT; optional enable is the first operand qubit.
+
+        Layout is [index | angle words | QROM ladder], or
+        [enable | index | angle words | ladder] for the controlled form.
+        Words and ladder are |0> at both boundaries; the index and system
+        are in general entangled after SELECT.
+        """
+        controls, targets = self._term_controls, self._term_targets
+        lengths, signs = self._term_lengths, self._term_signs
+        index_width = self._num_index
+        shift = int(controlled)
+        if self._lookup is None:
+            counts = self._frame_term_counts
+            segments, modes, angles = (self._segment_rot_counts,
+                                       self._rot_orbitals, self._rot_angles)
+            if controlled:
+
+                @cudaq.kernel
+                def fixed_controlled(register: cudaq.qview,
+                                     system: cudaq.qview):
+                    controlled_select(register, system, controls, targets,
+                                      lengths, signs, counts, segments, modes,
+                                      angles)
+
+                return fixed_controlled
+
+            @cudaq.kernel
+            def fixed_select(register: cudaq.qview, system: cudaq.qview):
+                select(register, system, controls, targets, lengths, signs,
+                       counts, segments, modes, angles)
+
+            return fixed_select
+
+        lookup = self._lookup.kernel
+        program_end = shift + index_width + self._program_width
+        index_end = shift + index_width
+        total = shift + self.num_ancilla
+        modes = self._mixing_modes
+        weights = list(self._angle_encoding.weights)
+
+        @cudaq.kernel
+        def selected(register: cudaq.qview, system: cudaq.qview):
+            lookup(register[shift:index_end], register[program_end:total],
+                   register[index_end:program_end])
+            programmable_spatial_givens_adjoint(
+                register[index_end:program_end], system, modes, weights)
+            ctrl_ptr = 0
+            target_ptr = 0
+            for term in range(len(lengths)):
+                for bit in range(index_width):
+                    if controls[ctrl_ptr] == 0:
+                        x(register[shift + bit])
+                    ctrl_ptr += 1
+                for _ in range(lengths[term]):
+                    z.ctrl(register.front(index_end),
+                           system[targets[target_ptr]])
+                    target_ptr += 1
+                if signs[term] < 0:
+                    if index_end == 1:
+                        z(register[0])
+                    else:
+                        z.ctrl(register.front(index_end - 1),
+                               register[index_end - 1])
+                for bit in range(index_width):
+                    if controls[ctrl_ptr - index_width + bit] == 0:
+                        x(register[shift + bit])
+            programmable_spatial_givens(register[index_end:program_end],
+                                        system, modes, weights)
+            # The QROM kernel is exactly self-inverse: a second lookup
+            # erases the words.
+            lookup(register[shift:index_end], register[program_end:total],
+                   register[index_end:program_end])
+
+        return selected
+
+    def _programmed_step(self,
+                         *,
+                         controlled=False,
+                         walk_step=False,
+                         adjoint=False):
+        selector = self.select_kernel(controlled=controlled)
+        prepare_index, unprepare_index = self.prepare_kernel(
+        ), self.unprepare_kernel()
+        n_anc = self.num_ancilla
+        reflection = (controlled_reflect_about_zero
+                      if controlled else reflect_about_zero)
+
+        @cudaq.kernel
+        def operation(register: cudaq.qview, system: cudaq.qview):
+            if walk_step:
+                if adjoint:
+                    unprepare_index(register.back(n_anc))
+                    reflection(register)
+                    prepare_index(register.back(n_anc))
+                    selector(register, system)
+                else:
+                    selector(register, system)
+                    unprepare_index(register.back(n_anc))
+                    reflection(register)
+                    prepare_index(register.back(n_anc))
+            else:
+                prepare_index(register.back(n_anc))
+                selector(register, system)
+                unprepare_index(register.back(n_anc))
+
+        return operation
+
+    def _programmed_circuit(self, power=None, state_prep=None):
+        n_sys, n_anc = self.num_system, self.num_ancilla
+        prepare_index, unprepare_index = self.prepare_kernel(
+        ), self.unprepare_kernel()
+        operation = (self.apply_kernel()
+                     if power is None else self.walk_step_kernel())
+        steps = 1 if power is None else _validate_power(power)
+        is_walk = power is not None
+
+        @cudaq.kernel
+        def run(system: cudaq.qview, ancilla: cudaq.qview):
+            if is_walk:
+                prepare_index(ancilla)
+            for _ in range(steps):
+                operation(ancilla, system)
+            if is_walk:
+                unprepare_index(ancilla)
+
+        if state_prep is not None:
+
+            @cudaq.kernel
+            def prepared():
+                system = cudaq.qvector(n_sys)
+                state_prep(system)
+                ancilla = cudaq.qvector(n_anc)
+                run(system, ancilla)
+
+            return prepared
+
+        @cudaq.kernel
+        def from_state(state: cudaq.State):
+            system = cudaq.qvector(state)
+            ancilla = cudaq.qvector(n_anc)
+            run(system, ancilla)
+
+        return from_state
 
     # ------------------------------------------------------------------
     # Inspection
@@ -581,6 +905,8 @@ class DoubleFactorizedEncoding:
     @property
     def num_givens_rotations(self) -> int:
         """Spatial Givens rotations in the full SELECT program."""
+        if self._lookup is not None:
+            return 2 * len(self._mixing_modes) * self._angle_encoding.width
         return sum(self._segment_rot_counts)
 
     @property
@@ -625,6 +951,8 @@ class DoubleFactorizedEncoding:
         kernel): a zero-argument kernel that allocates the system register
         in ``|0...0>``, runs ``state_prep`` on it, then applies the encoding.
         """
+        if self._rotation_backend == "qrom":
+            return self._programmed_circuit(state_prep=state_prep)
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
         n_anc = self.num_ancilla
@@ -666,6 +994,8 @@ class DoubleFactorizedEncoding:
         n_anc = self.num_ancilla
         n_sys = self.num_system
         steps = _validate_power(power)
+        if self._rotation_backend == "qrom":
+            return self._programmed_circuit(power=steps, state_prep=state_prep)
 
         if state_prep is not None:
 
@@ -701,25 +1031,29 @@ class DoubleFactorizedEncoding:
     def prepare_kernel(self) -> Kernel:
         """``(ancilla: qview)``: PREPARE with this encoding's angles."""
         angles = self._angles
+        n_index = self._num_index
 
         @cudaq.kernel
         def prepare_ancilla(ancilla: cudaq.qview):
-            prepare(ancilla, angles)
+            prepare(ancilla.front(n_index), angles)
 
         return prepare_ancilla
 
     def unprepare_kernel(self) -> Kernel:
         """``(ancilla: qview)``: PREPARE dagger with this encoding's angles."""
         angles = self._angles
+        n_index = self._num_index
 
         @cudaq.kernel
         def unprepare_ancilla(ancilla: cudaq.qview):
-            unprepare(ancilla, angles)
+            unprepare(ancilla.front(n_index), angles)
 
         return unprepare_ancilla
 
     def apply_kernel(self) -> Kernel:
         """``(ancilla, system)``: the full block encoding U_A."""
+        if self._rotation_backend == "qrom":
+            return self._programmed_step()
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
 
@@ -732,6 +1066,8 @@ class DoubleFactorizedEncoding:
 
     def controlled_apply_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: U_A controlled by qubit 0."""
+        if self._rotation_backend == "qrom":
+            return self._programmed_step(controlled=True)
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
         n_anc = self.num_ancilla
@@ -749,6 +1085,8 @@ class DoubleFactorizedEncoding:
 
     def walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one qubitization walk step W."""
+        if self._rotation_backend == "qrom":
+            return self._programmed_step(walk_step=True)
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
 
@@ -761,6 +1099,8 @@ class DoubleFactorizedEncoding:
 
     def adjoint_walk_step_kernel(self) -> Kernel:
         """``(ancilla, system)``: one adjoint walk step W†."""
+        if self._rotation_backend == "qrom":
+            return self._programmed_step(walk_step=True, adjoint=True)
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
 
@@ -773,6 +1113,8 @@ class DoubleFactorizedEncoding:
 
     def controlled_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled walk step."""
+        if self._rotation_backend == "qrom":
+            return self._programmed_step(controlled=True, walk_step=True)
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
 
@@ -787,6 +1129,10 @@ class DoubleFactorizedEncoding:
 
     def controlled_adjoint_walk_step_kernel(self) -> Kernel:
         """``(control_and_ancilla, system)``: controlled adjoint walk step."""
+        if self._rotation_backend == "qrom":
+            return self._programmed_step(controlled=True,
+                                         walk_step=True,
+                                         adjoint=True)
         (angles, controls, targets, lengths, signs, frame_counts, seg_counts,
          orbitals, thetas) = self._kernel_data
 
