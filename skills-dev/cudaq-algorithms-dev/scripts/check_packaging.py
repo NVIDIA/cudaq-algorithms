@@ -91,8 +91,11 @@ def check(root):
         if not path.is_file() or "__pycache__" in path.parts:
             continue
         relative = path.relative_to(runtime)
+        # BENCHMARK.md and skill.oms.sig are written by the NVSkills CI
+        # signing run and must ship with the skill.
         allowed = relative.parts[0] in {
-            "SKILL.md", "skill-card.md", "references", "scripts", "evals"
+            "SKILL.md", "skill-card.md", "BENCHMARK.md", "skill.oms.sig",
+            "references", "scripts", "evals"
         }
         if relative.parts[0] == "scripts":
             allowed = relative.as_posix() == "scripts/route.py"
