@@ -29,13 +29,13 @@ CATALOG_IDS = {
     "contextual-existing-primitive",
     "unknown-future-primitive",
     "unsupported-library-workflow",
-    # state preparation contracts
-    "state-preparation-provider-selection",
+    # state preparation contract; the provider-selection case times out the
+    # unassisted baseline agent and stays in the development campaign
     "state-preparation-injection-composition",
-    # one boundary case per area
+    # one boundary case per area; the Trotter boundary case times out the
+    # unassisted baseline agent and stays in the development campaign
     "block-encoding-capability-boundary",
     "qsvt-phase-and-recovery-boundary",
-    "trotter-evolution-resource-boundary",
     "chemistry-bridge-dependency-boundary",
     # behaviour and safety
     "qpu-authorization-boundary",
@@ -43,15 +43,14 @@ CATALOG_IDS = {
     "unexecuted-code-evidence",
     "source-unavailable-fallback",
     "implementation-scope-overreach",
-    "chemistry-end-to-end-composition",
     # scientific cases that fit the catalog trial budget; the chemistry and
     # QSVT numerical cases stay in the development campaign
     "science-block-encoding-truncation-tradeoff",
     "science-trotter-conservation-versus-accuracy",
     "science-double-factorization-leaf-budget",
 } | NEGATIVE_IDS
-CATALOG_CASE_COUNT = 22
-CATALOG_POSITIVE_COUNT = 19
+CATALOG_CASE_COUNT = 19
+CATALOG_POSITIVE_COUNT = 16
 CATALOG_FIXTURE_COUNT = 5
 
 

@@ -55,9 +55,9 @@
     "runtime": {
       "path": "skills/cudaq-algorithms/evals/evals.json",
       "before_sha256": "6540e48907dfd184b0c11edbbc9563f97c4b9c03b3468d241c4206962000f89d",
-      "after_sha256": "ea5edc045aa63eacc264458e889e858d9daad7eeda96ec29d1864c4053821f12",
+      "after_sha256": "34c255b03cb7d1b60f336bfb9b67cdc37ff577c645d2cdf68ae05ad540a73fca",
       "ensure_ascii": true,
-      "scope": "24-case reviewed subset of the development suite; see test_catalog_evals.py"
+      "scope": "19-case reviewed subset of the development suite; see test_catalog_evals.py"
     }
   },
   "manifest": {

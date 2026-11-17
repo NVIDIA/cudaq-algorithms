@@ -83,7 +83,7 @@ revision.
 
 ## Evaluation Tasks:
 
-The [authored dataset](evals/EVAL.md) contains 22 cases selected from the
+The [authored dataset](evals/EVAL.md) contains 19 cases selected from the
 repository's 62-case development suite: routing, state preparation contracts,
 one boundary case per area, behaviour and safety, and three scientific cases,
 including three negative triggering controls. The full suite is

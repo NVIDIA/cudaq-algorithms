@@ -56,28 +56,6 @@
       ]
     },
     {
-      "id": "state-preparation-provider-selection",
-      "prompt": "In CUDA-Q Algorithms I have an 8 spin-orbital, 4-electron molecular problem, and my consumer code already allocates the system register itself in the all-zero state. I have both an orthonormal orbital-coefficient matrix and a Hartree-Fock reference with a set of fixed UCC amplitudes. Pick the packaged provider for each case, tell me exactly how the prepared register reaches the consumer, route me to the logical resource estimator for the Givens schedule, canonical-count HF, explicit-occupation HF, and fixed UCC stages, and tell me which provider is faster on the CUDA-Q version you verified.",
-      "expected_output": "The agent separates the two packaged provider families from their four independently callable resource estimators, names the source-grounded public symbols, states the injected-kernel boundary and current consumer register behavior, preserves each provider's ordering and validation requirements, and declines to supply a performance comparison it cannot support, attributing any CUDA-Q version it reports to the observed runtime or declared dependency range rather than to record-level verification.",
-      "expected_skill": "cudaq-algorithms",
-      "files": [],
-      "assertions": [
-        "The agent reads the cudaq-algorithms SKILL.md.",
-        "The agent consults the state-preparation family front door (references/state-preparation/state-preparation.md, including its resource-estimator routing section), the Givens schedule-planning record (state-preparation-givens-schedule.md), the injectable Slater-determinant kernel record (state-preparation-slater-determinant-kernel.md), the HF/UCC provider record (state-preparation-hf-ucc.md), and the four focused estimator records (state-preparation-resources-givens.md, state-preparation-resources-hartree-fock.md, state-preparation-resources-hartree-fock-occupation.md, state-preparation-resources-fixed-parameter-ucc.md) before naming APIs.",
-        "The agent treats Slater-determinant preparation and Hartree-Fock plus fixed-parameter UCC preparation as distinct operations rather than alternative spellings of one provider.",
-        "The agent maps the orbital-coefficient matrix to the determinant provider and the Hartree-Fock reference plus fixed amplitudes to the UCC provider.",
-        "The agent names the exact public provider symbols slater_determinant_kernel and hartree_fock_ucc_kernel, and names make_givens_rotation_schedule as the required first step for the coefficient matrix.",
-        "The agent states that make_givens_rotation_schedule returns host GivensRotationSchedule data and that slater_determinant_kernel separately consumes that schedule to emit the injectable kernel.",
-        "The agent states that the injected preparation kernel takes the signature (qubits: cudaq.qview) and that in the current implementation the consumer factory allocates the system register and passes it to the preparation kernel.",
-        "The agent states the qubit and spin-orbital ordering each provider requires.",
-        "The agent states the host-side input validation each provider performs, including the coefficient-matrix shape and orthonormality requirement and the mutually exclusive Hartree-Fock occupation inputs.",
-        "The agent maps Givens, canonical Hartree-Fock, explicit-occupation Hartree-Fock, and fixed-parameter UCC estimates to estimate_givens_resources, estimate_hartree_fock_resources, estimate_hartree_fock_occupation_resources, and estimate_fixed_parameter_ucc_resources respectively.",
-        "The agent describes these outputs as formula-level logical-operation estimates rather than transpiled depth, runtime, or measured hardware cost.",
-        "The agent distinguishes declared dependencies from verified runtime evidence: it checks any reported CUDA-Q dependency range against current pyproject.toml, does not attribute a verified CUDA-Q version to the records, and treats cited assertions as derived evidence until executed in the current task; an installed version is reported only when observed by command (for example from cudaq.__version__).",
-        "The agent does not rank the two providers as faster or slower as a verified library property, and does not present a runtime, scaling, or performance comparison as measured unless it actually executed one in the session; any timing it reports is labelled as a local simulator wall-clock observation on the inputs it actually used (the prompt supplies no concrete matrix or amplitudes, so those are the agent's own test inputs), stated together with the observed CUDA-Q version and target, and kept distinct from the formula-level estimates and from hardware cost."
-      ]
-    },
-    {
       "id": "state-preparation-injection-composition",
       "prompt": "I have a packaged CUDA-Q Algorithms state-preparation kernel and want to hand it to PauliLCU.encode_kernel, Walk.kernel, QSVT.kernel, and Trotter.kernel, plus a custom block encoding of my own that already satisfies the BlockEncoding protocol. Give me the register and width rules, and confirm that all of these consumers, including mine, accept the preparation kernel.",
       "expected_output": "The agent states the register and width rules as the current source-grounded injection behavior of the packaged consumers \u2014 the consumer factory allocates the fresh all-zero system register, the widths must match exactly, and the preparation runs first on that register \u2014 without presenting register ownership as a settled library-wide policy, and refuses to infer state_prep support from BlockEncoding protocol conformance or for consumers it has not checked.",
@@ -142,22 +120,6 @@
         "The agent checks the zero-flagged block-encoding capability and register geometry.",
         "The agent states that recover_real_time_evolution consumes both cosine and sine good-subspace statevectors and their phase lists.",
         "The agent does not claim the documented recovery contract supports complex Hamiltonians or complex input states."
-      ]
-    },
-    {
-      "id": "trotter-evolution-resource-boundary",
-      "prompt": "Use CUDA-Q Algorithms for fourth-order Trotter evolution of both a newly allocated/injected state and a caller-supplied cudaq.State, and tell me the exact hardware depth and runtime from estimate_trotter_resources. Include the Hamiltonian identity term as a device rotation. Also tell me what the raw apply_trotter device kernel does when steps is zero or order is three.",
-      "expected_output": "The agent separates the zero-argument and state-input stored-plan factories, the raw device kernel, and raw resource estimation; explains order and step controls; preserves the identity/global-phase contract; documents the raw kernel's silent no-op boundary; and does not relabel logical proxies as hardware measurements.",
-      "expected_skill": "cudaq-algorithms",
-      "files": [],
-      "assertions": [
-        "The agent reads SKILL.md, trotter.md, trotter-kernel-factory.md, trotter-state-kernel-factory.md, trotter-apply-kernel.md, and trotter-resources-raw.md.",
-        "The agent identifies order and steps as approximation controls and fourth order as part of the same formula family.",
-        "The agent distinguishes the zero-argument Trotter.kernel factory with optional injected preparation, the one-cudaq.State Trotter.state_kernel factory, and the simulation-only evolve helper.",
-        "The agent states that the identity term is omitted from the device circuit as a global phase, that sim_utils.evolve can restore it for statevector output, and that no packaged controlled-Trotter contract is documented.",
-        "The agent states that raw estimate_trotter_resources does not separate identity words or derive identity_coefficient from them.",
-        "The agent states that raw apply_trotter silently applies no gates when steps is nonpositive or order is unsupported, rather than promising host validation or an exception.",
-        "The agent does not present logical operation estimates as transpiled depth, runtime, or measured hardware cost."
       ]
     },
     {
@@ -227,22 +189,6 @@
         "The agent runs no Python (as the prompt requests), does not state that the code passed or was numerically validated, and labels the code unexecuted (for example `source-checked; unexecuted`).",
         "The agent names the phase convention (PhaseSequence convention qsvt vs qsp) and the block-encoding prerequisite (a zero-flagged BlockEncoding such as PauliLCU with num_ancilla >= 1).",
         "The agent gives a concrete verification command, an independent response oracle, and a predeclared tolerance."
-      ]
-    },
-    {
-      "id": "chemistry-end-to-end-composition",
-      "prompt": "Using CUDA-Q Algorithms, outline runnable code that parses FCIDUMP text, compresses the ERI with four C-DF leaves, reconstructs it, builds a qubit Hamiltonian, and performs second-order Trotter statevector evolution. Include a scientific validation plan and do not call the example-only DF encoding packaged.",
-      "expected_output": "The agent composes the focused loader, compressed factorization, reconstruction, hard-wired Jordan-Wigner bridge, Trotter, and simulation helper contracts with visible approximation and identity-phase handling.",
-      "expected_skill": "cudaq-algorithms",
-      "files": [],
-      "assertions": [
-        "The agent reads application-composition.md and the focused records for the steps it composes: chemistry/chemistry-from-fcidump.md, double-factorization/double-factorization-compressed.md, double-factorization/double-factorization-reconstruction.md, chemistry/chemistry-qubit-hamiltonian.md, simulation/simulation-evolve.md, and trotter/trotter.md or trotter/trotter-state-kernel-factory.md.",
-        "The agent passes FCIDUMP contents rather than a path and preserves the chemist-notation triple.",
-        "The agent checks compressed-factorization optimizer status and reconstruction error before building the Hamiltonian.",
-        "The agent uses chemistry.qubit_hamiltonian as Jordan-Wigner and does not invent a transform selector.",
-        "The agent uses Trotter plus sim_utils.evolve and accounts for the identity phase.",
-        "The agent proposes dense exact evolution as the end-to-end oracle with a predeclared tolerance.",
-        "The agent does not present DoubleFactorizedEncoding as installed."
       ]
     },
     {

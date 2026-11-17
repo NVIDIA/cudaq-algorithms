@@ -39,7 +39,7 @@ records, fixtures and protocol files are unchanged. `test_rebaseline_provenance.
 verifies the rebaseline records as a chain ending at the current suite.
 
 The runtime skill also ships a standalone [catalog evaluation package](../../../skills/cudaq-algorithms/evals/EVAL.md)
-for NVIDIA SkillEvaluator. It carries a reviewed 22-case subset of this suite,
+for NVIDIA SkillEvaluator. It carries a reviewed 19-case subset of this suite,
 including the three negative controls, with every record and fixture
 byte-identical to its canonical counterpart; `test_catalog_evals.py` pins the
 subset and guards against drift. nvskills-ci executes only that subset; the
