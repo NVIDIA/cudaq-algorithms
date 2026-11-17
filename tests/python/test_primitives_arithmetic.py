@@ -15,11 +15,10 @@ verify the correlated output flag.
 
 The resource-contract tests at the bottom hold the module's documented gate
 prices against the compiler via ``cudaq.estimate_resources``: the CDKM adders
-cost ``2n - 2`` Toffolis (the unused top carry-out's Toffoli pair cancels;
-Cuccaro et al., arXiv:quant-ph/0410184, Section 4.1 reaches ``2n - 3``, not
-adopted) and the CDKM comparators ``2n - 1`` (Cuccaro's comparator count),
-while the Draper QFT family uses only ``r1`` rotations. Each number is stated
-on the kernel's own docstring; the tests pin it.
+cost 0 Toffolis for n = 1; 2n - 3 for n >= 2. The CDKM comparators cost
+``2n - 1`` (Cuccaro's comparator count), while the Draper QFT family uses
+only ``r1`` rotations. Each kernel's docstring states its cost; the tests
+pin it.
 """
 
 import numpy as np
@@ -115,6 +114,69 @@ def test_subtract_register_inverts_add_register(n):
         np.testing.assert_allclose(state,
                                    _fixed_b_expected(n, bval, lambda a, b: b),
                                    atol=1e-12)
+
+
+@cudaq.kernel
+def _run_register_op_complex(initial: list[complex], n: int, subtract: int):
+    operands = cudaq.qvector(initial)
+    carry = cudaq.qvector(1)
+    if subtract == 0:
+        arith.add_register(operands[0:n], operands[n:2 * n], carry)
+    else:
+        arith.subtract_register(operands[0:n], operands[n:2 * n], carry)
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 5])
+@pytest.mark.parametrize("subtract", [0, 1])
+def test_register_add_subtract_complex_state(n, subtract):
+    rng = np.random.default_rng(47)
+    initial = rng.normal(
+        size=1 << (2 * n)) + 1j * rng.normal(size=1 << (2 * n))
+    initial /= np.linalg.norm(initial)
+    expected = np.zeros(1 << (2 * n + 1), dtype=np.complex128)
+    for index, amplitude in enumerate(initial):
+        a = index % (1 << n)
+        b = index >> n
+        result = (b - a if subtract else b + a) % (1 << n)
+        expected[a + (result << n)] = amplitude
+    state = np.array(
+        cudaq.get_state(_run_register_op_complex, initial.tolist(), n,
+                        subtract))
+    np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
+
+
+@cudaq.kernel
+def _run_controlled_register_op(n: int, bval: int, subtract: int):
+    ctrl = cudaq.qubit()
+    a = cudaq.qvector(n)
+    b = cudaq.qvector(n)
+    carry = cudaq.qvector(1)
+    h(ctrl)
+    s(ctrl)
+    h(a)
+    for k in range(n):
+        if ((bval >> k) & 1) == 1:
+            x(b[k])
+    if subtract == 0:
+        cudaq.control(arith.add_register, ctrl, a, b, carry)
+    else:
+        cudaq.control(arith.subtract_register, ctrl, a, b, carry)
+
+
+@pytest.mark.controlled_composition
+@pytest.mark.parametrize("n", [1, 2, 3, 5])
+@pytest.mark.parametrize("subtract", [0, 1])
+def test_controlled_register_add_subtract_superposed_control(n, subtract):
+    bval = (1 << n) - 1
+    expected = np.zeros(1 << (2 * n + 2), dtype=np.complex128)
+    amplitude = 1 / np.sqrt(1 << (n + 1))
+    for a in range(1 << n):
+        expected[(a << 1) + (bval << (n + 1))] = amplitude
+        result = (bval - a if subtract else bval + a) % (1 << n)
+        expected[1 + (a << 1) + (result << (n + 1))] = 1j * amplitude
+    state = np.array(
+        cudaq.get_state(_run_controlled_register_op, n, bval, subtract))
+    np.testing.assert_allclose(state, expected, atol=1e-12, rtol=0)
 
 
 # ----------------------------------------------------------------------
@@ -537,11 +599,9 @@ def test_add_register_basis_spot_checks():
 # depend on the folding rather than the construction.
 #
 # CDKM derivations (n-bit registers, one Toffoli per MAJ and per UMA):
-# - add_register / subtract_register: a full MAJ/UMA pair would be 2n, but the
-#   mod-2^n adder never forms the top carry-out, so the top MAJ/UMA Toffoli
-#   pair cancels -> 2n - 2 (n = 1 needs none).
-# - add_constant / subtract_constant: the constant load/unload is X-only
-#   (free), so the price is the inner register adder's 2n - 2.
+# - add_register / subtract_register: costs follow their kernel docstrings.
+# - add_constant / subtract_constant: the constant load/unload is X-only,
+#   so the Toffoli count equals the register operation's.
 # - cmp_ge_constant (K >= 1): the comparator reads the top carry (it is the
 #   result), so only that carry's compute/copy/uncompute collapses: a MAJ
 #   sweep (n) plus its reversal (n) minus one = 2n - 1; K = 0 is a bare X.
@@ -629,24 +689,32 @@ def _toffolis(kernel, *args) -> int:
     return cudaq.estimate_resources(kernel, *args).count_controls("x", 2)
 
 
-# The mod-2^n adder never reads the top carry-out, so its MAJ/UMA Toffoli pair
-# cancels -> 2n - 2 Toffolis (n = 1 needs none). Cuccaro et al.
-# (arXiv:quant-ph/0410184) Section 4.1 reaches 2n - 3; not adopted here.
+@_RESOURCES
+@pytest.mark.parametrize(
+    "n, expected",
+    [(1, 0), (2, 1), (3, 3), (4, 5), (8, 13), (256, 509)],
+)
+@pytest.mark.parametrize("subtract", [0, 1])
+def test_register_add_subtract_toffoli_count(n, expected, subtract):
+    resources = cudaq.estimate_resources(_res_add_register, n, subtract)
+    assert resources.count_controls("x", 2) == expected
+    assert resources.count_controls("x", 1) == (n if n <= 2 else 4 * n - 3)
+    assert resources.num_qubits == 2 * n + 1
 
 
 @_RESOURCES
-@pytest.mark.parametrize("n", WIDTHS)
-def test_cdkm_register_ops_cost_2n_minus_2_toffolis(n):
-    assert _toffolis(_res_add_register, n, 0) == 2 * n - 2
-    assert _toffolis(_res_add_register, n, 1) == 2 * n - 2
-
-
-@_RESOURCES
-@pytest.mark.parametrize("n", WIDTHS)
-def test_cdkm_constant_ops_cost_2n_minus_2_toffolis(n):
+@pytest.mark.parametrize(
+    "n, expected",
+    [(1, 0), (2, 1), (3, 3), (4, 5), (8, 13), (256, 509)],
+)
+@pytest.mark.parametrize("subtract", [0, 1])
+def test_constant_add_subtract_toffoli_count(n, expected, subtract):
     bits = _bits((1 << n) - 1, n)  # worst-case load: every bit set
-    assert _toffolis(_res_add_constant, n, bits, 0) == 2 * n - 2
-    assert _toffolis(_res_add_constant, n, bits, 1) == 2 * n - 2
+    resources = cudaq.estimate_resources(_res_add_constant, n, bits, subtract)
+    assert resources.count_controls("x", 2) == expected
+    assert resources.count_controls("x", 1) == (n if n <= 2 else 4 * n - 3)
+    assert resources.count_controls("x", 0) == 2 * n
+    assert resources.num_qubits == 2 * n + 1
 
 
 @_RESOURCES
@@ -667,16 +735,6 @@ def test_cmp_register_cost_2n_minus_1_toffolis(n):
     # a function of the runtime width argument, never a folded constant.
     assert _toffolis(_res_cmp_register, n, 0) == 2 * n - 1
     assert _toffolis(_res_cmp_register, n, 1) == 2 * n - 1
-
-
-@_RESOURCES
-def test_cdkm_toffoli_cost_is_affine_with_slope_two():
-    # 2n - 2 is affine with slope 2: doubling the width from n to 2n adds
-    # exactly 2n Toffolis. (An exact "doubling doubles the count" law would
-    # require the 2n form, i.e. keeping the unused top-carry Toffoli.)
-    compiled = {n: _toffolis(_res_add_register, n, 0) for n in (2, 4, 8, 16)}
-    for n in (2, 4, 8):
-        assert compiled[2 * n] - compiled[n] == 2 * n, compiled
 
 
 @_RESOURCES
