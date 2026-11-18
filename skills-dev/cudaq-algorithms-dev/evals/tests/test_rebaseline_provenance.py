@@ -7,6 +7,11 @@ Every reviewed change to the development suite is recorded under
 ``before`` hashes equal the previous record's ``after`` hashes, and the newest
 record's ``after`` hashes match the files on disk. An unrecorded edit to any
 case, the manifest, a fixture or a protocol file breaks the chain.
+
+The catalog eval set shipped with the runtime skill
+(``skills/cudaq-algorithms/evals/evals.json``) is a subset of the development
+suite. It is not hashed here: ``test_catalog_evals.py`` pins its case ids,
+order and counts and requires each case to equal its development record.
 """
 
 import copy
@@ -58,8 +63,6 @@ class RebaselineProvenanceTests(unittest.TestCase):
         latest = reviews[-1]
         self.assertEqual(digest((EVALS / "evals.json").read_bytes()),
                          latest["datasets"]["development"]["after_sha256"])
-        self.assertEqual(digest((CATALOG / "evals.json").read_bytes()),
-                         latest["datasets"]["runtime"]["after_sha256"])
         self.assertEqual(digest((EVALS / "manifest.json").read_bytes()),
                          latest["manifest"]["after_sha256"])
 

@@ -27,7 +27,7 @@ class SkillPackageTests(unittest.TestCase):
 
     # Written by the NVSkills CI signing run, not by this repository; they
     # carry the evaluator's own typography and are covered by the signature.
-    SIGNER_OWNED = {"BENCHMARK.md", "skill-card.md", "skill.oms.sig"}
+    SIGNER_OWNED = {"BENCHMARK.md", "skill-card.md"}
 
     def test_runtime_package_text_is_ascii(self):
         violations = []

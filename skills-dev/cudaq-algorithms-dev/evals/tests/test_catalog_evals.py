@@ -32,8 +32,9 @@ CATALOG_IDS = {
     # state preparation contract; the provider-selection case times out the
     # unassisted baseline agent and stays in the development campaign
     "state-preparation-injection-composition",
-    # one boundary case per area; the Trotter boundary case times out the
-    # unassisted baseline agent and stays in the development campaign
+    # boundary cases for block encoding, QSVT and chemistry; the Trotter
+    # boundary case times out the unassisted baseline agent and stays in the
+    # development campaign
     "block-encoding-capability-boundary",
     "qsvt-phase-and-recovery-boundary",
     "chemistry-bridge-dependency-boundary",
