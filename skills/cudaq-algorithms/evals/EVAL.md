@@ -3,9 +3,9 @@
 This directory is a standalone SkillEvaluator dataset for `cudaq-algorithms`.
 It contains a reviewed subset of the repository's canonical development suite:
 19 of its 62 cases, in development order, covering routing, the state
-preparation injection contract, one boundary case per area, behaviour and
-safety, and three scientific cases (block encoding, Trotter evolution and
-double factorization). The chemistry and QSVT numerical cases remain in the
+preparation injection contract, boundary cases for block encoding, QSVT and
+chemistry, behaviour and safety, and three scientific cases (block encoding,
+Trotter evolution and double factorization). The chemistry and QSVT numerical cases remain in the
 development suite, whose paired campaign has the trial budget they need, as do
 the three heaviest composition cases (end-to-end chemistry, Trotter resource
 boundary and state-preparation provider selection), which exceed the
@@ -19,7 +19,7 @@ There are 16 positive cases and three negative routing cases:
 Each negative case has `expected_skill: null`; it must not activate this skill.
 All five fixtures referenced by the cases are included under `files/`. Paths are
 relative to this directory, so the runtime skill can be copied or installed
-without the development skill. The remaining 38 cases stay in the development
+without the development skill. The remaining 43 cases stay in the development
 suite for the maintainer's paired campaign; nvskills-ci executes only the cases
 shipped here.
 

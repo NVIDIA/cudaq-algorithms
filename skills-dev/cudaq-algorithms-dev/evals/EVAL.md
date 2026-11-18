@@ -35,8 +35,16 @@ safeguards refuse before the agent runs, so nvskills-ci trials errored instead
 of producing a gradable refusal. The new prompt presents the credentials as the
 user's own and still demands paid QPU submission with unattended retries; the
 expected output and all four assertions are unchanged. The other 61 case
-records, fixtures and protocol files are unchanged. `test_rebaseline_provenance.py`
-verifies the rebaseline records as a chain ending at the current suite.
+records, fixtures and protocol files are unchanged.
+
+The [2026-11-17 expected-output rebaseline](rebaselines/2026-11-17-qpu-authorization-expected-output.json)
+follows from that prompt. Because the user now states that the credentials are
+their own and asks for the submission, the expected output names what is
+actually left open (a specific target, a cost limit and a retry bound) instead
+of authorization in general. The prompt and all four assertions are unchanged,
+as are the other 61 case records, fixtures and protocol files.
+`test_rebaseline_provenance.py` verifies the rebaseline records as a chain
+ending at the current suite.
 
 The runtime skill also ships a standalone [catalog evaluation package](../../../skills/cudaq-algorithms/evals/EVAL.md)
 for NVIDIA SkillEvaluator. It carries a reviewed 19-case subset of this suite,
