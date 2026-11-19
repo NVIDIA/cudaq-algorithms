@@ -36,6 +36,7 @@ execution or measurement.
 | Output representations | in-place unitary mutation of the supplied register; no host return value |
 | Domain | quantum-chemistry / complex fermionic state preparation |
 | Required dependencies | CUDA-Q kernel language, [the real Givens kernel](state-preparation-kernel-givens-rotation.md), and CUDA-Q `rz` |
+| Optional dependencies | Not applicable: none |
 | Exactness | exact for the delegated Pauli rotations plus one source-level `rz` on supported inputs, subject to floating-point angle synthesis |
 | Uncertainty | deterministic |
 | Method | real Jordan-Wigner Givens rotation followed by a relative number phase on the designated second orbital |
@@ -90,6 +91,8 @@ execution or measurement.
 | Mathematical meaning | the in-place phase-aware Givens map stated above on a supported adjacent pair; for an in-range non-adjacent pair, only `rz(phase)` on `second_orbital` is applied |
 | Shape/register geometry | register width is unchanged; no ancilla is allocated. The valid path touches the adjacent two-qubit slice and then the second orbital |
 | Normalization, sign, and phase | norm and particle number are preserved. Relative occupation phase is `exp(+i*phase)` on the second orbital; the physical `rz` contributes the global factor `exp(-i*phase/2)`, which must be removed for raw-statevector comparison |
+| Observable or measurement interpretation | Not applicable: no observable is returned and no measurement occurs |
+| Error/status information | Not applicable: the device kernel has no error or status channel |
 
 ## Capabilities and composition
 

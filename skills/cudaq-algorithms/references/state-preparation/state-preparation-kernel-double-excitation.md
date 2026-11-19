@@ -31,6 +31,7 @@ determinant and is not the full UCCSD product documented in
 | Output representations | in-place unitary state transformation; no host return |
 | Domain | quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
+| Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the source-defined eight-term Pauli-rotation circuit on four valid distinct endpoints, subject to floating-point gate realization |
 | Uncertainty | deterministic |
 | Method | Jordan-Wigner double-excitation synthesis, using an optimized ladder when the canonical occupied pair precedes the canonical virtual pair and sparse Pauli rotations when parity intervals overlap |
@@ -64,6 +65,7 @@ Define `t=-theta` when exactly one of the supplied pairs is descending, and
 | Mathematical definition | For four distinct in-range indices, the source **canonicalizes both pairs** as above and realizes `U_2(theta;p,q,r,s) = exp(-i * (t/2) * G_2(i,j,a,b))`. Thus swapping both pairs preserves effective `theta`; swapping exactly one pair flips it. This sign is additional to pair canonicalization and must not be dropped |
 | Why and when to use | Use as a low-level call inside a caller-owned kernel for a four-endpoint tuple produced under the package UCCSD enumeration convention; both separated and overlapping Jordan-Wigner parity intervals are supported |
 | When not to use | Do not use it to prepare Hartree-Fock, as a directly injectable one-register provider, with repeated/out-of-range indices, or as an amplitude-compatible substitute for a grouped Pauli-product kernel |
+| Approximation controls | Not applicable: no approximation parameter exists; `theta` is the physical runtime parameter, not an error tolerance |
 
 ## Inputs
 
@@ -86,6 +88,8 @@ Define `t=-theta` when exactly one of the supplied pairs is descending, and
 | Mathematical meaning | In-place application of `U_2(theta;p,q,r,s)` to the state currently held by the caller's register |
 | Shape/register geometry | The caller owns the register; the kernel allocates no system or ancilla qubit. It touches the four endpoints and the symmetric-difference support of the two Jordan-Wigner parity intervals |
 | Normalization, sign, and phase | Norm-preserving; exponent sign is `-i`, scale is `t/2` relative to `G_2`, and `t` follows the exactly-one-descending rule. No separate global-phase correction is documented |
+| Observable or measurement interpretation | Not applicable: the kernel performs no measurement and returns no observable |
+| Error/status information | Not applicable: device execution returns neither a validation result nor a status channel |
 
 ## Capabilities and composition
 
@@ -143,4 +147,5 @@ make no architecture-level claim.
 | Field | Alignment |
 | --- | --- |
 | Literature conventions | No literature citation in the cited source defines this factor. Use the displayed repository generator, multiplication order, Jordan-Wigner indexing, exponent sign, and `t/2` scale rather than assuming a paper's UCC amplitude convention |
+| External package translations | Not applicable: no external-package amplitude, endpoint-order, or orbital-layout translation is established by the cited source, tests, or documentation |
 | Known semantic differences | The pool generator and device circuit both carry the exactly-one-descending-pair sign. Relative to that signed pool generator, a grouped `+i` consumer needs the uniform amplitude `theta_pool = -theta/2`, with no further pair-swap correction. Equal numeric amplitudes remain inequivalent |

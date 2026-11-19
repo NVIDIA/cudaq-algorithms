@@ -31,6 +31,7 @@ determinant and is not the full UCCSD product documented in
 | Output representations | in-place unitary state transformation; no host return |
 | Domain | quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
+| Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the source-defined two-term Pauli-rotation circuit on valid endpoints, subject to floating-point gate realization |
 | Uncertainty | deterministic |
 | Method | Jordan-Wigner parity-string rotation synthesized with basis changes, CNOT ladders, and `Rz` rotations |
@@ -50,6 +51,7 @@ G_1(p,q) = 0.5 * (Y_p Z_(p,q) X_q - X_p Z_(p,q) Y_q).
 | Mathematical definition | For valid `0 <= p_occ < q_virt < qubits.size()`, the source circuit realizes `U_1(theta;p,q) = exp(-i * (theta/2) * G_1(p,q))`, equivalently `exp(-0.25i * theta * (Y_p Z_(p,q) X_q - X_p Z_(p,q) Y_q))`. This is the `uccsd` device-kernel amplitude convention pinned indirectly by the dense composition test |
 | Why and when to use | Use only as a low-level call inside a caller-owned kernel when applying one endpoint pair produced under the package UCCSD enumeration convention |
 | When not to use | Do not use it to prepare Hartree-Fock, as a directly injectable one-register provider, with a reversed/equal pair, or as an amplitude-compatible substitute for grouped `fixed_parameter_ucc` |
+| Approximation controls | Not applicable: no approximation parameter exists; `theta` is the physical runtime parameter, not an error tolerance |
 
 ## Inputs
 
@@ -72,6 +74,8 @@ G_1(p,q) = 0.5 * (Y_p Z_(p,q) X_q - X_p Z_(p,q) Y_q).
 | Mathematical meaning | In-place application of `U_1(theta;p,q)` to the state currently held by the caller's register |
 | Shape/register geometry | The caller owns the register; the kernel allocates no system or ancilla qubit and touches the two endpoints plus the parity interval between them |
 | Normalization, sign, and phase | Norm-preserving; exponent sign is `-i` and the amplitude scale is `theta/2` relative to `G_1`. No separate global-phase correction is documented |
+| Observable or measurement interpretation | Not applicable: the kernel performs no measurement and returns no observable |
+| Error/status information | Not applicable: device execution returns neither a validation result nor a status channel |
 
 ## Capabilities and composition
 
@@ -126,4 +130,5 @@ architecture-level claim.
 | Field | Alignment |
 | --- | --- |
 | Literature conventions | No literature citation in the cited source defines this factor. Use the exact repository generator, Jordan-Wigner ordering, exponent sign, and `theta/2` scale rather than assuming a paper's UCC amplitude convention |
+| External package translations | Not applicable: no external-package amplitude or orbital-order translation is established by the cited source, tests, or documentation |
 | Known semantic differences | Within this repository, grouped Pauli-product kernels are tested with `exp(+i * theta * coefficient * P)` factors, while the full `uccsd` circuit containing this gadget is tested against `exp(-i * (theta/2) * coefficient * P)`; do not treat equal numeric amplitudes as interchangeable or infer a general conversion beyond the tested source contract |

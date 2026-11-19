@@ -36,6 +36,7 @@ execution or measurement.
 | Output representations | in-place preparation on the supplied register; no host return value |
 | Domain | quantum-chemistry / fermionic state preparation |
 | Required dependencies | CUDA-Q kernel language and [the real Givens device kernel](state-preparation-kernel-givens-rotation.md) |
+| Optional dependencies | Not applicable: none |
 | Exactness | exact for the ordered circuit represented by supported flattened data, subject to floating-point angle synthesis; any schedule-construction threshold is outside this raw kernel |
 | Uncertainty | deterministic |
 | Method | prepare the contiguous occupation reference, then apply an ordered adjacent real Givens network |
@@ -98,6 +99,8 @@ execution or measurement.
 | Mathematical meaning | on `|0...0>` with supported schedule-derived data, the real Slater determinant stated above; with arbitrary supported flat data, the listed ordered unitary applied to the contiguous `E`-particle reference; with a false outer guard, the input register is unchanged |
 | Shape/register geometry | register width remains `N`; the reference touches qubits `0:E`, and each valid rotation touches one adjacent two-qubit slice; no ancilla is allocated |
 | Normalization, sign, and phase | norm and particle number are preserved on supported data. Determinant amplitudes follow the package's real Givens sign convention and are compared up to global phase |
+| Observable or measurement interpretation | Not applicable: no observable is returned and no measurement occurs |
+| Error/status information | Not applicable: the device kernel has no error or status channel |
 
 ## Capabilities and composition
 

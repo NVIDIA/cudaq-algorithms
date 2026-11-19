@@ -31,6 +31,7 @@ routed by [the state-preparation family selector](state-preparation.md).
 | Output representations | in-place state transformation; no host return |
 | Domain | quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
+| Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the emitted sequence of logical `X` calls on valid inputs |
 | Uncertainty | deterministic |
 | Method | computational-basis preparation by bit flips |
@@ -43,6 +44,7 @@ routed by [the state-preparation family selector](state-preparation.md).
 | Mathematical definition | For register width `n`, valid `0 <= N <= n`, and all-zero input, apply `U_HF(N) = product_(i=0)^(N-1) X_i`, producing the basis state with occupied set `{0, ..., N-1}` and little-endian index `2**N - 1`. On a nonzero input the same operator toggles those qubits; that is not preparation of the documented reference |
 | Why and when to use | Use for a contiguous closed-shell-style reference whose occupied spin-orbital indices are exactly the first `N` qubits |
 | When not to use | Do not use for an open-shell interleaved reference. Build its indices with `make_hartree_fock_occupation` and call [`hartree_fock_occupation`](state-preparation-kernel-hartree-fock-occupation.md), or use `hartree_fock_ucc_kernel` when a validated one-register injectable provider is required |
+| Approximation controls | Not applicable: no approximation parameter exists |
 
 ## Inputs
 
@@ -51,6 +53,7 @@ routed by [the state-preparation family selector](state-preparation.md).
 | Arguments | Exact signature: `hartree_fock(qubits: cudaq.qview, num_electrons: int)` |
 | Shapes/ranks | `qubits` is a one-dimensional live register view; `num_electrons` is scalar |
 | Dtypes/domains | Valid contract: integral `num_electrons` with `0 <= num_electrons <= qubits.size()` |
+| Units | Not applicable: the count and qubit indices are dimensionless |
 | Ordering/layout | Qubit 0 is the least-significant index bit; the kernel fills the contiguous prefix. It does not accept `spin` and does not construct the alpha-even/beta-odd open-shell layout; see [conventions.md](../conventions.md) |
 | Normalization | The input register must be a normalized all-zero state for the documented preparation meaning; the unitary preserves norm |
 | Required mathematical properties | The live register must contain at least `num_electrons` qubits and be in `|0...0>` if the desired result is the canonical reference |
@@ -64,6 +67,8 @@ routed by [the state-preparation family selector](state-preparation.md).
 | Mathematical meaning | In-place application of `U_HF(N)`; from all-zero input, the determinant occupying the first `N` spin orbitals |
 | Shape/register geometry | The caller owns and allocates the register; the kernel allocates no system or ancilla qubit |
 | Normalization, sign, and phase | Norm-preserving with the computational-basis amplitude `+1` for the direct all-zero preparation; no measurement or postselection phase convention applies |
+| Observable or measurement interpretation | Not applicable: the kernel performs no measurement and returns no observable |
+| Error/status information | Not applicable: device execution returns neither a validation result nor a status channel |
 
 ## Capabilities and composition
 
@@ -83,6 +88,7 @@ Not applicable: leaf operation.
 | Field | Statement |
 | --- | --- |
 | Error behavior or bounds | The source introduces no approximation and states no numerical error bound; target gate realization is outside this source-level contract |
+| Precision sensitivity | Not applicable at the logical source level because this kernel has no continuous parameter |
 | Unsupported inputs | Negative or non-integral counts, counts larger than the register, an open-shell occupation requested through an absent `spin` argument, and use of a nonzero input as though it were a freshly prepared reference |
 | Known implementation limitations | Invalid counts are not rejected in the device body. In particular, a negative count silently emits no `X`, while an out-of-range access has no characterized uniform failure mode |
 | Unsupported, absent, and unverified behavior | Host/device exception behavior for an excessive count is unverified; host validation inside this raw kernel is absent; controlled, adjoint, dirty-input, and width-mismatch semantics beyond applying the literal gate sequence are unverified |
@@ -116,4 +122,5 @@ runtime, or memory.
 | Field | Alignment |
 | --- | --- |
 | Literature conventions | No literature citation defines this source contract. Interpret the result using the repository's little-endian qubit and interleaved-spin-orbital conventions |
+| External package translations | Not applicable: no external-package translation is established by the cited source, tests, or documentation |
 | Known semantic differences | This kernel always fills a contiguous prefix. Many open-shell chemistry references require noncontiguous alpha-even/beta-odd occupation and must use the explicit-occupation path |

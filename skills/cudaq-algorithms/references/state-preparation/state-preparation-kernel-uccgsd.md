@@ -31,6 +31,7 @@ fixed-parameter UCC, or the one-register injection seam.
 | Output representations | in-place transformed live register; no host return value |
 | Domain | quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17`; a CUDA-Q target to execute the enclosing kernel |
+| Optional dependencies | Not applicable: none in the public contract |
 | Exactness | exact ordered product for the supplied grouped data, subject to target floating-point synthesis |
 | Uncertainty | deterministic |
 | Method | generalized unitary coupled-cluster singles-and-doubles ansatz product |
@@ -82,11 +83,16 @@ fixed-parameter UCC, or the one-register injection seam.
 | Mathematical meaning | the ordered `+i` Pauli product defined above applied to the incoming state |
 | Shape/register geometry | register width is unchanged; no ancilla, control, or measurement register is allocated |
 | Normalization, sign, and phase | norm-preserving unitary; exponent sign is `+i` with no factor of one half; global and relative phases are those of the ordered product |
+| Observable or measurement interpretation | Not applicable: no measurement or observable is emitted |
+| Error/status information | Not applicable: no return/status channel; malformed runtime inputs have no single characterized rejection mode |
 
 ## Capabilities and composition
 
 | Field | Contract |
 | --- | --- |
+| Stable ID | Not applicable: no capability ID is assigned to this multi-argument kernel |
+| Capability status | Not applicable |
+| Direction | Not applicable |
 | Owning record | this primitive owns the direct boundary; [injection-contract.md](injection-contract.md) owns the different one-register capability |
 | Boundary representation and exact signature | direct device composition through the exact four-argument signature under Inputs |
 | Semantic invariants | preserve UCCGSD provider provenance, one amplitude per group, and group/term order |
