@@ -22,9 +22,17 @@ from cudaq_algorithms.fermion import (jordan_wigner, bravyi_kitaev_superfast,
 from cudaq_algorithms.fermion._compilers import _normalize_integrals
 from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
                                                  _anticommute, _build_graph,
+                                                 _connected_components,
                                                  _encoding_backend, _word_mul,
                                                  _error_correcting_local_modes,
-                                                 _stabilizer_subset)
+                                                 _is_three_connected,
+                                                 _pad_even_degree,
+                                                 _stabilizer_subset,
+                                                 _validate_error_correcting_graph)
+from cudaq_algorithms.fermion._superfast import (_string_to_word,
+                                                 _code_space_parity,
+                                                 _loop_stabilizer_words,
+                                                 _validate_local_modes)
 
 _PAULI = {
     "I": np.eye(2),
@@ -471,6 +479,10 @@ def test_interaction_graph_superset_override():
     assert np.max(np.abs(spec - _parity_sector_specs(h)[+1])) < 1e-10
 
 
+def test_connected_components_ignores_inactive_endpoint():
+    assert _connected_components({0, 1}, {(0, 1), (1, 2)}) == {1}
+
+
 def test_interaction_graph_missing_required_edge_raises():
     h = np.zeros((3, 3))
     h[0, 1] = h[1, 0] = 1.0
@@ -908,6 +920,58 @@ def test_error_correcting_graph_validation():
         bravyi_kitaev_superfast(h, local_modes="error_correcting")
 
 
+def test_error_correcting_graph_helper_boundaries():
+    complete_six = [(i, j) for i in range(6) for j in range(i + 1, 6)]
+    with pytest.raises(ValueError, match="could not pad"):
+        _pad_even_degree(6, complete_six, 6)
+
+    k4 = [(i, j) for i in range(4) for j in range(i + 1, 4)]
+    with pytest.raises(ValueError, match="even vertex degree >= 6"):
+        _validate_error_correcting_graph(_Graph(4, k4))
+
+    assert not _is_three_connected(3, [(0, 1), (1, 2)])
+
+    left = [(i, j) for i in range(7) for j in range(i + 1, 7)]
+    right = [(i + 7, j + 7) for i in range(7) for j in range(i + 1, 7)]
+    cross = [(left_vertex, right_vertex) for left_vertex in (0, 1)
+             for right_vertex in (7, 8)]
+    with pytest.raises(ValueError, match="3-connected"):
+        _validate_error_correcting_graph(_Graph(14, left + right + cross))
+
+
+@pytest.mark.parametrize(
+    ("degree", "message"),
+    [(4, "even degree >= 6"), (7, "even degree >= 6"),
+     (12, "qubit count other than 4")],
+    ids=["below-minimum", "odd-degree", "unsupported-even-qubit-count"])
+def test_error_correcting_local_mode_construction_rejects_unsupported_degrees(
+        degree, message):
+    with pytest.raises(ValueError, match=message):
+        _error_correcting_local_modes(degree)
+
+
+def test_error_correcting_degree8_modes_validate():
+    strings = ["ZZXI", "ZZYI", "IZZX", "IZZY", "XIIZ", "YIIZ", "ZXII",
+               "ZYII"]
+    modes = _error_correcting_local_modes(8)
+
+    assert modes == [_string_to_word(word) for word in strings]
+    _validate_local_modes(modes, 8)
+
+
+@pytest.mark.parametrize(
+    ("modes", "degree", "message"),
+    [([(1j, (1, 0)), (1.0, (0, 1))], 2, "Hermitian involutions"),
+     ([(1.0, (2, 0)), (1.0, (0, 1))], 2, "acts outside"),
+     ([(1.0, (1, 0)), (1.0, (1, 1)), (1.0, (0, 1))], 3,
+      "not independent")],
+    ids=["coefficient", "out-of-range", "dependent-rank"])
+def test_validate_local_modes_rejects_invalid_pauli_sets(modes, degree,
+                                                          message):
+    with pytest.raises(ValueError, match=message):
+        _validate_local_modes(modes, degree)
+
+
 def test_three_connected_helper():
     from cudaq_algorithms.fermion._superfast import _is_three_connected
     k4 = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
@@ -1089,6 +1153,43 @@ def test_encoded_parity_equals_requested_sector(name, local_modes, parity):
 # ----------------------------------------------------------------------
 # Regression: the GF(2) stabilizer solver beyond 64 encoding qubits
 # ----------------------------------------------------------------------
+
+
+def test_stabilizer_invariant_failure_guards():
+    assert _stabilizer_subset([(0, 0)], (0, 0)) == []
+
+    class ParityBackend:
+        edges = [(0, 1)]
+
+        def __init__(self, vertex_words, stabilizers):
+            self.vertex_words = vertex_words
+            self._stabilizers = stabilizers
+
+        def _vertex_word(self, mode):
+            return self.vertex_words[mode]
+
+        def stabilizers(self):
+            return self._stabilizers
+
+    missing_member = ParityBackend([(1.0, (1, 0)), (1.0, (0, 1))],
+                                   [(1.0, (0, 1))])
+    with pytest.raises(RuntimeError, match="not in the stabilizer group"):
+        _code_space_parity(missing_member)
+
+    invalid_ratio = ParityBackend([(2.0, (1, 0)), (1.0, (0, 0))],
+                                  [(1.0, (1, 0))])
+    with pytest.raises(RuntimeError, match=r"not \+\-1 on the code space"):
+        _code_space_parity(invalid_ratio)
+
+    class NonHermitianLoopBackend:
+        num_modes = 3
+        edges = [(0, 1), (1, 2), (0, 2)]
+
+        def a_word(self, left, right):
+            return 1.0, (0, 0)
+
+    with pytest.raises(RuntimeError, match="non-Hermitian stabilizer"):
+        _loop_stabilizer_words(NonHermitianLoopBackend())
 
 
 def _circulant_hopping(n, deltas):

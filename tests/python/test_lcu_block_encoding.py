@@ -400,6 +400,26 @@ def test_state_prep_injection_matches_explicit_state():
     np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
 
 
+def test_walk_kernel_state_prep_matches_state_input():
+    terms = [(0.6, {0: "z"}), (-0.4, {0: "x"})]
+    encoding = build_encoding(terms=terms, n=1, mu=1)
+
+    @cudaq.kernel
+    def prep(qubits: cudaq.qview):
+        ry(0.73, qubits[0])
+
+    ket = np.array([np.cos(0.365), np.sin(0.365)], dtype=np.complex128)
+    via_prep = np.array(
+        cudaq.get_state(encoding.walk_kernel(power=2, state_prep=prep)))
+    via_state = np.array(
+        cudaq.get_state(encoding.walk_kernel(power=2), state_from(ket)))
+    np.testing.assert_allclose(via_prep, via_state, atol=1e-10)
+
+    scaled = discretized_dense(encoding, terms=terms, n=1) / encoding.alpha
+    t2 = 2.0 * scaled @ scaled - np.eye(2, dtype=np.complex128)
+    np.testing.assert_allclose(via_prep[:2], t2 @ ket, atol=1e-10)
+
+
 def test_inspection_and_repr():
     encoding = build_encoding()
     assert encoding.num_system == NUM_SYSTEM
@@ -529,6 +549,8 @@ def test_validation_raises():
         LCUBlockEncoding(NUM_SYSTEM, weights[:-1], bodies)
     with pytest.raises(ValueError, match="no terms"):
         LCUBlockEncoding(NUM_SYSTEM, [], [])
+    with pytest.raises(ValueError, match="expected a tuple"):
+        LCUBlockEncoding(NUM_SYSTEM, [1.0], [[()]])
     with pytest.raises(ValueError, match="work"):
         # A body needing work[2] (width 3) capped at 2.
         LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("and_wt", 0, 0, 2)]],
@@ -566,3 +588,14 @@ def test_validation_raises():
     spelled = LCUBlockEncoding(NUM_SYSTEM, [1.0], [[("y", 0), ("sign", )]],
                                mu=1)
     assert str(reduced.select_observable()) == str(spelled.select_observable())
+
+    cancelled = LCUBlockEncoding(NUM_SYSTEM, [1.0, 1.0],
+                                 [[("x", 0), ("x", 0)], []],
+                                 num_select_work=1,
+                                 mu=1)
+    identity_terms = LCUBlockEncoding(NUM_SYSTEM, [1.0, 1.0], [[], []],
+                                      num_select_work=1,
+                                      mu=1)
+    assert cancelled.num_select_work == 1
+    assert str(cancelled.select_observable()) == str(
+        identity_terms.select_observable())

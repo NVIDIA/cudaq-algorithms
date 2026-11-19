@@ -281,6 +281,47 @@ def test_banded_oracles_clip_at_the_boundary_and_skip_padded_slots():
         assert _oracle_probe(oracles, 3, 0, row, 0)[1] == (row + 1) % 8
         assert _oracle_probe(oracles, 3, 1, row, 0)[1] == (row - 1) % 8
         assert _oracle_probe(oracles, 3, 0, row, 1)[1] == row
+    for slot in range(4):
+        for row in range(8):
+            s, x_out, value, work = _oracle_probe(oracles, 3, slot, row, 1)
+            assert (s, x_out, value, work) == (slot, row, 0, 0), (slot, row)
+
+
+def test_banded_general_location_oracle_maps_unordered_offsets():
+    offsets = [0, 1, -2]
+    oracles = banded_oracles(offsets, [0.25, 0.5, 0.75],
+                             num_system=2,
+                             value_bits=VB,
+                             hermitian=False)
+    assert oracles.d == 3
+    assert oracles.slot_flip is None
+    for slot, offset in enumerate(offsets + [0]):
+        for row in range(4):
+            s, x_out, value, work = _oracle_probe(oracles, 2, slot, row, 0)
+            assert (s, x_out, value, work) == (slot, (row + offset) % 4, 0,
+                                               0), (slot, row)
+
+
+def test_banded_oracle_keeps_sign_for_subquantized_negative_bands():
+    oracles = banded_oracles([1, -1], [-1e-6, -1e-6],
+                             num_system=2,
+                             value_bits=VB,
+                             h=1.0)
+    assert quantized_angle(-1e-6, 1.0, VB) == 0
+    sign_bit = 1 << VB
+    upper_bit = 1 << (VB + 1)
+    expected = {
+        (0, 0): 0,
+        (0, 1): sign_bit,
+        (0, 3): sign_bit,
+        (1, 0): sign_bit | upper_bit,
+        (1, 1): sign_bit | upper_bit,
+        (1, 3): 0,
+    }
+    for (slot, row), expected_word in expected.items():
+        s, x_out, value, work = _oracle_probe(oracles, 2, slot, row, 2)
+        assert (s, x_out, work) == (slot, row, 0)
+        assert value == expected_word, (slot, row)
 
 
 # ----------------------------------------------------------------------
@@ -435,6 +476,155 @@ def test_dilation_with_padded_slots_and_signed_input():
                                         ket),
                                scaled @ ket,
                                atol=1e-10)
+
+
+def test_dilated_value_oracle_selects_both_halves():
+    encoding, _, _ = _dilation_case()
+    o_val = encoding.oracles.o_val
+    num_slots = max(1, (encoding.d - 1).bit_length())
+    num_system = encoding.num_system
+    num_work = max(1, encoding.oracles.num_work)
+    value_bits = encoding.value_bits
+    value_width = value_bits + 2
+    angle = quantized_angle(0.45, encoding.h, value_bits)
+
+    def probe(slot_index, half, row):
+        @cudaq.kernel
+        def dilated_value_probe():
+            slot = cudaq.qvector(num_slots)
+            system = cudaq.qvector(num_system)
+            value = cudaq.qvector(value_width)
+            work = cudaq.qvector(num_work)
+            for bit in range(num_slots):
+                if ((slot_index >> bit) & 1) == 1:
+                    x(slot[bit])
+            for bit in range(num_system - 1):
+                if ((row >> bit) & 1) == 1:
+                    x(system[bit])
+            if half == 1:
+                x(system[num_system - 1])
+            o_val(slot, system, value, work)
+
+        return basis_registers(
+            cudaq.get_state(dilated_value_probe),
+            [num_slots, num_system, encoding.value_bits + 2, num_work])
+
+    upper_bit = 1 << (value_bits + 1)
+    cases = ((0, 1, angle | upper_bit), (1, 2, angle), (1, 3, 0))
+    for half, row, expected_value in cases:
+        assert probe(1, half, row) == [1, (half << 2) | row, expected_value,
+                                       0]
+
+
+def test_dilated_location_adjoint_maps_both_halves():
+    encoding, _, _ = _dilation_case()
+    o_loc_adj = encoding.oracles.o_loc_adj
+    num_slots = max(1, (encoding.d_padded - 1).bit_length())
+    num_system = encoding.num_system
+    work_width = max(1, encoding.oracles.num_work)
+    offsets = (0, 1, -1, 0)
+    dimension = 1 << (num_system - 1)
+
+    def probe(slot_index, half, row):
+        @cudaq.kernel
+        def dilated_location_probe():
+            slot = cudaq.qvector(num_slots)
+            system = cudaq.qvector(num_system)
+            work = cudaq.qvector(work_width)
+            for bit in range(num_slots):
+                if ((slot_index >> bit) & 1) == 1:
+                    x(slot[bit])
+            for bit in range(num_system - 1):
+                if ((row >> bit) & 1) == 1:
+                    x(system[bit])
+            if half == 1:
+                x(system[num_system - 1])
+            o_loc_adj(slot, system, work)
+
+        return basis_registers(
+            cudaq.get_state(dilated_location_probe),
+            [num_slots, num_system, work_width])
+
+    for slot_index, offset in enumerate(offsets):
+        for half in (0, 1):
+            for row in range(dimension):
+                mapped_row = (row + offset if half == 1 else
+                              row - offset) % dimension
+                mapped_system = ((1 - half) << (num_system - 1)) | mapped_row
+                assert probe(slot_index, half, row) == [
+                    slot_index, mapped_system, 0
+                ]
+
+
+def test_dilated_location_maps_both_halves():
+    encoding, _, _ = _dilation_case()
+    o_loc = encoding.oracles.o_loc
+    num_slots = max(1, (encoding.d_padded - 1).bit_length())
+    num_system = encoding.num_system
+    work_width = max(1, encoding.oracles.num_work)
+    offsets = (0, 1, -1, 0)
+    dimension = 1 << (num_system - 1)
+
+    def probe(slot_index, half, row):
+        @cudaq.kernel
+        def dilated_location_probe():
+            slot = cudaq.qvector(num_slots)
+            system = cudaq.qvector(num_system)
+            work = cudaq.qvector(work_width)
+            for bit in range(num_slots):
+                if ((slot_index >> bit) & 1) == 1:
+                    x(slot[bit])
+            for bit in range(num_system - 1):
+                if ((row >> bit) & 1) == 1:
+                    x(system[bit])
+            if half == 1:
+                x(system[num_system - 1])
+            o_loc(slot, system, work)
+
+        return basis_registers(
+            cudaq.get_state(dilated_location_probe),
+            [num_slots, num_system, work_width])
+
+    for slot_index, offset in enumerate(offsets):
+        for half in (0, 1):
+            for row in range(dimension):
+                mapped_row = (row + offset if half == 1 else
+                              row - offset) % dimension
+                mapped_system = ((1 - half) << (num_system - 1)) | mapped_row
+                assert probe(slot_index, half, row) == [
+                    slot_index, mapped_system, 0
+                ]
+
+
+def test_dilation_value_oracle_adjoint_roundtrip():
+    encoding, _, _ = _dilation_case()
+    num_slots = max(1, (encoding.d_padded - 1).bit_length())
+    num_system = encoding.num_system
+    value_width = encoding.value_bits + 2
+    work_width = max(1, encoding.oracles.num_work)
+    o_val = encoding.oracles.o_val
+    o_val_adj = encoding.oracles.o_val_adj
+
+    @cudaq.kernel
+    def roundtrip():
+        slot = cudaq.qvector(num_slots)
+        system = cudaq.qvector(num_system)
+        value_and_sign = cudaq.qvector(value_width)
+        work = cudaq.qvector(work_width)
+        for bit in range(num_slots):
+            h(slot[bit])
+        for bit in range(num_system):
+            h(system[bit])
+        o_val(slot, system, value_and_sign, work)
+        o_val_adj(slot, system, value_and_sign, work)
+
+    actual = np.asarray(cudaq.get_state(roundtrip))
+    expected = np.zeros_like(actual)
+    amplitude = 1.0 / np.sqrt(1 << (num_slots + num_system))
+    for system_index in range(1 << num_system):
+        for slot_index in range(1 << num_slots):
+            expected[slot_index | (system_index << num_slots)] = amplitude
+    np.testing.assert_allclose(actual, expected, atol=1e-10)
 
 
 def test_dilation_controlled_walk_and_qsvt():

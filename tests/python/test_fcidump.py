@@ -206,3 +206,31 @@ def test_from_fcidump_rejects_empty_body():
     header_only = "&FCI NORB=2,NELEC=2,MS2=0,\n&END\n"
     with pytest.raises(ValueError, match="no integral records"):
         chemistry.from_fcidump(header_only)
+
+
+def test_from_fcidump_additional_parser_paths():
+    with pytest.raises(ValueError, match="contents must begin"):
+        chemistry.from_fcidump("")
+
+    with pytest.raises(ValueError, match="positive integer"):
+        chemistry.from_fcidump(
+            "&FCI NORB=0 &END\n 0.5 0 0 0 0\n")
+
+    with pytest.raises(ValueError, match="malformed FCIDUMP integral line"):
+        chemistry.from_fcidump("&FCI NORB=1 &END\n 0.5 x 1 0 0\n")
+
+    with pytest.raises(ValueError, match="unexpected FCIDUMP index pattern"):
+        chemistry.from_fcidump("&FCI NORB=1 &END\n 0.5 1 0 1 0\n")
+
+    contents = ("&FCI\n"
+                "NORB=1 &END\n"
+                "\n"
+                "! comment\n"
+                " 2.0 1 1 0 0\n"
+                " 99.0 1 0 0 0\n"
+                " 0.25 0 0 0 0\n")
+    one_body, eri, core_energy = chemistry.from_fcidump(contents)
+
+    assert one_body[0, 0] == pytest.approx(2.0)
+    np.testing.assert_array_equal(eri, np.zeros((1, 1, 1, 1)))
+    assert core_energy == pytest.approx(0.25)

@@ -178,6 +178,20 @@ def test_fenwick_matrix_matches_binary_indexed_tree():
     assert np.array_equal(_fenwick_matrix(8), expected_8)
 
 
+def test_gf2_inverse_pivot_swap_and_singular_matrix():
+    from cudaq_algorithms.fermion._compilers import _gf2_inverse
+
+    matrix = np.array([[0, 1], [1, 1]], dtype=np.uint8)
+    inverse = _gf2_inverse(matrix)
+    expected = np.array([[1, 1], [1, 0]], dtype=np.uint8)
+    assert np.array_equal(inverse, expected)
+    assert np.array_equal((matrix @ inverse) % 2, np.eye(2, dtype=np.uint8))
+
+    singular = np.array([[1, 0], [1, 0]], dtype=np.uint8)
+    with pytest.raises(ValueError, match="singular over GF\\(2\\)"):
+        _gf2_inverse(singular)
+
+
 def test_bravyi_kitaev_number_operator():
     _assert_terms(_single_pair(2, 2, 4.0, 20), 20,
                   _expected(20, (2.0, {}), (-2.0, {
@@ -432,6 +446,21 @@ def test_validation_errors():
         bravyi_kitaev(np.zeros((2, 2, 2, 2)), np.zeros((2, 2, 2, 2)))
     with pytest.raises(ValueError, match="wrong rank"):
         jordan_wigner(np.zeros((2, 2)), np.zeros((2, 2, 2)))
+
+
+@pytest.mark.parametrize(
+    "one_body,two_body,message",
+    [
+        (np.zeros((2, 3)), None, "one_body dimensions must match"),
+        (np.zeros((2, 2, 2, 3)), None, "two_body dimensions must match"),
+        (np.zeros((2, 2)), np.zeros((2, 2, 2, 3)),
+         "two_body dimensions must match"),
+    ],
+)
+def test_jordan_wigner_rejects_mismatched_dense_dimensions(
+        one_body, two_body, message):
+    with pytest.raises(ValueError, match=message):
+        jordan_wigner(one_body, two_body)
 
 
 # ----------------------------------------------------------------------

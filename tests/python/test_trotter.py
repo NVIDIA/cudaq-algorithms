@@ -230,6 +230,8 @@ def test_trotter_orders_terms_and_estimates_resources():
         hamiltonian,
         ordering=trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
 
+    assert (evolution.ordering is
+            trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
     assert evolution.identity_coefficient == pytest.approx(-0.2)
     assert evolution.coefficients == pytest.approx([0.7, 0.4, 0.1])
     assert [str(word) for word in evolution.words] == ["IZ", "XZ", "XI"]
@@ -240,6 +242,25 @@ def test_trotter_orders_terms_and_estimates_resources():
     assert resources.order == 4
     assert resources.pauli_rotations == 3 * 3 * 6
     assert resources.estimated_cx_count == 2 * 3 * 6
+
+
+def test_trotter_magnitude_ordering_handles_identity_only_hamiltonian():
+    evolution = trotter.Trotter(
+        {"II": -0.2},
+        ordering=trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
+
+    assert evolution.coefficients == []
+    assert evolution.words == []
+    assert evolution.num_terms == 0
+    assert evolution.identity_coefficient == pytest.approx(-0.2)
+    assert evolution.num_qubits == 2
+
+
+def test_trotter_repr_summary():
+    evolution = trotter.Trotter({"XI": 0.7, "II": 1 / 3})
+
+    assert repr(evolution) == (
+        "Trotter(terms=1, qubits=2, identity_coefficient=0.333333)")
 
 
 def test_trotter_rejects_invalid_options():
@@ -262,6 +283,14 @@ def test_estimate_trotter_resources_accepts_flattened_terms():
     assert resources.num_terms == 2
     assert resources.pauli_rotations == 8
     assert resources.estimated_cx_count == 8
+
+
+def test_estimate_trotter_resources_rejects_mismatched_term_lengths():
+    with pytest.raises(
+            ValueError,
+            match="coefficients and words must have equal length"):
+        trotter.estimate_trotter_resources(
+            coefficients=[0.5], words=[], steps=1, order=1)
 
 
 # ----------------------------------------------------------------------------

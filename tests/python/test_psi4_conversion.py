@@ -20,6 +20,9 @@ Psi4 ships via conda-forge (no PyPI wheel), so the cross-check runs in a
 conda-enabled environment.
 """
 
+import sys
+from types import ModuleType, SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -101,3 +104,69 @@ def test_pyscf_and_psi4_qubit_hamiltonians_match(label, basis, geometry):
     assert np.allclose(pyscf_spectrum, psi4_spectrum, atol=1e-6), (
         f"{label}: PySCF and Psi4 qubit-Hamiltonian spectra differ by "
         f"{np.max(np.abs(pyscf_spectrum - psi4_spectrum)):.2e}")
+
+
+def test_from_pyscf_rejects_unrestricted_mean_field(monkeypatch):
+    pyscf_stub = ModuleType("pyscf")
+    pyscf_stub.ao2mo = ModuleType("pyscf.ao2mo")
+    monkeypatch.setitem(sys.modules, "pyscf", pyscf_stub)
+    mean_field = SimpleNamespace(mol=None, mo_coeff=np.zeros((2, 2, 2)))
+
+    with pytest.raises(ValueError, match="mo_coeff with ndim 3"):
+        algorithms.chemistry.from_pyscf(mean_field)
+
+
+@pytest.mark.parametrize(
+    "nirrep, same_a_b_orbs, message",
+    [(2, True, "C1"), (1, False, "restricted")])
+def test_from_psi4_rejects_unsupported_wavefunctions(
+        monkeypatch, nirrep, same_a_b_orbs, message):
+    monkeypatch.setitem(sys.modules, "psi4", ModuleType("psi4"))
+    wavefunction = SimpleNamespace(
+        nirrep=lambda: nirrep,
+        same_a_b_orbs=lambda: same_a_b_orbs)
+
+    with pytest.raises(ValueError, match=message):
+        algorithms.chemistry.from_psi4(wavefunction)
+
+
+def test_from_psi4_returns_mo_integrals_and_nuclear_repulsion(monkeypatch):
+    coefficients_matrix = np.array([[0.8, -0.6], [0.6, 0.8]])
+    core_ao = np.array([[1.0, 0.25], [0.25, 2.0]])
+    eri_storage = np.arange(32.0).reshape(2, 2, 2, 2, 2)
+    eri_reference = eri_storage[..., 0]
+    basis_set = object()
+
+    def mo_eri(*matrices):
+        assert len(matrices) == 4
+        assert all(matrix is coefficients_matrix for matrix in matrices)
+        return eri_reference
+
+    def mints_helper(received_basis):
+        assert received_basis is basis_set
+        return SimpleNamespace(mo_eri=mo_eri)
+
+    psi4_stub = ModuleType("psi4")
+    psi4_stub.core = SimpleNamespace(MintsHelper=mints_helper)
+    monkeypatch.setitem(sys.modules, "psi4", psi4_stub)
+
+    wavefunction = SimpleNamespace(
+        nirrep=lambda: 1,
+        same_a_b_orbs=lambda: True,
+        Ca=lambda: coefficients_matrix,
+        H=lambda: core_ao,
+        basisset=lambda: basis_set,
+        molecule=lambda: SimpleNamespace(
+            nuclear_repulsion_energy=lambda: np.float64(0.715)))
+
+    one_body, eri, nuclear_repulsion = algorithms.chemistry.from_psi4(
+        wavefunction)
+
+    np.testing.assert_allclose(one_body,
+                               coefficients_matrix.T @ core_ao @
+                               coefficients_matrix)
+    np.testing.assert_array_equal(eri, eri_reference)
+    assert one_body.flags.c_contiguous
+    assert eri.flags.c_contiguous
+    assert isinstance(nuclear_repulsion, float)
+    assert nuclear_repulsion == pytest.approx(0.715)

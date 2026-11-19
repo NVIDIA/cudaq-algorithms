@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Correctness tests for qubitization walks and moments (dense references)."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -93,6 +95,15 @@ def test_reflection_and_select_observables_shapes():
     assert select is not None
 
 
+def test_reflection_observable_rejects_wide_ancilla_register():
+    encoding = SimpleNamespace(num_ancilla=21)
+
+    with pytest.raises(
+            ValueError,
+            match=r"over 21 ancillas would expand to 2\^21 Pauli terms"):
+        reflection_observable(encoding)
+
+
 def test_single_term_encoding_walks_with_correct_sign():
     # Single-term encodings are normalized to one ancilla, so Walk and the
     # observables apply unchanged — and the odd moment carries the sign.
@@ -117,6 +128,12 @@ def test_walk_power_validation():
         walk.moments([1, 0, 0, 0], -1)
     with pytest.raises(ValueError, match="control_state"):
         walk.controlled_kernel(power=1, control_state=2)
+
+
+def test_walk_repr_wraps_encoding_repr():
+    enc = PauliLCU(THREE_TERMS_1Q)
+    walk = Walk(enc)
+    assert repr(walk) == f"Walk({enc!r})"
 
 
 def test_walk_encoding_is_read_only():

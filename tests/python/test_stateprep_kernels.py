@@ -316,6 +316,16 @@ def _one_double_entry(theta: float, p_occ: int, q_occ: int, r_virt: int,
                                            s_virt)
 
 
+@cudaq.kernel
+def _double_excitation_entry(theta: float, p_occ: int, q_occ: int,
+                             r_virt: int, s_virt: int):
+    qubits = cudaq.qvector(4)
+    x(qubits[p_occ])
+    x(qubits[q_occ])
+    algorithms.stateprep.double_excitation(qubits, theta, p_occ, q_occ,
+                                           r_virt, s_virt)
+
+
 def test_double_excitation_negates_one_index_swap():
     # Swapping one pair sends tau = adag_r adag_s a_q a_p - h.c. to -tau.
     # The ladder must keep that minus: +theta on the H2 order [0, 1, 3, 2]
@@ -328,3 +338,38 @@ def test_double_excitation_negates_one_index_swap():
     # between the Hartree-Fock determinant and the double excitation is
     # the correlation sign.
     _assert_close(swapped, ordered)
+
+
+@pytest.mark.parametrize(
+    "p_occ,q_occ,r_virt,s_virt",
+    [(1, 3, 0, 2), (3, 1, 0, 2), (1, 3, 2, 0), (3, 1, 2, 0)])
+def test_double_excitation_overlapping_orderings_match_dense_generator(
+        p_occ, q_occ, r_virt, s_virt):
+    from scipy.linalg import expm
+
+    num_qubits = 4
+    theta = 0.4
+    actual = _state(_double_excitation_entry, theta, p_occ, q_occ, r_virt,
+                    s_virt)
+
+    annihilation = []
+    for mode in range(num_qubits):
+        operator = np.zeros((1 << num_qubits, 1 << num_qubits),
+                            dtype=np.complex128)
+        for basis in range(1 << num_qubits):
+            if basis & (1 << mode):
+                lower_occupations = basis & ((1 << mode) - 1)
+                sign = (-1)**lower_occupations.bit_count()
+                operator[basis ^ (1 << mode), basis] = sign
+        annihilation.append(operator)
+
+    excitation = (annihilation[r_virt].conj().T @
+                  annihilation[s_virt].conj().T @ annihilation[q_occ] @
+                  annihilation[p_occ])
+    generator = 1.0j * (excitation - excitation.conj().T)
+    determinant_index = (1 << p_occ) | (1 << q_occ)
+    determinant = np.zeros(1 << num_qubits, dtype=np.complex128)
+    determinant[determinant_index] = 1.0
+    reference = expm(-0.5j * theta * generator) @ determinant
+
+    _assert_close(actual, reference)

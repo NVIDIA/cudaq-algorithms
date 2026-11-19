@@ -216,6 +216,35 @@ def test_sum_controlled_walk_roundtrip_is_identity(control_value):
     np.testing.assert_allclose(out, expected, atol=1e-12)
 
 
+def test_sum_adjoint_walk_step_inverts_walk_step():
+    encoding, _, _ = _sum_case("three-mixed-widths")
+    walk = encoding.walk_step_kernel()
+    adjoint_walk = encoding.adjoint_walk_step_kernel()
+    num_ancilla = encoding.num_ancilla
+    ket = random_ket(NUM_QUBITS, seed=17)
+
+    @cudaq.kernel
+    def roundtrip(state: cudaq.State):
+        system = cudaq.qvector(state)
+        ancilla = cudaq.qvector(num_ancilla)
+        walk(ancilla, system)
+        adjoint_walk(ancilla, system)
+
+    actual = np.asarray(cudaq.get_state(roundtrip, state_from(ket)))
+    expected = np.zeros_like(actual)
+    expected[:1 << NUM_QUBITS] = ket
+    np.testing.assert_allclose(actual, expected, atol=1e-12)
+
+
+def test_sum_adjoint_walk_kernel_matches_dense_block():
+    encoding, dense, _ = _sum_case("five-repeated")
+    ket = random_ket(NUM_QUBITS, seed=18)
+    block = _block(encoding, Walk(encoding).adjoint_kernel(power=1), ket)
+
+    expected = (-dense / encoding.alpha) @ ket
+    np.testing.assert_allclose(block, expected, atol=1e-12)
+
+
 def test_sum_walk_kernel_applies_chebyshev_of_minus_h():
     encoding, dense, _ = _sum_case("three-mixed-widths")
     walk = Walk(encoding)
@@ -304,6 +333,23 @@ def test_rotated_block_is_rotated_operator_over_alpha(n, seed):
     np.testing.assert_allclose(block, dense @ ket / rotated.alpha, atol=1e-12)
 
 
+def test_rotated_encode_kernel_with_injected_state_prep():
+    rotated, dense, nq = _rotated_case(2, 5)
+
+    @cudaq.kernel
+    def prep(qubits: cudaq.qview):
+        x(qubits[0])
+        h(qubits[2])
+
+    ket = np.zeros(1 << nq, dtype=np.complex128)
+    ket[0b0001] = 1.0 / np.sqrt(2.0)
+    ket[0b0101] = 1.0 / np.sqrt(2.0)
+    out = np.asarray(cudaq.get_state(rotated.encode_kernel(state_prep=prep)))
+    np.testing.assert_allclose(out[:1 << nq],
+                               dense @ ket / rotated.alpha,
+                               atol=1e-12)
+
+
 def test_rotated_controlled_and_walk_kernels():
     rotated, dense, nq = _rotated_case(2, 5)
     ket = random_ket(nq, 10)
@@ -338,6 +384,26 @@ def test_rotated_controlled_and_walk_kernels():
         rotated.select_observable()
 
 
+def test_rotated_adjoint_walk_step_inverts_walk_step():
+    rotated, _, nq = _rotated_case(2, 5)
+    walk = rotated.walk_step_kernel()
+    adjoint_walk = rotated.adjoint_walk_step_kernel()
+    num_ancilla = rotated.num_ancilla
+    ket = random_ket(nq, seed=17)
+
+    @cudaq.kernel
+    def roundtrip(state: cudaq.State):
+        system = cudaq.qvector(state)
+        ancilla = cudaq.qvector(num_ancilla)
+        walk(ancilla, system)
+        adjoint_walk(ancilla, system)
+
+    actual = np.asarray(cudaq.get_state(roundtrip, state_from(ket)))
+    expected = np.zeros_like(actual)
+    expected[:1 << nq] = ket
+    np.testing.assert_allclose(actual, expected, atol=1e-12)
+
+
 def test_rotated_with_explicit_kernels():
     """A user-supplied basis change: conjugate Z words by Hadamards."""
     inner = PauliLCU({"ZI": 0.6, "IZ": -0.4})
@@ -359,6 +425,13 @@ def test_rotated_with_explicit_kernels():
 @cudaq.kernel
 def _identity_system_kernel(system: cudaq.qview):
     pass
+
+
+def test_rotated_encoding_repr():
+    inner = PauliLCU({"ZI": 0.5})
+    rotated = RotatedEncoding(inner, _identity_system_kernel,
+                              _identity_system_kernel)
+    assert repr(rotated) == f"RotatedEncoding({inner!r})"
 
 
 def test_rotated_orbital_rotation_validation():
@@ -588,6 +661,17 @@ class _ZeroAncilla:
         return getattr(self._inner, name)
 
 
+class _InvalidAlpha:
+    """A protocol-shaped wrapper with a caller-selected normalization."""
+
+    def __init__(self, inner, alpha):
+        self._inner = inner
+        self.alpha = alpha
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 def test_sum_rejects_complex_string_and_ancilla_free_operands():
     a = _encoding(TERMS_A)
     with pytest.raises(ValueError, match="complex"):
@@ -596,6 +680,22 @@ def test_sum_rejects_complex_string_and_ancilla_free_operands():
         SumEncoding([("2.0", a)])
     with pytest.raises(ValueError, match="at least one ancilla"):
         SumEncoding([(1.0, _ZeroAncilla(a))])
+
+
+@pytest.mark.parametrize(
+    "alpha",
+    [
+        pytest.param(0.0, id="zero"),
+        pytest.param(-1.0, id="negative"),
+        pytest.param(float("inf"), id="positive-infinity"),
+        pytest.param(float("-inf"), id="negative-infinity"),
+        pytest.param(float("nan"), id="nan"),
+    ],
+)
+def test_sum_rejects_nonpositive_or_nonfinite_operand_alpha(alpha):
+    operand = _InvalidAlpha(_encoding(TERMS_A), alpha)
+    with pytest.raises(ValueError, match="positive finite alpha"):
+        SumEncoding([(1.0, operand)])
 
 
 def test_rotated_rejects_non_kernels_and_degenerate_rotations():

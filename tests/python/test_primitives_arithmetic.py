@@ -117,6 +117,17 @@ def test_subtract_register_inverts_add_register(n):
                                    atol=1e-12)
 
 
+def test_subtract_register_empty_register_is_identity():
+    state = np.array(cudaq.get_state(_run_register_op_fixed_b, 0, 0, 1))
+    np.testing.assert_allclose(state, _basis(0, 1), atol=1e-12)
+
+
+def test_add_register_empty_register_is_noop():
+    state = np.array(cudaq.get_state(_run_register_op_fixed_b, 0, 0, 0))
+    np.testing.assert_allclose(
+        state, _fixed_b_expected(0, 0, lambda a, b: a + b), atol=1e-12)
+
+
 # ----------------------------------------------------------------------
 # Constant add / subtract (CDKM and Draper QFT)
 # ----------------------------------------------------------------------
@@ -349,6 +360,12 @@ def test_cmp_ge_constant_all_inputs(n):
                                                      lambda v: v >= constant,
                                                      n + 1, flag_init),
                                        atol=1e-12)
+
+
+def test_cmp_ge_constant_empty_register_is_false():
+    state = np.array(cudaq.get_state(_run_cmp_ge_constant, 0, [], 0, 0))
+    np.testing.assert_allclose(
+        state, _cmp_expected(0, lambda value: value >= 1, 1), atol=1e-12)
 
 
 @pytest.mark.parametrize("n", WIDTHS)

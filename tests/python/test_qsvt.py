@@ -57,6 +57,13 @@ TWO_TERMS_1Q = {"X": 0.5, "Z": 0.3}
 FOUR_TERMS_2Q = {"ZI": 0.70, "IZ": -0.43, "XX": 0.19, "YZ": 0.11}
 
 
+def test_qsvt_repr_includes_encoding_repr():
+    encoding = PauliLCU(TWO_TERMS_1Q)
+    transformer = QSVT(encoding)
+
+    assert repr(transformer) == f"QSVT({encoding!r})"
+
+
 def test_phase_sequence_validation_and_conversion():
     seq = PhaseSequence([0.1, -0.2, 0.3])
     assert seq.degree == 2
@@ -80,6 +87,26 @@ def test_phase_sequence_validation_and_conversion():
         PhaseSequence([0.1, 0.2], walk_directions=["sideways"])
     with pytest.raises(ValueError):
         PhaseSequence([0.1], convention="phaseish")
+
+
+@pytest.mark.parametrize(
+    "phase", [float("nan"), float("inf"), float("-inf")],
+    ids=["nan", "positive-infinity", "negative-infinity"])
+def test_phase_sequence_rejects_nonfinite_phases(phase):
+    with pytest.raises(ValueError, match="phases must be finite"):
+        PhaseSequence([phase])
+
+
+@pytest.mark.parametrize(
+    ("phases", "convention", "expected"),
+    [([0.2], "qsvt", "PhaseSequence(degree=0, convention='qsvt')"),
+     ([0.1, -0.2, 0.3], "qsp",
+      "PhaseSequence(degree=2, convention='qsp')")],
+    ids=["qsvt-degree-zero", "qsp-degree-two"])
+def test_phase_sequence_repr(phases, convention, expected):
+    sequence = PhaseSequence(phases, convention=convention)
+
+    assert repr(sequence) == expected
 
 
 def test_response_matches_circuit_on_eigenstate():

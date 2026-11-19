@@ -217,6 +217,25 @@ def test_state_prep_injection_matches_explicit_state():
     np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
 
 
+def test_walk_kernel_state_prep_delegates_alias_backend():
+    enc = build(hamiltonian=SMALL, mu=1)
+
+    @cudaq.kernel
+    def prep(qubits: cudaq.qview):
+        ry(0.73, qubits[0])
+
+    ket = np.array([np.cos(0.365), np.sin(0.365)], dtype=np.complex128)
+    via_prep = np.asarray(
+        cudaq.get_state(enc.walk_kernel(power=2, state_prep=prep)))
+    via_state = np.asarray(
+        cudaq.get_state(enc.walk_kernel(power=2), state_from(ket)))
+    np.testing.assert_allclose(via_prep, via_state, atol=1e-10)
+
+    scaled = discretized_dense(enc) / enc.alpha
+    t2 = 2.0 * scaled @ scaled - np.eye(2, dtype=np.complex128)
+    np.testing.assert_allclose(via_prep[:2], t2 @ ket, atol=1e-10)
+
+
 # ----------------------------------------------------------------------
 # 3. Walk and QSVT through the consumers
 # ----------------------------------------------------------------------

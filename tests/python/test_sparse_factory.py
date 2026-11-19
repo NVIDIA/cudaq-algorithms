@@ -34,6 +34,19 @@ import cudaq
 from cudaq_algorithms.common_kernels import state_from
 from cudaq_algorithms.sparse import (SparseOracleEncoding, encode_sparse,
                                      qrom_oracles)
+from cudaq_algorithms.sparse._entries import _looks_like_triples
+
+
+class _CooLike:
+
+    def __init__(self, shape, row, col, data):
+        self.shape = shape
+        self.row = np.asarray(row)
+        self.col = np.asarray(col)
+        self.data = np.asarray(data)
+
+    def tocoo(self):
+        return self
 
 
 def quantized_angle(value: float, h: float, value_bits: int) -> int:
@@ -218,6 +231,37 @@ def test_qrom_oracles_validation_raises():
         qrom_oracles(np.eye(2), 0)
     with pytest.raises(ValueError, match="h="):
         qrom_oracles(np.eye(2), 4, h=0.5)
+
+
+@pytest.mark.parametrize(
+    "matrix, dim, message",
+    [
+        pytest.param(_CooLike((2, 3), [0], [0], [1]), None,
+                     "matrix must be square", id="nonsquare-coo"),
+        pytest.param(([0], [0, 1], [1]), 2, "same length",
+                     id="mismatched-triples"),
+        pytest.param(np.zeros((2, 3)), None, "matrix must be square",
+                     id="nonsquare-dense"),
+        pytest.param(np.zeros((0, 0)), None, "dimension >= 1",
+                     id="empty-dense"),
+        pytest.param(_CooLike((2, 2), [0.5], [0], [1]), None,
+                     "indices must be integers", id="fractional-coo-index"),
+        pytest.param(([2], [0], [1]), 2, "out of range",
+                     id="triple-index-out-of-range"),
+    ])
+def test_qrom_oracles_rejects_malformed_matrix_inputs(matrix, dim, message):
+    with pytest.raises(ValueError, match=message):
+        qrom_oracles(matrix, 4, dim=dim)
+
+
+def test_looks_like_triples_falls_back_on_array_conversion_error():
+
+    class Uncoercible:
+
+        def __array__(self, dtype=None, copy=None):
+            raise ValueError("not array-like")
+
+    assert not _looks_like_triples((Uncoercible(), [0], [1]))
 
 
 # ----------------------------------------------------------------------

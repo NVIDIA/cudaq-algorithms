@@ -12,7 +12,8 @@ from cudaq import spin
 
 from cudaq_algorithms import sim_utils as sim
 from cudaq_algorithms import PauliLCU, PhaseSequence, QSVT, state_from
-from cudaq_algorithms.common_kernels import reflect_about_zero, signal_phase
+from cudaq_algorithms.common_kernels import (controlled_signal_phase,
+                                             reflect_about_zero, signal_phase)
 from cudaq_algorithms.pauli_lcu import (_prepare_angles,
                                         apply_controlled_phase_sequence,
                                         apply_phase_sequence, prepare,
@@ -33,6 +34,14 @@ def test_action_matches_dense_hamiltonian():
     expected = dense_matrix(list(
         (c, w) for w, c in FOUR_TERMS.items()), 2) @ ket / enc.alpha
     assert np.allclose(sim.action(enc, ket), expected, atol=1e-10)
+
+
+def test_good_subspace_rejects_wrong_statevector_shape():
+    encoding = PauliLCU(FOUR_TERMS)
+    wrong_state = np.zeros(15, dtype=np.complex128)
+
+    with pytest.raises(ValueError, match="statevector of dimension 16"):
+        sim.good_subspace(encoding, wrong_state)
 
 
 def test_spin_operator_and_pairs_inputs_agree():
@@ -128,6 +137,18 @@ def test_validation_errors():
         PauliLCU(42)
 
 
+def test_constructor_threshold_filtering_and_angle_size_validation():
+    encoding = PauliLCU({"XI": 5e-4, "ZI": 0.5},
+                        coefficient_threshold=1e-3)
+    assert encoding.terms == [(0.5, "ZI")]
+    assert encoding.alpha == pytest.approx(0.5)
+
+    with pytest.raises(ValueError, match="no retained terms"):
+        PauliLCU({"XI": 5e-4}, coefficient_threshold=1e-3)
+    with pytest.raises(ValueError, match="size must be a power of 2"):
+        _prepare_angles([0.25, 0.25, 0.5])
+
+
 def test_repr_reads_well():
     text = repr(PauliLCU(FOUR_TERMS))
     assert "terms=4" in text
@@ -174,6 +195,71 @@ def test_module_level_phase_sequence_kernels_compose():
     state = np.asarray(
         cudaq.get_state(composed_controlled, sim.state_from(ket)))
     assert np.allclose(state, reference, atol=1e-12)
+
+
+def test_module_level_phase_sequence_adjoint_direction_matches_qsvt():
+    enc = PauliLCU({"ZI": 0.7, "IZ": -0.43, "XX": 0.19})
+    seq = PhaseSequence([0.4, -0.2], walk_directions=[1])
+    phases = seq.projector_phases
+    directions = list(seq.walk_directions)
+    angles, controls, ops, lengths, signs = enc.kernel_args
+    n_anc = enc.num_ancilla
+    ket = random_ket(2, seed=18)
+
+    @cudaq.kernel
+    def composed(state: cudaq.State):
+        system = cudaq.qvector(state)
+        signal = cudaq.qvector(n_anc)
+        apply_phase_sequence(signal, system, phases, directions, angles,
+                             controls, ops, lengths, signs)
+
+    reference = np.asarray(
+        cudaq.get_state(QSVT(enc).kernel(seq), sim.state_from(ket)))
+    actual = np.asarray(cudaq.get_state(composed, sim.state_from(ket)))
+    np.testing.assert_allclose(actual, reference, atol=1e-12)
+
+
+def test_module_level_controlled_phase_sequence_adjoint_direction_matches_qsvt():
+    enc = PauliLCU({"ZI": 0.7, "IZ": -0.43, "XX": 0.19})
+    seq = PhaseSequence([0.4, -0.2], walk_directions=[1])
+    phases = seq.projector_phases
+    directions = list(seq.walk_directions)
+    angles, controls, ops, lengths, signs = enc.kernel_args
+    n_anc = enc.num_ancilla
+    ket = random_ket(2, seed=18)
+
+    @cudaq.kernel
+    def composed_controlled(state: cudaq.State):
+        system = cudaq.qvector(state)
+        control_and_signal = cudaq.qvector(1 + n_anc)
+        x(control_and_signal[0])
+        apply_controlled_phase_sequence(control_and_signal, system, phases,
+                                        directions, angles, controls, ops,
+                                        lengths, signs)
+
+    reference = np.asarray(
+        cudaq.get_state(
+            QSVT(enc).controlled_kernel(seq, control_state=1),
+            sim.state_from(ket)),
+        dtype=np.complex128)
+    actual = np.asarray(
+        cudaq.get_state(composed_controlled, sim.state_from(ket)),
+        dtype=np.complex128)
+    np.testing.assert_allclose(actual, reference, atol=1e-12)
+
+
+def test_controlled_signal_phase_without_signal_qubits():
+    phase = 0.37
+
+    @cudaq.kernel
+    def probe():
+        control_and_signal = cudaq.qvector(1)
+        x(control_and_signal[0])
+        controlled_signal_phase(control_and_signal, phase)
+
+    actual = np.asarray(cudaq.get_state(probe), dtype=np.complex128)
+    expected = np.array([0.0, np.exp(1.0j * phase)], dtype=np.complex128)
+    np.testing.assert_allclose(actual, expected, atol=1e-12)
 
 
 def test_kernels_tolerate_empty_register_views():

@@ -530,6 +530,70 @@ def test_eigendecomposition_threshold_zero_stops_at_numerical_rank():
     assert df.factorization_error(eri, factorization) < 1.0e-10
 
 
+def test_eigendecomposition_loop_completion_and_leaf_cap():
+    scalar_eri = np.ones((1, 1, 1, 1))
+    complete = df.explicit_double_factorization(
+        scalar_eri,
+        threshold=0.0,
+        first_factorization="eigendecomposition",
+        backend="numpy")
+    assert complete.num_leaves == 1
+    np.testing.assert_allclose(complete.reconstruct_eri(), scalar_eri)
+
+    leaves = np.array([np.diag([1.0, 0.0]), np.diag([0.0, 1.0])])
+    rank_two_eri = np.einsum("xpq,xrs->pqrs", leaves, leaves)
+    capped = df.explicit_double_factorization(
+        rank_two_eri,
+        threshold=0.0,
+        max_num_leaves=1,
+        first_factorization="eigendecomposition",
+        backend="numpy")
+    assert capped.num_leaves == 1
+    rotation = capped.leaf_rotations[0]
+    core = capped.leaf_cores[0]
+    np.testing.assert_allclose(rotation.T @ rotation, np.eye(2))
+    np.testing.assert_allclose(core, core.T)
+
+
+def test_unknown_factorization_and_backend_selectors_raise():
+    eri = np.ones((1, 1, 1, 1))
+    with pytest.raises(ValueError):
+        df.explicit_double_factorization(
+            eri, first_factorization="unsupported", backend="numpy")
+    with pytest.raises(ValueError):
+        df.explicit_double_factorization(eri, backend="unsupported")
+
+
+def test_initial_generators_fall_back_and_pad_on_logm_branch_cut(monkeypatch):
+    import cudaq_algorithms.double_factorization._factorization as F
+
+    xdf = F.DoubleFactorization(
+        num_orbitals=2,
+        leaf_rotations=[-np.eye(2)],
+        leaf_cores=[np.zeros((2, 2))],
+        method="X-DF")
+    monkeypatch.setattr(F,
+                        "explicit_double_factorization",
+                        lambda *args, **kwargs: xdf)
+
+    generators = F._initial_generators(
+        np.zeros((2, 2, 2, 2)), num_leaves=2, n=2, backend="numpy")
+    assert len(generators) == 2
+    assert all(np.allclose(generator, 0.0) for generator in generators)
+
+
+def test_cdf_uses_explicit_initial_generators_without_xdf_warm_start():
+    eri = np.ones((1, 1, 1, 1))
+    factorization = df.compressed_double_factorization(
+        eri,
+        num_leaves=1,
+        initial_generators=[np.zeros((1, 1))],
+        backend="numpy")
+    np.testing.assert_allclose(factorization.leaf_rotations[0], np.eye(1))
+    assert factorization.optimizer_nit == 0
+    np.testing.assert_allclose(factorization.reconstruct_eri(), eri)
+
+
 def test_pair_swap_asymmetry_rejected():
     eri = _synthetic_eri(4, 3, seed=26)
     eri[0, 0, 1, 1] += 0.05  # breaks (pq|rs) == (rs|pq) only
@@ -711,6 +775,30 @@ def test_cupy_gpu_available_requires_a_working_kernel(monkeypatch):
     assert B.cupy_gpu_available() is False
 
 
+@pytest.mark.parametrize("device_count", [None, 0],
+                         ids=["cupy-absent", "no-visible-device"])
+def test_cupy_gpu_available_without_cupy_or_device(device_count, monkeypatch):
+    import cudaq_algorithms.double_factorization._backend as B
+
+    if device_count is None:
+        monkeypatch.setattr(B, "_cupy", None)
+    else:
+
+        class _NoDeviceCuPy:
+
+            class cuda:
+
+                class runtime:
+
+                    @staticmethod
+                    def getDeviceCount():
+                        return 0
+
+        monkeypatch.setattr(B, "_cupy", _NoDeviceCuPy)
+
+    assert B.cupy_gpu_available() is False
+
+
 @pytest.mark.parametrize("kind", ["xdf", "cdf"])
 def test_auto_uses_numpy_when_cupy_kernel_probe_fails(kind, monkeypatch):
     # backend="auto" must stay on NumPy when the GPU is visible but unusable.
@@ -812,3 +900,50 @@ def test_cg_inner_cores_are_zero_for_a_zero_rhs(backend):
     # One iteration from this guess cannot reach 0, so an exact 0 is the early return.
     for core in cores:
         assert np.allclose(to_numpy(core), 0.0)
+
+
+def test_cg_stops_on_nonpositive_curvature(monkeypatch):
+    import cudaq_algorithms.double_factorization._factorization as F
+    from cudaq_algorithms.double_factorization._backend import (
+        resolve_backend, to_device, to_numpy)
+
+    xp, _ = resolve_backend("numpy")
+    eri_dev = to_device(_synthetic_eri(n=2, num_vectors=1, seed=7), xp)
+    rotation = to_device(np.eye(2), xp)
+    rhs = F._project_eri_into_leaf(eri_dev, rotation, xp)
+    assert np.any(to_numpy(rhs) != 0.0)
+
+    original_to_numpy = F.to_numpy
+    conversion_count = 0
+
+    def report_zero_curvature(value):
+        nonlocal conversion_count
+        conversion_count += 1
+        if conversion_count == 3:
+            return 0.0
+        return original_to_numpy(value)
+
+    monkeypatch.setattr(F, "to_numpy", report_zero_curvature)
+    initial_guess = xp.zeros((1, 2, 2))
+    cores = F._solve_inner_cores_cg(eri_dev, [rotation], xp,
+                                    tolerance=0.0,
+                                    max_iterations=1,
+                                    initial_guess=initial_guess)
+
+    assert conversion_count == 3
+    assert np.allclose(to_numpy(cores[0]), 0.0)
+
+
+def test_inner_core_solver_rejects_unknown_selector():
+    import cudaq_algorithms.double_factorization._factorization as F
+    from cudaq_algorithms.double_factorization._backend import (
+        resolve_backend, to_device)
+
+    xp, _ = resolve_backend("numpy")
+    eri_dev = to_device(np.zeros((1, 1, 1, 1)), xp)
+    rotations = [to_device(np.eye(1), xp)]
+
+    with pytest.raises(
+            ValueError,
+            match="inner_solver must be 'lstsq' or 'cg'"):
+        F._solve_inner_cores(eri_dev, rotations, xp, solver="unknown")

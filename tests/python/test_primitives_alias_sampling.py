@@ -29,6 +29,7 @@ import pytest
 
 import cudaq
 
+from cudaq_algorithms.primitives._alias_sampling import _vose_tables
 from cudaq_algorithms.primitives import AliasSamplingPrepare
 
 
@@ -77,6 +78,19 @@ CASES = [
     ([1.0] * 8, 2),  # uniform: every bin full, exactly representable
     ([0.9, 0.0, 2.2, 0.0, 0.4, 1.3, 0.0, 3.1], 2),  # zero-weight entries
 ]
+
+
+def test_vose_negative_residual_skips_zero_weight_bins():
+    mu = 52
+    unit = 1 << mu
+    keep, alias, table = _vose_tables([0.0, 0.2, 0.8, 0.0], mu)
+
+    assert keep == [0, 3602879701896396, unit - 1, 0]
+    assert alias == [2, 2, 2, 2]
+    np.testing.assert_array_equal(
+        table,
+        [0.0, 3602879701896396 / (4 * unit),
+         14411518807585588 / (4 * unit), 0.0])
 
 
 @pytest.mark.parametrize("weights,mu", CASES)

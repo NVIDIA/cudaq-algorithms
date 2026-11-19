@@ -57,6 +57,17 @@ def _complex_entry(num_spin_orbitals: int, orbital_indices: list[int],
                                                     num_electrons)
 
 
+@cudaq.kernel
+def _givens_dispatch_entry(theta: float, first_orbital: int,
+                           second_orbital: int):
+    q = cudaq.qvector(3)
+    x(q[0])
+    algorithms.stateprep.givens_rotation(q, theta, first_orbital,
+                                         second_orbital)
+    algorithms.stateprep.givens_rotation(q, theta, second_orbital,
+                                         first_orbital)
+
+
 # ----------------------------------------------------------------------------
 # References and helpers
 # ----------------------------------------------------------------------------
@@ -148,6 +159,27 @@ def _prepare_complex_slater_state(orbital_coefficients):
 # ----------------------------------------------------------------------------
 # Statevector correctness
 # ----------------------------------------------------------------------------
+
+
+def test_givens_dispatch_and_malformed_schedule_guards():
+    theta = 0.37
+    expected_givens = np.zeros(8, dtype=complex)
+    expected_givens[1] = 1.0
+
+    for first_orbital, second_orbital in ((1, 0), (0, 2)):
+        actual = np.asarray(
+            cudaq.get_state(_givens_dispatch_entry, theta, first_orbital,
+                            second_orbital))
+        np.testing.assert_allclose(actual, expected_givens, atol=1.0e-12)
+
+    expected_noop = np.array([1.0, 0.0, 0.0, 0.0], dtype=complex)
+    real_state = np.asarray(cudaq.get_state(_real_entry, 2, [0], [theta], 1))
+    np.testing.assert_allclose(real_state, expected_noop, atol=1.0e-12)
+
+    complex_state = np.asarray(
+        cudaq.get_state(_complex_entry, 2, [0, 1], [theta], [0.2, 0.3],
+                        [0.1], 1))
+    np.testing.assert_allclose(complex_state, expected_noop, atol=1.0e-12)
 
 
 def test_givens_schedule_two_orbital_statevector():
@@ -715,6 +747,15 @@ def test_orbital_rotation_schedule_edge_cases_and_validation():
     modes, angles = stateprep.orbital_rotation_program(identity, inverse=False)
     # No rotations: the program is the single zero-angle (identity) rotation.
     assert modes == [0] and angles == [0.0]
+
+
+def test_orbital_rotation_schedule_rejects_negative_tolerance():
+    theta = 5.0e-15
+    rotation = np.array([[np.cos(theta), -np.sin(theta)],
+                         [np.sin(theta), np.cos(theta)]])
+
+    with pytest.raises(ValueError, match="Givens sweep did not reduce"):
+        stateprep.make_orbital_rotation_schedule(rotation, tolerance=1.0e-18)
 
 
 @pytest.mark.parametrize("matrix", [
