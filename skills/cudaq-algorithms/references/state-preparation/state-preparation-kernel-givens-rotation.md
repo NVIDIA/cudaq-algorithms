@@ -35,7 +35,6 @@ execution or measurement.
 | Output representations | in-place unitary mutation of the supplied register; no host return value |
 | Domain | quantum-chemistry / fermionic state preparation |
 | Required dependencies | CUDA-Q kernel language and its `exp_pauli(angle, register, word)` operation |
-| Optional dependencies | Not applicable: none |
 | Exactness | exact for the two source-level Pauli rotations on a supported adjacent pair, subject to floating-point angle synthesis |
 | Uncertainty | deterministic |
 | Method | Jordan-Wigner two-mode rotation expressed as two two-qubit Pauli exponentials |
@@ -91,8 +90,6 @@ execution or measurement.
 | Mathematical meaning | the in-place unitary map stated above for a supported adjacent pair; identity for an in-range pair that fails the adjacency guard |
 | Shape/register geometry | register width is unchanged; the supported branch touches exactly the contiguous two-qubit slice spanning `f` and `s`; no ancilla is allocated |
 | Normalization, sign, and phase | norm and particle number are preserved. The plus sign in the `|10> -> |01>` amplitude is the package state-preparation convention and equals CUDA-Q's built-in Givens convention evaluated at `-theta`, according to the source docstring |
-| Observable or measurement interpretation | Not applicable: no observable is returned and no measurement occurs |
-| Error/status information | Not applicable: the device kernel has no error or status channel |
 
 ## Capabilities and composition
 

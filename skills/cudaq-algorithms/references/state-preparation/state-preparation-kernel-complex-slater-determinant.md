@@ -36,7 +36,6 @@ execution or measurement.
 | Output representations | in-place preparation on the supplied register; no host return value |
 | Domain | quantum-chemistry / complex fermionic state preparation |
 | Required dependencies | CUDA-Q kernel language and [the phase-aware Givens device kernel](state-preparation-kernel-phase-givens-rotation.md) |
-| Optional dependencies | Not applicable: none |
 | Exactness | exact for the ordered circuit represented by supported flattened data, subject to floating-point angle synthesis; any schedule-construction threshold is outside this raw kernel |
 | Uncertainty | deterministic |
 | Method | prepare the contiguous occupation reference, apply one final number phase per electron, then apply an ordered phase-aware adjacent Givens network |
@@ -107,8 +106,6 @@ execution or measurement.
 | Mathematical meaning | on `|0...0>` with supported schedule-derived data, the complex Slater determinant stated above; with arbitrary supported flat data, the listed ordered unitary applied to the final-phased contiguous reference; with a false outer guard, the input register is unchanged |
 | Shape/register geometry | register width remains `N`; the reference/final phases touch qubits `0:E`, and each valid rotation touches one adjacent pair plus its second-orbital phase target; no ancilla is allocated |
 | Normalization, sign, and phase | norm and particle number are preserved on supported data. Relative phases use `exp(+i*phase*n_second)` up to global phase, and final phases use the same number-phase convention on the initially occupied qubits. Raw statevectors must be compared up to global phase |
-| Observable or measurement interpretation | Not applicable: no observable is returned and no measurement occurs |
-| Error/status information | Not applicable: the device kernel has no error or status channel |
 
 ## Capabilities and composition
 

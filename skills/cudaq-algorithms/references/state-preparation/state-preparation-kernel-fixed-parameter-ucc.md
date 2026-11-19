@@ -31,7 +31,6 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 | Output representations | in-place transformed live register; no host return value |
 | Domain | domain-independent at the execution boundary; a caller-selected pool may impose a domain such as quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17`; a CUDA-Q target to execute the enclosing kernel |
-| Optional dependencies | Not applicable: none in the public contract |
 | Exactness | exact ordered product for the supplied grouped data after converter pruning, subject to target floating-point synthesis |
 | Uncertainty | deterministic |
 | Method | fixed-amplitude unitary coupled-cluster-style Pauli product over a caller-selected pool |
@@ -84,16 +83,11 @@ turn that choice into UCCSD, UCCGSD, UpCCGSD, or CEO provenance.
 | Mathematical meaning | the ordered `+i` Pauli product above applied to the incoming, caller-prepared state |
 | Shape/register geometry | width unchanged; no ancilla, control, or measurement register allocated |
 | Normalization, sign, and phase | norm-preserving unitary; exponent sign `+i`, no `1/2`; phases follow strict product order |
-| Observable or measurement interpretation | Not applicable: no measurement or observable is produced |
-| Error/status information | Not applicable: no return/status channel; malformed runtime inputs have no uniform characterized rejection mode |
 
 ## Capabilities and composition
 
 | Field | Contract |
 | --- | --- |
-| Stable ID | Not applicable: no capability ID is assigned to this multi-argument kernel |
-| Capability status | Not applicable |
-| Direction | Not applicable |
 | Owning record | this record owns the direct boundary; [injection-contract.md](injection-contract.md) owns the different one-register capability |
 | Boundary representation and exact signature | direct device composition through the exact four-argument signature under Inputs |
 | Semantic invariants | one amplitude per group, caller pool provenance, full-width words, `+i` exponent, strict group/term order, and prior reference preparation |

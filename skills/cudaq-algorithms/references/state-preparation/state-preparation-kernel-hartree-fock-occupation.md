@@ -31,7 +31,6 @@ the injectable factory, and the resource estimators are routed separately by
 | Output representations | in-place state transformation; no host return |
 | Domain | quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17` as declared by `pyproject.toml` |
-| Optional dependencies | Not applicable: the kernel has no optional dependency |
 | Exactness | exact for the emitted sequence of logical `X` calls on valid inputs |
 | Uncertainty | deterministic |
 | Method | explicit computational-basis preparation by indexed bit flips |
@@ -44,7 +43,6 @@ the injectable factory, and the resource estimators are routed separately by
 | Mathematical definition | For valid distinct indices `O=(o_0,...,o_(m-1))` and all-zero input, apply `U_O = product_(j=0)^(m-1) X_(o_j)`. The result is the basis state with occupied set `O` and little-endian index `sum_(o in O) 2**o`. The source emits gates in list order; for valid distinct indices the `X` factors commute |
 | Why and when to use | Use inside a caller's kernel when the exact occupied-orbital list is already available, especially an open-shell list produced by `make_hartree_fock_occupation` |
 | When not to use | Do not pass unvalidated hand-built indices or an empty runtime list. Use [`hartree_fock`](state-preparation-kernel-hartree-fock.md) for a simple contiguous prefix, or `hartree_fock_ucc_kernel` for a factory-validated one-register injectable provider |
-| Approximation controls | Not applicable: no approximation parameter exists |
 
 ## Inputs
 
@@ -53,7 +51,6 @@ the injectable factory, and the resource estimators are routed separately by
 | Arguments | Exact signature: `hartree_fock_occupation(qubits: cudaq.qview, occupied_orbitals: list[int])` |
 | Shapes/ranks | `qubits` is a one-dimensional live register view; `occupied_orbitals` is a flat runtime list |
 | Dtypes/domains | Every valid entry is a non-boolean, non-negative integer strictly below `qubits.size()`; entries are unique; the raw runtime list must be non-empty because of the cited CUDA-Q empty-list marshaling limitation |
-| Units | Not applicable: spin-orbital indices are dimensionless |
 | Ordering/layout | Each index is a spin-orbital/qubit index; qubit 0 is least significant, spatial orbital `p` maps to alpha `2p` and beta `2p+1`, and `spin` means `2*S_z`; see [conventions.md](../conventions.md) |
 | Normalization | The input register must be a normalized all-zero state for the documented preparation meaning; the unitary preserves norm |
 | Required mathematical properties | The indices must describe a set: valid, in range, and pairwise distinct. A safe open-shell list is produced by `make_hartree_fock_occupation(num_qubits, num_electrons, spin)` |
@@ -67,8 +64,6 @@ the injectable factory, and the resource estimators are routed separately by
 | Mathematical meaning | In-place application of `U_O`; from all-zero input and valid distinct indices, the determinant occupying exactly `O` |
 | Shape/register geometry | The caller owns and allocates the register; the kernel allocates no system or ancilla qubit |
 | Normalization, sign, and phase | Norm-preserving with computational-basis amplitude `+1` for the direct all-zero preparation; input list order does not change that valid distinct-index result |
-| Observable or measurement interpretation | Not applicable: the kernel performs no measurement and returns no observable |
-| Error/status information | Not applicable: device execution returns neither a validation result nor a status channel |
 
 ## Capabilities and composition
 
@@ -89,7 +84,6 @@ Not applicable: leaf operation.
 | Field | Statement |
 | --- | --- |
 | Error behavior or bounds | The source introduces no approximation and states no numerical error bound; target gate realization is outside this source-level contract |
-| Precision sensitivity | Not applicable at the logical source level because this kernel has no continuous parameter |
 | Unsupported inputs | Empty runtime lists, duplicate or non-integral indices, negative or out-of-range indices, and a nonzero input used as though it were a freshly prepared reference |
 | Known implementation limitations | Duplicate indices are not rejected and apply `X` repeatedly, so an even duplicate count can silently erase the intended occupation. Empty lists cannot cross this kernel boundary according to `_kernels.py:51-53` |
 | Unsupported, absent, and unverified behavior | Out-of-range launch behavior is unverified; host validation inside the raw device kernel is absent; controlled, adjoint, dirty-input, and width-mismatch semantics beyond the literal gate sequence are unverified |
@@ -124,5 +118,4 @@ not circuit depth, transpiled gates, hardware runtime, or memory.
 | Field | Alignment |
 | --- | --- |
 | Literature conventions | No literature citation defines this source contract. Interpret indices using the repository's little-endian, interleaved alpha-even/beta-odd convention |
-| External package translations | Not applicable: no external-package translation is established by the cited source, tests, or documentation |
 | Known semantic differences | Blocked-spin external occupations must be permuted to the package's interleaved indexing before use. Duplicate list entries are repeated `X` operations, not set semantics, unless rejected on the host |

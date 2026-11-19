@@ -31,7 +31,6 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Output representations | in-place transformed live quantum register; no host return value |
 | Domain | quantum-chemistry |
 | Required dependencies | `cudaq >=0.16.0,<0.17`; a CUDA-Q target to execute the enclosing kernel |
-| Optional dependencies | Not applicable: none in the public kernel contract |
 | Exactness | exact ordered circuit for the supplied amplitudes, subject to target floating-point synthesis; it is not a Trotter approximation of a summed generator |
 | Uncertainty | deterministic |
 | Method | unitary coupled-cluster singles-and-doubles ansatz product |
@@ -87,16 +86,11 @@ fixed-parameter kernel, or the one-register injectable state-preparation seam.
 | Mathematical meaning | the ordered UCCSD product under "Scientific contract" applied to the incoming register state |
 | Shape/register geometry | register width is unchanged; no qubit, ancilla, control, or measurement register is allocated |
 | Normalization, sign, and phase | norm-preserving unitary with the tested uniform `-i/2` scale relative to the signed pool terms; grouped kernels use `+i` and need the amplitude conversion above |
-| Observable or measurement interpretation | Not applicable: no measurement or observable is produced |
-| Error/status information | Not applicable: a device kernel has no host return or status channel; malformed inputs do not have one uniform characterized failure mode |
 
 ## Capabilities and composition
 
 | Field | Contract |
 | --- | --- |
-| Stable ID | Not applicable: no reusable capability is assigned to this multi-argument runtime kernel |
-| Capability status | Not applicable |
-| Direction | Not applicable |
 | Owning record | this primitive record owns the direct concrete boundary; [injection-contract.md](injection-contract.md) owns a different one-register capability |
 | Boundary representation and exact signature | direct device composition through `uccsd(qubits, thetas, num_electrons, spin)` |
 | Semantic invariants | preserve the five-group excitation and amplitude order, local UCCSD scale/sign convention, and caller-prepared input state |
