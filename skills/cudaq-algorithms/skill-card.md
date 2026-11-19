@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and quantum-computing researchers use this skill to design, implement, debug, review, validate, and compose CUDA-Q Algorithms (cudaq_algorithms) APIs and fault-tolerant primitives, including state preparation, block encoding, qubitization, QSP/QSVT, Suzuki-Trotter evolution, fermion transforms, chemistry, and double factorization. It is not for CUDA-Q installation, backend setup, or basic standalone kernels. <br>
+Developers, researchers, and engineers use this skill to design, implement, debug, review, validate, or compose CUDA-Q Algorithms (cudaq_algorithms) APIs and fault-tolerant primitives, including state preparation, block encoding, qubitization, QSP/QSVT, Suzuki-Trotter evolution, fermion transforms, chemistry, double factorization, and circuit primitives such as QROM and reversible arithmetic. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -26,10 +26,10 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [Catalog](references/catalog.md) <br>
+- [Quick contract](references/quick-contract.md) <br>
 - [Workflow](references/workflow.md) <br>
 - [Validation](references/validation.md) <br>
 - [Conventions](references/conventions.md) <br>
-- [Quick contract](references/quick-contract.md) <br>
 - [Application composition](references/application-composition.md) <br>
 - [Source provenance](references/source-provenance.md) <br>
 - [Block encoding](references/block-encoding/block-encoding.md) <br>
@@ -39,16 +39,17 @@ Mitigation: Review and scan skill before deployment. <br>
 - [Primitives](references/primitives/primitives.md) <br>
 - [QSVT](references/qsvt/qsvt.md) <br>
 - [Qubitization](references/qubitization/qubitization.md) <br>
+- [Simulation](references/simulation/simulation-evolve.md) <br>
 - [State preparation](references/state-preparation/state-preparation.md) <br>
+- [State preparation injection contract](references/state-preparation/injection-contract.md) <br>
 - [Trotter](references/trotter/trotter.md) <br>
-- [Router script](scripts/route.py) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, Code, Shell commands] <br>
-**Output Format:** [Markdown with inline Python and bash code blocks; runnable Python scripts with observed output for implementation requests] <br>
+**Output Type(s):** [Code, Analysis, Shell commands] <br>
+**Output Format:** [Markdown with inline Python and bash code blocks; runnable Python scripts with observed CHECK output] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [Numerical results report one CHECK line per independent comparison and include the exact reproduction command for executed work.] <br>
+**Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
 - Claude Code (`aws/anthropic/bedrock-claude-opus-5-5`) <br>
@@ -57,7 +58,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-19 evaluation tasks (16 positive, 3 negative); 1 attempt per task, each in its own isolated sandbox pod (`k8s-sandbox` environment), with each task also attempted without the skill as a baseline. Evaluator version `1.6.9`, evaluation date 2026-11-18. <br>
+19 evaluation tasks (16 positive, 3 negative), 1 attempt per task, each run in an isolated sandbox pod (`k8s-sandbox` environment); evaluator version `1.6.10`, evaluated 2026-11-19. Baseline runs attempted the same tasks without the target skill. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -87,12 +88,12 @@ One or more required evaluation tiers did not complete, so this benchmark is not
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 92.4% — baseline ran, but no comparable score was available; uplift unavailable | 85.0% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 89.5% → 100.0% (+10.5 points) | 86.8% → 84.2% (-2.6 points) |
-| Correctness | 73.7% → 95.8% (+22.1 points) | 93.7% → 96.8% (+3.1 points) |
-| Discoverability | 92.7% — baseline ran, but no comparable score was available; uplift unavailable | 89.7% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 55.3% → 81.7% (+26.4 points) | 72.1% → 79.6% (+7.5 points) |
-| Efficiency | 91.9% — baseline ran, but no comparable score was available; uplift unavailable | 74.9% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 92.9% — baseline ran, but no comparable score was available; uplift unavailable | 88.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 89.5% → 100.0% (+10.5 points) | 86.8% → 86.8% (±0.0 points) |
+| Correctness | 77.9% → 96.8% (+18.9 points) | 92.6% → 99.0% (+6.4 points) |
+| Discoverability | 94.8% — baseline ran, but no comparable score was available; uplift unavailable | 88.8% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 61.7% → 84.5% (+22.8 points) | 71.7% → 86.6% (+14.9 points) |
+| Efficiency | 88.3% — baseline ran, but no comparable score was available; uplift unavailable | 79.0% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -100,22 +101,22 @@ Example: `47.0% → 92.0% (+45.0 points)` means the skill-assisted run scored 92
 
 A partial dimension was calculated from only the available configured signals; review the detailed report before relying on it.
 
-#### Comparison details
+### Comparison details
 
 Shared-source comparisons use the same signals and weights on both conditions. They do not replace the full dimension scores above or change the publication verdict.
 
 | Agent | Dimension | Basis | Baseline → With skill (uplift) | Explanation |
 | --- | --- | --- | --- | --- |
 | claude-code | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| claude-code | Efficiency | Token-only comparison | 97.4% → 92.7% (-4.7 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| claude-code | Efficiency | Token-only comparison | 97.2% → 92.8% (-4.4 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 | codex | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| codex | Efficiency | Token-only comparison | 84.7% → 83.3% (-1.4 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| codex | Efficiency | Token-only comparison | 85.2% → 85.0% (-0.2 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 
 ### Tier Status
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 15 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 16 finding(s) |
 | Tier 2 | Semantic deduplication | **INCOMPLETE** | Tier 2 scan incomplete: a content cluster exceeds the LLM prompt character limit. |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 19 task(s) |
 

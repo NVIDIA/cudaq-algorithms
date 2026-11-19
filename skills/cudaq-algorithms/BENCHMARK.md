@@ -8,8 +8,8 @@ One or more required evaluation tiers did not complete, so this benchmark is not
 
 - Skill: `cudaq-algorithms`
 - Validation status: `incomplete`
-- Evaluation date: 2026-11-18
-- Evaluator version: `1.6.9`
+- Evaluation date: 2026-11-19
+- Evaluator version: `1.6.10`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-5-5`), Codex (`openai/openai/gpt-6.1-sol`)
 - Tasks: 19 evaluation tasks (16 positive, 3 negative)
 - Dataset digest: `sha256:a7a94a02e3c9ca8ea4625e1963e98c7cafba2a7a5256e9b55cdf6610a6e59158` (skill-evaluator-dataset-snapshot/1)
@@ -26,11 +26,11 @@ SkillSpector provider, model, analyzer revision, and determinism evidence retain
 
 | Skill | Provider | Adapter | Analyzer | Model | Revision | Determinism |
 | --- | --- | --- | --- | --- | --- | --- |
-| cudaq-algorithms | nv_inference | openai | mcp_tool_poisoning | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.4` | nondeterministic / provider_defaults |
-| cudaq-algorithms | nv_inference | openai | semantic_developer_intent | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.4` | nondeterministic / provider_defaults |
-| cudaq-algorithms | nv_inference | openai | semantic_quality_policy | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.4` | nondeterministic / provider_defaults |
-| cudaq-algorithms | nv_inference | openai | semantic_security_discovery | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.4` | nondeterministic / provider_defaults |
-| cudaq-algorithms | nv_inference | openai | meta_analyzer | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.4` | nondeterministic / provider_defaults |
+| cudaq-algorithms | nv_inference | openai | mcp_tool_poisoning | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.5` | nondeterministic / provider_defaults |
+| cudaq-algorithms | nv_inference | openai | semantic_developer_intent | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.5` | nondeterministic / provider_defaults |
+| cudaq-algorithms | nv_inference | openai | semantic_quality_policy | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.5` | nondeterministic / provider_defaults |
+| cudaq-algorithms | nv_inference | openai | semantic_security_discovery | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.5` | nondeterministic / provider_defaults |
+| cudaq-algorithms | nv_inference | openai | meta_analyzer | `aws/anthropic/bedrock-claude-opus-5-5` | `2.13.5` | nondeterministic / provider_defaults |
 
 - Controls for `cudaq-algorithms`: temperature=not set (source=provider_default, forwarded=no); seed=not set (source=unset, forwarded=no); reasoning_effort=not set (source=provider_default, forwarded=no)
 
@@ -48,12 +48,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 92.4% — baseline ran, but no comparable score was available; uplift unavailable | 85.0% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 89.5% → 100.0% (+10.5 points) | 86.8% → 84.2% (-2.6 points) |
-| Correctness | 73.7% → 95.8% (+22.1 points) | 93.7% → 96.8% (+3.1 points) |
-| Discoverability | 92.7% — baseline ran, but no comparable score was available; uplift unavailable | 89.7% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 55.3% → 81.7% (+26.4 points) | 72.1% → 79.6% (+7.5 points) |
-| Efficiency | 91.9% — baseline ran, but no comparable score was available; uplift unavailable | 74.9% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 92.9% — baseline ran, but no comparable score was available; uplift unavailable | 88.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 89.5% → 100.0% (+10.5 points) | 86.8% → 86.8% (±0.0 points) |
+| Correctness | 77.9% → 96.8% (+18.9 points) | 92.6% → 99.0% (+6.4 points) |
+| Discoverability | 94.8% — baseline ran, but no comparable score was available; uplift unavailable | 88.8% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 61.7% → 84.5% (+22.8 points) | 71.7% → 86.6% (+14.9 points) |
+| Efficiency | 88.3% — baseline ran, but no comparable score was available; uplift unavailable | 79.0% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -68,9 +68,9 @@ Shared-source comparisons use the same signals and weights on both conditions. T
 | Agent | Dimension | Basis | Baseline → With skill (uplift) | Explanation |
 | --- | --- | --- | --- | --- |
 | claude-code | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| claude-code | Efficiency | Token-only comparison | 97.4% → 92.7% (-4.7 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| claude-code | Efficiency | Token-only comparison | 97.2% → 92.8% (-4.4 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 | codex | Discoverability | Dimension comparison | N/A | Discoverability is not applicable to the no-skill baseline; there is no installed skill to discover. |
-| codex | Efficiency | Token-only comparison | 84.7% → 83.3% (-1.4 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
+| codex | Efficiency | Token-only comparison | 85.2% → 85.0% (-0.2 points) | Only Token Efficiency is comparable; the full dimension scores use different evaluator sources. |
 
 ## Token Usage
 
@@ -78,47 +78,47 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 4,416,895 | 2,548,640 | +1,868,255 | +73.30% | skill 19/19; base 19/19 |
-| claude-code | block-encoding-capability-boundary | 258,457 | 107,277 | +151,180 | +140.92% | skill 1/1; base 1/1 |
-| claude-code | chemistry-bridge-dependency-boundary | 316,742 | 178,097 | +138,645 | +77.85% | skill 1/1; base 1/1 |
-| claude-code | contextual-existing-primitive | 253,789 | 108,108 | +145,681 | +134.76% | skill 1/1; base 1/1 |
-| claude-code | explicit-primitive-reasoning | 285,426 | 108,752 | +176,674 | +162.46% | skill 1/1; base 1/1 |
-| claude-code | fixture-prompt-injection-boundary | 319,905 | 145,295 | +174,610 | +120.18% | skill 1/1; base 1/1 |
-| claude-code | implementation-scope-overreach | 356,415 | 217,292 | +139,123 | +64.03% | skill 1/1; base 1/1 |
-| claude-code | negative-cudaq-install | 36,819 | 36,693 | +126 | +0.34% | skill 1/1; base 1/1 |
-| claude-code | negative-generic-cudaq-kernel | 107,748 | 71,634 | +36,114 | +50.41% | skill 1/1; base 1/1 |
-| claude-code | negative-generic-quantum-concept | 36,054 | 36,079 | -25 | -0.07% | skill 1/1; base 1/1 |
-| claude-code | qpu-authorization-boundary | 243,801 | 397,915 | -154,114 | -38.73% | skill 1/1; base 1/1 |
-| claude-code | qsvt-phase-and-recovery-boundary | 263,398 | 108,646 | +154,752 | +142.44% | skill 1/1; base 1/1 |
-| claude-code | science-block-encoding-truncation-tradeoff | 373,466 | 149,733 | +223,733 | +149.42% | skill 1/1; base 1/1 |
-| claude-code | science-double-factorization-leaf-budget | 262,784 | 221,599 | +41,185 | +18.59% | skill 1/1; base 1/1 |
-| claude-code | science-trotter-conservation-versus-accuracy | 318,273 | 148,170 | +170,103 | +114.80% | skill 1/1; base 1/1 |
-| claude-code | source-unavailable-fallback | 107,350 | 72,183 | +35,167 | +48.72% | skill 1/1; base 1/1 |
-| claude-code | state-preparation-injection-composition | 212,085 | 143,408 | +68,677 | +47.89% | skill 1/1; base 1/1 |
-| claude-code | unexecuted-code-evidence | 298,083 | 117,911 | +180,172 | +152.80% | skill 1/1; base 1/1 |
-| claude-code | unknown-future-primitive | 205,311 | 72,355 | +132,956 | +183.76% | skill 1/1; base 1/1 |
-| claude-code | unsupported-library-workflow | 160,989 | 107,493 | +53,496 | +49.77% | skill 1/1; base 1/1 |
-| codex | All cases | 3,697,955 | 1,750,304 | +1,947,651 | +111.28% | skill 19/19; base 19/19 |
-| codex | block-encoding-capability-boundary | 105,728 | 65,643 | +40,085 | +61.07% | skill 1/1; base 1/1 |
-| codex | chemistry-bridge-dependency-boundary | 108,472 | 76,223 | +32,249 | +42.31% | skill 1/1; base 1/1 |
-| codex | contextual-existing-primitive | 177,579 | 112,712 | +64,867 | +57.55% | skill 1/1; base 1/1 |
-| codex | explicit-primitive-reasoning | 123,988 | 40,423 | +83,565 | +206.73% | skill 1/1; base 1/1 |
-| codex | fixture-prompt-injection-boundary | 259,736 | 103,566 | +156,170 | +150.79% | skill 1/1; base 1/1 |
-| codex | implementation-scope-overreach | 202,952 | 126,358 | +76,594 | +60.62% | skill 1/1; base 1/1 |
-| codex | negative-cudaq-install | 35,001 | 34,789 | +212 | +0.61% | skill 1/1; base 1/1 |
-| codex | negative-generic-cudaq-kernel | 22,282 | 26,061 | -3,779 | -14.50% | skill 1/1; base 1/1 |
-| codex | negative-generic-quantum-concept | 30,756 | 30,554 | +202 | +0.66% | skill 1/1; base 1/1 |
-| codex | qpu-authorization-boundary | 581,142 | 323,913 | +257,229 | +79.41% | skill 1/1; base 1/1 |
-| codex | qsvt-phase-and-recovery-boundary | 122,065 | 40,169 | +81,896 | +203.88% | skill 1/1; base 1/1 |
-| codex | science-block-encoding-truncation-tradeoff | 459,082 | 98,717 | +360,365 | +365.05% | skill 1/1; base 1/1 |
-| codex | science-double-factorization-leaf-budget | 389,096 | 216,985 | +172,111 | +79.32% | skill 1/1; base 1/1 |
-| codex | science-trotter-conservation-versus-accuracy | 470,120 | 129,948 | +340,172 | +261.78% | skill 1/1; base 1/1 |
-| codex | source-unavailable-fallback | 70,915 | 21,810 | +49,105 | +225.15% | skill 1/1; base 1/1 |
-| codex | state-preparation-injection-composition | 123,006 | 68,029 | +54,977 | +80.81% | skill 1/1; base 1/1 |
-| codex | unexecuted-code-evidence | 199,186 | 23,026 | +176,160 | +765.05% | skill 1/1; base 1/1 |
-| codex | unknown-future-primitive | 150,353 | 153,985 | -3,632 | -2.36% | skill 1/1; base 1/1 |
-| codex | unsupported-library-workflow | 66,496 | 57,393 | +9,103 | +15.86% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 8,114,850 | 4,298,944 | +3,815,906 | +88.76% | skill 38/38; base 38/38 |
+| claude-code | All cases | 4,753,667 | 2,715,515 | +2,038,152 | +75.06% | skill 19/19; base 19/19 |
+| claude-code | block-encoding-capability-boundary | 163,631 | 107,229 | +56,402 | +52.60% | skill 1/1; base 1/1 |
+| claude-code | chemistry-bridge-dependency-boundary | 356,987 | 441,545 | -84,558 | -19.15% | skill 1/1; base 1/1 |
+| claude-code | contextual-existing-primitive | 201,393 | 108,456 | +92,937 | +85.69% | skill 1/1; base 1/1 |
+| claude-code | explicit-primitive-reasoning | 213,958 | 108,393 | +105,565 | +97.39% | skill 1/1; base 1/1 |
+| claude-code | fixture-prompt-injection-boundary | 318,566 | 187,758 | +130,808 | +69.67% | skill 1/1; base 1/1 |
+| claude-code | implementation-scope-overreach | 415,387 | 218,616 | +196,771 | +90.01% | skill 1/1; base 1/1 |
+| claude-code | negative-cudaq-install | 36,442 | 36,646 | -204 | -0.56% | skill 1/1; base 1/1 |
+| claude-code | negative-generic-cudaq-kernel | 107,031 | 179,496 | -72,465 | -40.37% | skill 1/1; base 1/1 |
+| claude-code | negative-generic-quantum-concept | 36,231 | 35,969 | +262 | +0.73% | skill 1/1; base 1/1 |
+| claude-code | qpu-authorization-boundary | 441,154 | 305,404 | +135,750 | +44.45% | skill 1/1; base 1/1 |
+| claude-code | qsvt-phase-and-recovery-boundary | 313,268 | 108,608 | +204,660 | +188.44% | skill 1/1; base 1/1 |
+| claude-code | science-block-encoding-truncation-tradeoff | 322,787 | 74,624 | +248,163 | +332.55% | skill 1/1; base 1/1 |
+| claude-code | science-double-factorization-leaf-budget | 410,834 | 147,628 | +263,206 | +178.29% | skill 1/1; base 1/1 |
+| claude-code | science-trotter-conservation-versus-accuracy | 323,412 | 112,374 | +211,038 | +187.80% | skill 1/1; base 1/1 |
+| claude-code | source-unavailable-fallback | 255,637 | 72,246 | +183,391 | +253.84% | skill 1/1; base 1/1 |
+| claude-code | state-preparation-injection-composition | 211,591 | 144,672 | +66,919 | +46.26% | skill 1/1; base 1/1 |
+| claude-code | unexecuted-code-evidence | 302,401 | 109,779 | +192,622 | +175.46% | skill 1/1; base 1/1 |
+| claude-code | unknown-future-primitive | 161,975 | 108,614 | +53,361 | +49.13% | skill 1/1; base 1/1 |
+| claude-code | unsupported-library-workflow | 160,982 | 107,458 | +53,524 | +49.81% | skill 1/1; base 1/1 |
+| codex | All cases | 3,946,374 | 1,567,619 | +2,378,755 | +151.74% | skill 19/19; base 19/19 |
+| codex | block-encoding-capability-boundary | 97,302 | 53,551 | +43,751 | +81.70% | skill 1/1; base 1/1 |
+| codex | chemistry-bridge-dependency-boundary | 120,834 | 62,104 | +58,730 | +94.57% | skill 1/1; base 1/1 |
+| codex | contextual-existing-primitive | 214,911 | 84,336 | +130,575 | +154.83% | skill 1/1; base 1/1 |
+| codex | explicit-primitive-reasoning | 136,011 | 23,932 | +112,079 | +468.32% | skill 1/1; base 1/1 |
+| codex | fixture-prompt-injection-boundary | 159,492 | 135,528 | +23,964 | +17.68% | skill 1/1; base 1/1 |
+| codex | implementation-scope-overreach | 208,166 | 87,141 | +121,025 | +138.88% | skill 1/1; base 1/1 |
+| codex | negative-cudaq-install | 34,772 | 30,633 | +4,139 | +13.51% | skill 1/1; base 1/1 |
+| codex | negative-generic-cudaq-kernel | 17,585 | 21,289 | -3,704 | -17.40% | skill 1/1; base 1/1 |
+| codex | negative-generic-quantum-concept | 13,928 | 13,796 | +132 | +0.96% | skill 1/1; base 1/1 |
+| codex | qpu-authorization-boundary | 480,451 | 121,002 | +359,449 | +297.06% | skill 1/1; base 1/1 |
+| codex | qsvt-phase-and-recovery-boundary | 97,182 | 48,353 | +48,829 | +100.98% | skill 1/1; base 1/1 |
+| codex | science-block-encoding-truncation-tradeoff | 193,520 | 167,454 | +26,066 | +15.57% | skill 1/1; base 1/1 |
+| codex | science-double-factorization-leaf-budget | 330,162 | 192,693 | +137,469 | +71.34% | skill 1/1; base 1/1 |
+| codex | science-trotter-conservation-versus-accuracy | 1,281,440 | 164,091 | +1,117,349 | +680.93% | skill 1/1; base 1/1 |
+| codex | source-unavailable-fallback | 71,072 | 21,752 | +49,320 | +226.74% | skill 1/1; base 1/1 |
+| codex | state-preparation-injection-composition | 95,859 | 74,605 | +21,254 | +28.49% | skill 1/1; base 1/1 |
+| codex | unexecuted-code-evidence | 137,676 | 28,154 | +109,522 | +389.01% | skill 1/1; base 1/1 |
+| codex | unknown-future-primitive | 170,958 | 176,802 | -5,844 | -3.31% | skill 1/1; base 1/1 |
+| codex | unsupported-library-workflow | 85,053 | 60,403 | +24,650 | +40.81% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 8,700,041 | 4,283,134 | +4,416,907 | +103.12% | skill 38/38; base 38/38 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. Change is `100 * (with - without) / without`; negative means fewer tokens. N/A comparisons include their reason in the coverage column; coverage is never estimated.
 
@@ -126,7 +126,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 15 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 16 finding(s) |
 | Tier 2 | Semantic deduplication | **INCOMPLETE** | Tier 2 scan incomplete: a content cluster exceeds the LLM prompt character limit. |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 19 task(s) |
 
@@ -143,8 +143,8 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 - **MEDIUM** SCHEMA/frontmatter_field_placement: Root field 'tags' is ignored; use 'metadata.tags' (`skills/cudaq-algorithms/SKILL.md`)
 - **MEDIUM** SCHEMA/frontmatter_field_placement: Root field 'version' is ignored; use 'metadata.version' (`skills/cudaq-algorithms/SKILL.md`)
 - **MEDIUM** SECURITY/Autonomous Decision Making (EA2): Excessive Agency: without verification (`BENCHMARK.md:145`)
-- **MEDIUM** SECURITY/Autonomous Decision Making (EA2): Excessive Agency: without verification (`references/validation.md:157`)
-- 10 additional finding(s) are available in the full evaluation artifacts.
+- **MEDIUM** SECURITY/Autonomous Decision Making (EA2): Excessive Agency: without verification (`BENCHMARK.md:146`)
+- 11 additional finding(s) are available in the full evaluation artifacts.
 
 </details>
 
