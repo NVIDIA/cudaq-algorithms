@@ -267,51 +267,53 @@ def test_opcode_semantics(opcode, operands, kind, refs, controlled, has_work):
 def test_compound_work_control_tape_exercises_false_opcode_edges():
     names = ("x_ladder", "cx_addr_ladder", "free_x", "free_cx", "and_wt",
              "copy_tw", "body_x_w", "ccx_addr_addr")
-    tape = []
-    actions = []
-    for name in names:
-        opcode, operands, kind, refs = _SPECS[name]
-        tape.append((opcode, *operands))
-        actions.append((kind, refs))
+    tape = [(_SPECS[name][0], *_SPECS[name][1]) for name in names]
+    actions = [(_SPECS[name][2], _SPECS[name][3]) for name in names]
 
     interp = _mint_interpreter(tape, controlled=True, has_work=True)
 
     @cudaq.kernel
-    def run_compound(c_init: int, a_init: int, l_init: int, t_init: int,
-                     w_init: int):
+    def run_compound():
         control = cudaq.qvector(1)
         address = cudaq.qvector(2)
         ladder = cudaq.qvector(2)
         target = cudaq.qvector(2)
         work = cudaq.qvector(2)
-        if c_init == 1:
-            x(control[0])
+        h(control[0])
         for i in range(2):
-            if ((a_init >> i) & 1) == 1:
-                x(address[i])
-            if ((l_init >> i) & 1) == 1:
-                x(ladder[i])
-            if ((t_init >> i) & 1) == 1:
-                x(target[i])
-            if ((w_init >> i) & 1) == 1:
-                x(work[i])
+            h(address[i])
+            h(ladder[i])
+            h(target[i])
+            h(work[i])
         interp(control, address, ladder, target, work)
 
-    initial = {"c": 1, "a": 3, "l": 3, "t": 3, "w": 3}
+    state = np.array(cudaq.get_state(run_compound))
     offsets, num_qubits = _layout(controlled=True, has_work=True)
-    expected_regs = initial
-    expected_phase = 1.0 + 0.0j
-    for kind, refs in actions:
-        expected_regs, phase = _apply(kind, refs, expected_regs)
-        expected_phase *= phase
-
-    expected_index = sum(expected_regs[reg] << offset
-                         for reg, offset in offsets.items())
     expected = np.zeros(1 << num_qubits, dtype=np.complex128)
-    expected[expected_index] = expected_phase
-    state = np.array(cudaq.get_state(run_compound, initial["c"], initial["a"],
-                                     initial["l"], initial["t"],
-                                     initial["w"]))
+    amplitude = 1.0 / np.sqrt(1 << num_qubits)
+
+    # Uniform superposition verifies every control/target/work basis state
+    # and phase rather than a single all-ones input.
+    for control_init in range(2):
+        for address_init in range(4):
+            for ladder_init in range(4):
+                for target_init in range(4):
+                    for work_init in range(4):
+                        regs = {
+                            "c": control_init,
+                            "a": address_init,
+                            "l": ladder_init,
+                            "t": target_init,
+                            "w": work_init,
+                        }
+                        phase = 1.0 + 0.0j
+                        for kind, refs in actions:
+                            regs, gate_phase = _apply(kind, refs, regs)
+                            phase *= gate_phase
+                        index = sum(regs[reg] << offset
+                                    for reg, offset in offsets.items())
+                        expected[index] = amplitude * phase
+
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
@@ -373,23 +375,38 @@ def test_uncontrolled_work_mixed_free_gate_dispatch():
         ladder = cudaq.qvector(2)
         target = cudaq.qvector(2)
         work = cudaq.qvector(2)
-        x(target[0])
-        x(target[1])
+        for i in range(2):
+            h(address[i])
+            h(ladder[i])
+            h(target[i])
+            h(work[i])
         interp(address, ladder, target, work)
 
-    expected_regs = {"c": 0, "a": 0, "l": 0, "t": 3, "w": 0}
-    expected_phase = 1.0 + 0.0j
-    for name in names:
-        _, _, kind, refs = _SPECS[name]
-        expected_regs, phase = _apply(kind, refs, expected_regs)
-        expected_phase *= phase
-
-    offsets, num_qubits = _layout(controlled=False, has_work=True)
-    expected_index = sum(expected_regs[reg] << offset
-                         for reg, offset in offsets.items())
-    expected = np.zeros(1 << num_qubits, dtype=np.complex128)
-    expected[expected_index] = expected_phase
     state = np.array(cudaq.get_state(run))
+    offsets, num_qubits = _layout(controlled=False, has_work=True)
+    expected = np.zeros(1 << num_qubits, dtype=np.complex128)
+    amplitude = 1.0 / np.sqrt(1 << num_qubits)
+
+    for address_init in range(4):
+        for ladder_init in range(4):
+            for target_init in range(4):
+                for work_init in range(4):
+                    regs = {
+                        "c": 0,
+                        "a": address_init,
+                        "l": ladder_init,
+                        "t": target_init,
+                        "w": work_init,
+                    }
+                    phase = 1.0 + 0.0j
+                    for name in names:
+                        _, _, kind, refs = _SPECS[name]
+                        regs, gate_phase = _apply(kind, refs, regs)
+                        phase *= gate_phase
+                    index = sum(regs[reg] << offset
+                                for reg, offset in offsets.items())
+                    expected[index] = amplitude * phase
+
     np.testing.assert_allclose(state, expected, atol=1e-12)
 
 

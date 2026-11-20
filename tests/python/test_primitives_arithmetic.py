@@ -118,14 +118,37 @@ def test_subtract_register_inverts_add_register(n):
 
 
 def test_subtract_register_empty_register_is_identity():
-    state = np.array(cudaq.get_state(_run_register_op_fixed_b, 0, 0, 1))
-    np.testing.assert_allclose(state, _basis(0, 1), atol=1e-12)
+
+    @cudaq.kernel
+    def run():
+        a = cudaq.qvector(0)
+        b = cudaq.qvector(0)
+        carry = cudaq.qvector(1)
+        h(carry[0])
+        arith.subtract_register(a, b, carry)
+
+    state = np.array(cudaq.get_state(run))
+    np.testing.assert_allclose(state,
+                               np.array([1.0, 1.0], dtype=np.complex128) /
+                               np.sqrt(2.0),
+                               atol=1e-12)
 
 
 def test_add_register_empty_register_is_noop():
-    state = np.array(cudaq.get_state(_run_register_op_fixed_b, 0, 0, 0))
-    np.testing.assert_allclose(
-        state, _fixed_b_expected(0, 0, lambda a, b: a + b), atol=1e-12)
+
+    @cudaq.kernel
+    def run():
+        a = cudaq.qvector(0)
+        b = cudaq.qvector(0)
+        carry = cudaq.qvector(1)
+        h(carry[0])
+        arith.add_register(a, b, carry)
+
+    state = np.array(cudaq.get_state(run))
+    np.testing.assert_allclose(state,
+                               np.array([1.0, 1.0], dtype=np.complex128) /
+                               np.sqrt(2.0),
+                               atol=1e-12)
 
 
 # ----------------------------------------------------------------------
@@ -362,10 +385,22 @@ def test_cmp_ge_constant_all_inputs(n):
                                        atol=1e-12)
 
 
-def test_cmp_ge_constant_empty_register_is_false():
-    state = np.array(cudaq.get_state(_run_cmp_ge_constant, 0, [], 0, 0))
-    np.testing.assert_allclose(
-        state, _cmp_expected(0, lambda value: value >= 1, 1), atol=1e-12)
+@pytest.mark.parametrize("flag_init", [0, 1])
+def test_cmp_ge_constant_empty_register_is_false(flag_init):
+    # For n = 0 (domain {0}), k_is_zero = 0 encodes K = 2^0 = 1 (always false)
+    # and k_is_zero = 1 encodes K = 0 (always true).
+    state_false = np.array(
+        cudaq.get_state(_run_cmp_ge_constant, 0, [], 0, flag_init))
+    np.testing.assert_allclose(state_false,
+                               _cmp_expected(0, lambda value: value >= 1, 1,
+                                             flag_init),
+                               atol=1e-12)
+    state_true = np.array(
+        cudaq.get_state(_run_cmp_ge_constant, 0, [], 1, flag_init))
+    np.testing.assert_allclose(state_true,
+                               _cmp_expected(0, lambda value: value >= 0, 1,
+                                             flag_init),
+                               atol=1e-12)
 
 
 @pytest.mark.parametrize("n", WIDTHS)

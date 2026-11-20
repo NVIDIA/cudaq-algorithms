@@ -136,20 +136,73 @@ def test_tape_toffoli_counts_match_documented_formulas():
 # ----------------------------------------------------------------------
 
 
-def test_empty_interpreter_tape_is_identity():
-    kernel = _mint_interpreter([], controlled=False, has_work=False)
+@pytest.mark.parametrize("controlled,has_work", [(False, False), (True, False),
+                                                 (False, True), (True, True)])
+def test_empty_interpreter_tape_is_identity(controlled, has_work):
+    kernel = _mint_interpreter([], controlled=controlled, has_work=has_work)
+    num_qubits = 3 + int(controlled) + int(has_work)
 
-    @cudaq.kernel
-    def run():
-        address = cudaq.qvector(1)
-        ladder = cudaq.qvector(1)
-        target = cudaq.qvector(1)
-        x(address[0])
-        x(target[0])
-        kernel(address, ladder, target)
+    if controlled and has_work:
+
+        @cudaq.kernel
+        def run():
+            control = cudaq.qvector(1)
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            work = cudaq.qvector(1)
+            h(control[0])
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            h(work[0])
+            kernel(control, address, ladder, target, work)
+
+    elif controlled:
+
+        @cudaq.kernel
+        def run():
+            control = cudaq.qvector(1)
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            h(control[0])
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            kernel(control, address, ladder, target)
+
+    elif has_work:
+
+        @cudaq.kernel
+        def run():
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            work = cudaq.qvector(1)
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            h(work[0])
+            kernel(address, ladder, target, work)
+
+    else:
+
+        @cudaq.kernel
+        def run():
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            kernel(address, ladder, target)
 
     state = np.array(cudaq.get_state(run))
-    np.testing.assert_allclose(state, _basis(5, 3), atol=1e-12)
+    expected = np.full(1 << num_qubits,
+                       1.0 / np.sqrt(1 << num_qubits),
+                       dtype=np.complex128)
+    np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
 @pytest.mark.parametrize("num_items,marked", [(8, (1, 3, 4)), (5, (0, 4)),
@@ -357,7 +410,7 @@ def test_unary_iteration_validation_raises():
     with pytest.raises(ValueError, match="invalid target qubit index"):
         unary_iteration_kernels(2, 4, lambda k: [("x", -1)])
     with pytest.raises(ValueError, match="expected 1"):
-        unary_iteration_kernels(1, 1, lambda k: [("x",)])
+        unary_iteration_kernels(1, 1, lambda k: [("x", )])
     with pytest.raises(ValueError, match="expected 3"):
         unary_iteration_kernels(1, 1, lambda k: [("and_tt", 0, 1)])
     with pytest.raises(ValueError, match="invalid target qubit index"):

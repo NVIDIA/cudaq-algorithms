@@ -72,8 +72,9 @@ def test_walk_factories_prep_injection():
         (walk.controlled_kernel, dict(power=2, control_state=1)),
         (walk.controlled_kernel, dict(power=2, control_state=0)),
         (walk.controlled_kernel, dict(power=1, uncompute=False)),
-        (walk.controlled_kernel,
-         dict(power=1, control_state=0, uncompute=False)),
+        (walk.controlled_kernel, dict(power=1,
+                                      control_state=0,
+                                      uncompute=False)),
         (walk.controlled_roundtrip_kernel, dict(power=1)),
     ):
         via_prep = _state(factory(state_prep=product_prep, **kwargs))
@@ -124,6 +125,10 @@ def test_qsvt_kernels_prep_injection():
     via_state = _state(
         transformer.controlled_kernel(sequence, control_state=0), ket)
     np.testing.assert_allclose(via_prep, via_state, atol=1e-12)
+    prepared = _prepared_ket()
+    expected_id = np.zeros_like(via_prep)
+    expected_id[:prepared.size] = prepared
+    np.testing.assert_allclose(via_prep, expected_id, atol=1e-12)
 
 
 def test_moment_prep_injection_matches_ket_path():

@@ -218,31 +218,57 @@ def test_sum_controlled_walk_roundtrip_is_identity(control_value):
 
 def test_sum_adjoint_walk_step_inverts_walk_step():
     encoding, _, _ = _sum_case("three-mixed-widths")
+    prep = encoding.prepare_kernel()
+    unprep = encoding.unprepare_kernel()
     walk = encoding.walk_step_kernel()
     adjoint_walk = encoding.adjoint_walk_step_kernel()
     num_ancilla = encoding.num_ancilla
     ket = random_ket(NUM_QUBITS, seed=17)
 
+    # Test both W†W = I and WW† = I in the prepared-ancilla walk frame.
     @cudaq.kernel
-    def roundtrip(state: cudaq.State):
+    def forward_then_adjoint(state: cudaq.State):
         system = cudaq.qvector(state)
         ancilla = cudaq.qvector(num_ancilla)
+        prep(ancilla)
         walk(ancilla, system)
         adjoint_walk(ancilla, system)
+        unprep(ancilla)
 
-    actual = np.asarray(cudaq.get_state(roundtrip, state_from(ket)))
-    expected = np.zeros_like(actual)
-    expected[:1 << NUM_QUBITS] = ket
-    np.testing.assert_allclose(actual, expected, atol=1e-12)
+    @cudaq.kernel
+    def adjoint_then_forward(state: cudaq.State):
+        system = cudaq.qvector(state)
+        ancilla = cudaq.qvector(num_ancilla)
+        prep(ancilla)
+        adjoint_walk(ancilla, system)
+        walk(ancilla, system)
+        unprep(ancilla)
+
+    for kernel in (forward_then_adjoint, adjoint_then_forward):
+        actual = np.asarray(cudaq.get_state(kernel, state_from(ket)))
+        expected = np.zeros_like(actual)
+        expected[:1 << NUM_QUBITS] = ket
+        np.testing.assert_allclose(actual, expected, atol=1e-12)
 
 
 def test_sum_adjoint_walk_kernel_matches_dense_block():
     encoding, dense, _ = _sum_case("five-repeated")
     ket = random_ket(NUM_QUBITS, seed=18)
-    block = _block(encoding, Walk(encoding).adjoint_kernel(power=1), ket)
+    walk = Walk(encoding)
+    forward_state = np.asarray(
+        cudaq.get_state(walk.kernel(power=1), state_from(ket)))
+    adjoint_state = np.asarray(
+        cudaq.get_state(walk.adjoint_kernel(power=1), state_from(ket)))
 
+    dim = 1 << NUM_QUBITS
     expected = (-dense / encoding.alpha) @ ket
-    np.testing.assert_allclose(block, expected, atol=1e-12)
+    np.testing.assert_allclose(adjoint_state[:dim], expected, atol=1e-12)
+    # W = R U_A and W† = U_A R agree on the |0>-ancilla block (-H/alpha), but
+    # carry opposite signs on the orthogonal subspace (R flips only |0>).
+    assert np.linalg.norm(forward_state[dim:]) > 1e-3
+    np.testing.assert_allclose(adjoint_state[dim:],
+                               -forward_state[dim:],
+                               atol=1e-12)
 
 
 def test_sum_walk_kernel_applies_chebyshev_of_minus_h():
@@ -386,22 +412,36 @@ def test_rotated_controlled_and_walk_kernels():
 
 def test_rotated_adjoint_walk_step_inverts_walk_step():
     rotated, _, nq = _rotated_case(2, 5)
+    prep = rotated.prepare_kernel()
+    unprep = rotated.unprepare_kernel()
     walk = rotated.walk_step_kernel()
     adjoint_walk = rotated.adjoint_walk_step_kernel()
     num_ancilla = rotated.num_ancilla
     ket = random_ket(nq, seed=17)
 
     @cudaq.kernel
-    def roundtrip(state: cudaq.State):
+    def forward_then_adjoint(state: cudaq.State):
         system = cudaq.qvector(state)
         ancilla = cudaq.qvector(num_ancilla)
+        prep(ancilla)
         walk(ancilla, system)
         adjoint_walk(ancilla, system)
+        unprep(ancilla)
 
-    actual = np.asarray(cudaq.get_state(roundtrip, state_from(ket)))
-    expected = np.zeros_like(actual)
-    expected[:1 << nq] = ket
-    np.testing.assert_allclose(actual, expected, atol=1e-12)
+    @cudaq.kernel
+    def adjoint_then_forward(state: cudaq.State):
+        system = cudaq.qvector(state)
+        ancilla = cudaq.qvector(num_ancilla)
+        prep(ancilla)
+        adjoint_walk(ancilla, system)
+        walk(ancilla, system)
+        unprep(ancilla)
+
+    for kernel in (forward_then_adjoint, adjoint_then_forward):
+        actual = np.asarray(cudaq.get_state(kernel, state_from(ket)))
+        expected = np.zeros_like(actual)
+        expected[:1 << nq] = ket
+        np.testing.assert_allclose(actual, expected, atol=1e-12)
 
 
 def test_rotated_with_explicit_kernels():

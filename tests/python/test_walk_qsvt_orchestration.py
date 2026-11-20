@@ -227,13 +227,22 @@ def test_controlled_walk_control_conventions():
 
 
 def test_controlled_walk_keeps_prepared_ancilla_without_uncompute():
-    state = _state(
+    on_state = _state(
         Walk(MockBlockEncoding()).controlled_kernel(power=2,
                                                     control_state=1,
                                                     uncompute=False))
-    expected = np.kron(_ry(PREP) @ [1.0, 0.0],
-                       np.kron([0.0, 1.0], _rx(2 * THETA) @ [1.0, 0.0]))
-    np.testing.assert_allclose(state, expected, atol=1e-12)
+    expected_on = np.kron(
+        _ry(PREP) @ [1.0, 0.0], np.kron([0.0, 1.0],
+                                        _rx(2 * THETA) @ [1.0, 0.0]))
+    np.testing.assert_allclose(on_state, expected_on, atol=1e-12)
+
+    off_state = _state(
+        Walk(MockBlockEncoding()).controlled_kernel(power=2,
+                                                    control_state=0,
+                                                    uncompute=False))
+    expected_off = np.kron(
+        _ry(PREP) @ [1.0, 0.0], np.kron([1.0, 0.0], [1.0, 0.0]))
+    np.testing.assert_allclose(off_state, expected_off, atol=1e-12)
 
 
 def test_qsvt_interleaves_phases_and_directions():

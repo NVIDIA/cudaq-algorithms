@@ -317,13 +317,15 @@ def _one_double_entry(theta: float, p_occ: int, q_occ: int, r_virt: int,
 
 
 @cudaq.kernel
-def _double_excitation_entry(theta: float, p_occ: int, q_occ: int,
-                             r_virt: int, s_virt: int):
+def _double_excitation_entry(theta: float, p_occ: int, q_occ: int, r_virt: int,
+                             s_virt: int):
     qubits = cudaq.qvector(4)
-    x(qubits[p_occ])
+    # Superpose active |p_occ, q_occ> with inactive |q_occ> to check both
+    # excitation amplitude/phase and identity action outside the 2D subspace.
+    h(qubits[p_occ])
     x(qubits[q_occ])
-    algorithms.stateprep.double_excitation(qubits, theta, p_occ, q_occ,
-                                           r_virt, s_virt)
+    algorithms.stateprep.double_excitation(qubits, theta, p_occ, q_occ, r_virt,
+                                           s_virt)
 
 
 def test_double_excitation_negates_one_index_swap():
@@ -342,7 +344,16 @@ def test_double_excitation_negates_one_index_swap():
 
 @pytest.mark.parametrize(
     "p_occ,q_occ,r_virt,s_virt",
-    [(1, 3, 0, 2), (3, 1, 0, 2), (1, 3, 2, 0), (3, 1, 2, 0)])
+    [
+        (1, 3, 0, 2),
+        (3, 1, 0, 2),
+        (1, 3, 2, 0),
+        (3, 1, 2, 0),
+        (0, 3, 1, 2),
+        (1, 2, 0, 3),
+        (2, 3, 0, 1),
+    ],
+)
 def test_double_excitation_overlapping_orderings_match_dense_generator(
         p_occ, q_occ, r_virt, s_virt):
     from scipy.linalg import expm
@@ -363,13 +374,12 @@ def test_double_excitation_overlapping_orderings_match_dense_generator(
                 operator[basis ^ (1 << mode), basis] = sign
         annihilation.append(operator)
 
-    excitation = (annihilation[r_virt].conj().T @
-                  annihilation[s_virt].conj().T @ annihilation[q_occ] @
-                  annihilation[p_occ])
+    excitation = (annihilation[r_virt].conj().T @ annihilation[s_virt].conj().T
+                  @ annihilation[q_occ] @ annihilation[p_occ])
     generator = 1.0j * (excitation - excitation.conj().T)
-    determinant_index = (1 << p_occ) | (1 << q_occ)
-    determinant = np.zeros(1 << num_qubits, dtype=np.complex128)
-    determinant[determinant_index] = 1.0
-    reference = expm(-0.5j * theta * generator) @ determinant
+    initial = np.zeros(1 << num_qubits, dtype=np.complex128)
+    initial[1 << q_occ] = 1.0 / np.sqrt(2.0)
+    initial[(1 << p_occ) | (1 << q_occ)] = 1.0 / np.sqrt(2.0)
+    reference = expm(-0.5j * theta * generator) @ initial
 
     _assert_close(actual, reference)

@@ -138,8 +138,7 @@ def test_validation_errors():
 
 
 def test_constructor_threshold_filtering_and_angle_size_validation():
-    encoding = PauliLCU({"XI": 5e-4, "ZI": 0.5},
-                        coefficient_threshold=1e-3)
+    encoding = PauliLCU({"XI": 5e-4, "ZI": 0.5}, coefficient_threshold=1e-3)
     assert encoding.terms == [(0.5, "ZI")]
     assert encoding.alpha == pytest.approx(0.5)
 
@@ -199,7 +198,9 @@ def test_module_level_phase_sequence_kernels_compose():
 
 def test_module_level_phase_sequence_adjoint_direction_matches_qsvt():
     enc = PauliLCU({"ZI": 0.7, "IZ": -0.43, "XX": 0.19})
-    seq = PhaseSequence([0.4, -0.2], walk_directions=[1])
+    # Mix adjoint and forward steps so both dispatch arms run and the output
+    # differs from an all-forward sequence.
+    seq = PhaseSequence([0.4, -0.2, 0.35], walk_directions=[1, 0])
     phases = seq.projector_phases
     directions = list(seq.walk_directions)
     angles, controls, ops, lengths, signs = enc.kernel_args
@@ -217,35 +218,47 @@ def test_module_level_phase_sequence_adjoint_direction_matches_qsvt():
         cudaq.get_state(QSVT(enc).kernel(seq), sim.state_from(ket)))
     actual = np.asarray(cudaq.get_state(composed, sim.state_from(ket)))
     np.testing.assert_allclose(actual, reference, atol=1e-12)
+    forward_only = np.asarray(
+        cudaq.get_state(
+            QSVT(enc).kernel(PhaseSequence([0.4, -0.2, 0.35])),
+            sim.state_from(ket)))
+    assert not np.allclose(actual, forward_only, atol=1e-3)
 
 
-def test_module_level_controlled_phase_sequence_adjoint_direction_matches_qsvt():
+@pytest.mark.parametrize("control_state", [0, 1])
+def test_module_level_controlled_phase_sequence_adjoint_direction_matches_qsvt(
+        control_state):
     enc = PauliLCU({"ZI": 0.7, "IZ": -0.43, "XX": 0.19})
-    seq = PhaseSequence([0.4, -0.2], walk_directions=[1])
+    seq = PhaseSequence([0.4, -0.2, 0.35], walk_directions=[1, 0])
     phases = seq.projector_phases
     directions = list(seq.walk_directions)
     angles, controls, ops, lengths, signs = enc.kernel_args
     n_anc = enc.num_ancilla
     ket = random_ket(2, seed=18)
+    flip = control_state == 1
 
     @cudaq.kernel
     def composed_controlled(state: cudaq.State):
         system = cudaq.qvector(state)
         control_and_signal = cudaq.qvector(1 + n_anc)
-        x(control_and_signal[0])
+        if flip:
+            x(control_and_signal[0])
         apply_controlled_phase_sequence(control_and_signal, system, phases,
                                         directions, angles, controls, ops,
                                         lengths, signs)
 
-    reference = np.asarray(
-        cudaq.get_state(
-            QSVT(enc).controlled_kernel(seq, control_state=1),
-            sim.state_from(ket)),
-        dtype=np.complex128)
-    actual = np.asarray(
-        cudaq.get_state(composed_controlled, sim.state_from(ket)),
-        dtype=np.complex128)
+    reference = np.asarray(cudaq.get_state(
+        QSVT(enc).controlled_kernel(seq, control_state=control_state),
+        sim.state_from(ket)),
+                           dtype=np.complex128)
+    actual = np.asarray(cudaq.get_state(composed_controlled,
+                                        sim.state_from(ket)),
+                        dtype=np.complex128)
     np.testing.assert_allclose(actual, reference, atol=1e-12)
+    if control_state == 0:
+        expected_id = np.zeros_like(actual)
+        expected_id[:ket.size] = ket
+        np.testing.assert_allclose(actual, expected_id, atol=1e-12)
 
 
 def test_controlled_signal_phase_without_signal_qubits():
@@ -254,11 +267,13 @@ def test_controlled_signal_phase_without_signal_qubits():
     @cudaq.kernel
     def probe():
         control_and_signal = cudaq.qvector(1)
-        x(control_and_signal[0])
+        # Superposition verifies |0> stays unphased while |1> picks up e^{i*phase}.
+        h(control_and_signal[0])
         controlled_signal_phase(control_and_signal, phase)
 
     actual = np.asarray(cudaq.get_state(probe), dtype=np.complex128)
-    expected = np.array([0.0, np.exp(1.0j * phase)], dtype=np.complex128)
+    expected = np.array([1.0, np.exp(1.0j * phase)],
+                        dtype=np.complex128) / np.sqrt(2.0)
     np.testing.assert_allclose(actual, expected, atol=1e-12)
 
 

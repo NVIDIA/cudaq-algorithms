@@ -80,17 +80,29 @@ CASES = [
 ]
 
 
-def test_vose_negative_residual_skips_zero_weight_bins():
+@pytest.mark.parametrize(
+    "probs, zero_indices",
+    [([0.0, 0.2, 0.8, 0.0], (0, 3)), ([0.0, 0.0, 0.2, 0.8], (0, 1))],
+    ids=["single-leading-zero", "two-leading-zeros"],
+)
+def test_vose_negative_residual_skips_zero_weight_bins(probs, zero_indices):
+    # At mu = 52, float64(0.2) * 2^54 + float64(0.8) * 2^54 = 2^54 + 1, so the
+    # rounding residual is -1 with exact-integer ties on the leading zero bins;
+    # the downward push must skip every zero bin rather than making it negative.
     mu = 52
     unit = 1 << mu
-    keep, alias, table = _vose_tables([0.0, 0.2, 0.8, 0.0], mu)
+    total = len(probs) * unit
+    keep, alias, table = _vose_tables(probs, mu)
 
-    assert keep == [0, 3602879701896396, unit - 1, 0]
-    assert alias == [2, 2, 2, 2]
-    np.testing.assert_array_equal(
-        table,
-        [0.0, 3602879701896396 / (4 * unit),
-         14411518807585588 / (4 * unit), 0.0])
+    assert all(0 <= k < unit for k in keep)
+    assert all(0 <= a < len(probs) for a in alias)
+    assert sum(table) == pytest.approx(1.0, abs=1e-15)
+    for idx in zero_indices:
+        assert keep[idx] == 0
+        assert table[idx] == 0.0
+    for realized, ideal in zip(table, probs):
+        assert realized >= 0.0
+        assert abs(realized - ideal) <= 1.5 / total
 
 
 @pytest.mark.parametrize("weights,mu", CASES)

@@ -340,17 +340,24 @@ def test_factory_string_words_and_hf_only_shapes():
 
 
 def test_factory_ucc_only_shape_matches_dense_pauli_rotation():
-    theta, coefficient, word = 0.37, -0.6, "XI"
-    factory = stateprep.hartree_fock_ucc_kernel(
-        2, [theta], [[word]], [[coefficient]], occupied_orbitals=[])
+    thetas = [0.37, -0.29]
+    words = [["XI"], ["YZ", "IX"]]
+    coefficients = [[-0.6], [0.5, 0.4]]
+    factory = stateprep.hartree_fock_ucc_kernel(2,
+                                                thetas,
+                                                words,
+                                                coefficients,
+                                                occupied_orbitals=[])
     actual = _prepared_state(2, factory)
 
-    initial = np.zeros(4, dtype=np.complex128)
-    initial[0] = 1.0
-    generator = dense_matrix([(1.0, word)], 2)
-    angle = theta * coefficient
-    expected = (np.cos(angle) * initial +
-                1.0j * np.sin(angle) * (generator @ initial))
+    expected = np.zeros(4, dtype=np.complex128)
+    expected[0] = 1.0
+    for theta, group_words, group_coeffs in zip(thetas, words, coefficients):
+        for word, coeff in zip(group_words, group_coeffs):
+            generator = dense_matrix([(1.0, word)], 2)
+            angle = theta * coeff
+            expected = (np.cos(angle) * expected + 1.0j * np.sin(angle) *
+                        (generator @ expected))
     _assert_close(actual, expected)
 
 

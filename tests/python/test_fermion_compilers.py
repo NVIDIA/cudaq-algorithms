@@ -187,6 +187,14 @@ def test_gf2_inverse_pivot_swap_and_singular_matrix():
     assert np.array_equal(inverse, expected)
     assert np.array_equal((matrix @ inverse) % 2, np.eye(2, dtype=np.uint8))
 
+    # 4x4 matrix requiring multiple row swaps and above-pivot eliminations.
+    matrix_4 = np.array(
+        [[0, 0, 1, 1], [1, 0, 0, 1], [0, 1, 1, 0], [1, 1, 0, 1]],
+        dtype=np.uint8)
+    inv_4 = _gf2_inverse(matrix_4)
+    assert np.array_equal((matrix_4 @ inv_4) % 2, np.eye(4, dtype=np.uint8))
+    assert np.array_equal((inv_4 @ matrix_4) % 2, np.eye(4, dtype=np.uint8))
+
     singular = np.array([[1, 0], [1, 0]], dtype=np.uint8)
     with pytest.raises(ValueError, match="singular over GF\\(2\\)"):
         _gf2_inverse(singular)
@@ -453,8 +461,8 @@ def test_validation_errors():
     [
         (np.zeros((2, 3)), None, "one_body dimensions must match"),
         (np.zeros((2, 2, 2, 3)), None, "two_body dimensions must match"),
-        (np.zeros((2, 2)), np.zeros((2, 2, 2, 3)),
-         "two_body dimensions must match"),
+        (np.zeros((2, 2)), np.zeros(
+            (2, 2, 2, 3)), "two_body dimensions must match"),
     ],
 )
 def test_jordan_wigner_rejects_mismatched_dense_dimensions(

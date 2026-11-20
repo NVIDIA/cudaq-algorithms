@@ -300,22 +300,27 @@ def test_dilated_encode_kernel_state_prep_injection():
                              num_system=2,
                              value_bits=6,
                              hermitian=False)
-    encoding = SparseOracleEncoding.from_general_oracles(oracles,
-                                                          num_system=2)
+    encoding = SparseOracleEncoding.from_general_oracles(oracles, num_system=2)
 
     @cudaq.kernel
     def prep(qubits: cudaq.qview):
-        x(qubits[0])
-        x(qubits[2])
+        # Superpose the halves bit (qubits[2]) so both A and A^T blocks act.
+        ry(0.7, qubits[0])
+        x(qubits[1])
+        h(qubits[2])
 
-    ket = np.zeros(1 << encoding.num_system, dtype=np.complex128)
-    ket[5] = 1.0
+    q0 = np.array([np.cos(0.35), np.sin(0.35)], dtype=np.complex128)
+    q1 = np.array([0.0, 1.0], dtype=np.complex128)
+    q2 = np.array([1.0, 1.0], dtype=np.complex128) / np.sqrt(2.0)
+    ket = np.kron(q2, np.kron(q1, q0))
     a_quantized = banded_quantized_dense(offsets, values, 2, 6, oracles.h)
     zero = np.zeros_like(a_quantized)
-    dilated_quantized = np.block([[zero, a_quantized],
-                                  [a_quantized.T, zero]])
+    dilated_quantized = np.block([[zero, a_quantized], [a_quantized.T, zero]])
 
     out = np.asarray(cudaq.get_state(encoding.encode_kernel(state_prep=prep)))
+    via_state = np.asarray(
+        cudaq.get_state(encoding.encode_kernel(), state_from(ket)))
+    np.testing.assert_allclose(out, via_state, atol=1e-10)
     block = out[:len(ket)]
     np.testing.assert_allclose(encoding.alpha * block,
                                dilated_quantized @ ket,
@@ -516,12 +521,19 @@ def test_controlled_apply_slot_flip_pattern_dispatch(offsets, values):
     oracles = banded_oracles(offsets, values, num_system=2, value_bits=6)
     encoding = SparseOracleEncoding(oracles, num_system=2)
     ket = random_ket(4, seed=37)
-    state = np.asarray(
-        cudaq.get_state(_controlled_circuit(encoding, 1), state_from(ket)))
     quantized = banded_quantized_dense(offsets, values, 2, 6, encoding.h)
 
-    np.testing.assert_allclose(state[:4],
-                               (quantized @ ket) / encoding.alpha,
+    # Control |0>: exact identity on the full register (work scratch clean).
+    at_zero = np.asarray(
+        cudaq.get_state(_controlled_circuit(encoding, 0), state_from(ket)))
+    expected_zero = np.zeros_like(at_zero)
+    expected_zero[:4] = ket
+    np.testing.assert_allclose(at_zero, expected_zero, atol=1e-10)
+
+    # Control |1>: good-subspace block matches quantized H / alpha.
+    at_one = np.asarray(
+        cudaq.get_state(_controlled_circuit(encoding, 1), state_from(ket)))
+    np.testing.assert_allclose(at_one[:4], (quantized @ ket) / encoding.alpha,
                                atol=1e-10)
 
 
@@ -595,13 +607,15 @@ def test_encoding_validation_raises():
     with pytest.raises(ValueError, match="bit-0 adjacent"):
         SparseOracleEncoding(_valid_oracles(d=3, slot_flip=[2, 1, 0, 3]),
                              num_system=2)
-    with pytest.raises(ValueError, match="num_system must be a positive integer"):
+    with pytest.raises(ValueError,
+                       match="num_system must be a positive integer"):
         SparseOracleEncoding.from_general_oracles(_valid_oracles(),
                                                   num_system=0)
     with pytest.raises(ValueError, match="oracles.o_loc is required"):
-        SparseOracleEncoding.from_general_oracles(
-            _valid_oracles(o_loc=None), num_system=2)
-    with pytest.raises(ValueError, match="oracles.d must be a positive integer"):
+        SparseOracleEncoding.from_general_oracles(_valid_oracles(o_loc=None),
+                                                  num_system=2)
+    with pytest.raises(ValueError,
+                       match="oracles.d must be a positive integer"):
         SparseOracleEncoding.from_general_oracles(_valid_oracles(d=0),
                                                   num_system=2)
 
@@ -609,7 +623,8 @@ def test_encoding_validation_raises():
 def test_banded_validation_raises():
     with pytest.raises(ValueError, match="offsets must be non-empty"):
         banded_oracles([], [], num_system=2, value_bits=4)
-    with pytest.raises(ValueError, match="num_system must be a positive integer"):
+    with pytest.raises(ValueError,
+                       match="num_system must be a positive integer"):
         banded_oracles([0], [1.0], num_system=0, value_bits=4)
     with pytest.raises(ValueError, match="band values must be finite"):
         banded_oracles([0], [float("nan")], num_system=2, value_bits=4)
@@ -815,11 +830,10 @@ def test_signed_nonunit_offsets_encode_the_clipped_band():
     ideal = banded_dense(offsets, values, num_system)
 
     np.testing.assert_allclose(block, quantized @ ket, atol=1e-10)
-    np.testing.assert_allclose(
-        block,
-        ideal @ ket,
-        atol=quantization_atol(encoding.h, value_bits) *
-        math.sqrt(1 << num_system))
+    np.testing.assert_allclose(block,
+                               ideal @ ket,
+                               atol=quantization_atol(encoding.h, value_bits) *
+                               math.sqrt(1 << num_system))
 
 
 def test_overlapping_modular_shifts_keep_their_own_supports():

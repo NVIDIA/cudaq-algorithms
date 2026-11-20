@@ -20,17 +20,12 @@ import cudaq
 from cudaq_algorithms.fermion import (jordan_wigner, bravyi_kitaev_superfast,
                                       bravyi_kitaev_superfast_stabilizers)
 from cudaq_algorithms.fermion._compilers import _normalize_integrals
-from cudaq_algorithms.fermion._superfast import (_Graph, _b_word, _a_word,
-                                                 _anticommute, _build_graph,
-                                                 _connected_components,
-                                                 _encoding_backend, _word_mul,
-                                                 _error_correcting_local_modes,
-                                                 _is_three_connected,
-                                                 _pad_even_degree,
-                                                 _stabilizer_subset,
-                                                 _validate_error_correcting_graph)
-from cudaq_algorithms.fermion._superfast import (_string_to_word,
-                                                 _code_space_parity,
+from cudaq_algorithms.fermion._superfast import (
+    _Graph, _b_word, _a_word, _anticommute, _build_graph,
+    _connected_components, _encoding_backend, _word_mul,
+    _error_correcting_local_modes, _is_three_connected, _pad_even_degree,
+    _stabilizer_subset, _validate_error_correcting_graph)
+from cudaq_algorithms.fermion._superfast import (_code_space_parity,
                                                  _loop_stabilizer_words,
                                                  _validate_local_modes)
 
@@ -480,7 +475,9 @@ def test_interaction_graph_superset_override():
 
 
 def test_connected_components_ignores_inactive_endpoint():
-    assert _connected_components({0, 1}, {(0, 1), (1, 2)}) == {1}
+    assert len(_connected_components({0, 1}, {(0, 1), (1, 2)})) == 1
+    # Edges incident to inactive vertex 2 must not bridge active vertices 1 and 3.
+    assert len(_connected_components({0, 1, 3}, {(0, 1), (1, 2), (2, 3)})) == 2
 
 
 def test_interaction_graph_missing_required_edge_raises():
@@ -940,9 +937,8 @@ def test_error_correcting_graph_helper_boundaries():
 
 
 @pytest.mark.parametrize(
-    ("degree", "message"),
-    [(4, "even degree >= 6"), (7, "even degree >= 6"),
-     (12, "qubit count other than 4")],
+    ("degree", "message"), [(4, "even degree >= 6"), (7, "even degree >= 6"),
+                            (12, "qubit count other than 4")],
     ids=["below-minimum", "odd-degree", "unsupported-even-qubit-count"])
 def test_error_correcting_local_mode_construction_rejects_unsupported_degrees(
         degree, message):
@@ -951,23 +947,35 @@ def test_error_correcting_local_mode_construction_rejects_unsupported_degrees(
 
 
 def test_error_correcting_degree8_modes_validate():
-    strings = ["ZZXI", "ZZYI", "IZZX", "IZZY", "XIIZ", "YIIZ", "ZXII",
-               "ZYII"]
     modes = _error_correcting_local_modes(8)
-
-    assert modes == [_string_to_word(word) for word in strings]
     _validate_local_modes(modes, 8)
+
+    # Verify Theorem 1 / Eq. 22 weight conditions for the degree-8 vertex
+    # operator B = (-i)^4 prod_p gamma_p and its single/pair products.
+    b_coeff, b_word = 1.0 + 0j, (0, 0)
+    for coeff, word in modes:
+        b_coeff, b_word = _word_mul(b_coeff, b_word, coeff, word)
+    b_coeff *= (-1j)**4
+    assert abs(b_coeff.imag) < 1e-12 and abs(abs(b_coeff.real) - 1.0) < 1e-12
+    assert _weight((b_coeff, b_word)) >= 3
+    for p in range(8):
+        assert _weight(modes[p]) >= 2
+        b_gamma = _word_mul(b_coeff, b_word, modes[p][0], modes[p][1])
+        assert _weight(b_gamma) >= 2
+        for q in range(p + 1, 8):
+            b_gamma_gamma = _word_mul(b_gamma[0], b_gamma[1], modes[q][0],
+                                      modes[q][1])
+            assert _weight(b_gamma_gamma) >= 2
 
 
 @pytest.mark.parametrize(
     ("modes", "degree", "message"),
     [([(1j, (1, 0)), (1.0, (0, 1))], 2, "Hermitian involutions"),
      ([(1.0, (2, 0)), (1.0, (0, 1))], 2, "acts outside"),
-     ([(1.0, (1, 0)), (1.0, (1, 1)), (1.0, (0, 1))], 3,
-      "not independent")],
+     ([(1.0, (1, 0)), (1.0, (1, 1)), (1.0, (0, 1))], 3, "not independent")],
     ids=["coefficient", "out-of-range", "dependent-rank"])
-def test_validate_local_modes_rejects_invalid_pauli_sets(modes, degree,
-                                                          message):
+def test_validate_local_modes_rejects_invalid_pauli_sets(
+        modes, degree, message):
     with pytest.raises(ValueError, match=message):
         _validate_local_modes(modes, degree)
 

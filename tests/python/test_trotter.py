@@ -230,8 +230,8 @@ def test_trotter_orders_terms_and_estimates_resources():
         hamiltonian,
         ordering=trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
 
-    assert (evolution.ordering is
-            trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
+    assert (evolution.ordering
+            is trotter.TrotterOrdering.COEFFICIENT_MAGNITUDE_DESCENDING)
     assert evolution.identity_coefficient == pytest.approx(-0.2)
     assert evolution.coefficients == pytest.approx([0.7, 0.4, 0.1])
     assert [str(word) for word in evolution.words] == ["IZ", "XZ", "XI"]
@@ -254,6 +254,8 @@ def test_trotter_magnitude_ordering_handles_identity_only_hamiltonian():
     assert evolution.num_terms == 0
     assert evolution.identity_coefficient == pytest.approx(-0.2)
     assert evolution.num_qubits == 2
+    state = np.asarray(cudaq.get_state(evolution.kernel(time=0.5, steps=2)))
+    np.testing.assert_allclose(state, [1.0, 0.0, 0.0, 0.0], atol=1e-12)
 
 
 def test_trotter_repr_summary():
@@ -286,11 +288,12 @@ def test_estimate_trotter_resources_accepts_flattened_terms():
 
 
 def test_estimate_trotter_resources_rejects_mismatched_term_lengths():
-    with pytest.raises(
-            ValueError,
-            match="coefficients and words must have equal length"):
-        trotter.estimate_trotter_resources(
-            coefficients=[0.5], words=[], steps=1, order=1)
+    with pytest.raises(ValueError,
+                       match="coefficients and words must have equal length"):
+        trotter.estimate_trotter_resources(coefficients=[0.5],
+                                           words=[],
+                                           steps=1,
+                                           order=1)
 
 
 # ----------------------------------------------------------------------------

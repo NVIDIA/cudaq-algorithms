@@ -589,8 +589,8 @@ def test_validation_raises():
                                mu=1)
     assert str(reduced.select_observable()) == str(spelled.select_observable())
 
-    cancelled = LCUBlockEncoding(NUM_SYSTEM, [1.0, 1.0],
-                                 [[("x", 0), ("x", 0)], []],
+    cancelled = LCUBlockEncoding(NUM_SYSTEM, [1.0, 1.0], [[("x", 0),
+                                                           ("x", 0)], []],
                                  num_select_work=1,
                                  mu=1)
     identity_terms = LCUBlockEncoding(NUM_SYSTEM, [1.0, 1.0], [[], []],
@@ -599,3 +599,9 @@ def test_validation_raises():
     assert cancelled.num_select_work == 1
     assert str(cancelled.select_observable()) == str(
         identity_terms.select_observable())
+    ket = random_ket(1 << NUM_SYSTEM, seed=29)
+    cancelled_out = np.array(
+        cudaq.get_state(cancelled.encode_kernel(), state_from(ket)))
+    np.testing.assert_allclose(cancelled_out[:1 << NUM_SYSTEM],
+                               ket,
+                               atol=1e-10)

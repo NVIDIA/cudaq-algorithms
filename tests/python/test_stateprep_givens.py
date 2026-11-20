@@ -64,8 +64,6 @@ def _givens_dispatch_entry(theta: float, first_orbital: int,
     x(q[0])
     algorithms.stateprep.givens_rotation(q, theta, first_orbital,
                                          second_orbital)
-    algorithms.stateprep.givens_rotation(q, theta, second_orbital,
-                                         first_orbital)
 
 
 # ----------------------------------------------------------------------------
@@ -163,23 +161,35 @@ def _prepare_complex_slater_state(orbital_coefficients):
 
 def test_givens_dispatch_and_malformed_schedule_guards():
     theta = 0.37
-    expected_givens = np.zeros(8, dtype=complex)
-    expected_givens[1] = 1.0
+    # Reversed adjacent pair (1, 0) applies the opposite rotation angle to (0, 1).
+    reversed_actual = np.asarray(
+        cudaq.get_state(_givens_dispatch_entry, theta, 1, 0))
+    reversed_expected = np.zeros(8, dtype=complex)
+    reversed_expected[1] = np.cos(theta)
+    reversed_expected[2] = -np.sin(theta)
+    np.testing.assert_allclose(reversed_actual,
+                               reversed_expected,
+                               atol=1.0e-12)
 
-    for first_orbital, second_orbital in ((1, 0), (0, 2)):
-        actual = np.asarray(
-            cudaq.get_state(_givens_dispatch_entry, theta, first_orbital,
-                            second_orbital))
-        np.testing.assert_allclose(actual, expected_givens, atol=1.0e-12)
+    # Non-adjacent pair (0, 2) must be a no-op.
+    nonadjacent_actual = np.asarray(
+        cudaq.get_state(_givens_dispatch_entry, theta, 0, 2))
+    nonadjacent_expected = np.zeros(8, dtype=complex)
+    nonadjacent_expected[1] = 1.0
+    np.testing.assert_allclose(nonadjacent_actual,
+                               nonadjacent_expected,
+                               atol=1.0e-12)
 
     expected_noop = np.array([1.0, 0.0, 0.0, 0.0], dtype=complex)
     real_state = np.asarray(cudaq.get_state(_real_entry, 2, [0], [theta], 1))
     np.testing.assert_allclose(real_state, expected_noop, atol=1.0e-12)
 
-    complex_state = np.asarray(
-        cudaq.get_state(_complex_entry, 2, [0, 1], [theta], [0.2, 0.3],
-                        [0.1], 1))
-    np.testing.assert_allclose(complex_state, expected_noop, atol=1.0e-12)
+    # Mismatched phases length and too-few final_phases must both be no-ops.
+    for phases, num_electrons in (([0.2, 0.3], 1), ([0.2], 2)):
+        complex_state = np.asarray(
+            cudaq.get_state(_complex_entry, 2, [0, 1], [theta], phases, [0.1],
+                            num_electrons))
+        np.testing.assert_allclose(complex_state, expected_noop, atol=1.0e-12)
 
 
 def test_givens_schedule_two_orbital_statevector():
@@ -749,7 +759,9 @@ def test_orbital_rotation_schedule_edge_cases_and_validation():
     assert modes == [0] and angles == [0.0]
 
 
-def test_orbital_rotation_schedule_rejects_negative_tolerance():
+def test_orbital_rotation_schedule_raises_on_unreduced_residual():
+    # Entries below the 1e-14 elimination floor are skipped, so a tolerance
+    # tighter than that floor fails the post-sweep diagonal check.
     theta = 5.0e-15
     rotation = np.array([[np.cos(theta), -np.sin(theta)],
                          [np.sin(theta), np.cos(theta)]])
