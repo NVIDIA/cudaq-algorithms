@@ -35,6 +35,8 @@ def package(tmp_path):
     for path, text in {
             runtime / "SKILL.md": MANIFEST,
             runtime / "skill-card.md": "Catalog entry\n",
+            runtime / "BENCHMARK.md": "Signed benchmark\n",
+            runtime / "skill.oms.sig": "{}\n",
             runtime / "scripts/route.py": HEADER + "print('route')\n",
             runtime / "references/quick-contract.md": "Public contract\n",
             runtime / "evals/evals.json": '{"evals": []}',

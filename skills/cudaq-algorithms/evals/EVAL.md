@@ -1,18 +1,27 @@
 # Runtime skill evaluations
 
 This directory is a standalone SkillEvaluator dataset for `cudaq-algorithms`.
-It contains the same 62 ordered cases as the repository's canonical development
-suite: 42 regression cases and 20 scientific cases. There are 59 positive cases
-and three negative routing cases:
+It contains a reviewed subset of the repository's canonical development suite:
+19 of its 62 cases, in development order, covering routing, the state
+preparation injection contract, boundary cases for block encoding, QSVT and
+chemistry, behaviour and safety, and three scientific cases (block encoding,
+Trotter evolution and double factorization). The chemistry and QSVT numerical cases remain in the
+development suite, whose paired campaign has the trial budget they need, as do
+the three heaviest composition cases (end-to-end chemistry, Trotter resource
+boundary and state-preparation provider selection), which exceed the
+unassisted baseline agent's per-trial time limit in nvskills-ci.
+There are 16 positive cases and three negative routing cases:
 
 - `negative-cudaq-install`
 - `negative-generic-quantum-concept`
 - `negative-generic-cudaq-kernel`
 
 Each negative case has `expected_skill: null`; it must not activate this skill.
-All ten fixtures referenced by the cases are included under `files/`. Paths are
+All five fixtures referenced by the cases are included under `files/`. Paths are
 relative to this directory, so the runtime skill can be copied or installed
-without the development skill.
+without the development skill. The remaining 43 cases stay in the development
+suite for the maintainer's paired campaign; nvskills-ci executes only the cases
+shipped here.
 
 SkillEvaluator excludes `evals/` from the agent-visible skill copy, including
 links to evaluation material. Assertions stay in the private verifier entry;
@@ -20,12 +29,13 @@ the task question and declared input fixtures are staged separately.
 
 ## Preserving the canonical questions
 
-`evals.json` uses ASCII JSON escapes for non-ASCII characters. Its decoded object,
-including every prompt, assertion, expected output, case order, and fixture path,
-is identical to the canonical suite. The fixtures are byte-identical copies.
-The repository's `test_catalog_evals.py` checks both properties and standalone
-fixture resolution. Update this view only alongside a reviewed canonical change;
-do not independently regenerate or refine its questions.
+`evals.json` uses ASCII JSON escapes for non-ASCII characters. Every record it
+carries, including the prompt, assertions, expected output, and fixture paths,
+is identical to the canonical record with the same id, and the records keep the
+canonical order. The fixtures are byte-identical copies. The repository's
+`test_catalog_evals.py` pins the shipped id set and checks both properties and
+standalone fixture resolution. Update this view only alongside a reviewed
+canonical change; do not independently regenerate or refine its questions.
 
 ## Local validation
 

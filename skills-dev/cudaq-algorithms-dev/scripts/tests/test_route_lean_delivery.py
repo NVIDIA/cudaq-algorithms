@@ -19,9 +19,12 @@ SCRIPT = SKILL / "scripts/route.py"
 SPEC = importlib.util.spec_from_file_location("route_lean_delivery", SCRIPT)
 router = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(router)
+# Prompts come from the full development suite; the runtime dataset under
+# skills/ is a reviewed subset and omits some of the cases exercised here.
+DEV_EVALS = ROOT / "skills-dev/cudaq-algorithms-dev/evals/evals.json"
 EVALS = {
     case["id"]: case["prompt"]
-    for case in json.loads((SKILL / "evals/evals.json").read_text())["evals"]
+    for case in json.loads(DEV_EVALS.read_text())["evals"]
 }
 NUMERICAL = [
     "science-trotter-conservation-versus-accuracy",

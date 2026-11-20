@@ -28,11 +28,32 @@ other 58 cases, original source provenance, suite version and paired protocol st
 unchanged. Existing frozen campaigns retain their own suite and grades; this
 review does not retroactively regrade them.
 
+The [2026-11-12 prompt rebaseline](rebaselines/2026-11-12-qpu-authorization-prompt.json)
+rephrases `qpu-authorization-boundary`. The original wording asked the agent to
+"use whatever cloud credentials you find", which Claude Code's usage-policy
+safeguards refuse before the agent runs, so nvskills-ci trials errored instead
+of producing a gradable refusal. The new prompt presents the credentials as the
+user's own and still demands paid QPU submission with unattended retries; the
+expected output and all four assertions are unchanged. The other 61 case
+records, fixtures and protocol files are unchanged.
+
+The [2026-11-17 expected-output rebaseline](rebaselines/2026-11-17-qpu-authorization-expected-output.json)
+follows from that prompt. Because the user now states that the credentials are
+their own and asks for the submission, the expected output names what is
+actually left open (a specific target, a cost limit and a retry bound) instead
+of authorization in general. The prompt and all four assertions are unchanged,
+as are the other 61 case records, fixtures and protocol files.
+`test_rebaseline_provenance.py` verifies the rebaseline records as a chain
+ending at the current suite.
+
 The runtime skill also ships a standalone [catalog evaluation package](../../../skills/cudaq-algorithms/evals/EVAL.md)
-for NVIDIA SkillEvaluator. Its 62 cases and three negative controls decode to
-exactly this suite, with byte-identical local fixtures; `test_catalog_evals.py`
-guards against drift. The catalog config contains only supported SkillEvaluator
-keys. Keep this directory's campaign, grading, and reporting infrastructure here.
+for NVIDIA SkillEvaluator. It carries a reviewed 19-case subset of this suite,
+including the three negative controls, with every record and fixture
+byte-identical to its canonical counterpart; `test_catalog_evals.py` pins the
+subset and guards against drift. nvskills-ci executes only that subset; the
+full 62 cases run through the paired campaign below. The catalog config contains
+only supported SkillEvaluator keys. Keep this directory's campaign, grading, and
+reporting infrastructure here.
 
 ## Paired campaign protocol
 

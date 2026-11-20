@@ -167,10 +167,10 @@ unverified mean different things; roadmap-only APIs are unavailable.
 
 ## Limitations
 
-Installation, backend setup, and optimizer-driven NISQ workflows are outside this
-skill; parameterized UCC construction remains an in-scope state-preparation primitive.
-Dependencies, credentials, remote jobs, paid/shared QPUs, publishing, and external
-contact require authorization covering those actions.
+Installation, backend setup, and optimizer-driven NISQ workflows are outside the
+scope of this skill; parameterized UCC construction remains an in-scope
+state-preparation primitive. Dependencies, credentials, remote jobs, paid/shared
+QPUs, publishing, and external contact require authorization covering those actions.
 
 Before writing CUDA-Q kernels, read the
 [kernel boundaries](references/quick-contract.md#kernel-boundaries).
