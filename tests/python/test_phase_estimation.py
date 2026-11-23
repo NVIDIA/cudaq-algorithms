@@ -12,6 +12,7 @@ instances stay at ``num_bits <= 6``.
 """
 
 import math
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -47,6 +48,11 @@ def prep_11(q: cudaq.qview):
 # ----------------------------------------------------------------------
 # Energy readout formula
 # ----------------------------------------------------------------------
+
+
+def test_phase_estimation_rejects_encoding_without_ancilla():
+    with pytest.raises(ValueError, match="encoding.num_ancilla must be >= 1"):
+        PhaseEstimation(SimpleNamespace(num_ancilla=0))
 
 
 def test_phase_to_energy_formula():
@@ -225,6 +231,33 @@ def test_run_on_large_stack_runs_the_call_on_a_worker_thread():
     with pytest.raises(ZeroDivisionError, match="propagated"):
         sim_utils.run_on_large_stack(fail)
     assert threading.stack_size() == 0
+
+
+@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+def test_run_on_large_stack_falls_back_when_stack_size_is_rejected(
+        monkeypatch, error_type):
+    import threading
+
+    original_stack_size = threading.stack_size()
+    requested_sizes = []
+    observed_threads = []
+
+    def reject_requested_stack_size(size=None):
+        if size is None:
+            return original_stack_size
+        requested_sizes.append(size)
+        raise error_type("unsupported stack size")
+
+    monkeypatch.setattr(threading, "stack_size", reject_requested_stack_size)
+    calling_thread = threading.current_thread()
+
+    def probe(a, b=1):
+        observed_threads.append(threading.current_thread())
+        return a + b
+
+    assert sim.run_on_large_stack(probe, 2, stack_bytes=8192, b=3) == 5
+    assert requested_sizes == [8192]
+    assert observed_threads == [calling_thread]
 
 
 def test_phase_probabilities_simulates_on_the_large_stack(monkeypatch):

@@ -3,6 +3,7 @@
 """Public planning, encoding and kernel contracts of fermion_basis_change."""
 
 import copy
+import collections.abc
 import decimal
 import math
 import pickle
@@ -315,6 +316,13 @@ def test_explicit_words_drive_plan_kernels_after_round_trips(layout):
         np.testing.assert_allclose(actual, expected, atol=1e-12, rtol=0)
 
 
+@pytest.mark.parametrize("adjoint", [None, 0, 1, np.bool_(True)])
+def test_controlled_kernel_rejects_non_python_bool(adjoint):
+    plan = _api()(np.eye(2))
+    with pytest.raises(ValueError, match="adjoint must be a boolean"):
+        plan.controlled_kernel(adjoint=adjoint)
+
+
 @pytest.mark.parametrize("layout", [
     ((2, ), ),
     ((2, 3), (3, 4), (5, 6), (7, 8)),
@@ -358,6 +366,42 @@ def test_unordered_program_layout_is_rejected(layout):
                programmable=True,
                angle_bits=2,
                parameter_registers=layout)
+
+
+def test_plan_constructor_and_layout_sequence_validation():
+    from cudaq_algorithms.basis_change import FermionBasisChange
+
+    with pytest.raises(ValueError, match="schedule must"):
+        FermionBasisChange(object())
+
+    plan = _api()(np.eye(2), programmable=True, angle_bits=2)
+    with pytest.raises(ValueError, match="angle_encoding must"):
+        FermionBasisChange(plan.schedule, object())
+
+    short_word_layout = ((2, ), (4, 5), (6, 7), (8, 9))
+    with pytest.raises(ValueError, match="encoding width"):
+        _api()(np.eye(2),
+               programmable=True,
+               angle_bits=2,
+               parameter_registers=short_word_layout)
+
+    class NonIterableSequence(collections.abc.Sequence):
+
+        def __getitem__(self, index):
+            raise IndexError
+
+        def __iter__(self):
+            raise TypeError("sequence iteration failed")
+
+        def __len__(self):
+            return 1
+
+    broken_layout = (NonIterableSequence(), (4, 5), (6, 7), (8, 9))
+    with pytest.raises(ValueError, match="ordered sequence"):
+        _api()(np.eye(2),
+               programmable=True,
+               angle_bits=2,
+               parameter_registers=broken_layout)
 
 
 def test_program_layout_indices_are_bounded():

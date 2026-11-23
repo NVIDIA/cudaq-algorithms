@@ -24,7 +24,8 @@ from cudaq_algorithms.primitives import unary_iteration_kernels
 from cudaq_algorithms.primitives._unary_iteration import (
     _OP_BODY_X, _OP_CCX, _OP_CCX_ADDR_ADDR, _OP_CCX_CTRL, _OP_CX_ADDR_ADDR,
     _OP_CX_ADDR_LADDER, _OP_CX_CTRL_LADDER, _OP_CX_LADDER_LADDER, _OP_X_ADDR,
-    _OP_X_LADDER, _TOFFOLI_OPCODES, _emit_walk, _walk_toffoli_count)
+    _OP_X_LADDER, _TOFFOLI_OPCODES, _emit_walk, _mint_interpreter,
+    _walk_toffoli_count)
 
 
 def _basis(index: int, num_qubits: int) -> np.ndarray:
@@ -133,6 +134,75 @@ def test_tape_toffoli_counts_match_documented_formulas():
 # ----------------------------------------------------------------------
 # Statevector pinning of the minted kernels
 # ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("controlled,has_work", [(False, False), (True, False),
+                                                 (False, True), (True, True)])
+def test_empty_interpreter_tape_is_identity(controlled, has_work):
+    kernel = _mint_interpreter([], controlled=controlled, has_work=has_work)
+    num_qubits = 3 + int(controlled) + int(has_work)
+
+    if controlled and has_work:
+
+        @cudaq.kernel
+        def run():
+            control = cudaq.qvector(1)
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            work = cudaq.qvector(1)
+            h(control[0])
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            h(work[0])
+            kernel(control, address, ladder, target, work)
+
+    elif controlled:
+
+        @cudaq.kernel
+        def run():
+            control = cudaq.qvector(1)
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            h(control[0])
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            kernel(control, address, ladder, target)
+
+    elif has_work:
+
+        @cudaq.kernel
+        def run():
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            work = cudaq.qvector(1)
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            h(work[0])
+            kernel(address, ladder, target, work)
+
+    else:
+
+        @cudaq.kernel
+        def run():
+            address = cudaq.qvector(1)
+            ladder = cudaq.qvector(1)
+            target = cudaq.qvector(1)
+            h(address[0])
+            h(ladder[0])
+            h(target[0])
+            kernel(address, ladder, target)
+
+    state = np.array(cudaq.get_state(run))
+    expected = np.full(1 << num_qubits,
+                       1.0 / np.sqrt(1 << num_qubits),
+                       dtype=np.complex128)
+    np.testing.assert_allclose(state, expected, atol=1e-12)
 
 
 @pytest.mark.parametrize("num_items,marked", [(8, (1, 3, 4)), (5, (0, 4)),
@@ -339,6 +409,19 @@ def test_unary_iteration_validation_raises():
         unary_iteration_kernels(2, 4, lambda k: [("q", 0)])
     with pytest.raises(ValueError, match="invalid target qubit index"):
         unary_iteration_kernels(2, 4, lambda k: [("x", -1)])
+    with pytest.raises(ValueError, match="expected 1"):
+        unary_iteration_kernels(1, 1, lambda k: [("x", )])
+    with pytest.raises(ValueError, match="expected 3"):
+        unary_iteration_kernels(1, 1, lambda k: [("and_tt", 0, 1)])
+    with pytest.raises(ValueError, match="invalid target qubit index"):
+        unary_iteration_kernels(1, 1, lambda k: [("and_tt", -1, 0, 0)])
+    with pytest.raises(ValueError, match="invalid work qubit index"):
+        unary_iteration_kernels(1, 1, lambda k: [("and_tt", 0, 1, -1)])
+    with pytest.raises(ValueError, match="num_work must be an integer"):
+        unary_iteration_kernels(1,
+                                1,
+                                lambda k: [("and_tt", 0, 1, 0)],
+                                num_work=0)
 
 
 def test_describe_decodes_the_tape():

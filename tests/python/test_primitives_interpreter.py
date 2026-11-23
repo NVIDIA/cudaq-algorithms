@@ -264,6 +264,152 @@ def test_opcode_semantics(opcode, operands, kind, refs, controlled, has_work):
                      f"wrong on input {regs}"))
 
 
+def test_compound_work_control_tape_exercises_false_opcode_edges():
+    names = ("x_ladder", "cx_addr_ladder", "free_x", "free_cx", "and_wt",
+             "copy_tw", "body_x_w", "ccx_addr_addr")
+    tape = [(_SPECS[name][0], *_SPECS[name][1]) for name in names]
+    actions = [(_SPECS[name][2], _SPECS[name][3]) for name in names]
+
+    interp = _mint_interpreter(tape, controlled=True, has_work=True)
+
+    @cudaq.kernel
+    def run_compound():
+        control = cudaq.qvector(1)
+        address = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        work = cudaq.qvector(2)
+        h(control[0])
+        for i in range(2):
+            h(address[i])
+            h(ladder[i])
+            h(target[i])
+            h(work[i])
+        interp(control, address, ladder, target, work)
+
+    state = np.array(cudaq.get_state(run_compound))
+    offsets, num_qubits = _layout(controlled=True, has_work=True)
+    expected = np.zeros(1 << num_qubits, dtype=np.complex128)
+    amplitude = 1.0 / np.sqrt(1 << num_qubits)
+
+    # Uniform superposition verifies every control/target/work basis state
+    # and phase rather than a single all-ones input.
+    for control_init in range(2):
+        for address_init in range(4):
+            for ladder_init in range(4):
+                for target_init in range(4):
+                    for work_init in range(4):
+                        regs = {
+                            "c": control_init,
+                            "a": address_init,
+                            "l": ladder_init,
+                            "t": target_init,
+                            "w": work_init,
+                        }
+                        phase = 1.0 + 0.0j
+                        for kind, refs in actions:
+                            regs, gate_phase = _apply(kind, refs, regs)
+                            phase *= gate_phase
+                        index = sum(regs[reg] << offset
+                                    for reg, offset in offsets.items())
+                        expected[index] = amplitude * phase
+
+    np.testing.assert_allclose(state, expected, atol=1e-12)
+
+
+def test_controlled_mixed_tape_dispatch_and_composition():
+    names = ("x_ladder", "cx_addr_ladder", "body_y", "ccx_ctrl", "free_x",
+             "free_cx", "z_ladder", "ccx_addr_addr")
+    ops = [(_SPECS[name][0], *_SPECS[name][1]) for name in names]
+    interp = _mint_interpreter(ops, controlled=True, has_work=False)
+
+    @cudaq.kernel
+    def run():
+        control = cudaq.qvector(1)
+        address = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        h(control[0])
+        for i in range(2):
+            h(address[i])
+            h(ladder[i])
+            h(target[i])
+        interp(control, address, ladder, target)
+
+    state = np.array(cudaq.get_state(run))
+    offsets, num_qubits = _layout(controlled=True, has_work=False)
+    expected = np.zeros(1 << num_qubits, dtype=np.complex128)
+    amplitude = 1 / np.sqrt(1 << num_qubits)
+
+    for control_init in range(2):
+        for address_init in range(4):
+            for ladder_init in range(4):
+                for target_init in range(4):
+                    regs = {
+                        "c": control_init,
+                        "a": address_init,
+                        "l": ladder_init,
+                        "t": target_init,
+                        "w": 0,
+                    }
+                    phase = 1.0 + 0.0j
+                    for name in names:
+                        _, _, kind, refs = _SPECS[name]
+                        regs, gate_phase = _apply(kind, refs, regs)
+                        phase *= gate_phase
+                    index = sum(regs[reg] << offset
+                                for reg, offset in offsets.items())
+                    expected[index] = amplitude * phase
+
+    np.testing.assert_allclose(state, expected, atol=1e-12)
+
+
+def test_uncontrolled_work_mixed_free_gate_dispatch():
+    names = ("free_x", "free_cx", "and_tt")
+    ops = [(_SPECS[name][0], *_SPECS[name][1]) for name in names]
+    interp = _mint_interpreter(ops, controlled=False, has_work=True)
+
+    @cudaq.kernel
+    def run():
+        address = cudaq.qvector(2)
+        ladder = cudaq.qvector(2)
+        target = cudaq.qvector(2)
+        work = cudaq.qvector(2)
+        for i in range(2):
+            h(address[i])
+            h(ladder[i])
+            h(target[i])
+            h(work[i])
+        interp(address, ladder, target, work)
+
+    state = np.array(cudaq.get_state(run))
+    offsets, num_qubits = _layout(controlled=False, has_work=True)
+    expected = np.zeros(1 << num_qubits, dtype=np.complex128)
+    amplitude = 1.0 / np.sqrt(1 << num_qubits)
+
+    for address_init in range(4):
+        for ladder_init in range(4):
+            for target_init in range(4):
+                for work_init in range(4):
+                    regs = {
+                        "c": 0,
+                        "a": address_init,
+                        "l": ladder_init,
+                        "t": target_init,
+                        "w": work_init,
+                    }
+                    phase = 1.0 + 0.0j
+                    for name in names:
+                        _, _, kind, refs = _SPECS[name]
+                        regs, gate_phase = _apply(kind, refs, regs)
+                        phase *= gate_phase
+                    index = sum(regs[reg] << offset
+                                for reg, offset in offsets.items())
+                    expected[index] = amplitude * phase
+
+    np.testing.assert_allclose(state, expected, atol=1e-12)
+
+
 def test_mint_rejects_out_of_set_opcodes():
     # A work opcode on a no-work tape (and a control opcode on an
     # uncontrolled tape) must be a loud mint-time error: the dispatch
