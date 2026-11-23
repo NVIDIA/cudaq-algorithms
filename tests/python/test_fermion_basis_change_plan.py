@@ -56,16 +56,12 @@ def codes(schedule, width):
     return tuple(encoding.encode(value) for value in schedule.parameters)
 
 
-@pytest.mark.parametrize(
-    "kind, expected",
-    [
-        ("full", (
-            "diagonal_phase[0]", "diagonal_phase[1]", "diagonal_phase[2]",
-            "theta[0]", "phi[0]", "theta[1]", "phi[1]", "theta[2]",
-            "phi[2]")),
-        ("partial", ("theta[0]", "theta[1]", "phase[0]", "phase[1]",
-                     "phase[2]")),
-    ])
+@pytest.mark.parametrize("kind, expected", [
+    ("full",
+     ("diagonal_phase[0]", "diagonal_phase[1]", "diagonal_phase[2]",
+      "theta[0]", "phi[0]", "theta[1]", "phi[1]", "theta[2]", "phi[2]")),
+    ("partial", ("theta[0]", "theta[1]", "phase[0]", "phase[1]", "phase[2]")),
+])
 def test_parameter_schema_is_an_immutable_ordered_tuple(kind, expected):
     structure = getattr(GivensStructure, kind)(3)
     schema = structure.parameter_schema
@@ -386,9 +382,7 @@ def test_rejects_invalid_reference_mode(reference):
 def test_rejects_invalid_structure_kind_and_full_reference_mode(
         kind, reference_mode, message):
     with pytest.raises(ValueError, match=message):
-        GivensStructure(num_modes=2,
-                        kind=kind,
-                        reference_mode=reference_mode)
+        GivensStructure(num_modes=2, kind=kind, reference_mode=reference_mode)
 
 
 def test_rejects_inconsistent_structure_or_missing_basis():
@@ -443,7 +437,8 @@ def test_schedule_rejects_unconvertible_parameters_and_invalid_structure():
     structure = GivensStructure.partial(2)
     with pytest.raises(ValueError, match="one-dimensional real vector"):
         GivensBasisChangeSchedule(structure, Uncoercible())
-    with pytest.raises(ValueError, match="structure must be a GivensStructure"):
+    with pytest.raises(ValueError,
+                       match="structure must be a GivensStructure"):
         GivensBasisChangeSchedule(None)
 
 

@@ -90,7 +90,8 @@ def test_phase_sequence_validation_and_conversion():
 
 
 @pytest.mark.parametrize(
-    "phase", [float("nan"), float("inf"), float("-inf")],
+    "phase",
+    [float("nan"), float("inf"), float("-inf")],
     ids=["nan", "positive-infinity", "negative-infinity"])
 def test_phase_sequence_rejects_nonfinite_phases(phase):
     with pytest.raises(ValueError, match="phases must be finite"):
@@ -100,8 +101,7 @@ def test_phase_sequence_rejects_nonfinite_phases(phase):
 @pytest.mark.parametrize(
     ("phases", "convention", "expected"),
     [([0.2], "qsvt", "PhaseSequence(degree=0, convention='qsvt')"),
-     ([0.1, -0.2, 0.3], "qsp",
-      "PhaseSequence(degree=2, convention='qsp')")],
+     ([0.1, -0.2, 0.3], "qsp", "PhaseSequence(degree=2, convention='qsp')")],
     ids=["qsvt-degree-zero", "qsp-degree-two"])
 def test_phase_sequence_repr(phases, convention, expected):
     sequence = PhaseSequence(phases, convention=convention)

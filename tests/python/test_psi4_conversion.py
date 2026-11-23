@@ -116,15 +116,13 @@ def test_from_pyscf_rejects_unrestricted_mean_field(monkeypatch):
         algorithms.chemistry.from_pyscf(mean_field)
 
 
-@pytest.mark.parametrize(
-    "nirrep, same_a_b_orbs, message",
-    [(2, True, "C1"), (1, False, "restricted")])
-def test_from_psi4_rejects_unsupported_wavefunctions(
-        monkeypatch, nirrep, same_a_b_orbs, message):
+@pytest.mark.parametrize("nirrep, same_a_b_orbs, message",
+                         [(2, True, "C1"), (1, False, "restricted")])
+def test_from_psi4_rejects_unsupported_wavefunctions(monkeypatch, nirrep,
+                                                     same_a_b_orbs, message):
     monkeypatch.setitem(sys.modules, "psi4", ModuleType("psi4"))
-    wavefunction = SimpleNamespace(
-        nirrep=lambda: nirrep,
-        same_a_b_orbs=lambda: same_a_b_orbs)
+    wavefunction = SimpleNamespace(nirrep=lambda: nirrep,
+                                   same_a_b_orbs=lambda: same_a_b_orbs)
 
     with pytest.raises(ValueError, match=message):
         algorithms.chemistry.from_psi4(wavefunction)
@@ -156,15 +154,14 @@ def test_from_psi4_returns_mo_integrals_and_nuclear_repulsion(monkeypatch):
         Ca=lambda: coefficients_matrix,
         H=lambda: core_ao,
         basisset=lambda: basis_set,
-        molecule=lambda: SimpleNamespace(
-            nuclear_repulsion_energy=lambda: np.float64(0.715)))
+        molecule=lambda: SimpleNamespace(nuclear_repulsion_energy=lambda: np.
+                                         float64(0.715)))
 
     one_body, eri, nuclear_repulsion = algorithms.chemistry.from_psi4(
         wavefunction)
 
-    np.testing.assert_allclose(one_body,
-                               coefficients_matrix.T @ core_ao @
-                               coefficients_matrix)
+    np.testing.assert_allclose(
+        one_body, coefficients_matrix.T @ core_ao @ coefficients_matrix)
     np.testing.assert_array_equal(eri, eri_reference)
     assert one_body.flags.c_contiguous
     assert eri.flags.c_contiguous

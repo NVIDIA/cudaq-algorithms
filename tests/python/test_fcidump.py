@@ -213,8 +213,7 @@ def test_from_fcidump_additional_parser_paths():
         chemistry.from_fcidump("")
 
     with pytest.raises(ValueError, match="positive integer"):
-        chemistry.from_fcidump(
-            "&FCI NORB=0 &END\n 0.5 0 0 0 0\n")
+        chemistry.from_fcidump("&FCI NORB=0 &END\n 0.5 0 0 0 0\n")
 
     with pytest.raises(ValueError, match="malformed FCIDUMP integral line"):
         chemistry.from_fcidump("&FCI NORB=1 &END\n 0.5 x 1 0 0\n")
